@@ -1,0 +1,68 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29806.167
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DurableTask.Netherite", "src\DurableTask.Netherite\DurableTask.Netherite.csproj", "{FC7FB0AF-2322-4356-AF64-A8E2EB7D1EF8}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DurableTask.Netherite.Tests", "test\DurableTask.Netherite.Tests\DurableTask.Netherite.Tests.csproj", "{3D282458-56C8-4022-A37C-6B67F4EF9BF4}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{FFF00AD0-D467-4D12-AB79-BEF19BA527C0}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		.gitignore = .gitignore
+		nuget.config = nuget.config
+		sign.snk = sign.snk
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DurableTask.Netherite.AzureFunctions", "src\DurableTask.Netherite.AzureFunctions\DurableTask.Netherite.AzureFunctions.csproj", "{FC03BDA8-8A73-45F4-8D21-25F739BFF9E1}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DurableTask.Netherite.AzureFunctions.Tests", "test\DurableTask.Netherite.AzureFunctions.Tests\DurableTask.Netherite.AzureFunctions.Tests.csproj", "{1809EEF7-0772-404A-96C2-D76D80F1D191}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PerformanceTests", "test\PerformanceTests\PerformanceTests.csproj", "{DD1E1B3F-4FA2-4F3A-9AE1-6B2A0B864AAF}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{D33AB157-04B9-4BAD-B580-C3C87C17828C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FC7FB0AF-2322-4356-AF64-A8E2EB7D1EF8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FC7FB0AF-2322-4356-AF64-A8E2EB7D1EF8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FC7FB0AF-2322-4356-AF64-A8E2EB7D1EF8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FC7FB0AF-2322-4356-AF64-A8E2EB7D1EF8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3D282458-56C8-4022-A37C-6B67F4EF9BF4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3D282458-56C8-4022-A37C-6B67F4EF9BF4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3D282458-56C8-4022-A37C-6B67F4EF9BF4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3D282458-56C8-4022-A37C-6B67F4EF9BF4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FC03BDA8-8A73-45F4-8D21-25F739BFF9E1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FC03BDA8-8A73-45F4-8D21-25F739BFF9E1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FC03BDA8-8A73-45F4-8D21-25F739BFF9E1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FC03BDA8-8A73-45F4-8D21-25F739BFF9E1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1809EEF7-0772-404A-96C2-D76D80F1D191}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1809EEF7-0772-404A-96C2-D76D80F1D191}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1809EEF7-0772-404A-96C2-D76D80F1D191}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1809EEF7-0772-404A-96C2-D76D80F1D191}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DD1E1B3F-4FA2-4F3A-9AE1-6B2A0B864AAF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DD1E1B3F-4FA2-4F3A-9AE1-6B2A0B864AAF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DD1E1B3F-4FA2-4F3A-9AE1-6B2A0B864AAF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DD1E1B3F-4FA2-4F3A-9AE1-6B2A0B864AAF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{FC7FB0AF-2322-4356-AF64-A8E2EB7D1EF8} = {D33AB157-04B9-4BAD-B580-C3C87C17828C}
+		{3D282458-56C8-4022-A37C-6B67F4EF9BF4} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
+		{FC03BDA8-8A73-45F4-8D21-25F739BFF9E1} = {D33AB157-04B9-4BAD-B580-C3C87C17828C}
+		{1809EEF7-0772-404A-96C2-D76D80F1D191} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
+		{DD1E1B3F-4FA2-4F3A-9AE1-6B2A0B864AAF} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {238A9613-5411-41CF-BDEC-168CCD5C03FB}
+	EndGlobalSection
+EndGlobal

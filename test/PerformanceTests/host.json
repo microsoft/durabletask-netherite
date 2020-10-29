@@ -1,0 +1,106 @@
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      "default": "Warning",
+
+      // No need to trace function information for all functions
+      "Function": "None",
+      "Host": "None",
+
+      //"Host.Aggregator": "Trace",
+      //"Host.Results": "Error",
+      //"Host.Triggers.DurableTask": "Information",
+
+      // ---- the triggers below can be enabled to get information on specific functions
+      //"Function.HelloCities": "Information",
+      //"Function.HelloSequence": "Information",
+      //"Function.Sender": "Information",
+      //"Function.Receiver": "Information",
+      //"Function.Completion": "Information",
+
+      // ------ THe log levels below affect some (but not all) consumers
+      // - limits what's displayed in the func.exe console
+      // - limits what gets stored in application insights
+      // - does not limit what is collected by ETW
+      // - does not limit what is traced to console
+      // - does not limit what is shown in Live Metrics side panel
+
+      // modest at information
+      "DurableTaskBackend": "Warning",
+      // modest at warning; on Information, one per event; on trace: one per object
+      "DurableTaskBackend.Events": "Warning",
+      // modest at Information; on Trace, every storage access
+      "DurableTaskBackend.FasterStorage": "Warning",
+      // modest at Information; on Trace, every message
+      "DurableTaskBackend.EventHubsTransport": "Warning",
+      // off on error; on Warning, several per orchestration
+      "DurableTaskBackend.Benchmark": "Error"
+    },
+    "applicationInsights": {
+      "sampling": {
+        "isEnabled": false
+      }
+    }
+  },
+  "extensions": {
+    "http": {
+      "routePrefix": ""
+    },
+    "durableTask": {
+      // -- the following options apply to all providers
+
+      "hubName": "stress",
+
+      "extendedSessionsEnabled": "true",
+      "maxConcurrentActivityFunctions": "100",
+      "maxConcurrentOrchestratorFunctions": "100",
+
+      "storageProvider": {
+        // The following are specific to the Options class that is DI'd for this run
+        // NOTE: to switch between provider types, have to change appsettings.json
+        // only one section at a time is really used; since properties
+        // that dot match a field are simply ignored
+
+        //-------  EventSourcedStorageOptions ------------
+
+        "StorageConnectionString": "$AzureWebJobsStorage",
+        "EventHubsConnectionString": "Memory:1",
+        //"EventHubsConnectionString": "$EventHubsConnection",
+        //"PremiumStorageConnectionString": "DefaultEndpointsProtocol=https;AccountName=functionssbdockerpremium;AccountKey=qpBgTXV6Bmt6+xvuwmI8gDEd0/XnjThfP/bnipwfZg8FwayCLVUlVdCNxLDziWHZp33WrnfL0Endqeo3q3Rc3A==;EndpointSuffix=core.windows.net",
+
+        "TakeStateCheckpointWhenStoppingPartition": "true",
+        "MaxNumberBytesBetweenCheckpoints": "20000000",
+        "MaxNumberEventsBetweenCheckpoints": "10000",
+        "MaxTimeMsBetweenCheckpoints": "60000",
+
+        "UsePSFQueries": "false",
+        "UseAlternateObjectStore": "false",
+        "UseJsonPackets": "ForClients",
+        "PipelineCredits": 1000000000,
+
+        "PersistStepsFirst": false,
+
+        // use this to control the scenario
+        // "EventProcessorManagement": "Custom",
+
+        // this controls what log information is produced by the various components
+        // unlike the controls above, this turns off production (not just transmission or consumption)
+        // and is thus more efficient
+        "LogLevelLimit": "Information",
+        "StorageLogLevelLimit": "Information",
+        "TransportLogLevelLimit": "Information",
+        "EventLogLevelLimit": "Warning",
+
+        // the following can be used to direct trace output to specific sinks
+        "TraceToConsole": false,
+        "TraceToEtwExtension": false,
+        "TraceToBlob": false,
+
+        //-------  AzureStorageOptions ------------
+
+        "ConnectionStringName": "AzureWebJobsStorage"
+      }
+    }
+  }
+}

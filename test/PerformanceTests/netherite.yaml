@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netherite
+spec:
+  replicas: <NUM_REPLICAS>
+  selector:
+    matchLabels:
+      app: netherite
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  minReadySeconds: 5 
+  template:
+    metadata:
+      labels:
+        app: netherite
+    spec:
+      nodeSelector:
+        "beta.kubernetes.io/os": linux
+      containers:
+      - name: netherite
+        image: <IMAGE_TAG>
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: 1
+            memory: 3G
+          limits:
+            cpu: 8
+            memory: 5G
+        env:
+        - name: AzureWebJobsStorage
+          value: <AZURE_WEBJOBS_STORAGE>
+        - name: EventHubsConnection
+          value: <EVENTHUBS_CONNECTION>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netherite
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: netherite
