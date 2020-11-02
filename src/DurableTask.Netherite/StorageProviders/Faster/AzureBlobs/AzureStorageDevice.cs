@@ -283,7 +283,7 @@ namespace DurableTask.Netherite.Faster
 
                         stopwatch.Stop();
 
-                        if (stopwatch.ElapsedMilliseconds > 1000)
+                        if (stopwatch.ElapsedMilliseconds > 1000 + length / 1000)
                         {
                             this.BlobManager?.TraceHelper.FasterPerfWarning($"CloudPageBlob.WritePagesAsync took {stopwatch.ElapsedMilliseconds:f1}ms, which is excessive; target={blob.Name} length={length} destinationAddress={destinationAddress + offset}");
                         }
@@ -362,7 +362,7 @@ namespace DurableTask.Netherite.Faster
                         stopwatch.Stop();
                         this.BlobManager?.StorageTracer?.FasterStorageProgress($"finished download target={blob.Name} readLength={readLength} sourceAddress={sourceAddress} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1}");
 
-                        if (stopwatch.ElapsedMilliseconds > 1000)
+                        if (stopwatch.ElapsedMilliseconds > 1000 + readLength / 1000)
                         {
                             this.BlobManager?.TraceHelper.FasterPerfWarning($"CloudPageBlob.DownloadRangeToStreamAsync took {stopwatch.ElapsedMilliseconds / 1000}s, which is excessive; target={blob.Name} readLength={readLength} sourceAddress={sourceAddress}");
                         }

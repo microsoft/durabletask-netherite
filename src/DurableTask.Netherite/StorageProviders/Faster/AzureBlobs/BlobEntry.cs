@@ -97,7 +97,7 @@ namespace DurableTask.Netherite.Faster
                         stopwatch.Stop();
                         this.azureStorageDevice.BlobManager?.StorageTracer?.FasterStorageProgress($"finished create page blob target={pageBlob.Name} size={size} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1}");
 
-                        if (stopwatch.ElapsedMilliseconds > 1000)
+                        if (stopwatch.ElapsedMilliseconds > 3000)
                         {
                             this.azureStorageDevice.BlobManager?.TraceHelper.FasterPerfWarning($"CloudPageBlob.CreateAsync took {stopwatch.ElapsedMilliseconds / 1000}s, which is excessive; target={pageBlob.Name} size={size}");
                         }
