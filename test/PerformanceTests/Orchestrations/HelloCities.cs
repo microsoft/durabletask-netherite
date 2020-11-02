@@ -34,6 +34,7 @@ namespace PerformanceTests
 
             if (!numberOrchestrations.HasValue)
             {
+                // we are running a single orchestration. 
                 string orchestrationInstanceId = await client.StartNewAsync(nameof(HelloSequence));
                 var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, timeout);
                 return response;

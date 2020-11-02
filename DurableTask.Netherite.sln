@@ -11,7 +11,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
 		.gitignore = .gitignore
+		test\DurableTask.Netherite.Tests\create-eventhubs-instances.ps1 = test\DurableTask.Netherite.Tests\create-eventhubs-instances.ps1
 		nuget.config = nuget.config
+		README.md = README.md
 		sign.snk = sign.snk
 	EndProjectSection
 EndProject

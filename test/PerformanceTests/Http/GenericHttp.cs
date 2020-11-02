@@ -18,22 +18,64 @@ namespace PerformanceTests
 
     /// <summary>
     /// A generic HttpTrigger wrapper that can be used to launch an orchestration.
+    /// It returns the result of the orchestration, the time it started, and the duration.
     /// </summary>
     public static class GenericHttp
     {
+        /// <summary>
+        /// The JSON object included in the request body.
+        /// </summary>
         [JsonObject]
         public struct Arguments
         {
+            /// <summary>
+            /// The name of the orchestration.
+            /// </summary>
             public string Name { get; set; }
 
+            /// <summary>
+            /// An instance id for the orchestration, or null if not specified.
+            /// </summary>
             public string InstanceId { get; set; }
 
+            /// <summary>
+            /// The input for the orchestration.
+            /// </summary>
             public JToken Input { get; set; }
 
+            /// <summary>
+            /// A timeout. If the orchestration takes longer, the request returns with a 202 response.
+            /// </summary>
             public int Timeout { get; set; }
 
+            /// <summary>
+            /// If true, use the internally recorded start and end time. Otherwise, measure wall clock time.
+            /// </summary>
             public bool UseReportedLatency { get; set; }
         }
+
+        /// <summary>
+        /// The JSON object returned in the response body.
+        /// </summary>
+        [JsonObject]
+        public struct Response
+        {
+            /// <summary>
+            /// The result returned by the orchestration.
+            /// </summary>
+            public string Result { get; set; }
+
+            /// <summary>
+            /// The UTC time at which the orchestration started.
+            /// </summary>
+            public DateTime Time { get; set; }
+            
+            /// <summary>
+            /// The duration of the orchestration in milliseconds.
+            /// </summary>
+            public double Duration { get; set; }
+        }
+    
 
         [FunctionName(nameof(GenericHttp))]
         public static async Task<IActionResult> Run(
@@ -57,7 +99,7 @@ namespace PerformanceTests
                 }
                 else
                 {
-                    // issue start and wait together
+                    // issue start and wait together. This can be a bit faster for orchestrations that complete very quickly.
                     Task start = client.StartNewAsync<JToken>(arguments.Name, arguments.InstanceId, arguments.Input);
                     Task<IActionResult> completion = client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, arguments.InstanceId, TimeSpan.FromSeconds(arguments.Timeout));
                     await start;
@@ -77,7 +119,11 @@ namespace PerformanceTests
                         starttime = state.CreatedTime;
                         endtime = state.LastUpdatedTime;
                     }
-                    response = new OkObjectResult(new { Result = await stringContent.ReadAsStringAsync(), Time = endtime, Duration = (endtime - starttime).TotalMilliseconds });
+                    response = new OkObjectResult(new Response {
+                        Result = await stringContent.ReadAsStringAsync(),
+                        Time = endtime, 
+                        Duration = (endtime - starttime).TotalMilliseconds 
+                    });
                 }
                 else
                 {

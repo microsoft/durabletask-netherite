@@ -27,15 +27,15 @@
       // - does not limit what is shown in Live Metrics side panel
 
       // modest at information
-      "DurableTaskBackend": "Warning",
+      "DurableTask.Netherite": "Information",
       // modest at warning; on Information, one per event; on trace: one per object
-      "DurableTaskBackend.Events": "Warning",
+      "DurableTask.Netherite.Events": "Warning",
       // modest at Information; on Trace, every storage access
-      "DurableTaskBackend.FasterStorage": "Warning",
+      "DurableTask.Netherite.FasterStorage": "Warning",
       // modest at Information; on Trace, every message
-      "DurableTaskBackend.EventHubsTransport": "Warning",
+      "DurableTask.Netherite.EventHubsTransport": "Warning",
       // off on error; on Warning, several per orchestration
-      "DurableTaskBackend.Benchmark": "Error"
+      "DurableTask.Netherite.Benchmark": "Error"
     },
     "applicationInsights": {
       "sampling": {
@@ -48,41 +48,39 @@
       "routePrefix": ""
     },
     "durableTask": {
-      // -- the following options apply to all providers
 
-      "hubName": "stress",
+      "hubName": "perftests",
 
       "extendedSessionsEnabled": "true",
       "maxConcurrentActivityFunctions": "100",
       "maxConcurrentOrchestratorFunctions": "100",
 
       "storageProvider": {
-        // The following are specific to the Options class that is DI'd for this run
-        // NOTE: to switch between provider types, have to change appsettings.json
-        // only one section at a time is really used; since properties
-        // that dot match a field are simply ignored
-
-        //-------  EventSourcedStorageOptions ------------
 
         "StorageConnectionString": "$AzureWebJobsStorage",
-        "EventHubsConnectionString": "Memory:1",
-        //"EventHubsConnectionString": "$EventHubsConnection",
-        //"PremiumStorageConnectionString": "DefaultEndpointsProtocol=https;AccountName=functionssbdockerpremium;AccountKey=qpBgTXV6Bmt6+xvuwmI8gDEd0/XnjThfP/bnipwfZg8FwayCLVUlVdCNxLDziWHZp33WrnfL0Endqeo3q3Rc3A==;EndpointSuffix=core.windows.net",
+        "EventHubsConnectionString": "$EventHubsConnection",
+        "PremiumStorageConnectionString": "",
 
         "TakeStateCheckpointWhenStoppingPartition": "true",
         "MaxNumberBytesBetweenCheckpoints": "20000000",
         "MaxNumberEventsBetweenCheckpoints": "10000",
         "MaxTimeMsBetweenCheckpoints": "60000",
 
+        // set this to true to use the PSF support in Faster
         "UsePSFQueries": "false",
-        "UseAlternateObjectStore": "false",
-        "UseJsonPackets": "ForClients",
-        "PipelineCredits": 1000000000,
 
+        // set this to true to bypass Faster and instead use Azure blobs for the object store
+        "UseAlternateObjectStore": "false",
+
+        // set this to "ForClients" or "ForAll" to use JSON, 
+        // instead of binary, representation of packets in EventHubs
+        "UseJsonPackets": "Never",
+
+        // set this to "true" to disable all speculation
         "PersistStepsFirst": false,
 
-        // use this to control the scenario
-        // "EventProcessorManagement": "Custom",
+        // set this to "Custom" to control the scenario with a partition script
+        "EventProcessorManagement": "EventHubs",
 
         // this controls what log information is produced by the various components
         // unlike the controls above, this turns off production (not just transmission or consumption)
@@ -92,15 +90,12 @@
         "TransportLogLevelLimit": "Information",
         "EventLogLevelLimit": "Warning",
 
-        // the following can be used to direct trace output to specific sinks
+        // the following can be used to direct trace output to additional specific sinks
         "TraceToConsole": false,
         "TraceToEtwExtension": false,
-        "TraceToBlob": false,
-
-        //-------  AzureStorageOptions ------------
-
-        "ConnectionStringName": "AzureWebJobsStorage"
+        "TraceToBlob": false
       }
     }
   }
 }
+    
