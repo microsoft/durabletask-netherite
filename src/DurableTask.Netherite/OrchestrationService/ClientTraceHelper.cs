@@ -73,7 +73,7 @@ namespace DurableTask.Netherite
             {
                 if (this.logger.IsEnabled(LogLevel.Debug))
                 {
-                    this.logger.LogInformation("{client} {details}", this.tracePrefix, details);
+                    this.logger.LogDebug("{client} {details}", this.tracePrefix, details);
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
