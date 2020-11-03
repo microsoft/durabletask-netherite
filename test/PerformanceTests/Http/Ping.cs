@@ -28,7 +28,8 @@ namespace PerformanceTests
             ILogger log)
         {
             log.LogInformation("C# HTTP trigger function processed a request.");
-            return Task.FromResult<IActionResult>(new OkObjectResult($"Hello from {client}\n"));
+            var is64bit = Environment.Is64BitProcess;
+            return Task.FromResult<IActionResult>(new OkObjectResult($"Hello from {client} ({(is64bit ? "x64":"x32")})\n"));
         }    
     }
 }
