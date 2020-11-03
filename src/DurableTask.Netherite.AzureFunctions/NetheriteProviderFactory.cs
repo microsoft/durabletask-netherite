@@ -6,9 +6,11 @@ namespace DurableTask.Netherite.AzureFunctions
     using System;
     using System.Collections.Concurrent;
     using System.Collections.Generic;
+    using System.Threading;
     using DurableTask.Core;
     using DurableTask.Netherite;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
+    using Microsoft.Azure.WebJobs.Host.Executors;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using Newtonsoft.Json;
@@ -20,6 +22,8 @@ namespace DurableTask.Netherite.AzureFunctions
 
         readonly DurableTaskOptions extensionOptions;
         readonly IConnectionStringResolver connectionStringResolver;
+        readonly ILoggerFactory loggerFactory;
+        readonly IHostIdProvider hostIdProvider;
 
         // the following are boolean options that can be specified in host.json,
         // but are not passed on to the backend
@@ -27,7 +31,6 @@ namespace DurableTask.Netherite.AzureFunctions
         public bool TraceToBlob { get; }
      
         NetheriteProvider defaultProvider;
-        ILoggerFactory loggerFactory;
         
         internal static BlobLogger BlobLogger { get; set; }
 
@@ -35,11 +38,13 @@ namespace DurableTask.Netherite.AzureFunctions
         public NetheriteProviderFactory(
             IOptions<DurableTaskOptions> extensionOptions,
             ILoggerFactory loggerFactory,
-            IConnectionStringResolver connectionStringResolver)
+            IConnectionStringResolver connectionStringResolver,
+            IHostIdProvider hostIdProvider)
         {
             this.extensionOptions = extensionOptions?.Value ?? throw new ArgumentNullException(nameof(extensionOptions));
             this.loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
             this.connectionStringResolver = connectionStringResolver ?? throw new ArgumentNullException(nameof(connectionStringResolver));
+            this.hostIdProvider = hostIdProvider;
 
             bool ReadBooleanSetting(string name) => this.extensionOptions.StorageProvider.TryGetValue(name, out object objValue)
                 && objValue is string stringValue && bool.TryParse(stringValue, out bool boolValue) && boolValue;
@@ -71,6 +76,10 @@ namespace DurableTask.Netherite.AzureFunctions
             string workerId = Environment.GetEnvironmentVariable("WorkerId");
             if (!string.IsNullOrEmpty(workerId))
             {
+                if (workerId == "HostId")
+                {
+                    workerId = this.hostIdProvider.GetHostIdAsync(CancellationToken.None).GetAwaiter().GetResult();
+                }
                 eventSourcedSettings.WorkerId = workerId;
             }
 
@@ -86,38 +95,29 @@ namespace DurableTask.Netherite.AzureFunctions
             return eventSourcedSettings;
         }
 
-        public void CreateDefaultProvider()
-        {
-            var settings = this.GetNetheriteOrchestrationServiceSettings();
-
-            if (this.TraceToBlob && BlobLogger == null)
-            {
-                BlobLogger = new BlobLogger(settings.StorageConnectionString, settings.WorkerId);
-            }
-
-            if (this.TraceToConsole || this.TraceToBlob)
-            {
-                // capture trace events generated in the backend and redirect them to additional sinks
-                this.loggerFactory = new LoggerFactoryWrapper(this.loggerFactory, settings.HubName, settings.WorkerId, this);
-            }
-
-            var key = new DurableClientAttribute()
-            {
-                TaskHub = settings.HubName,
-                ConnectionName = settings.StorageConnectionString,
-            };
-
-            var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-            this.defaultProvider = new NetheriteProvider(service, settings);
-            this.cachedProviders[key] = this.defaultProvider;
-        }
-
         /// <inheritdoc/>
         public DurabilityProvider GetDurabilityProvider()
         {
             if (this.defaultProvider == null)
             {
-                this.CreateDefaultProvider();
+                var settings = this.GetNetheriteOrchestrationServiceSettings();
+
+                if (this.TraceToBlob && BlobLogger == null)
+                {
+                    BlobLogger = new BlobLogger(settings.StorageConnectionString, settings.WorkerId);
+                }
+
+                var key = new DurableClientAttribute()
+                {
+                    TaskHub = settings.HubName,
+                    ConnectionName = settings.StorageConnectionString,
+                };
+ 
+                this.defaultProvider = this.cachedProviders.GetOrAdd(key, _ =>
+                {
+                    var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                    return new NetheriteProvider(service, settings);
+                });
             }
 
             return this.defaultProvider;
