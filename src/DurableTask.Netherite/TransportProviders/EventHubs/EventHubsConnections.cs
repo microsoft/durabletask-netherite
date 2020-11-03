@@ -51,9 +51,14 @@ namespace DurableTask.Netherite.EventHubs
             this.clientHubs = clientHubs;
         }
 
-        public async Task StartAsync()
+        public async Task StartAsync(int numberPartitions)
         {
             await Task.WhenAll(this.GetPartitionInformationAsync(), this.GetClientInformationAsync());
+
+            if (numberPartitions != this.partitionPartitions.Count)
+            {
+                throw new InvalidOperationException("The number of partitions in the specified EventHubs namespace does not match the number of partitions in the TaskHub");
+            }
         }
 
         public async Task StopAsync()
@@ -66,7 +71,6 @@ namespace DurableTask.Netherite.EventHubs
 
         async Task GetPartitionInformationAsync()
         {
-
             // create partition clients
             this.partitionClients = new List<EventHubClient>();
             for (int i = 0; i < this.partitionHubs.Length; i++)
@@ -86,11 +90,14 @@ namespace DurableTask.Netherite.EventHubs
             await Task.WhenAll(partitionInfos);
             for (int i = 0; i < this.partitionHubs.Length; i++)
             {
-                foreach(var id in partitionInfos[i].Result.PartitionIds)
+                foreach (var id in partitionInfos[i].Result.PartitionIds)
                 {
                     this.partitionPartitions.Add((this.partitionClients[i], id));
                 }
             }
+
+            // validate the total number of partitions
+
         }
 
         async Task GetClientInformationAsync()
