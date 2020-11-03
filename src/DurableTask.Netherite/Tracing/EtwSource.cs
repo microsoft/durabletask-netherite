@@ -19,7 +19,7 @@ namespace DurableTask.Netherite
     /// ETW Event Provider for the DurableTask.Netherite provider extension.
     /// </summary>
     /// <remarks>
-    /// The ETW Provider ID for this event source is {b3b94da0-1edd-53a7-435e-53129d278be4}.
+    /// The ETW Provider ID for this event source is {25f9ede7-9f01-5a75-dba7-9c0ba798ac6c}.
     /// We list all events from the various layers (transport, storage) in this single file; however,
     /// we do have separate helper classes for each component.
     /// </remarks>
@@ -53,6 +53,13 @@ namespace DurableTask.Netherite
         {
             SetCurrentThreadActivityId(OrchestrationServiceInstanceId);
             this.WriteEvent(201, OrchestrationServiceInstanceId, Account, TaskHub, WorkerName, ExtensionVersion);
+        }
+
+        [Event(202, Level = EventLevel.Error, Version = 1)]
+        public void OrchestrationServiceError(string Account, string Message, string Details, string TaskHub, string WorkerName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(202, Account, Message, Details, TaskHub, WorkerName, ExtensionVersion);
         }
 
         // ----- partition and client lifecycles
