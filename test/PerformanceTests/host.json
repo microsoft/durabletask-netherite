@@ -55,6 +55,9 @@
       "maxConcurrentActivityFunctions": "100",
       "maxConcurrentOrchestratorFunctions": "100",
 
+      // should always use graceful shutdown to avoid lengthy waits for lease expiration
+      "UseGracefulShutdown": true,
+
       "storageProvider": {
 
         "StorageConnectionString": "$AzureWebJobsStorage",
