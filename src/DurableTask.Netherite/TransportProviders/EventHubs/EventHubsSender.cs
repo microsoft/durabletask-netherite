@@ -9,6 +9,7 @@ namespace DurableTask.Netherite.EventHubs
     using System;
     using System.Collections.Generic;
     using System.IO;
+    using System.Threading;
     using System.Threading.Tasks;
 
     class EventHubsSender<T> : BatchWorker<Event> where T: Event
@@ -25,7 +26,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
 
         public EventHubsSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, EventHubsTraceHelper traceHelper, bool useJsonPackets)
-            : base(nameof(EventHubsSender<T>))
+            : base(nameof(EventHubsSender<T>), false, CancellationToken.None)
         {
             this.host = host;
             this.taskHubGuid = taskHubGuid;
