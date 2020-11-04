@@ -32,7 +32,7 @@ namespace DurableTask.Netherite
         readonly ConcurrentDictionary<TrackedObjectKey, TrackedObject> trackedObjects
             = new ConcurrentDictionary<TrackedObjectKey, TrackedObject>();
 
-        public MemoryStorage(ILogger logger) : base(nameof(MemoryStorage))
+        public MemoryStorage(ILogger logger) : base(nameof(MemoryStorage), CancellationToken.None, true)
         {
             this.logger = logger;
             this.GetOrAdd(TrackedObjectKey.Activities);
@@ -83,6 +83,11 @@ namespace DurableTask.Netherite
 
             this.commitPosition = 1;
             return Task.FromResult(1L);
+        }
+
+        public void StartProcessing()
+        {
+            this.Resume();
         }
 
         public async Task CleanShutdown(bool takeFinalStateCheckpoint)

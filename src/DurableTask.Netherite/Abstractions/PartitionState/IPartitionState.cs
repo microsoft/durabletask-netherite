@@ -34,6 +34,11 @@ namespace DurableTask.Netherite
         Task<long> CreateOrRestoreAsync(Partition localPartition, IPartitionErrorHandler errorHandler, long firstInputQueuePosition);
 
         /// <summary>
+        /// Starts processing, after creating or restoring the partition state.
+        /// </summary>
+        void StartProcessing();
+
+        /// <summary>
         /// Finish processing events and save the partition state to storage.
         /// </summary>
         /// <param name="takeFinalCheckpoint">Whether to take a final state checkpoint.</param>

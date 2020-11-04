@@ -55,7 +55,7 @@ namespace DurableTask.Netherite.Faster
 
 
         public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken) 
-            : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", cancellationToken)
+            : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", cancellationToken, true)
         {
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
@@ -91,6 +91,11 @@ namespace DurableTask.Netherite.Faster
             this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
             this.lastCheckpointedInputQueuePosition = this.InputQueuePosition;
             this.numberEventsSinceLastCheckpoint = initialCommitLogPosition;
+        }
+
+        public void StartProcessing()
+        {
+            this.Resume();
         }
 
         public void SetCheckpointPositionsAfterRecovery(long commitLogPosition, long inputQueuePosition)

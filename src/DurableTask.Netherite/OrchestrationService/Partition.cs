@@ -111,9 +111,14 @@ namespace DurableTask.Netherite
                 this.TraceHelper.TraceProgress("Loading partition state");
                 var inputQueuePosition = await this.State.CreateOrRestoreAsync(this, this.ErrorHandler, firstInputQueuePosition).ConfigureAwait(false);
 
+                // we set this flag to enable tracing that we want to suppress during creation or recovery
                 this.RecoveryIsComplete = true;
 
+                // start processing the timers
                 this.PendingTimers.Start($"Timer{this.PartitionId:D2}");
+
+                // start processing the worker queues
+                this.State.StartProcessing();
 
                 this.TraceHelper.TraceProgress($"Started partition, nextInputQueuePosition={inputQueuePosition}");
                 return inputQueuePosition;
@@ -147,7 +152,7 @@ namespace DurableTask.Netherite
 
         public async Task StopAsync(bool isForced)
         {
-            this.TraceHelper.TraceProgress("Stopping partition");
+            this.TraceHelper.TraceProgress($"Stopping partition, isForced={isForced}");
 
             try
             {

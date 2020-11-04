@@ -183,6 +183,13 @@ namespace DurableTask.Netherite.Faster
             return this.storeWorker.InputQueuePosition;
         }
 
+        public void StartProcessing()
+        {
+            this.storeWorker.StartProcessing();
+            this.logWorker.StartProcessing();
+        }
+
+
         public async Task CleanShutdown(bool takeFinalCheckpoint)
         {
             this.TraceHelper.FasterProgress("Stopping workers");

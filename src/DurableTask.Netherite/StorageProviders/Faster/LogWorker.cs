@@ -51,6 +51,11 @@ namespace DurableTask.Netherite.Faster
         public const byte none = 0x0;
         readonly int maxFragmentSize;
 
+        public void StartProcessing()
+        {
+            this.intakeWorker.Resume();
+        }
+
         public long LastCommittedInputQueuePosition { get; private set; }
 
         class IntakeWorker : BatchWorker<PartitionEvent>
@@ -58,7 +63,7 @@ namespace DurableTask.Netherite.Faster
             readonly LogWorker logWorker;
             readonly List<PartitionUpdateEvent> updateEvents;
 
-            public IntakeWorker(CancellationToken token, LogWorker logWorker) : base(nameof(IntakeWorker), token)
+            public IntakeWorker(CancellationToken token, LogWorker logWorker) : base(nameof(IntakeWorker), token, true)
             {
                 this.logWorker = logWorker;
                 this.updateEvents = new List<PartitionUpdateEvent>();
