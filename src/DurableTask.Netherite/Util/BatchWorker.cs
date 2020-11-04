@@ -33,19 +33,12 @@ namespace DurableTask.Netherite
         readonly object dummyEntry = new object();
 
         /// <summary>
-        /// Default constructor.
-        /// </summary>
-        public BatchWorker(string name) : this(name, CancellationToken.None)
-        {
-        }
-
-        /// <summary>
         /// Constructor including a cancellation token.
         /// </summary>
-        public BatchWorker(string name, CancellationToken cancellationToken, bool suspended = false)
+        public BatchWorker(string name, bool startSuspended, CancellationToken cancellationToken)
         {
             this.cancellationToken = cancellationToken;
-            this.state = suspended ? SUSPENDED : IDLE;
+            this.state = startSuspended ? SUSPENDED : IDLE;
             this.stopwatch = new Stopwatch();
         }
 
@@ -234,9 +227,13 @@ namespace DurableTask.Netherite
             while (true)
             {
                 int currentState = this.state;
-                if (currentState == RUNNING || (currentState == SUSPENDED && !resume))
+                if (currentState == RUNNING)
                 {
-                    return;
+                    return; // worker is already running
+                }
+                else if (currentState == SUSPENDED && !resume)
+                {
+                    return; // we do not want to start processing yet
                 }
                 else 
                 {

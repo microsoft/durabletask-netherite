@@ -220,7 +220,7 @@ namespace DurableTask.Netherite
                     this.Logger.LogWarning("NetheriteOrchestrationService lease timer on workerId={workerId} is running {delay}s behind schedule", this.Settings.WorkerId, delay);
 
                 if (!(this.LoadMonitorService is null))
-                    this.LoadPublisher = new LoadPublisher(this.LoadMonitorService, this.Logger);
+                    this.LoadPublisher = new LoadPublisher(this.LoadMonitorService, this.serviceShutdownSource.Token, this.Logger);
 
                 await this.taskHub.StartAsync().ConfigureAwait(false);
 

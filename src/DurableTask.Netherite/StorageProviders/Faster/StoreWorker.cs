@@ -45,7 +45,7 @@ namespace DurableTask.Netherite.Faster
 
 
         public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken) 
-            : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", cancellationToken, true)
+            : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", true, cancellationToken)
         {
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
@@ -454,6 +454,8 @@ namespace DurableTask.Netherite.Faster
 
         public async Task RestartThingsAtEndOfRecovery()
         {
+            this.traceHelper.FasterProgress("Restarting tasks");
+
             using (EventTraceContext.MakeContext(this.CommitLogPosition, string.Empty))
             {
                 foreach (var key in TrackedObjectKey.GetSingletons())
