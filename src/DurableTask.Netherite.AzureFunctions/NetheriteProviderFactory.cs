@@ -22,7 +22,6 @@ namespace DurableTask.Netherite.AzureFunctions
 
         readonly DurableTaskOptions extensionOptions;
         readonly IConnectionStringResolver connectionStringResolver;
-        readonly ILoggerFactory loggerFactory;
         readonly IHostIdProvider hostIdProvider;
 
         // the following are boolean options that can be specified in host.json,
@@ -31,7 +30,8 @@ namespace DurableTask.Netherite.AzureFunctions
         public bool TraceToBlob { get; }
      
         NetheriteProvider defaultProvider;
-        
+        ILoggerFactory loggerFactory;
+
         internal static BlobLogger BlobLogger { get; set; }
 
         // Called by the Azure Functions runtime dependency injection infrastructure
@@ -82,6 +82,13 @@ namespace DurableTask.Netherite.AzureFunctions
                 }
                 eventSourcedSettings.WorkerId = workerId;
             }
+
+            if (this.TraceToConsole || this.TraceToBlob)
+            {
+                // capture trace events generated in the backend and redirect them to additional sinks
+                this.loggerFactory = new LoggerFactoryWrapper(this.loggerFactory, eventSourcedSettings.HubName, eventSourcedSettings.WorkerId, this);
+            }
+
 
             eventSourcedSettings.HubName = this.extensionOptions.HubName;
 
