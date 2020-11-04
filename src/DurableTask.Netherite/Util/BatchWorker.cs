@@ -243,11 +243,11 @@ namespace DurableTask.Netherite
             while (true)
             {
                 int currentState = this.state;
-                if (currentState == RUNNING)
+                if (currentState == RUNNING || (currentState == SUSPENDED && !resume))
                 {
                     return;
                 }
-                else if (currentState == IDLE || (currentState == SUSPENDED && resume) || currentState == SHUTTINGDOWN)
+                else 
                 {
                     int read = Interlocked.CompareExchange(ref this.state, RUNNING, currentState);
                     if (read == currentState)

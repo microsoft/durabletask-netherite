@@ -68,6 +68,7 @@ namespace DurableTask.Netherite.Faster
                 this.logWorker = logWorker;
                 this.updateEvents = new List<PartitionUpdateEvent>();
             }
+
             protected override Task Process(IList<PartitionEvent> batch)
             {
                 if (batch.Count > 0 && !this.logWorker.isShuttingDown)
