@@ -16,7 +16,8 @@ namespace DurableTask.Netherite
     class TimersState : TrackedObject
     {
         [DataMember]
-        public Dictionary<long, (DateTime, TaskMessage)> PendingTimers { get; private set; } = new Dictionary<long, (DateTime, TaskMessage)>();
+        public Dictionary<long, (DateTime due, TaskMessage message, string workItemId)> PendingTimers { get; private set; } 
+            = new Dictionary<long, (DateTime, TaskMessage, string)>();
 
         [DataMember]
         public long SequenceNumber { get; set; }
@@ -34,7 +35,7 @@ namespace DurableTask.Netherite
             // restore the pending timers
             foreach (var kvp in this.PendingTimers)
             {
-                this.Schedule(kvp.Key, kvp.Value.Item1, kvp.Value.Item2);
+                this.Schedule(kvp.Key, kvp.Value.due, kvp.Value.message, kvp.Value.workItemId);
             }
         }
 
@@ -55,13 +56,14 @@ namespace DurableTask.Netherite
             }
         }
 
-        void Schedule(long timerId, DateTime due, TaskMessage message)
+        void Schedule(long timerId, DateTime due, TaskMessage message, string originWorkItemId)
         {
             TimerFired expirationEvent = new TimerFired()
             {
                 PartitionId = this.Partition.PartitionId,
                 TimerId = timerId,
                 TaskMessage = message,
+                OriginWorkItemId = originWorkItemId,
                 Due = due,
             };
 
@@ -102,11 +104,12 @@ namespace DurableTask.Netherite
             {
                 var timerId = this.SequenceNumber++;
                 var due = GetDueTime(t);
-                this.PendingTimers.Add(timerId, (due, t));
+                string workItemId = evt.EventIdString;
+                this.PendingTimers.Add(timerId, (due, t, workItemId));
 
                 if (!effects.IsReplaying)
                 {
-                    this.Schedule(timerId, due, t);
+                    this.Schedule(timerId, due, t, workItemId);
                 }
             }
         }
@@ -118,11 +121,11 @@ namespace DurableTask.Netherite
             {
                 var timerId = this.SequenceNumber++;
                 var due = GetDueTime(t);
-                this.PendingTimers.Add(timerId, (due, t));
+                this.PendingTimers.Add(timerId, (due, t, evt.WorkItemId));
 
                 if (!effects.IsReplaying)
                 {
-                    this.Schedule(timerId, due, t);
+                    this.Schedule(timerId, due, t, evt.WorkItemId);
                 }
             }
         }
@@ -132,11 +135,11 @@ namespace DurableTask.Netherite
             // starts a new timer for the execution started event
             var timerId = this.SequenceNumber++;
             var due = GetDueTime(creationRequestReceived.TaskMessage);
-            this.PendingTimers.Add(timerId, (due, creationRequestReceived.TaskMessage));
+            this.PendingTimers.Add(timerId, (due, creationRequestReceived.TaskMessage, creationRequestReceived.EventIdString));
 
             if (!effects.IsReplaying)
             {
-                this.Schedule(timerId, due, creationRequestReceived.TaskMessage);
+                this.Schedule(timerId, due, creationRequestReceived.TaskMessage, creationRequestReceived.WorkItemId);
             }
         }
     }

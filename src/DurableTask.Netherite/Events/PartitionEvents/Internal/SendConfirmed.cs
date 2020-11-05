@@ -12,7 +12,7 @@ class SendConfirmed : PartitionUpdateEvent
         public long Position { get; set; }
 
         [IgnoreDataMember]
-        public string WorkItemId => $"{this.PartitionId:D2}-C{this.Position:D10}";
+        public string WorkItemId => $"{this.PartitionId:D2}C{this.Position:D10}";
 
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.WorkItemId);

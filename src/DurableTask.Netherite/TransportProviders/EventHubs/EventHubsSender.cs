@@ -168,7 +168,7 @@ namespace DurableTask.Netherite.EventHubs
                     else
                     {
                         // the event may have been sent or maybe not, report problem to listener
-                        // this is used by clients who can give the exception back to the caller
+                        // this is used only on clients, who can give the exception back to the caller
                         DurabilityListeners.ReportException(evt, senderException);
                         dropped++;
                     }

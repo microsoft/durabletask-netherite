@@ -20,6 +20,7 @@ namespace DurableTask.Netherite.Tests
                 StorageLogLevelLimit = LogLevel.Trace,
                 LogLevelLimit = LogLevel.Trace,
                 EventLogLevelLimit = LogLevel.Trace,
+                WorkItemLogLevelLimit = LogLevel.Trace,
                 TakeStateCheckpointWhenStoppingPartition = true,  // set to false for testing recovery from log
                 UseAlternateObjectStore = false,                  // set to true to bypass FasterKV; default is false
                 MaxTimeMsBetweenCheckpoints = 1000000000,         // set this low for testing frequent checkpointing

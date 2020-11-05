@@ -30,6 +30,7 @@ namespace DurableTask.Netherite
         public Func<uint> NumberPartitions { get; private set; }
         public IPartitionErrorHandler ErrorHandler { get; private set; }
         public PartitionTraceHelper TraceHelper { get; private set; }
+        public WorkItemTraceHelper WorkItemTraceHelper { get; private set; }
 
         public double CurrentTimeMs => this.stopwatch.Elapsed.TotalMilliseconds;
 
@@ -46,8 +47,6 @@ namespace DurableTask.Netherite
 
         public EventTraceHelper EventTraceHelper { get; }
 
-        public bool RecoveryIsComplete { get; private set; }
-
         // A little helper property that allows us to conventiently check the condition for low-level event tracing
         public EventTraceHelper EventDetailTracer => this.EventTraceHelper.IsTracingAtMostDetailedLevel ? this.EventTraceHelper : null;
 
@@ -63,7 +62,8 @@ namespace DurableTask.Netherite
             string storageAccountName,
             WorkItemQueue<ActivityWorkItem> activityWorkItemQueue,
             WorkItemQueue<OrchestrationWorkItem> orchestrationWorkItemQueue,
-            LoadPublisher loadPublisher)
+            LoadPublisher loadPublisher,
+            WorkItemTraceHelper workItemTraceHelper)
         {
             this.host = host;
             this.PartitionId = partitionId;
@@ -77,6 +77,7 @@ namespace DurableTask.Netherite
             this.LoadPublisher = loadPublisher;
             this.TraceHelper = new PartitionTraceHelper(host.Logger, settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName, this.PartitionId);
             this.EventTraceHelper = new EventTraceHelper(host.LoggerFactory, settings.EventLogLevelLimit, this);
+            this.WorkItemTraceHelper = workItemTraceHelper;
             this.stopwatch.Start();
         }
 
@@ -101,9 +102,6 @@ namespace DurableTask.Netherite
                 // goes to storage to create or restore the partition state
                 this.TraceHelper.TraceProgress("Loading partition state");
                 var inputQueuePosition = await this.State.CreateOrRestoreAsync(this, this.ErrorHandler, firstInputQueuePosition).ConfigureAwait(false);
-
-                // we set this flag to enable tracing that we want to suppress during creation or recovery
-                this.RecoveryIsComplete = true;
 
                 // start processing the timers
                 this.PendingTimers.Start($"Timer{this.PartitionId:D2}");
@@ -215,13 +213,11 @@ namespace DurableTask.Netherite
         {
             this.EventDetailTracer?.TraceEventProcessingDetail($"Sending partition update event {updateEvent} id={updateEvent.EventId}");
 
-            // trace DTFx TaskMessages that are sent to other participants
-            if (this.RecoveryIsComplete)
+            // trace DTFx TaskMessages that are sent or re-sent to other participants
+            foreach (var entry in updateEvent.TracedTaskMessages)
             {
-                foreach (var taskMessage in updateEvent.TracedTaskMessages)
-                {
-                    this.EventTraceHelper.TraceTaskMessageSent(taskMessage, updateEvent.EventIdString);
-                }
+                this.Assert(!string.IsNullOrEmpty(entry.workItemId));
+                this.WorkItemTraceHelper.TraceTaskMessageSent(this.PartitionId, entry.message, entry.workItemId, updateEvent.EventIdString);
             }
 
             this.BatchSender.Submit(updateEvent);
@@ -231,12 +227,10 @@ namespace DurableTask.Netherite
         {
             // for better analytics experience, trace DTFx TaskMessages that are "sent" 
             // by this partition to itself the same way as if sent to other partitions
-            if (this.RecoveryIsComplete)
+            foreach (var entry in updateEvent.TracedTaskMessages)
             {
-                foreach (var taskMessage in updateEvent.TracedTaskMessages)
-                {
-                    this.EventTraceHelper.TraceTaskMessageSent(taskMessage, updateEvent.EventIdString);
-                }
+                this.Assert(!string.IsNullOrEmpty(entry.workItemId));
+                this.WorkItemTraceHelper.TraceTaskMessageSent(this.PartitionId, entry.message, entry.workItemId, updateEvent.EventIdString);
             }
 
             updateEvent.ReceivedTimestamp = this.CurrentTimeMs;
@@ -268,13 +262,29 @@ namespace DurableTask.Netherite
 
         public void EnqueueActivityWorkItem(ActivityWorkItem item)
         {
-            this.EventDetailTracer?.TraceEventProcessingDetail($"Enqueueing ActivityWorkItem {item.WorkItemId}");
+            this.Assert(!string.IsNullOrEmpty(item.OriginWorkItem));
+
+            this.WorkItemTraceHelper.TraceWorkItemQueued(
+                this.PartitionId,
+                WorkItemTraceHelper.WorkItemType.Activity,
+                item.WorkItemId,
+                item.TaskMessage.OrchestrationInstance.InstanceId,
+                item.ExecutionType,
+                WorkItemTraceHelper.FormatMessageId(item.TaskMessage, item.OriginWorkItem));
+
             this.ActivityWorkItemQueue.Add(item);
         }
  
         public void EnqueueOrchestrationWorkItem(OrchestrationWorkItem item)
-        { 
-            this.EventDetailTracer?.TraceEventProcessingDetail($"Enqueueing OrchestrationWorkItem {item.MessageBatch.WorkItemId}");
+        {
+            this.WorkItemTraceHelper.TraceWorkItemQueued(
+                this.PartitionId,
+                WorkItemTraceHelper.WorkItemType.Orchestration,
+                item.MessageBatch.WorkItemId,
+                item.InstanceId,
+                item.Type.ToString(),
+                WorkItemTraceHelper.FormatMessageIdList(item.MessageBatch.TracedMessages));
+
             this.OrchestrationWorkItemQueue.Add(item);
         }
     }

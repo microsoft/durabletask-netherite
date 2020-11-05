@@ -34,8 +34,8 @@
       "DurableTask.Netherite.FasterStorage": "Warning",
       // modest at Information; on Trace, every message
       "DurableTask.Netherite.EventHubsTransport": "Warning",
-      // off on error; on Warning, several per orchestration
-      "DurableTask.Netherite.Benchmark": "Error"
+      // modest at Information; on Debug, all work items; on Trace, all messages
+      "DurableTask.Netherite.WorkItems": "Information"
     },
     "applicationInsights": {
       "sampling": {
@@ -91,7 +91,8 @@
         "LogLevelLimit": "Information",
         "StorageLogLevelLimit": "Information",
         "TransportLogLevelLimit": "Information",
-        "EventLogLevelLimit": "Warning",
+        "EventLogLevelLimit": "Debug",
+        "WorkItemLogLevelLimit": "Debug",
 
         // the following can be used to direct trace output to additional specific sinks
         "TraceToConsole": false,

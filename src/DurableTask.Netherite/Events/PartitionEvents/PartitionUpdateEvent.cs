@@ -11,7 +11,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-abstract class PartitionUpdateEvent : PartitionEvent
+    abstract class PartitionUpdateEvent : PartitionEvent
     {
         /// <summary>
         /// The position of the next event after this one. For read-only events, zero.
@@ -24,9 +24,9 @@ abstract class PartitionUpdateEvent : PartitionEvent
         public OutboxState.Batch OutboxBatch { get; set; }
 
         [IgnoreDataMember]
-        public virtual IEnumerable<TaskMessage> TracedTaskMessages => PartitionUpdateEvent.noTaskMessages;
+        public virtual IEnumerable<(TaskMessage message, string workItemId)> TracedTaskMessages => PartitionUpdateEvent.noTaskMessages;
 
-        static readonly IEnumerable<TaskMessage> noTaskMessages = Enumerable.Empty<TaskMessage>();
+        static readonly IEnumerable<(TaskMessage, string)> noTaskMessages = Enumerable.Empty<(TaskMessage, string)>();
 
         public abstract void DetermineEffects(EffectTracker effects);
     }

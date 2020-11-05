@@ -18,9 +18,9 @@ class OffloadDecision : PartitionUpdateEvent
         public uint DestinationPartitionId { get; set; }
 
         [IgnoreDataMember]
-        public List<TaskMessage> OffloadedActivities { get; set; }
+        public List<(TaskMessage,string)> OffloadedActivities { get; set; }
 
-        public static string GetWorkItemId(uint partition, DateTime timestamp) => $"{partition:D2}-O{timestamp:o}";
+        public static string GetWorkItemId(uint partition, DateTime timestamp) => $"{partition:D2}F{timestamp:o}";
 
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionInternalEventId(GetWorkItemId(this.PartitionId, this.Timestamp));

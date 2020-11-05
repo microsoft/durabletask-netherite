@@ -20,7 +20,7 @@ namespace DurableTask.Netherite
     class ActivitiesState : TrackedObject
     {
         [DataMember]
-        public Dictionary<long, TaskMessage> Pending { get; private set; }
+        public Dictionary<long, (TaskMessage message, string workItem)> Pending { get; private set; }
 
         [DataMember]
         public Queue<ActivityInfo> LocalBacklog { get; private set; } 
@@ -40,11 +40,11 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Activities);
 
-        public static string GetWorkItemId(uint partition, long activityId) => $"{partition:D2}-A{activityId}";
+        public static string GetWorkItemId(uint partition, long activityId) => $"{partition:D2}A{activityId}";
 
         public override void OnFirstInitialization()
         {
-            this.Pending = new Dictionary<long, TaskMessage>();
+            this.Pending = new Dictionary<long, (TaskMessage, string)>();
             this.LocalBacklog = new Queue<ActivityInfo>();
             this.QueuedRemotes = new Queue<ActivityInfo>();
             this.ReportedRemoteLoads = new int[this.Partition.NumberPartitions()];
@@ -74,7 +74,7 @@ namespace DurableTask.Netherite
             // reschedule work items
             foreach (var pending in this.Pending)
             {
-                this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, pending.Key, pending.Value));
+                this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, pending.Key, pending.Value.message, pending.Value.workItem));
             }
 
             if (this.LocalBacklog.Count > 0)
@@ -136,11 +136,11 @@ namespace DurableTask.Netherite
 
                 if (this.Pending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_WORKITEM_LOAD)
                 {
-                    this.Pending.Add(activityId, msg);
+                    this.Pending.Add(activityId, (msg, evt.WorkItemId));
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityId, msg));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityId, msg, evt.WorkItemId));
                     }
 
                     this.EstimatedLocalWorkItemLoad++;
@@ -152,11 +152,17 @@ namespace DurableTask.Netherite
                         ActivityId = activityId,
                         IssueTime = evt.Timestamp,
                         Message = msg,
+                        WorkItemId = evt.WorkItemId,
                     });
 
-                    if (!effects.IsReplaying && this.LocalBacklog.Count == 1)
+                    if (!effects.IsReplaying)
                     {
-                        this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
+                        this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.LocalBacklog.Count}");
+
+                        if (this.LocalBacklog.Count == 1)
+                        {
+                            this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
+                        }
                     }
                 }
             }
@@ -175,7 +181,7 @@ namespace DurableTask.Netherite
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityId, msg));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityId, msg.Item1, msg.Item2));
                     }
 
                     this.EstimatedLocalWorkItemLoad++;
@@ -186,8 +192,14 @@ namespace DurableTask.Netherite
                     {
                         ActivityId = activityId,
                         IssueTime = evt.Timestamp,
-                        Message = msg,
+                        Message = msg.Item1,
+                        WorkItemId = msg.Item2
                     });
+
+                    if (!effects.IsReplaying)
+                    {
+                        this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg.Item1, msg.Item2, $"QueuedRemotes@{this.QueuedRemotes.Count}");
+                    }
                 }
             }
         }
@@ -216,11 +228,11 @@ namespace DurableTask.Netherite
             {
                 if (this.TryGetNextActivity(out var activityInfo))
                 {
-                    this.Pending.Add(activityInfo.ActivityId, activityInfo.Message);
+                    this.Pending.Add(activityInfo.ActivityId, (activityInfo.Message, activityInfo.WorkItemId));
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message, activityInfo.WorkItemId));
                     }
 
                     this.EstimatedLocalWorkItemLoad++;
@@ -263,12 +275,12 @@ namespace DurableTask.Netherite
 
                 // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
                 offloadDecisionEvent.DestinationPartitionId = target;
-                offloadDecisionEvent.OffloadedActivities = new List<TaskMessage>();
+                offloadDecisionEvent.OffloadedActivities = new List<(TaskMessage,string)>();
 
                 for (int i = 0; i < maxBatchsize; i++)
                 {
                     var info = this.LocalBacklog.Dequeue();
-                    offloadDecisionEvent.OffloadedActivities.Add(info.Message);
+                    offloadDecisionEvent.OffloadedActivities.Add((info.Message, info.WorkItemId));
 
                     if (this.LocalBacklog.Count == 0 || offloadDecisionEvent.Timestamp - this.LocalBacklog.Peek().IssueTime < WaitTimeThresholdForOffload)
                     {
@@ -384,6 +396,9 @@ namespace DurableTask.Netherite
 
             [DataMember]
             public TaskMessage Message;
+
+            [DataMember]
+            public string WorkItemId;
 
             [DataMember]
             public DateTime IssueTime;

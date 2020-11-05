@@ -12,7 +12,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core.History;
 
     [DataContract]
-class RemoteActivityResultReceived : PartitionMessageEvent
+    class RemoteActivityResultReceived : PartitionMessageEvent
     {
         [DataMember]
         public TaskMessage Result { get; set; }
@@ -27,9 +27,19 @@ class RemoteActivityResultReceived : PartitionMessageEvent
         public DateTime Timestamp { get; set; }
 
         [IgnoreDataMember]
-        public override EventId EventId => EventId.MakePartitionToPartitionEventId(ActivitiesState.GetWorkItemId(this.OriginPartition, this.ActivityId), this.PartitionId);
+        public override EventId EventId => EventId.MakePartitionToPartitionEventId(this.WorkItemId, this.PartitionId);
 
         [IgnoreDataMember]
-        public override IEnumerable<TaskMessage> TracedTaskMessages { get { yield return this.Result; } }
+        public string WorkItemId => ActivitiesState.GetWorkItemId(this.OriginPartition, this.ActivityId);
+
+        [IgnoreDataMember]
+        public override IEnumerable<(TaskMessage,string)> TracedTaskMessages
+        {
+            get
+            {
+                yield return (this.Result, this.WorkItemId);
+            }
+        }
+
     }
 }

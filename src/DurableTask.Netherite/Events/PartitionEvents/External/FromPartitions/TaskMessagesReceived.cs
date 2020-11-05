@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class TaskMessagesReceived : PartitionMessageEvent
+    class TaskMessagesReceived : PartitionMessageEvent
     {
         [DataMember]
         public List<TaskMessage> TaskMessages { get; set; }

@@ -10,7 +10,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core.History;
 
     [DataContract]
-class CreationRequestReceived : ClientRequestEventWithPrefetch
+    class CreationRequestReceived : ClientRequestEventWithPrefetch
     {
         [DataMember]
         public OrchestrationStatus[] DedupeStatuses { get; set; }
@@ -34,7 +34,14 @@ class CreationRequestReceived : ClientRequestEventWithPrefetch
         public string InstanceId => this.ExecutionStartedEvent.OrchestrationInstance.InstanceId;
 
         [IgnoreDataMember]
-        public override IEnumerable<TaskMessage> TracedTaskMessages { get { yield return this.TaskMessage; } }
+        public override IEnumerable<(TaskMessage,string)> TracedTaskMessages
+        {
+            get
+            {
+                yield return (this.TaskMessage, this.WorkItemId);
+            }
+        }
+
 
         [IgnoreDataMember]
         public override TrackedObjectKey Target => TrackedObjectKey.Instance(this.InstanceId);

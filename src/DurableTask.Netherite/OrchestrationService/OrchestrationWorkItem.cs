@@ -22,12 +22,15 @@ namespace DurableTask.Netherite
 
         public enum ExecutionType { Fresh, ContinueFromHistory, ContinueFromCursor };
 
+        public List<string> NewMessagesOrigin { get; set; }
+
         public OrchestrationWorkItem(Partition partition, OrchestrationMessageBatch messageBatch, List<HistoryEvent> previousHistory = null)
         {
             this.Partition = partition;
             this.MessageBatch = messageBatch;
             this.InstanceId = messageBatch.InstanceId;
             this.NewMessages = messageBatch.MessagesToProcess;
+            this.NewMessagesOrigin = messageBatch.MessagesToProcessOrigin;
             this.OrchestrationRuntimeState = new OrchestrationRuntimeState(previousHistory);
             this.LockedUntilUtc = DateTime.MaxValue; // this backend does not require workitem lock renewals
             this.Session = null; // we don't use the extended session API because we are caching cursors in the work item
@@ -37,6 +40,7 @@ namespace DurableTask.Netherite
         {
             this.MessageBatch = messageBatch;
             this.NewMessages = messageBatch.MessagesToProcess;
+            this.NewMessagesOrigin = messageBatch.MessagesToProcessOrigin;
             this.OrchestrationRuntimeState.NewEvents.Clear();
         }
     }

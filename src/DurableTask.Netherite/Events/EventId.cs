@@ -115,22 +115,22 @@ namespace DurableTask.Netherite
             switch (this.Category)
             {
                 case EventCategory.ClientRequest:
-                    return $"{Client.GetShortId(this.ClientId)}-{this.Number}{this.IndexSuffix}";
+                    return $"{Client.GetShortId(this.ClientId)}R{this.Number}{this.IndexSuffix}";
 
                 case EventCategory.ClientResponse:
-                    return $"{Client.GetShortId(this.ClientId)}-{this.Number}R{this.IndexSuffix}";
+                    return $"{Client.GetShortId(this.ClientId)}R{this.Number}R{this.IndexSuffix}";
 
                 case EventCategory.PartitionInternal:
                     return $"{this.WorkItemId}{this.IndexSuffix}";
 
                 case EventCategory.PartitionToPartition:
-                    return $"{this.WorkItemId}-{this.PartitionId:D2}{this.IndexSuffix}";
+                    return $"{this.WorkItemId}P{this.PartitionId:D2}{this.IndexSuffix}";
 
                 default:
                     throw new InvalidOperationException();
             }
         }
 
-        string IndexSuffix => this.Index.HasValue ? $"-{this.Index.Value}" : string.Empty;
+        string IndexSuffix => this.Index.HasValue ? $"I{this.Index.Value}" : string.Empty;
     }
 }

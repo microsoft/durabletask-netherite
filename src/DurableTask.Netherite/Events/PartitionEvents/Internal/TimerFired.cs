@@ -5,6 +5,7 @@ namespace DurableTask.Netherite
 {
     using System;
     using System.Collections.Generic;
+    using System.Runtime.CompilerServices;
     using System.Runtime.Serialization;
     using DurableTask.Core;
 
@@ -20,14 +21,23 @@ class TimerFired : PartitionUpdateEvent
         [DataMember]
         public TaskMessage TaskMessage { get; set; }
 
+        [DataMember]
+        public string OriginWorkItemId { get; set; }
+
         [IgnoreDataMember]
-        public string WorkItemId => $"{this.PartitionId:D2}-T{this.TimerId}";
+        public string WorkItemId => $"{this.PartitionId:D2}T{this.TimerId}";
 
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.WorkItemId);
 
         [IgnoreDataMember]
-        public override IEnumerable<TaskMessage> TracedTaskMessages { get { yield return this.TaskMessage; } }
+        public override IEnumerable<(TaskMessage, string)> TracedTaskMessages
+        {
+            get
+            {
+                yield return (this.TaskMessage, this.OriginWorkItemId);
+            }
+        }
 
         public override void DetermineEffects(EffectTracker effects)
         {

@@ -31,7 +31,7 @@ namespace DurableTask.Netherite
             public long BatchStartPosition { get; set; }
 
             [DataMember]
-            public List<TaskMessage> Batch { get; set; }
+            public List<(TaskMessage message, string originWorkItemId)> Batch { get; set; }
 
             [DataMember]
             public bool ForceNewExecution { get; set; }
@@ -49,7 +49,7 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Sessions);
 
-        public static string GetWorkItemId(uint partition, long session, long position) => $"{partition:D2}-S{session}:{position}";
+        public static string GetWorkItemId(uint partition, long session, long position) => $"{partition:D2}S{session}P{position}";
 
 
         public override void OnRecoveryCompleted()
@@ -79,33 +79,36 @@ namespace DurableTask.Netherite
             return $"Sessions ({this.Sessions.Count} pending) next={this.SequenceNumber:D6}";
         }
 
-        string GetSessionPosition(Session session) => $"{this.Partition.PartitionId:D2}-S{session.SessionId}:{session.BatchStartPosition + session.Batch.Count}";
+        string GetSessionPosition(Session session) => $"{this.Partition.PartitionId:D2}S{session.SessionId}P{session.BatchStartPosition + session.Batch.Count}";
       
 
-        void AddMessageToSession(TaskMessage message, bool isReplaying)
+        void AddMessageToSession(TaskMessage message, string originWorkItemId, bool isReplaying)
         {
             string instanceId = message.OrchestrationInstance.InstanceId;
             bool forceNewExecution = message.Event is ExecutionStartedEvent;
+            this.Partition.Assert(!string.IsNullOrEmpty(originWorkItemId));
 
             if (this.Sessions.TryGetValue(instanceId, out var session) && !forceNewExecution)
             {
                 // A session for this instance already exists, so a work item is in progress already.
                 // We don't need to schedule a work item because we'll notice the new messages when it completes.
-                this.Partition.EventTraceHelper.TraceTaskMessageReceived(message, this.GetSessionPosition(session));
-                session.Batch.Add(message);
+                this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));
+
+                session.Batch.Add((message, originWorkItemId));
             }
             else
             {
                 this.Sessions[instanceId] = session = new Session()
                 {
                     SessionId = this.SequenceNumber++,
-                    Batch = new List<TaskMessage>(),
+                    Batch = new List<(TaskMessage,string)>(),
                     BatchStartPosition = 0,
                     ForceNewExecution = forceNewExecution,
                 };
 
-                this.Partition.EventTraceHelper.TraceTaskMessageReceived(message, this.GetSessionPosition(session));
-                session.Batch.Add(message);
+                this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));
+                session.Batch.Add((message, originWorkItemId));
+
                 if (!isReplaying) // during replay, we don't start work items until end of recovery
                 {
                     new OrchestrationMessageBatch(instanceId, session, this.Partition);
@@ -113,8 +116,9 @@ namespace DurableTask.Netherite
             }
         }
 
-        void AddMessagesToSession(string instanceId, IEnumerable<TaskMessage> messages, bool isReplaying)
+        void AddMessagesToSession(string instanceId, string originWorkItemId, IEnumerable<TaskMessage> messages, bool isReplaying)
         {
+            this.Partition.Assert(!string.IsNullOrEmpty(originWorkItemId));
             int? forceNewExecution = FindLastExecutionStartedEvent(messages);
 
             if (this.Sessions.TryGetValue(instanceId, out var session) && forceNewExecution == null)
@@ -124,8 +128,8 @@ namespace DurableTask.Netherite
                 // when the previous work item completes.
                 foreach(var message in messages)
                 {
-                    this.Partition.EventTraceHelper.TraceTaskMessageReceived(message, this.GetSessionPosition(session));                  
-                    session.Batch.Add(message);
+                    this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));                  
+                    session.Batch.Add((message, originWorkItemId));
                 }
             }
             else
@@ -137,7 +141,7 @@ namespace DurableTask.Netherite
                     // but "consider them delivered" to the old instance which is then replaced
                     foreach (var taskMessage in messages.Take(forceNewExecution.Value))
                     {
-                        this.Partition.EventTraceHelper.TraceTaskMessageDiscarded(taskMessage, "message bound for an instance that was replaced", "");
+                        this.Partition.WorkItemTraceHelper.TraceTaskMessageDiscarded(this.Partition.PartitionId, taskMessage, originWorkItemId, "message bound for an instance that was replaced");
                     }
 
                     messages = messages.Skip(forceNewExecution.Value);
@@ -147,15 +151,15 @@ namespace DurableTask.Netherite
                 this.Sessions[instanceId] = session = new Session()
                 {
                     SessionId = this.SequenceNumber++,
-                    Batch = new List<TaskMessage>(),
+                    Batch = new List<(TaskMessage,string)>(),
                     BatchStartPosition = 0,
                     ForceNewExecution = forceNewExecution.HasValue,
                 };
 
                 foreach (var message in messages)
                 {
-                    this.Partition.EventTraceHelper.TraceTaskMessageReceived(message, this.GetSessionPosition(session));
-                    session.Batch.Add(message);
+                    this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));
+                    session.Batch.Add((message, originWorkItemId));
                 }
 
                 if (!isReplaying) // we don't start work items until end of recovery
@@ -186,39 +190,39 @@ namespace DurableTask.Netherite
            foreach (var group in evt.TaskMessages
                 .GroupBy(tm => tm.OrchestrationInstance.InstanceId))
             {
-                this.AddMessagesToSession(group.Key, group, effects.IsReplaying);
+                this.AddMessagesToSession(group.Key, evt.WorkItemId, group, effects.IsReplaying);
             }
         }
 
         public void Process(RemoteActivityResultReceived evt, EffectTracker effects)
         {
             // queues task message (from another partition) in a new or existing session
-            this.AddMessageToSession(evt.Result, effects.IsReplaying);
+            this.AddMessageToSession(evt.Result, evt.WorkItemId, effects.IsReplaying);
         }
 
         public void Process(ClientTaskMessagesReceived evt, EffectTracker effects)
         {
             // queues task message (from a client) in a new or existing session
             var instanceId = evt.TaskMessages[0].OrchestrationInstance.InstanceId;
-            this.AddMessagesToSession(instanceId, evt.TaskMessages, effects.IsReplaying);
+            this.AddMessagesToSession(instanceId, evt.WorkItemId, evt.TaskMessages, effects.IsReplaying);
         }
 
         public void Process(TimerFired timerFired, EffectTracker effects)
         {
             // queues a timer fired message in a session
-            this.AddMessageToSession(timerFired.TaskMessage, effects.IsReplaying);
+            this.AddMessageToSession(timerFired.TaskMessage, timerFired.OriginWorkItemId, effects.IsReplaying);
         }
 
         public void Process(ActivityCompleted activityCompleted, EffectTracker effects)
         {
             // queues an activity-completed message in a session
-            this.AddMessageToSession(activityCompleted.Response, effects.IsReplaying);
+            this.AddMessageToSession(activityCompleted.Response, activityCompleted.WorkItemId, effects.IsReplaying);
         }
 
         public void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
             // queues the execution started message
-            this.AddMessageToSession(creationRequestReceived.TaskMessage, effects.IsReplaying);
+            this.AddMessageToSession(creationRequestReceived.TaskMessage, creationRequestReceived.WorkItemId, effects.IsReplaying);
         }
 
         public void Process(DeletionRequestReceived deletionRequestReceived, EffectTracker effects)
@@ -269,7 +273,7 @@ namespace DurableTask.Netherite
             // a different session id
             if (!this.Sessions.TryGetValue(evt.InstanceId, out var session) || session.SessionId != evt.SessionId)
             {
-                this.Partition.EventTraceHelper.TraceOrchestrationWorkItemDiscarded(evt);    
+                this.Partition.WorkItemTraceHelper.TraceWorkItemDiscarded(this.Partition.PartitionId, WorkItemTraceHelper.WorkItemType.Orchestration, evt.WorkItemId, evt.InstanceId);    
                 return;
             };
 
@@ -293,7 +297,7 @@ namespace DurableTask.Netherite
             {
                 foreach (var group in evt.LocalMessages.GroupBy(tm => tm.OrchestrationInstance.InstanceId))
                 {
-                    this.AddMessagesToSession(group.Key, group, effects.IsReplaying);
+                    this.AddMessagesToSession(group.Key, evt.WorkItemId, group, effects.IsReplaying);
                 }
             }
 

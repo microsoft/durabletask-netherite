@@ -8,13 +8,23 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class ClientTaskMessagesReceived : ClientRequestEvent
+    class ClientTaskMessagesReceived : ClientRequestEvent
     {
         [DataMember]
         public TaskMessage[] TaskMessages { get; set; }
 
         [IgnoreDataMember]
-        public override IEnumerable<TaskMessage> TracedTaskMessages => this.TaskMessages;
+        public override IEnumerable<(TaskMessage, string)> TracedTaskMessages
+        {
+            get
+            {
+                foreach (var message in this.TaskMessages)
+                {
+                    yield return (message, this.WorkItemId);
+                }
+            }
+        }
+
 
         public override void DetermineEffects(EffectTracker effects)
         {

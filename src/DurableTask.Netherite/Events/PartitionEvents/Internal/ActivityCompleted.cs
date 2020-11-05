@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class ActivityCompleted : PartitionUpdateEvent
+    class ActivityCompleted : PartitionUpdateEvent
     {
         [DataMember]
         public long ActivityId { get; set; }
@@ -27,10 +27,19 @@ class ActivityCompleted : PartitionUpdateEvent
         public int ReportedLoad { get; set; }
 
         [IgnoreDataMember]
-        public override EventId EventId => EventId.MakePartitionInternalEventId(ActivitiesState.GetWorkItemId(this.PartitionId, this.ActivityId));
+        public override EventId EventId => EventId.MakePartitionInternalEventId(this.WorkItemId);
 
         [IgnoreDataMember]
-        public override IEnumerable<TaskMessage> TracedTaskMessages { get { yield return this.Response; } }
+        public string WorkItemId => ActivitiesState.GetWorkItemId(this.PartitionId, this.ActivityId);
+
+        [IgnoreDataMember]
+        public override IEnumerable<(TaskMessage,string)> TracedTaskMessages
+        {
+            get
+            {
+                yield return (this.Response, this.WorkItemId);
+            }
+        }
 
         public override void DetermineEffects(EffectTracker effects)
         {

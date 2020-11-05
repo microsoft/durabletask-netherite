@@ -85,10 +85,6 @@ namespace DurableTask.Netherite
 
             // Calculate the delay by not sending immediately
             partitionUpdateEvent.SentTimestamp = this.Partition.CurrentTimeMs;
-            this.Partition.EventTraceHelper.TraceEventSentDetail(partitionUpdateEvent);
-
-            long commitPosition = partitionUpdateEvent.NextCommitLogPosition;
-            this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Store has persisted event {evt} id={evt.EventIdString}, now sending messages");
             this.Send(partitionUpdateEvent.OutboxBatch);
         }
 

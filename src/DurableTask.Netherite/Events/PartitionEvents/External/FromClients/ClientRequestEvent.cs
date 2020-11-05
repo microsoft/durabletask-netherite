@@ -17,6 +17,9 @@ abstract class ClientRequestEvent : PartitionUpdateEvent, IClientRequestEvent
         [DataMember]
         public long RequestId { get; set; }
 
+        [IgnoreDataMember]
+        public string WorkItemId => WorkItemTraceHelper.FormatClientWorkItemId(this.ClientId, this.RequestId);
+
         [DataMember]
         public DateTime TimeoutUtc { get; set; }
 
