@@ -97,7 +97,7 @@ namespace DurableTask.Netherite
 
         public static bool CannotDeleteBlobWithLease(StorageException e)
         {
-            return (e.RequestInformation.?HttpStatusCode == 412);
+            return (e.RequestInformation?.HttpStatusCode == 412);
         }
 
         public static bool BlobDoesNotExist(StorageException e)
