@@ -46,9 +46,9 @@ namespace DurableTask.Netherite.AzureFunctions
         /// <inheritdoc/>
         public async override Task<string> RetrieveSerializedEntityState(EntityId entityId, JsonSerializerSettings serializerSettings)
         {
-            var instanceId = this.GetSchedulerIdFromEntityId(entityId);
+            var instanceId = ProviderUtils.GetSchedulerIdFromEntityId(entityId);
             OrchestrationState state = await this.Service.GetOrchestrationStateAsync(instanceId, true, true);
-            if (this.TryGetEntityStateFromSerializedSchedulerState(state, serializerSettings, out string result))
+            if (ProviderUtils.TryGetEntityStateFromSerializedSchedulerState(state, serializerSettings, out string result))
             {
                 return result;
             }
@@ -98,7 +98,7 @@ namespace DurableTask.Netherite.AzureFunctions
 
             return new OrchestrationStatusQueryResult()
             {
-                DurableOrchestrationState = result.Instances.Select(ostate => this.ConvertOrchestrationStateToStatus(ostate)).ToList(),
+                DurableOrchestrationState = result.Instances.Select(ostate => ProviderUtils.ConvertOrchestrationStateToStatus(ostate)).ToList(),
                 ContinuationToken = result.ContinuationToken,
             };
         }
