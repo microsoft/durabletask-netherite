@@ -360,7 +360,8 @@ namespace DurableTask.Netherite
                 ? Task.CompletedTask
                 : Task.WhenAll(messages
                     .GroupBy(tm => this.GetPartitionId(tm.OrchestrationInstance.InstanceId))
-                    .Select(group => this.CheckedClient.SendTaskOrchestrationMessageBatchAsync(group.Key, group)));
+                    .Select(group => this.CheckedClient.SendTaskOrchestrationMessageBatchAsync(group.Key, group))
+                    .ToList());
 
         /// <inheritdoc />
         Task<OrchestrationState> IOrchestrationServiceClient.WaitForOrchestrationAsync(

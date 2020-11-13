@@ -424,8 +424,8 @@ namespace DurableTask.Netherite
                     yield return this.PerformRequestWithTimeoutAndCancellation(cancellationToken, requestCreator(partitionId), false);
                 }
             }
-
-            return responseAggregator((await Task.WhenAll(launchQueries()).ConfigureAwait(false)).Cast<TResponse>());
+            ClientEvent[] responses = await Task.WhenAll(launchQueries().ToList()).ConfigureAwait(false);
+            return responseAggregator(responses.Cast<TResponse>());
         }
 
         public Task ForceTerminateTaskOrchestrationAsync(uint partitionId, string instanceId, string message)
