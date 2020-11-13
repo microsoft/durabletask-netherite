@@ -88,7 +88,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TraceWorkItemDiscarded(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId)
+        public void TraceWorkItemDiscarded(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId, string sessionId)
         {
             if (this.logLevelLimit <= LogLevel.Warning)
             {
@@ -97,11 +97,11 @@ namespace DurableTask.Netherite
                     (long commitLogPosition, string eventId) = EventTraceContext.Current;
 
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
-                    this.logger.LogWarning("Part{partition:D2}{prefix} discarded {workItemType}WorkItem {workItemId} because instance was replaced; instanceId={instanceId} ",
-                        partitionId, prefix, workItemType, workItemId, instanceId);
+                    this.logger.LogWarning("Part{partition:D2}{prefix} discarded {workItemType}WorkItem {workItemId} because session was replaced; instanceId={instanceId} sessionId={sessionId}",
+                        partitionId, prefix, workItemType, workItemId, instanceId, sessionId);
                 }
 
-                this.etw?.WorkItemDiscarded(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, TraceUtils.ExtensionVersion);
+                this.etw?.WorkItemDiscarded(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, sessionId ?? "", TraceUtils.ExtensionVersion);
             }
         }
 

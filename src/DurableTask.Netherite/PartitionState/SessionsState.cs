@@ -79,6 +79,7 @@ namespace DurableTask.Netherite
             return $"Sessions ({this.Sessions.Count} pending) next={this.SequenceNumber:D6}";
         }
 
+        string GetSessionId(Session session) => $"{this.Partition.PartitionId:D2}S{session.SessionId}";
         string GetSessionPosition(Session session) => $"{this.Partition.PartitionId:D2}S{session.SessionId}P{session.BatchStartPosition + session.Batch.Count}";
       
 
@@ -273,7 +274,12 @@ namespace DurableTask.Netherite
             // a different session id
             if (!this.Sessions.TryGetValue(evt.InstanceId, out var session) || session.SessionId != evt.SessionId)
             {
-                this.Partition.WorkItemTraceHelper.TraceWorkItemDiscarded(this.Partition.PartitionId, WorkItemTraceHelper.WorkItemType.Orchestration, evt.WorkItemId, evt.InstanceId);    
+                this.Partition.WorkItemTraceHelper.TraceWorkItemDiscarded(
+                    this.Partition.PartitionId, 
+                    WorkItemTraceHelper.WorkItemType.Orchestration, 
+                    evt.WorkItemId, evt.InstanceId, 
+                    session != null ? this.GetSessionId(session) : null); 
+                
                 return;
             };
 
