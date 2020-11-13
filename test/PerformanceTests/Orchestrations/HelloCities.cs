@@ -16,6 +16,7 @@ namespace PerformanceTests
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using System.Linq;
     using System.Collections.Concurrent;
+    using System.Threading;
 
     /// <summary>
     /// A simple microbenchmark orchestration that calls three trivial activities in a sequence.
@@ -106,6 +107,52 @@ namespace PerformanceTests
                 }
             }
         }
+
+        [FunctionName(nameof(CountCities))]
+        public static async Task<IActionResult> CountCities(
+           [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "countcities")] HttpRequest req,
+           [DurableClient] IDurableClient client,
+           ILogger log)
+        {
+            var queryCondition = new OrchestrationStatusQueryCondition()
+            {
+                InstanceIdPrefix = "Orch",
+            };
+
+            int completed = 0;
+            int pending = 0;
+            int running = 0;
+            int other = 0;
+
+            do
+            {
+                OrchestrationStatusQueryResult result = await client.ListInstancesAsync(queryCondition, CancellationToken.None);
+                queryCondition.ContinuationToken = result.ContinuationToken;
+
+                foreach (var status in result.DurableOrchestrationState)
+                {
+                    if (status.RuntimeStatus == OrchestrationRuntimeStatus.Pending)
+                    {
+                        pending++;
+                    }
+                    else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Running)
+                    {
+                        running++;
+                    }
+                    else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Completed)
+                    {
+                        completed++;
+                    }
+                    else
+                    {
+                        other++;
+                    }
+                }
+            } while (queryCondition.ContinuationToken != null);
+
+            return new OkObjectResult($"{pending+running+completed+other} orchestration instances ({pending} pending, {running} running, {completed} completed, {other} other)\n");
+        }
+
 
         [FunctionName(nameof(HelloSequence))]
         public static async Task<List<string>> HelloSequence([OrchestrationTrigger] IDurableOrchestrationContext context)
