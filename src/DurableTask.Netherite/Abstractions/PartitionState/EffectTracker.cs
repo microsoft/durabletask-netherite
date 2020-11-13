@@ -44,6 +44,11 @@ namespace DurableTask.Netherite
         public dynamic Effect { get; set; }
 
         /// <summary>
+        /// The current commit log position
+        /// </summary>
+        public long MaxWritten { get; set; }
+
+        /// <summary>
         /// True if we are replaying this effect during recovery.
         /// Typically, external side effects (such as launching tasks, sending responses, etc.)
         /// are suppressed during replay.
@@ -58,7 +63,10 @@ namespace DurableTask.Netherite
         /// <remarks>Called by the storage layer when this object calls applyToStore.</remarks>
         public void ProcessEffectOn(dynamic trackedObject)
         {
+            TrackedObject o = (TrackedObject)trackedObject;
+            Partition.Assert(o.LastWritten < MaxWritten);
             trackedObject.Process(this.Effect, this);
+            trackedObject.LastWritten = MaxWritten;
         }
 
         public void AddDeletion(TrackedObjectKey key)
@@ -78,6 +86,9 @@ namespace DurableTask.Netherite
                     this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, this.IsReplaying);
 
                     this.Effect = updateEvent;
+
+                    this.Partition.Assert(this.MaxWritten < updateEvent.NextCommitLogPosition);
+                    this.MaxWritten = updateEvent.NextCommitLogPosition;
 
                     // collect the initial list of targets
                     updateEvent.DetermineEffects(this);
@@ -171,6 +182,8 @@ namespace DurableTask.Netherite
                             default:
                                 break;
                         }
+
+                        this.Partition.Assert((target?.LastWritten ?? 0) <= this.MaxWritten);
 
                         readEvent.Fire(this.Partition);
                     }

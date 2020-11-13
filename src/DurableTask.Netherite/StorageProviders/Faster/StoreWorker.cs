@@ -82,6 +82,8 @@ namespace DurableTask.Netherite.Faster
                 target.OnFirstInitialization();
             }
 
+            this.effectTracker.MaxWritten = this.CommitLogPosition;
+
             this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
             this.lastCheckpointedInputQueuePosition = this.InputQueuePosition;
             this.numberEventsSinceLastCheckpoint = initialCommitLogPosition;
@@ -97,6 +99,8 @@ namespace DurableTask.Netherite.Faster
         {
             this.CommitLogPosition = commitLogPosition;
             this.InputQueuePosition = inputQueuePosition;
+
+            this.effectTracker.MaxWritten = this.CommitLogPosition;
 
             this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
             this.lastCheckpointedInputQueuePosition = this.InputQueuePosition;

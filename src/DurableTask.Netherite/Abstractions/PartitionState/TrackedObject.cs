@@ -34,6 +34,12 @@ namespace DurableTask.Netherite
         internal byte[] SerializationCache { get; set; }
 
         /// <summary>
+        /// For validating snapshot accuracy during replay.
+        /// </summary>
+        [DataMember]
+        internal long LastWritten { get; set; }
+
+        /// <summary>
         /// The collection of all types of tracked objects and polymorphic members of tracked objects. Can be
         /// used by serializers to compute a type map.
         /// </summary>
