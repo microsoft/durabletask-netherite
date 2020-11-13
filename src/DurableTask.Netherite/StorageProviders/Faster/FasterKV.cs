@@ -5,6 +5,7 @@ namespace DurableTask.Netherite.Faster
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
@@ -164,6 +165,7 @@ namespace DurableTask.Netherite.Faster
             return this.blobManager.FinalizeCheckpointCompletedAsync();
         }
 
+
         public override Guid StartIndexCheckpoint()
         {
             try
@@ -278,15 +280,15 @@ namespace DurableTask.Netherite.Faster
                 }
 #else
                 IAsyncEnumerable<OrchestrationState> queryPSFsAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, PartitionReadEvent, Functions> session)
-                    => this.ScanOrchestrationStates(session, effectTracker, instanceQuery);
+                    => this.ScanOrchestrationStates(session, effectTracker, queryEvent);
 #endif
-                // create a individual session for this query so the main session can be used
+                // create an individual session for this query so the main session can be used
                 // while the query is progressing.
                 using (var session = this.CreateASession())
                 {
                     var orchestrationStates = (this.partition.Settings.UsePSFQueries && instanceQuery.IsSet)
                         ? queryPSFsAsync(session)
-                        : this.ScanOrchestrationStates(session, effectTracker, instanceQuery);
+                        : this.ScanOrchestrationStates(session, effectTracker, queryEvent);
 
                     await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates);
                 }
@@ -411,38 +413,86 @@ namespace DurableTask.Netherite.Faster
         async IAsyncEnumerable<OrchestrationState> ScanOrchestrationStates(
             ClientSession<Key, Value, EffectTracker, TrackedObject, PartitionReadEvent, Functions> session,
             EffectTracker effectTracker,
-            InstanceQuery instanceQuery)
+            PartitionQueryEvent queryEvent)
         {
+            var instanceQuery = queryEvent.InstanceQuery;
+            this.partition.EventDetailTracer?.TraceEventProcessingDetail("starting query");
+
             // get the unique set of keys appearing in the log and emit them
             using var iter1 = this.fht.Iterate();
+
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
+            long scanned = 0;
+            long deserialized = 0;
+            long matched = 0;
+            long lastReport;
+            void ReportProgress() {
+                this.partition.EventDetailTracer?.TraceEventProcessingDetail(
+                    $"query scan position={iter1.CurrentAddress} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} deserialized={deserialized} matched={matched}");
+                lastReport = stopwatch.ElapsedMilliseconds;
+            }
+            
+            ReportProgress();
+
             while (iter1.GetNext(out RecordInfo recordInfo) && !recordInfo.Tombstone)
             {
+                if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
+                {
+                    ReportProgress();
+                }
+
                 TrackedObjectKey key = iter1.GetKey().Val;
                 if (key.ObjectType == TrackedObjectKey.TrackedObjectType.Instance)
                 {
+                    scanned++;
+                    //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {key.InstanceId}");
+
                     if (string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
                         || key.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
                     {
-                        TrackedObject target = await this.ReadAsync(session, key, effectTracker).ConfigureAwait(false);
-                        if (target is InstanceState instanceState)
-                        {
-                            // this may race with updates to the orchestration state
-                            // but it is benign because the OrchestrationState object is immutable
-                            var orchestrationState = instanceState?.OrchestrationState;
+                        //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"reading instance {key.InstanceId}");
 
-                            if (orchestrationState != null
-                                && instanceQuery.Matches(orchestrationState))
+                        object val = iter1.GetValue().Val;
+
+                        //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"read instance {key.InstanceId}, is {(val == null ? "null" : val.GetType().Name)}");
+
+                        InstanceState instanceState;
+
+                        if (val is byte[] bytes)
+                        {
+                            instanceState = (InstanceState)Serializer.DeserializeTrackedObject(bytes);
+                            deserialized++;
+                        }
+                        else
+                        {
+                            instanceState = (InstanceState)val;
+                        }
+
+                        // reading the orchestrationState may race with updating the orchestration state
+                        // but it is benign because the OrchestrationState object is immutable
+                        var orchestrationState = instanceState?.OrchestrationState;
+
+                        if (orchestrationState != null
+                            && instanceQuery.Matches(orchestrationState))
+                        {
+                            matched++;
+
+                            //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.InstanceId}");
+
+                            if (instanceQuery.PrefetchHistory)
                             {
-                                if (instanceQuery.PrefetchHistory)
-                                {
-                                    await this.ReadAsync(session, TrackedObjectKey.History(key.InstanceId), effectTracker).ConfigureAwait(false);
-                                }
-                                yield return orchestrationState.ClearFieldsImmutably(instanceQuery.FetchInput, true);
+                                //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"prefetching history {key.InstanceId}");
+                                await this.ReadAsync(session, TrackedObjectKey.History(key.InstanceId), effectTracker).ConfigureAwait(false);
                             }
+
+                            yield return orchestrationState.ClearFieldsImmutably(instanceQuery.FetchInput, true);
                         }
                     }
                 }
             }
+
+            ReportProgress();
         }
 
         //private async Task<string> DumpCurrentState(EffectTracker effectTracker)    // TODO unused
