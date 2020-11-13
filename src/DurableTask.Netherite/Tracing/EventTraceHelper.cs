@@ -35,9 +35,17 @@ namespace DurableTask.Netherite
             this.etw = EtwSource.Log.IsEnabled() ? EtwSource.Log : null;
         }
 
+        public enum EventCategory
+        {
+            UpdateEvent,
+            ReadEvent,
+            QueryEvent
+        }
+
+
         public bool IsTracingAtMostDetailedLevel => this.logLevelLimit == LogLevel.Trace;
 
-        public void TraceEventProcessed(long commitLogPosition, PartitionEvent evt, double startedTimestamp, double finishedTimestamp, bool replaying)
+        public void TraceEventProcessed(long commitLogPosition, PartitionEvent evt, EventCategory category, double startedTimestamp, double finishedTimestamp, bool replaying)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
@@ -48,11 +56,11 @@ namespace DurableTask.Netherite
 
                 if (this.logger.IsEnabled(LogLevel.Information))
                 {
-                    var details = string.Format($"{(replaying ? "Replayed" : "Processed")} {(evt.NextInputQueuePosition > 0 ? "external" : "internal")} {(nextCommitLogPosition > 0 ? "update" : "read")} event");
+                    var details = string.Format($"{(replaying ? "Replayed" : "Processed")} {(evt.NextInputQueuePosition > 0 ? "external" : "internal")} {category}");
                     this.logger.LogInformation("Part{partition:D2}.{commitLogPosition:D10} {details} {event} eventId={eventId} pos=({nextCommitLogPosition},{nextInputQueuePosition}) latency=({queueLatencyMs:F0}, {fetchLatencyMs:F0}, {latencyMs:F0})", this.partitionId, commitLogPosition, details, evt, evt.EventIdString, nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs);
                 }
 
-                this.etw?.PartitionEventProcessed(this.account, this.taskHub, this.partitionId, commitLogPosition, evt.EventIdString, evt.ToString(), nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs, replaying, TraceUtils.ExtensionVersion);
+                this.etw?.PartitionEventProcessed(this.account, this.taskHub, this.partitionId, commitLogPosition, category.ToString(), evt.EventIdString, evt.ToString(), nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs, replaying, TraceUtils.ExtensionVersion) ;
             }
         }
 
@@ -172,12 +180,12 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TraceEventProcessingStarted(long commitLogPosition, PartitionEvent evt, bool replaying)
+        public void TraceEventProcessingStarted(long commitLogPosition, PartitionEvent evt, EventCategory category, bool replaying)
         {
             if (this.logLevelLimit <= LogLevel.Trace)
             {
                 long nextCommitLogPosition = ((evt as PartitionUpdateEvent)?.NextCommitLogPosition) ?? 0L;
-                var details = string.Format($"{(replaying ? "Replaying" : "Processing")} {(evt.NextInputQueuePosition > 0 ? "external" : "internal")} {(nextCommitLogPosition > 0 ? "update" : "read")} event {evt} id={evt.EventIdString}");
+                var details = string.Format($"{(replaying ? "Replaying" : "Processing")} {(evt.NextInputQueuePosition > 0 ? "external" : "internal")} {category} {evt} id={evt.EventIdString}");
                 if (this.logger.IsEnabled(LogLevel.Trace))
                 {
                     this.logger.LogTrace("Part{partition:D2}.{commitLogPosition:D10} {details}", this.partitionId, commitLogPosition, details);

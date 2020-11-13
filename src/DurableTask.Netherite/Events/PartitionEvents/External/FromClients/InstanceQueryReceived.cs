@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class InstanceQueryReceived : ClientRequestEventWithQuery
+    class InstanceQueryReceived : ClientRequestEventWithQuery
     {
         public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition)
         {

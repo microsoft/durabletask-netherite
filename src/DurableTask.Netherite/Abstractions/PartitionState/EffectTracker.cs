@@ -66,7 +66,7 @@ namespace DurableTask.Netherite
             {
                 try
                 {
-                    this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, updateEvent, this.IsReplaying);
+                    this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, this.IsReplaying);
 
                     this.Effect = updateEvent;
 
@@ -107,13 +107,14 @@ namespace DurableTask.Netherite
                 }
                 catch (Exception exception) when (!Utils.IsFatal(exception))
                 {
-                    // for robustness, swallow exceptions, but report them
+                    // for robustness, we swallow exceptions inside event processing.
+                    // It does not mean they are not serious. We still report them as errors.
                     this.Partition.ErrorHandler.HandleError(nameof(ProcessUpdate), $"Encountered exception while processing update event {updateEvent}", exception, false, false);
                 }
                 finally
                 {
                     double finishedTimestamp = this.Partition.CurrentTimeMs;
-                    this.Partition.EventTraceHelper.TraceEventProcessed(commitLogPosition, updateEvent, startedTimestamp, finishedTimestamp, this.IsReplaying);
+                    this.Partition.EventTraceHelper.TraceEventProcessed(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, startedTimestamp, finishedTimestamp, this.IsReplaying);
                 }
             }
         }
@@ -139,7 +140,7 @@ namespace DurableTask.Netherite
 
                     if (isReady)
                     {
-                        this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, readEvent, false);
+                        this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, false);
 
                         // trace read accesses to instance and history
                         switch (key.ObjectType)
@@ -172,13 +173,14 @@ namespace DurableTask.Netherite
                 }
                 catch (Exception exception) when (!Utils.IsFatal(exception))
                 {
-                    // for robustness, swallow exceptions, but report them
+                    // for robustness, we swallow exceptions inside event processing.
+                    // It does not mean they are not serious. We still report them as errors.
                     this.Partition.ErrorHandler.HandleError(nameof(ProcessReadResult), $"Encountered exception while processing read event {readEvent}", exception, false, false);
                 }
                 finally
                 {
                     double finishedTimestamp = this.Partition.CurrentTimeMs;
-                    this.Partition.EventTraceHelper.TraceEventProcessed(commitLogPosition, readEvent, startedTimestamp, finishedTimestamp, false);
+                    this.Partition.EventTraceHelper.TraceEventProcessed(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, startedTimestamp, finishedTimestamp, false);
                 }
             }
         }
@@ -193,7 +195,7 @@ namespace DurableTask.Netherite
             {
                 try
                 {
-                    this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, queryEvent, false);
+                    this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, queryEvent, EventTraceHelper.EventCategory.QueryEvent, false);
                     await queryEvent.OnQueryCompleteAsync(instances, this.Partition);
                 }
                 catch (OperationCanceledException)
@@ -202,13 +204,14 @@ namespace DurableTask.Netherite
                 }
                 catch (Exception exception) when (!Utils.IsFatal(exception))
                 {
-                    // for robustness, swallow exceptions, but report them
+                    // for robustness, we swallow exceptions inside event processing.
+                    // It does not mean they are not serious. We still report them as errors.
                     this.Partition.ErrorHandler.HandleError(nameof(ProcessQueryResultAsync), $"Encountered exception while processing query event {queryEvent}", exception, false, false);
                 }
                 finally
                 {
                     double finishedTimestamp = this.Partition.CurrentTimeMs;
-                    this.Partition.EventTraceHelper.TraceEventProcessed(commitLogPosition, queryEvent, startedTimestamp, finishedTimestamp, false);
+                    this.Partition.EventTraceHelper.TraceEventProcessed(commitLogPosition, queryEvent, EventTraceHelper.EventCategory.QueryEvent, startedTimestamp, finishedTimestamp, false);
                 }
             }
         }

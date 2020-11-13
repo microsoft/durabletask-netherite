@@ -103,7 +103,7 @@ namespace DurableTask.Netherite
                 var again = (ClientRequestEventWithQuery)this.request.Clone();
 
                 again.NextInputQueuePosition = 0; // this event is no longer considered an external event
-
+                    
                 again.Phase = ClientRequestEventWithQuery.ProcessingPhase.Confirm;
 
                 partition.SubmitInternalEvent(again);

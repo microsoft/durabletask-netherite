@@ -11,7 +11,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-abstract class ClientRequestEventWithQuery : ClientRequestEvent, IClientRequestEvent
+    abstract class ClientRequestEventWithQuery : ClientRequestEvent, IClientRequestEvent
     {
         [DataMember]
         public ProcessingPhase Phase { get; set; }

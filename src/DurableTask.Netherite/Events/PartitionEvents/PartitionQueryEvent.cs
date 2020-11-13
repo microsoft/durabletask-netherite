@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-abstract class PartitionQueryEvent : PartitionEvent
+    abstract class PartitionQueryEvent : PartitionEvent
     {
         public abstract InstanceQuery InstanceQuery { get; }
    
