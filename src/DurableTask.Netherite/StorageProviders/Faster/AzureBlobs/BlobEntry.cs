@@ -60,7 +60,7 @@ namespace DurableTask.Netherite.Faster
         {
             if (this.waitingCount != 0)
             {
-                this.azureStorageDevice.BlobManager?.HandleBlobError(nameof(CreateAsync), "expect to be called on blobs that don't already exist and exactly once", pageBlob?.Name, null, false, false);
+                this.azureStorageDevice.BlobManager?.HandleStorageError(nameof(CreateAsync), "expect to be called on blobs that don't already exist and exactly once", pageBlob?.Name, null, false, false);
             }
 
             try
@@ -104,14 +104,14 @@ namespace DurableTask.Netherite.Faster
                         else
                         {
                             TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                            this.azureStorageDevice.BlobManager?.HandleBlobError(nameof(CreateAsync), $"could not create page blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", pageBlob.Name, e, false, true);
+                            this.azureStorageDevice.BlobManager?.HandleStorageError(nameof(CreateAsync), $"could not create page blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", pageBlob.Name, e, false, true);
                             await Task.Delay(nextRetryIn);
                         }
                         continue;
                     }
                     catch (Exception e) when (!Utils.IsFatal(e))
                     {
-                        this.azureStorageDevice.BlobManager?.HandleBlobError(nameof(CreateAsync), "could not create page blob", pageBlob.Name, e, true, this.azureStorageDevice.PartitionErrorHandler.IsTerminated);
+                        this.azureStorageDevice.BlobManager?.HandleStorageError(nameof(CreateAsync), "could not create page blob", pageBlob.Name, e, true, this.azureStorageDevice.PartitionErrorHandler.IsTerminated);
                         throw;
                     }
                 }

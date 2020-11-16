@@ -114,24 +114,6 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public void FasterBlobStorageWarning(string context, string blobName, Exception exception)
-        {
-            if (this.logLevelLimit <= LogLevel.Error)
-            {
-                this.logger.LogError(exception, "Part{partition:D2} !!! Faster Blob Storage error : {context} blobName={blobName} {exception}", this.partitionId, context, blobName, exception);
-                this.etwLogError?.FasterBlobStorageWarning(this.account, this.taskHub, this.partitionId, context, blobName ?? string.Empty, exception?.ToString() ?? string.Empty, TraceUtils.ExtensionVersion);
-            }
-        }
-
-        public void FasterBlobStorageError(string context, string blobName, Exception exception)
-        {
-            if (this.logLevelLimit <= LogLevel.Error)
-            {
-                this.logger.LogError(exception, "Part{partition:D2} !!! Faster Blob Storage error : {context} blobName={blobName} {exception}", this.partitionId, context, blobName, exception);
-                this.etwLogError?.FasterBlobStorageError(this.account, this.taskHub, this.partitionId, context, blobName ?? string.Empty, exception?.ToString() ?? string.Empty, TraceUtils.ExtensionVersion);
-            }
-        }
-
         public void FasterProgress(string details)
         {
             if (this.logLevelLimit <= LogLevel.Debug)

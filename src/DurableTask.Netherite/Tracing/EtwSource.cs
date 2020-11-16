@@ -285,20 +285,6 @@ namespace DurableTask.Netherite
             this.WriteEvent(256, Account, TaskHub, PartitionId, Context, Details, ExtensionVersion);
         }
 
-        [Event(257, Level = EventLevel.Error, Version = 1)]
-        public void FasterBlobStorageError(string Account, string TaskHub, int PartitionId, string Context, string BlobName, string Details, string ExtensionVersion)
-        {
-            SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(257, Account, TaskHub, PartitionId, Context, BlobName, Details, ExtensionVersion);
-        }
-
-        [Event(258, Level = EventLevel.Warning, Version = 1)]
-        public void FasterBlobStorageWarning(string Account, string TaskHub, int PartitionId, string Context, string BlobName, string Details, string ExtensionVersion)
-        {
-            SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(258, Account, TaskHub, PartitionId, Context, BlobName, Details, ExtensionVersion);
-        }
-
         [Event(259, Level = EventLevel.Verbose, Version = 1)]
         public void FasterProgress(string Account, string TaskHub, int PartitionId, string Details, string ExtensionVersion)
         {

@@ -163,7 +163,7 @@ namespace DurableTask.Netherite.Faster
                        {
                            if (t.IsFaulted)
                            {
-                               this.BlobManager?.HandleBlobError(nameof(RemoveSegmentAsync), "could not remove page blob for segment", pageBlob?.Name, t.Exception, false, true);
+                               this.BlobManager?.HandleStorageError(nameof(RemoveSegmentAsync), "could not remove page blob for segment", pageBlob?.Name, t.Exception, false, true);
                            }
                            callback(result);
                        });
@@ -183,7 +183,7 @@ namespace DurableTask.Netherite.Faster
             {
                 var nonLoadedBlob = this.pageBlobDirectory.GetPageBlobReference(this.GetSegmentBlobName(segmentId));
                 var exception = new InvalidOperationException("Attempt to read a non-loaded segment");
-                this.BlobManager?.HandleBlobError(nameof(ReadAsync), exception.Message, nonLoadedBlob?.Name, exception, true, false);
+                this.BlobManager?.HandleStorageError(nameof(ReadAsync), exception.Message, nonLoadedBlob?.Name, exception, true, false);
                 throw exception;
             }
 
@@ -289,7 +289,7 @@ namespace DurableTask.Netherite.Faster
                         else
                         {
                             TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                            this.BlobManager?.HandleBlobError(nameof(WritePortionToBlobAsync), $"could not write to page blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob?.Name, e, false, true);
+                            this.BlobManager?.HandleStorageError(nameof(WritePortionToBlobAsync), $"could not write to page blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob?.Name, e, false, true);
                             await Task.Delay(nextRetryIn);
                         }
                         stream.Seek(streamPosition, SeekOrigin.Begin); // must go back to original position before retry
@@ -297,7 +297,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     catch (Exception exception) when (!Utils.IsFatal(exception))
                     {
-                        this.BlobManager?.HandleBlobError(nameof(WritePortionToBlobAsync), $"could not write to page blob target={blob.Name} length={length} destinationAddress={destinationAddress + offset}", blob?.Name, exception, true, this.PartitionErrorHandler.IsTerminated);
+                        this.BlobManager?.HandleStorageError(nameof(WritePortionToBlobAsync), $"could not write to page blob target={blob.Name} length={length} destinationAddress={destinationAddress + offset}", blob?.Name, exception, true, this.PartitionErrorHandler.IsTerminated);
                         throw;
                     }
                 };
@@ -373,7 +373,7 @@ namespace DurableTask.Netherite.Faster
                         else
                         {
                             TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                            this.BlobManager?.HandleBlobError(nameof(ReadFromBlobAsync), $"could not read from page blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob?.Name, e, false, true);
+                            this.BlobManager?.HandleStorageError(nameof(ReadFromBlobAsync), $"could not read from page blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob?.Name, e, false, true);
                             await Task.Delay(nextRetryIn);
                         }
                         stream.Seek(0, SeekOrigin.Begin); // must go back to original position before retrying
@@ -381,7 +381,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     catch (Exception exception) when (!Utils.IsFatal(exception))
                     {
-                        this.BlobManager?.HandleBlobError(nameof(ReadFromBlobAsync), "could not read from page blob", blob?.Name, exception, true, this.PartitionErrorHandler.IsTerminated);
+                        this.BlobManager?.HandleStorageError(nameof(ReadFromBlobAsync), "could not read from page blob", blob?.Name, exception, true, this.PartitionErrorHandler.IsTerminated);
                         throw;
                     }
                 }

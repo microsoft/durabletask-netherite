@@ -430,7 +430,7 @@ namespace DurableTask.Netherite.Faster
                     catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.terminationToken) && numAttempts < BlobManager.MaxRetries)
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                        this.blobManager?.HandleBlobError(nameof(LoadAsync), $"Could not read object from storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
+                        this.blobManager?.HandleStorageError(nameof(LoadAsync), $"Could not read object from storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
                         await Task.Delay(nextRetryIn);
                         continue;
                     }
@@ -505,13 +505,13 @@ namespace DurableTask.Netherite.Faster
                     catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.blobManager.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                        this.blobManager?.HandleBlobError(nameof(StoreAsync), $"could not write object to storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
+                        this.blobManager?.HandleStorageError(nameof(StoreAsync), $"could not write object to storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
                         await Task.Delay(nextRetryIn);
                         continue;
                     }
                     catch (Exception exception) when (!Utils.IsFatal(exception))
                     {
-                        this.blobManager?.HandleBlobError(nameof(StoreAsync), "could not write object to storage", blob?.Name, exception, true, this.blobManager.PartitionErrorHandler.IsTerminated);
+                        this.blobManager?.HandleStorageError(nameof(StoreAsync), "could not write object to storage", blob?.Name, exception, true, this.blobManager.PartitionErrorHandler.IsTerminated);
                         throw;
                     }
                 }

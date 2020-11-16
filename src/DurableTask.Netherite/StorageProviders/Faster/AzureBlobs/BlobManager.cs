@@ -304,17 +304,16 @@ namespace DurableTask.Netherite.Faster
 
         internal void ClosePSFDevices() => Array.ForEach(this.PsfLogDevices, logDevice => logDevice.Dispose());
 
-        public void HandleBlobError(string where, string message, string blobName, Exception e, bool isFatal, bool isWarning)
+        public void HandleStorageError(string where, string message, string blobName, Exception e, bool isFatal, bool isWarning)
         {
-            if (isWarning)
+            if (blobName == null)
             {
-                this.TraceHelper.FasterBlobStorageWarning(message, blobName, e);
+                this.PartitionErrorHandler.HandleError(where, message, e, isFatal, isWarning);
             }
             else
             {
-                this.TraceHelper.FasterBlobStorageError(message, blobName, e);
+                this.PartitionErrorHandler.HandleError(where, $"{message} blob={blobName}", e, isFatal, isWarning);
             }
-            this.PartitionErrorHandler.HandleError(where, $"Encountered storage exception for blob {blobName}", e, isFatal, isWarning);
         }
 
         // clean shutdown, wait for everything, then terminate
@@ -542,8 +541,8 @@ namespace DurableTask.Netherite.Faster
                     }
                     catch (Exception e)
                     {
-                        this.TraceHelper.FasterBlobStorageWarning("could not release lease", this.eventLogCommitBlob.Name, e);
-                        // swallow exceptions when releasing a lease
+                        // we swallow, but still report exceptions when releasing a lease
+                        this.PartitionErrorHandler.HandleError(nameof(MaintenanceLoopAsync), "Could not release partition lease during shutdown", e, false, true);
                     }
                 }
 
@@ -604,7 +603,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     // We lost the lease to someone else. Terminate ownership immediately.
                     this.TraceHelper.LeaseLost(nameof(ILogCommitManager.Commit));
-                    this.HandleBlobError(nameof(ILogCommitManager.Commit), "lease lost", this.eventLogCommitBlob?.Name, ex, true, this.PartitionErrorHandler.IsTerminated);
+                    this.HandleStorageError(nameof(ILogCommitManager.Commit), "could not commit because of lost lease", this.eventLogCommitBlob?.Name, ex, true, this.PartitionErrorHandler.IsTerminated);
                     throw;
                 }
                 catch (StorageException ex) when (BlobUtils.LeaseExpired(ex) && numAttempts < BlobManager.MaxRetries)
@@ -626,14 +625,14 @@ namespace DurableTask.Netherite.Faster
                     else
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                        this.HandleBlobError(nameof(ILogCommitManager.Commit), $"could not write to commit blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", this.eventLogCommitBlob.Name, e, false, true);
+                        this.HandleStorageError(nameof(ILogCommitManager.Commit), $"could not write to commit blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", this.eventLogCommitBlob.Name, e, false, true);
                         Thread.Sleep(nextRetryIn);
                     }
                     continue;
                 }
                 catch (Exception e)
                 {
-                    this.TraceHelper.FasterBlobStorageError(nameof(ILogCommitManager.Commit), this.eventLogCommitBlob.Name, e);
+                    this.HandleStorageError(nameof(ILogCommitManager.Commit), "could not write commit", this.eventLogCommitBlob.Name, e, true, this.PartitionErrorHandler.IsTerminated);
                     throw;
                 }
                 finally
@@ -681,7 +680,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     // We lost the lease to someone else. Terminate ownership immediately.
                     this.TraceHelper.LeaseLost(nameof(ILogCommitManager.GetCommitMetadata));
-                    this.HandleBlobError(nameof(ILogCommitManager.Commit), "lease lost", this.eventLogCommitBlob?.Name, ex, true, this.PartitionErrorHandler.IsTerminated);
+                    this.HandleStorageError(nameof(ILogCommitManager.Commit), "could not read latest commit due to lost lease", this.eventLogCommitBlob?.Name, ex, true, this.PartitionErrorHandler.IsTerminated);
                     throw;
                 }
                 catch (StorageException ex) when (BlobUtils.LeaseExpired(ex) && numAttempts < BlobManager.MaxRetries)
@@ -703,14 +702,14 @@ namespace DurableTask.Netherite.Faster
                     else
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                        this.HandleBlobError(nameof(ILogCommitManager.Commit), $"could not read commit blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", this.eventLogCommitBlob.Name, e, false, true);
+                        this.HandleStorageError(nameof(ILogCommitManager.Commit), $"could not read latest commit, will retry in {nextRetryIn}s, numAttempts={numAttempts}", this.eventLogCommitBlob.Name, e, false, true);
                         Thread.Sleep(nextRetryIn);
                     }
                     continue;
                 }
                 catch (Exception e)
                 {
-                    this.TraceHelper.FasterBlobStorageError(nameof(ILogCommitManager.GetCommitMetadata), this.eventLogCommitBlob.Name, e);
+                    this.HandleStorageError(nameof(ILogCommitManager.GetCommitMetadata), "could not read latest commit", this.eventLogCommitBlob.Name, e, true, this.PartitionErrorHandler.IsTerminated);
                     throw;
                 }
                 finally
@@ -808,7 +807,7 @@ namespace DurableTask.Netherite.Faster
             }
             catch (Exception e)
             {
-                this.TraceHelper.FasterBlobStorageError(nameof(ICheckpointManager.CommitIndexCheckpoint), target.Name, e);
+                this.HandleStorageError(nameof(ICheckpointManager.CommitIndexCheckpoint), "could not write index checkpoint", target.Name, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
             }
         }
@@ -840,7 +839,7 @@ namespace DurableTask.Netherite.Faster
             }
             catch (Exception e)
             {
-                this.TraceHelper.FasterBlobStorageError(nameof(ICheckpointManager.CommitLogCheckpoint), target?.Name, e);
+                this.HandleStorageError(nameof(ICheckpointManager.CommitLogCheckpoint), "could not write KV checkpoint", target?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
             }
             finally
@@ -871,7 +870,7 @@ namespace DurableTask.Netherite.Faster
             }
             catch (Exception e)
             {
-                this.TraceHelper.FasterBlobStorageError(nameof(ICheckpointManager.GetIndexCheckpointMetadata), target?.Name, e);
+                this.HandleStorageError(nameof(ICheckpointManager.GetIndexCheckpointMetadata), "could not read index checkpoint metadata", target?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
             }
             finally
@@ -902,7 +901,7 @@ namespace DurableTask.Netherite.Faster
             }
             catch (Exception e)
             {
-                this.TraceHelper.FasterBlobStorageError(nameof(ICheckpointManager.GetLogCheckpointMetadata), target?.Name, e);
+                this.HandleStorageError(nameof(ICheckpointManager.GetLogCheckpointMetadata), "could not read log checkpoint metadata", target?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
             }
             finally
@@ -929,7 +928,7 @@ namespace DurableTask.Netherite.Faster
             }
             catch (Exception e)
             {
-                this.TraceHelper.FasterBlobStorageError(nameof(ICheckpointManager.GetIndexDevice), null, e);
+                this.HandleStorageError(nameof(ICheckpointManager.GetIndexDevice), "could not create index device", null, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
             }
             finally
@@ -957,7 +956,7 @@ namespace DurableTask.Netherite.Faster
             }
             catch (Exception e)
             {
-                this.TraceHelper.FasterBlobStorageError(nameof(ICheckpointManager.GetSnapshotLogDevice), null, e);
+                this.HandleStorageError(nameof(ICheckpointManager.GetSnapshotLogDevice), "could not create checkpoint device", null, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
             }
             finally
@@ -984,7 +983,7 @@ namespace DurableTask.Netherite.Faster
             }
             catch (Exception e)
             {
-                this.TraceHelper.FasterBlobStorageError(nameof(ICheckpointManager.GetSnapshotObjectLogDevice), null, e);
+                this.HandleStorageError(nameof(ICheckpointManager.GetSnapshotObjectLogDevice), "could not create checkpoint object device", null, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
             }
             finally
@@ -1034,7 +1033,7 @@ namespace DurableTask.Netherite.Faster
             }
             catch (Exception e)
             {
-                this.TraceHelper.FasterBlobStorageError(nameof(GetLatestCheckpoint), target?.Name, e);
+                this.HandleStorageError(nameof(GetLatestCheckpoint), "could not determine latest checkpoint", target?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
             }
             finally
