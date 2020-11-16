@@ -279,7 +279,7 @@ namespace DurableTask.Netherite.Faster
                         }
                         break;
                     }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e) && numAttempts < BlobManager.MaxRetries)
+                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
                     {
                         stopwatch.Stop();
                         if (BlobUtils.IsTimeout(e))
@@ -363,7 +363,7 @@ namespace DurableTask.Netherite.Faster
                         }
                         break;
                     }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e) && numAttempts < BlobManager.MaxRetries)
+                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
                     {
                         stopwatch.Stop();
                         if (BlobUtils.IsTimeout(e))

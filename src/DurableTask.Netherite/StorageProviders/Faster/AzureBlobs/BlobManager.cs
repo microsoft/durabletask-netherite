@@ -616,7 +616,7 @@ namespace DurableTask.Netherite.Faster
                     this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: renewal complete");
                     continue;
                 }
-                catch (StorageException e) when (BlobUtils.IsTransientStorageError(e) && numAttempts < BlobManager.MaxRetries)
+                catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, CancellationToken.None) && numAttempts < BlobManager.MaxRetries)
                 {
                     stopwatch.Stop();
                     if (BlobUtils.IsTimeout(e))
@@ -693,7 +693,7 @@ namespace DurableTask.Netherite.Faster
                     this.TraceHelper.LeaseProgress("ILogCommitManager.GetCommitMetadata: renewal complete");
                     continue;
                 }
-                catch (StorageException e) when (BlobUtils.IsTransientStorageError(e) && numAttempts < BlobManager.MaxRetries)
+                catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, CancellationToken.None) && numAttempts < BlobManager.MaxRetries)
                 {
                     stopwatch.Stop();
                     if (BlobUtils.IsTimeout(e))
