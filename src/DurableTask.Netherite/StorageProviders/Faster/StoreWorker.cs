@@ -425,12 +425,12 @@ namespace DurableTask.Netherite.Faster
 
                 // finally we write the checkpoint info file
                 await this.store.FinalizeCheckpointCompletedAsync(checkpointToken).ConfigureAwait(false);
+
+                // notify the log worker that the log can be truncated up to the commit log position
+                this.LogWorker.SetLastCheckpointPosition(commitLogPosition);
             }
  
             this.traceHelper.FasterCheckpointPersisted(checkpointToken, description, commitLogPosition, inputQueuePosition, stopwatch.ElapsedMilliseconds);
-
-            // notify the log worker that the log can be truncated up to the commit log position
-            this.LogWorker.SetLastCheckpointPosition(commitLogPosition);
 
             this.Notify();
             return (commitLogPosition, inputQueuePosition);
@@ -438,12 +438,12 @@ namespace DurableTask.Netherite.Faster
 
         public async Task ReplayCommitLog(LogWorker logWorker)
         {
-            this.traceHelper.FasterProgress("Replaying log");
+            var startPosition = this.CommitLogPosition;
+            this.traceHelper.FasterProgress($"Replaying log from {startPosition}");
 
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
 
-            var startPosition = this.CommitLogPosition;
             this.effectTracker.IsReplaying = true;
             await logWorker.ReplayCommitLog(startPosition, this).ConfigureAwait(false);
             stopwatch.Stop();
