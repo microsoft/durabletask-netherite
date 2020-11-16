@@ -8,7 +8,7 @@ namespace DurableTask.Netherite
     using System.Text;
 
     [DataContract]
-class WaitRequestReceived : ClientRequestEventWithPrefetch
+    class WaitRequestReceived : ClientRequestEventWithPrefetch
     {
         [DataMember]
         public string InstanceId { get; set; }

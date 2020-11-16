@@ -10,7 +10,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class TimerFired : PartitionUpdateEvent
+    class TimerFired : PartitionUpdateEvent
     {
         [DataMember]
         public long TimerId { get; set; }

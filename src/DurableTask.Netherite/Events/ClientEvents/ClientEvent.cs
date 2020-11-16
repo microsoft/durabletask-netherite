@@ -7,7 +7,7 @@ namespace DurableTask.Netherite
     using System.Runtime.Serialization;
 
     [DataContract]
-abstract class ClientEvent : Event
+    abstract class ClientEvent : Event
     {
         [DataMember]
         public Guid ClientId { get; set; }

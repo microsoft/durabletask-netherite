@@ -8,7 +8,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class QueryResponseReceived : ClientEvent
+    class QueryResponseReceived : ClientEvent
     {
         [DataMember]
         public IList<OrchestrationState> OrchestrationStates { get; set; }

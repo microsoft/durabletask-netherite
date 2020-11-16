@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using System.Text;
 
     [DataContract]
-abstract class ClientRequestEvent : PartitionUpdateEvent, IClientRequestEvent
+    abstract class ClientRequestEvent : PartitionUpdateEvent, IClientRequestEvent
     {
         [DataMember]
         public Guid ClientId { get; set; }

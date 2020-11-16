@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using System.Text;
 
     [DataContract]
-abstract class PartitionReadEvent : PartitionEvent
+    abstract class PartitionReadEvent : PartitionEvent
     {
         /// <summary>
         /// The target of the read operation.

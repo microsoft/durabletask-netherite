@@ -10,7 +10,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class DeletionResponseReceived : ClientEvent
+    class DeletionResponseReceived : ClientEvent
     {
         [DataMember]
         public int NumberInstancesDeleted { get; set; }

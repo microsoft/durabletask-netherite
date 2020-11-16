@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using System.Threading.Tasks;
 
     [DataContract]
-class PurgeBatchIssued : PartitionUpdateEvent
+    class PurgeBatchIssued : PartitionUpdateEvent
     {
         [DataMember]
         public string QueryEventId { get; set; }

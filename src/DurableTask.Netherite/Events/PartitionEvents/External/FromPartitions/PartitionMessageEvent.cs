@@ -6,7 +6,7 @@ namespace DurableTask.Netherite
     using System.Runtime.Serialization;
 
     [DataContract]
-abstract class PartitionMessageEvent : PartitionUpdateEvent
+    abstract class PartitionMessageEvent : PartitionUpdateEvent
     {
         [DataMember]
         public uint OriginPartition { get; set; }

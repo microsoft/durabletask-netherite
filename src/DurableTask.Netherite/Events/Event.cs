@@ -10,7 +10,7 @@ namespace DurableTask.Netherite
 
     [DataContract]
     [KnownTypeAttribute("KnownTypes")]
-abstract class Event
+    abstract class Event
     {
         string eventIdString;
 

@@ -10,7 +10,7 @@ namespace DurableTask.Netherite
     /// An event that is processed by a partition
     /// </summary>
     [DataContract]
-abstract class PartitionEvent : Event
+    abstract class PartitionEvent : Event
     {
         [DataMember]
         public uint PartitionId { get; set; }

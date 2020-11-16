@@ -8,7 +8,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core.History;
 
     [DataContract]
-class HistoryResponseReceived : ClientEvent
+    class HistoryResponseReceived : ClientEvent
     {
         [DataMember]
         public string ExecutionId { get; set; }

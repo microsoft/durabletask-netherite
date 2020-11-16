@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class ActivityOffloadReceived : PartitionMessageEvent
+    class ActivityOffloadReceived : PartitionMessageEvent
     {
         [DataMember]
         public List<(TaskMessage,string)> OffloadedActivities { get; set; }

@@ -8,7 +8,7 @@ namespace DurableTask.Netherite.Faster
     using System;
 
     [JsonObject]
-class CheckpointInfo
+    class CheckpointInfo
     {
         [JsonProperty]
         public Guid IndexToken { get; set; }

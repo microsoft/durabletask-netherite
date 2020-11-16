@@ -8,7 +8,7 @@ namespace DurableTask.Netherite
     using System.Text;
 
     [DataContract]
-class HistoryRequestReceived : ClientReadonlyRequestEvent
+    class HistoryRequestReceived : ClientReadonlyRequestEvent
     {
         [DataMember]
         public string InstanceId { get; set; }

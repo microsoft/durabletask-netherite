@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using System.Text;
 
     [DataContract]
-abstract class ClientRequestEventWithPrefetch : ClientRequestEvent, IClientRequestEvent
+    abstract class ClientRequestEventWithPrefetch : ClientRequestEvent, IClientRequestEvent
     {
         [DataMember]
         public ProcessingPhase Phase { get; set; }

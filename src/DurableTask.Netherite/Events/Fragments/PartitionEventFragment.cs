@@ -7,7 +7,7 @@ namespace DurableTask.Netherite
     using System.Text;
 
     [DataContract]
-class PartitionEventFragment : 
+    class PartitionEventFragment : 
         PartitionUpdateEvent, 
         FragmentationAndReassembly.IEventFragment
     {

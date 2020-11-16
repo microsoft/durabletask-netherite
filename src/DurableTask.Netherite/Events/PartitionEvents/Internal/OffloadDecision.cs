@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class OffloadDecision : PartitionUpdateEvent
+    class OffloadDecision : PartitionUpdateEvent
     {
         [DataMember]
         public DateTime Timestamp { get; set; }

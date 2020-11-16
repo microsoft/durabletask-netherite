@@ -7,7 +7,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class StateResponseReceived : ClientEvent
+    class StateResponseReceived : ClientEvent
     {
         [DataMember]
         public OrchestrationState OrchestrationState { get; set; }

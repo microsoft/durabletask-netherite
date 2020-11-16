@@ -6,7 +6,7 @@ namespace DurableTask.Netherite
     using System.Runtime.Serialization;
 
     [DataContract]
-class ClientEventFragment : ClientEvent, FragmentationAndReassembly.IEventFragment
+    class ClientEventFragment : ClientEvent, FragmentationAndReassembly.IEventFragment
     {
         [DataMember]
         public EventId OriginalEventId {  get; set; }

@@ -10,7 +10,7 @@ namespace DurableTask.Netherite
     static class EventTraceContext
     {
         [ThreadStatic]
-static (long commitLogPosition, string eventId) context;
+        static (long commitLogPosition, string eventId) context;
 
         static readonly TraceContextClear traceContextClear = new TraceContextClear();
 

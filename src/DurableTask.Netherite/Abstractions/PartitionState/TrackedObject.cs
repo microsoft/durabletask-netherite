@@ -13,7 +13,7 @@ namespace DurableTask.Netherite
     /// </summary>
     [DataContract]
     [KnownTypeAttribute("KnownTypes")]
-abstract class TrackedObject
+    abstract class TrackedObject
     {
         /// <summary>
         /// The partition to which this object belongs.

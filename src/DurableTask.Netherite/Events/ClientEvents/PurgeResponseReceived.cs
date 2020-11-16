@@ -7,7 +7,7 @@ namespace DurableTask.Netherite
     using System.Text;
 
     [DataContract]
-class PurgeResponseReceived : ClientEvent
+    class PurgeResponseReceived : ClientEvent
     {
         [DataMember]
         public int NumberInstancesPurged { get; set; }

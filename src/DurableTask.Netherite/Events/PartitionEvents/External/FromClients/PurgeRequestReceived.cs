@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-class PurgeRequestReceived : ClientRequestEventWithQuery
+    class PurgeRequestReceived : ClientRequestEventWithQuery
     {
         // tracks total number of purges that happened
         // it is stored in QueriesState so it correctly counts all successful purges 

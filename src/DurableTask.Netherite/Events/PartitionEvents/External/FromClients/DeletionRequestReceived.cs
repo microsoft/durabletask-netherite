@@ -8,7 +8,7 @@ namespace DurableTask.Netherite
     using System.Text;
 
     [DataContract]
-class DeletionRequestReceived : ClientRequestEventWithPrefetch
+    class DeletionRequestReceived : ClientRequestEventWithPrefetch
     {
         [DataMember]
         public string InstanceId { get; set; }
