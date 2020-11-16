@@ -44,9 +44,6 @@ namespace DurableTask.Netherite
         public Dictionary<string, BatchProcessed> StepsAwaitingPersistence { get; private set; } = new Dictionary<string, BatchProcessed>();
 
         [IgnoreDataMember]
-        public HashSet<OrchestrationMessageBatch> PendingMessageBatches { get; set; } = new HashSet<OrchestrationMessageBatch>();
-
-        [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Sessions);
 
         public static string GetWorkItemId(uint partition, long session, long position) => $"{partition:D2}S{session}P{position}";
