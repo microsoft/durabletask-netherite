@@ -294,7 +294,10 @@ namespace DurableTask.Netherite
                 var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x, int i) =>
                     (i == target) ? $"{targetLoad}+{offloadDecisionEvent.OffloadedActivities.Count}" : (x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString()))));
 
-                this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
+                if (!effects.IsReplaying)
+                {
+                    this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
+                }
 
                 // try again relatively soon
                 this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(200));
@@ -303,7 +306,10 @@ namespace DurableTask.Netherite
             {
                 var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x) => x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString())));
 
-                this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
+                if (!effects.IsReplaying)
+                {
+                    this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
+                }
 
                 // there are no eligible recipients... try again in a while
                 this.ScheduleNextOffloadDecision(TimeSpan.FromSeconds(10));

@@ -105,6 +105,7 @@ namespace DurableTask.Netherite.Faster
 
         public void SetLastCheckpointPosition(long commitLogPosition)
         {
+            this.traceHelper.FasterProgress($"Truncating FasterLog to {commitLogPosition}");
             this.log.TruncateUntil(commitLogPosition);
         }
       
