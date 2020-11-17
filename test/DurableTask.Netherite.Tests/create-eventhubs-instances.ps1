@@ -13,10 +13,10 @@ $NumberPartitions = 12
 
 echo "Creating fresh EventHubs instances..."
 
-az eventhubs eventhub create --namespace-name $NameSpace --resource-group $ResourceGroup --name Partitions --message-retention 1 --partition-count $NumberPartitions
-az eventhubs eventhub create --namespace-name $NameSpace --resource-group $ResourceGroup --name Clients0 --message-retention 1 --partition-count 32
-az eventhubs eventhub create --namespace-name $NameSpace --resource-group $ResourceGroup --name Clients1 --message-retention 1 --partition-count 32
-az eventhubs eventhub create --namespace-name $NameSpace --resource-group $ResourceGroup --name Clients2 --message-retention 1 --partition-count 32
-az eventhubs eventhub create --namespace-name $NameSpace --resource-group $ResourceGroup --name Clients3 --message-retention 1 --partition-count 32
+az eventhubs eventhub create --namespace-name $NameSpace --resource-group $ResourceGroup --name partitions --message-retention 1 --partition-count $NumberPartitions
+az eventhubs eventhub create --namespace-name $NameSpace --resource-group $ResourceGroup --name clients0 --message-retention 1 --partition-count 32
+az eventhubs eventhub create --namespace-name $NameSpace --resource-group $ResourceGroup --name clients1 --message-retention 1 --partition-count 32
+az eventhubs eventhub create --namespace-name $NameSpace --resource-group $ResourceGroup --name clients2 --message-retention 1 --partition-count 32
+az eventhubs eventhub create --namespace-name $NameSpace --resource-group $ResourceGroup --name clients3 --message-retention 1 --partition-count 32
 
 echo "Done."

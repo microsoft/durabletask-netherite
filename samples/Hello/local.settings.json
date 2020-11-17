@@ -1,0 +1,7 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "Should be ignored because we have the environment variable set",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet"
+  }
+}
