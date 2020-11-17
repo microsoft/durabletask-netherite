@@ -51,12 +51,11 @@
 
       "hubName": "perftests",
 
-      "extendedSessionsEnabled": "true",
+      "extendedSessionsEnabled": "true", // important for cache locality
+      "UseGracefulShutdown": true, // important to avoid lengthy waits for lease expiration
+
       "maxConcurrentActivityFunctions": "100",
       "maxConcurrentOrchestratorFunctions": "100",
-
-      // should always use graceful shutdown to avoid lengthy waits for lease expiration
-      "UseGracefulShutdown": true,
 
       "storageProvider": {
 
@@ -86,17 +85,17 @@
         "EventProcessorManagement": "EventHubs",
 
         // this controls what log information is produced by the various components
-        // unlike the controls above, this turns off production (not just transmission or consumption)
-        // and is thus more efficient
+        // it limits production of the events, and thus can be used to prevent overheads
+        // even when some consumers (e.g. Application Insights) are configured to trace information at the lowest level
         "LogLevelLimit": "Information",
         "StorageLogLevelLimit": "Information",
         "TransportLogLevelLimit": "Information",
         "EventLogLevelLimit": "Debug",
         "WorkItemLogLevelLimit": "Debug",
 
-        // the following can be used to direct trace output to additional specific sinks
+        // the following can be used to split and direct trace output to additional specific sinks
+        // which is useful in a testing and debugging context
         "TraceToConsole": false,
-        "TraceToEtwExtension": false,
         "TraceToBlob": false
       }
     }
