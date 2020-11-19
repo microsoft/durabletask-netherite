@@ -146,7 +146,12 @@ namespace DurableTask.Netherite.Faster
 
             this.traceHelper.FasterProgress("Stopped StoreWorker");
         }
-       
+
+        public Task RunPrefetchSession(IAsyncEnumerable<TrackedObjectKey> keys)
+        {
+            return this.store.RunPrefetchSession(keys);
+        }
+
         async Task PublishPartitionLoad()
         {
             var info = new PartitionLoadInfo()

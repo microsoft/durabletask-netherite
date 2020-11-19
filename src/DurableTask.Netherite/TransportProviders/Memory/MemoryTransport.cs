@@ -60,7 +60,7 @@ namespace DurableTask.Netherite.Emulated
             return this.partitionQueues != null;
         }
 
-        async Task ITaskHub.StartAsync()
+        Task ITaskHub.StartAsync()
         {
             this.shutdownTokenSource = new CancellationTokenSource();
 
@@ -76,6 +76,15 @@ namespace DurableTask.Netherite.Emulated
             this.clientQueues[clientId] = clientQueue;
             clientSender.SetHandler(list => this.SendEvents(this.client, list));
 
+            // we finish the (possibly lengthy) partition loading asynchronously so it is possible to receive 
+            // stop signals before partitions are fully recovered
+            var backgroundStartupTask = this.FinishStartup(this.shutdownTokenSource.Token, clientQueue);
+
+            return Task.CompletedTask;
+        }
+
+        async Task FinishStartup(CancellationToken shutdownToken, MemoryClientQueue clientQueue)
+        {
             // create all partitions
             var tasks = new List<Task>();
             for (uint i = 0; i < this.numberPartitions; i++)
@@ -94,6 +103,8 @@ namespace DurableTask.Netherite.Emulated
                 var nextInputQueuePosition = await partition.CreateOrRestoreAsync(this.host.CreateErrorHandler(partitionId), 0).ConfigureAwait(false);
                 this.partitionQueues[partitionId].FirstInputQueuePosition = nextInputQueuePosition;
             };
+
+            shutdownToken.ThrowIfCancellationRequested();
 
             // start all the emulated queues
             foreach (var partitionQueue in this.partitionQueues)

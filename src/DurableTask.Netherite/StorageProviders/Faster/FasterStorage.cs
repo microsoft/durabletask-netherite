@@ -132,7 +132,7 @@ namespace DurableTask.Netherite.Faster
                 try
                 {
                     // we are recovering the last checkpoint of the store
-                    this.store.Recover(out long commitLogPosition, out long inputQueuePosition);
+                    (long commitLogPosition, long inputQueuePosition) = await this.store.RecoverAsync();
                     this.storeWorker.SetCheckpointPositionsAfterRecovery(commitLogPosition, inputQueuePosition);
 
                     // truncate the log in case the truncation did not commit after the checkpoint was taken
@@ -147,6 +147,8 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 this.partition.Assert(!FASTER.core.LightEpoch.AnyInstanceProtected());
+
+                this.TraceHelper.FasterProgress($"Replaying log length={this.log.TailAddress - this.storeWorker.CommitLogPosition} range={this.storeWorker.CommitLogPosition}-{this.log.TailAddress}");
 
                 try
                 {

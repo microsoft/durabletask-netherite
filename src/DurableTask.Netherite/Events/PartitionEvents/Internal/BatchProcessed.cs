@@ -11,7 +11,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core.History;
 
     [DataContract]
-    class BatchProcessed : PartitionUpdateEvent
+    class BatchProcessed : PartitionUpdateEvent, IRequiresPrefetch
     {
         [DataMember]
         public long SessionId { get; set; }
@@ -59,8 +59,8 @@ namespace DurableTask.Netherite
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.IsPersisted ? this.WorkItemId + "P" : this.WorkItemId);
 
         [IgnoreDataMember]
-        public override IEnumerable<(TaskMessage,string)> TracedTaskMessages 
-        { 
+        public override IEnumerable<(TaskMessage, string)> TracedTaskMessages
+        {
             get
             {
                 string workItemId = SessionsState.GetWorkItemId(this.PartitionId, this.SessionId, this.BatchStartPosition);
@@ -92,6 +92,15 @@ namespace DurableTask.Netherite
                         yield return (r, workItemId);
                     }
                 }
+            }
+        }
+
+        IEnumerable<TrackedObjectKey> IRequiresPrefetch.KeysToPrefetch
+        {
+            get
+            {
+                yield return TrackedObjectKey.Instance(this.InstanceId);
+                yield return TrackedObjectKey.History(this.InstanceId);
             }
         }
 

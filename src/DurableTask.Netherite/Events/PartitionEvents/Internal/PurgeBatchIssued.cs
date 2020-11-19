@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using System.Threading.Tasks;
 
     [DataContract]
-    class PurgeBatchIssued : PartitionUpdateEvent
+    class PurgeBatchIssued : PartitionUpdateEvent, IRequiresPrefetch
     {
         [DataMember]
         public string QueryEventId { get; set; }
@@ -38,6 +38,18 @@ namespace DurableTask.Netherite
             s.Append(this.BatchNumber);
             s.Append(" count=");
             s.Append(this.InstanceIds.Count);
+        }
+
+        IEnumerable<TrackedObjectKey> IRequiresPrefetch.KeysToPrefetch
+        {
+            get
+            {
+                foreach (var instanceId in this.InstanceIds)
+                {
+                    yield return TrackedObjectKey.Instance(instanceId);
+                    yield return TrackedObjectKey.History(instanceId);
+                }
+            }
         }
 
         public override void DetermineEffects(EffectTracker effects)

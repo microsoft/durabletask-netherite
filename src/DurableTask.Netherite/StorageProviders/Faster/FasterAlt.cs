@@ -92,7 +92,7 @@ namespace DurableTask.Netherite.Faster
         {
         }
 
-        public override void Recover(out long commitLogPosition, out long inputQueuePosition)
+        public override Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync()
         {
             foreach (var guid in this.ReadCheckpointIntentions())
             {
@@ -119,7 +119,7 @@ namespace DurableTask.Netherite.Faster
             this.CompletePending();
 
             var dedupState = (DedupState)this.cache[TrackedObjectKey.Dedup].TrackedObject;
-            (commitLogPosition, inputQueuePosition) = dedupState.Positions;
+            return Task.FromResult(dedupState.Positions);
         }
 
         public override void CompletePending()
@@ -583,6 +583,12 @@ namespace DurableTask.Netherite.Faster
                 this.blobManager.PartitionErrorHandler.HandleError(nameof(ReadCheckpointIntentions), "Failed to read checkpoint intentions from storage", e, true, false);
                 throw;
             }
+        }
+
+        public override Task RunPrefetchSession(IAsyncEnumerable<TrackedObjectKey> keys)
+        {
+            //TODO
+            return Task.CompletedTask;
         }
 
         #endregion

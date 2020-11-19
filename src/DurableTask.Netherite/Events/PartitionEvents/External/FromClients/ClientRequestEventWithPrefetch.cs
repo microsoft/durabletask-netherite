@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using System.Text;
 
     [DataContract]
-    abstract class ClientRequestEventWithPrefetch : ClientRequestEvent, IClientRequestEvent
+    abstract class ClientRequestEventWithPrefetch : ClientRequestEvent, IClientRequestEvent, IRequiresPrefetch
     {
         [DataMember]
         public ProcessingPhase Phase { get; set; }
@@ -24,6 +24,19 @@ namespace DurableTask.Netherite
 
         [IgnoreDataMember]
         public virtual TrackedObjectKey? Prefetch => null;
+
+        IEnumerable<TrackedObjectKey> IRequiresPrefetch.KeysToPrefetch
+        {
+            get
+            {
+                yield return this.Target;
+                var secondPrefetch = this.Prefetch;
+                if (secondPrefetch.HasValue)
+                {
+                    yield return secondPrefetch.Value;
+                }
+            }
+        }
 
         public sealed override void DetermineEffects(EffectTracker effects)
         {

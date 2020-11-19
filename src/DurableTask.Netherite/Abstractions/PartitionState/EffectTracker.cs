@@ -121,13 +121,6 @@ namespace DurableTask.Netherite
 
         public void ProcessReadResult(PartitionReadEvent readEvent, TrackedObjectKey key, TrackedObject target)
         {
-            if (readEvent == null)
-            {
-                // this read is not caused by a read event but was issued directly
-                // in that case we are not processing the result here
-                return;
-            }
-
             (long commitLogPosition, long inputQueuePosition) = this.getPositions();
             this.Partition.Assert(!this.IsReplaying); // read events are never part of the replay
             double startedTimestamp = this.Partition.CurrentTimeMs;

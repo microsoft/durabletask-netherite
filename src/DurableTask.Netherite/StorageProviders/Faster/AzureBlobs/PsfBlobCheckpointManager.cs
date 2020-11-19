@@ -47,18 +47,14 @@ namespace DurableTask.Netherite.Faster
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
-            if (this.blobManager.GetLatestCheckpoint(out Guid indexToken, out Guid _, this.groupOrdinal))
-            {
-                yield return indexToken;
-            }
+            var indexToken = this.blobManager.PsfCheckpointInfos[this.groupOrdinal].IndexToken;
+            yield return indexToken;
         }
 
         IEnumerable<Guid> ICheckpointManager.GetLogCheckpointTokens()
         {
-            if (this.blobManager.GetLatestCheckpoint(out Guid _, out Guid logToken, this.groupOrdinal))
-            {
-                yield return logToken;
-            }
+            var logToken = this.blobManager.PsfCheckpointInfos[this.groupOrdinal].LogToken;
+            yield return logToken;
         }
 
         public void PurgeAll() { /* TODO */ }

@@ -21,7 +21,7 @@ namespace DurableTask.Netherite.Faster
         readonly BlobManager blobManager;
         readonly CancellationToken terminationToken;
 
-        ClientSession<Key, Value, EffectTracker, TrackedObject, PartitionReadEvent, Functions> mainSession;
+        ClientSession<Key, Value, EffectTracker, TrackedObject, object, Functions> mainSession;
 
         internal const long HashTableSize = 1L << 16;
 
@@ -92,20 +92,21 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
         }
 
-        ClientSession<Key, Value, EffectTracker, TrackedObject, PartitionReadEvent, Functions> CreateASession()
-            => this.fht.NewSession<EffectTracker, TrackedObject, PartitionReadEvent, Functions>(new Functions(this.partition, this.StoreStats));
+        ClientSession<Key, Value, EffectTracker, TrackedObject, object, Functions> CreateASession()
+            => this.fht.NewSession<EffectTracker, TrackedObject, object, Functions>(new Functions(this.partition, this.StoreStats));
 
         public override void InitMainSession() 
             => this.mainSession = this.CreateASession();
 
-        public override void Recover(out long commitLogPosition, out long inputQueuePosition)
+        public override async Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync()
         {
             try
             {
-                this.fht.Recover(numPagesToPreload: 0);
+                await this.blobManager.FindCheckpointsAsync();
+                this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
+                this.fht.Recover(numPagesToPreload: 0); //TODO make this  RecoverAsync once available in Faster
                 this.mainSession = this.CreateASession();
-                commitLogPosition = this.blobManager.CheckpointInfo.CommitLogPosition;
-                inputQueuePosition = this.blobManager.CheckpointInfo.InputQueuePosition;
+                return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -279,7 +280,7 @@ namespace DurableTask.Netherite.Faster
                                   .Where(orchestrationState => orchestrationState != null);
                 }
 #else
-                IAsyncEnumerable<OrchestrationState> queryPSFsAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, PartitionReadEvent, Functions> session)
+                IAsyncEnumerable<OrchestrationState> queryPSFsAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, Functions> session)
                     => this.ScanOrchestrationStates(session, effectTracker, queryEvent);
 #endif
                 // create an individual session for this query so the main session can be used
@@ -300,9 +301,107 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        // kick off a prefetch
+        public override async Task RunPrefetchSession(IAsyncEnumerable<TrackedObjectKey> keys)
+        {
+            int maxConcurrency = 500;
+            using SemaphoreSlim prefetchSemaphore = new SemaphoreSlim(maxConcurrency);
+
+            Guid sessionId = Guid.NewGuid();
+            this.blobManager.TraceHelper.FasterProgress($"PrefetchSession {sessionId} started (maxConcurrency={maxConcurrency})");
+
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
+            long numberIssued = 0;
+            long numberMisses = 0;
+            long numberHits = 0;
+            long lastReport = 0;
+            void ReportProgress(int elapsedMillisecondsThreshold)
+            {
+                if (stopwatch.ElapsedMilliseconds - lastReport >= elapsedMillisecondsThreshold)
+                {
+                    this.blobManager.TraceHelper.FasterProgress(
+                        $"FasterKV PrefetchSession {sessionId} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s issued={numberIssued} pending={maxConcurrency-prefetchSemaphore.CurrentCount} hits={numberHits} misses={numberMisses}");
+                    lastReport = stopwatch.ElapsedMilliseconds;
+                }
+            }
+
+            try
+            {
+                // these are disposed after the prefetch thread is done
+                using var prefetchSession = this.CreateASession();
+
+                // for each key, issue a prefetch
+                await foreach (TrackedObjectKey key in keys)
+                {
+                    // wait for an available prefetch semaphore token
+                    while (!await prefetchSemaphore.WaitAsync(50, this.terminationToken))
+                    {
+                        prefetchSession.CompletePending();
+                        ReportProgress(1000);
+                    }
+
+                    FasterKV.Key k = key;
+                    EffectTracker noInput = null;
+                    TrackedObject ignoredOutput = null;
+                    var status = prefetchSession.Read(ref k, ref noInput, ref ignoredOutput, userContext: prefetchSemaphore, 0);
+                    numberIssued++;
+
+                    switch (status)
+                    {
+                        case Status.NOTFOUND:
+                        case Status.OK:
+                            // fast path: we hit in the cache and complete the read
+                            numberHits++;
+                            prefetchSemaphore.Release();
+                            break;
+
+                        case Status.PENDING:
+                            // slow path: upon completion
+                            numberMisses++;
+                            break;
+
+                        case Status.ERROR:
+                            this.partition.ErrorHandler.HandleError(nameof(RunPrefetchSession), "FASTER reported ERROR status", null, true, this.partition.ErrorHandler.IsTerminated);
+                            break;
+                    }
+
+                    this.terminationToken.ThrowIfCancellationRequested();
+                    prefetchSession.CompletePending();
+                    ReportProgress(1000);
+                }
+
+                ReportProgress(0);
+                this.blobManager.TraceHelper.FasterProgress($"PrefetchSession {sessionId} is waiting for completion");
+
+                // all prefetches were issued; now we wait for them all to complete
+                // by acquiring ALL the semaphore tokens
+                for (int i = 0; i < maxConcurrency; i++)
+                {
+                    while (!await prefetchSemaphore.WaitAsync(50, this.terminationToken))
+                    {
+                        prefetchSession.CompletePending();
+                        ReportProgress(1000);
+                    }
+                }
+
+                ReportProgress(0);
+                this.blobManager.TraceHelper.FasterProgress($"PrefetchSession {sessionId} completed");
+            }
+            catch (OperationCanceledException) when (this.terminationToken.IsCancellationRequested)
+            {
+                // partition is terminating
+            }
+            catch (Exception e) when (!Utils.IsFatal(e))
+            {
+                this.partition.ErrorHandler.HandleError(nameof(RunPrefetchSession), "PrefetchSession {sessionId} encountered exception", e, false, this.partition.ErrorHandler.IsTerminated);
+            }
+        }
+
         // kick off a read of a tracked object, completing asynchronously if necessary
         public override void ReadAsync(PartitionReadEvent readEvent, EffectTracker effectTracker)
         {
+            this.partition.Assert(readEvent != null);
             try
             {
                 if (readEvent.Prefetch.HasValue)
@@ -331,7 +430,8 @@ namespace DurableTask.Netherite.Faster
                             break;
 
                         case Status.ERROR:
-                            throw new Exception("Faster"); //TODO
+                            this.partition.ErrorHandler.HandleError(nameof(ReadAsync), "FASTER reported ERROR status", null, true, this.partition.ErrorHandler.IsTerminated);
+                            break;
                     }
                 }
             }
@@ -360,7 +460,7 @@ namespace DurableTask.Netherite.Faster
 
         // read a tracked object on a query session
         async ValueTask<TrackedObject> ReadAsync(
-            ClientSession<Key, Value, EffectTracker, TrackedObject, PartitionReadEvent, Functions> session,
+            ClientSession<Key, Value, EffectTracker, TrackedObject, object, Functions> session,
             Key key, 
             EffectTracker effectTracker)
         {
@@ -411,7 +511,7 @@ namespace DurableTask.Netherite.Faster
         }
 
         async IAsyncEnumerable<OrchestrationState> ScanOrchestrationStates(
-            ClientSession<Key, Value, EffectTracker, TrackedObject, PartitionReadEvent, Functions> session,
+            ClientSession<Key, Value, EffectTracker, TrackedObject, object, Functions> session,
             EffectTracker effectTracker,
             PartitionQueryEvent queryEvent)
         {
@@ -627,7 +727,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public class Functions : IFunctions<Key, Value, EffectTracker, TrackedObject, PartitionReadEvent>
+        public class Functions : IFunctions<Key, Value, EffectTracker, TrackedObject, object>
         {
             readonly Partition partition;
             readonly StoreStatistics stats;
@@ -680,22 +780,36 @@ namespace DurableTask.Netherite.Faster
                 this.stats.Modify++;
             }
 
-            public void SingleReader(ref Key key, ref EffectTracker _, ref Value value, ref TrackedObject dst)
+            public void SingleReader(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject dst)
             {
-                var trackedObject = value.Val as TrackedObject;
-                this.partition.Assert(trackedObject != null);
-                trackedObject.Partition = this.partition;
-                dst = value;
-                this.stats.Read++;
+                if (tracker == null)
+                {
+                    return; // this is a prefetch, so we don't actually care about the value
+                }
+                else
+                {
+                    var trackedObject = value.Val as TrackedObject;
+                    this.partition.Assert(trackedObject != null);
+                    trackedObject.Partition = this.partition;
+                    dst = value;
+                    this.stats.Read++;
+                }
             }
 
-            public void ConcurrentReader(ref Key key, ref EffectTracker _, ref Value value, ref TrackedObject dst)
+            public void ConcurrentReader(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject dst)
             {
-                var trackedObject = value.Val as TrackedObject;
-                this.partition.Assert(trackedObject != null);
-                trackedObject.Partition = this.partition;
-                dst = value;
-                this.stats.Read++;
+                if (tracker == null)
+                {
+                    return; // this is a prefetch, so we don't actually care about the value
+                }
+                else
+                {
+                    var trackedObject = value.Val as TrackedObject;
+                    this.partition.Assert(trackedObject != null);
+                    trackedObject.Partition = this.partition;
+                    dst = value;
+                    this.stats.Read++;
+                }
             }
 
             public void SingleWriter(ref Key key, ref Value src, ref Value dst)
@@ -709,29 +823,46 @@ namespace DurableTask.Netherite.Faster
                 return true;
             }
 
-            public void ReadCompletionCallback(ref Key key, ref EffectTracker tracker, ref TrackedObject output, PartitionReadEvent evt, Status status)
+            public void ReadCompletionCallback(ref Key key, ref EffectTracker tracker, ref TrackedObject output, object context, Status status)
             {
-                // the result is passed on to the read event
-                switch (status)
+                if (context == null)
                 {
-                    case Status.NOTFOUND:
-                        tracker.ProcessReadResult(evt, key, null);
-                        break;
+                    // no need to take any action here
+                }
+                else if (tracker == null)
+                {
+                    // this is a prefetch
+                    ((SemaphoreSlim)context).Release();
+                }
+                else
+                {
+                    // the result is passed on to the read event
+                    var partitionReadEvent = (PartitionReadEvent)context;
+                    switch (status)
+                    {
+                        case Status.NOTFOUND:
+                            tracker.ProcessReadResult(partitionReadEvent, key, null);
+                            break;
 
-                    case Status.OK:
-                        tracker.ProcessReadResult(evt, key, output);
-                        break;
+                        case Status.OK:
+                            tracker.ProcessReadResult(partitionReadEvent, key, output);
+                            break;
 
-                    case Status.PENDING:
-                    case Status.ERROR:
-                        throw new Exception("Faster"); //TODO
+                        case Status.PENDING:
+                            this.partition.ErrorHandler.HandleError(nameof(ReadCompletionCallback), "invalid FASTER result code", null, true, false);
+                            break;
+
+                        case Status.ERROR:
+                            this.partition.ErrorHandler.HandleError(nameof(ReadCompletionCallback), "FASTER reported ERROR status", null, true, this.partition.ErrorHandler.IsTerminated);
+                            break;
+                    }
                 }
             }
 
             public void CheckpointCompletionCallback(string sessionId, CommitPoint commitPoint) { }
-            public void RMWCompletionCallback(ref Key key, ref EffectTracker input, PartitionReadEvent ctx, Status status) { }
-            public void UpsertCompletionCallback(ref Key key, ref Value value, PartitionReadEvent ctx) { }
-            public void DeleteCompletionCallback(ref Key key, PartitionReadEvent ctx) { }
+            public void RMWCompletionCallback(ref Key key, ref EffectTracker input, object ctx, Status status) { }
+            public void UpsertCompletionCallback(ref Key key, ref Value value, object ctx) { }
+            public void DeleteCompletionCallback(ref Key key, object ctx) { }
         }
     }
 }

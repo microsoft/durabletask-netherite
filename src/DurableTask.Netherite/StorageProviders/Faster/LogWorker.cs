@@ -9,6 +9,8 @@ namespace DurableTask.Netherite.Faster
     using System.IO;
     using System.Threading;
     using System.Threading.Tasks;
+    using System.Threading.Channels;
+    using FASTER.core;
 
     class LogWorker : BatchWorker<PartitionUpdateEvent>
     {
@@ -108,7 +110,7 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper.FasterProgress($"Truncating FasterLog to {commitLogPosition}");
             this.log.TruncateUntil(commitLogPosition);
         }
-      
+
         void AddToFasterLog(byte[] bytes)
         {
             if (bytes.Length <= this.maxFragmentSize)
@@ -184,7 +186,7 @@ namespace DurableTask.Netherite.Faster
             catch (Exception e) when (!(e is OutOfMemoryException))
             {
                 this.partition.ErrorHandler.HandleError("LogWorker.Process", "Encountered exception while working on commit log", e, true, false);
-            }        
+            }
         }
 
         protected override void WorkLoopCompleted(int batchSize, double elapsedMilliseconds, int? nextBatch)
@@ -198,64 +200,108 @@ namespace DurableTask.Netherite.Faster
             // that were committed to the log but are not reflected in the loaded store checkpoint.
             try
             {
-                var to = this.log.TailAddress;
+                // we create a pipeline where the fetch task obtains a stream of events and then duplicates the
+                // stream, so it can get replayed and prefetched in parallel.
+                var prefetchChannel = Channel.CreateBounded<TrackedObjectKey>(1000);
+                var replayChannel = Channel.CreateBounded<PartitionUpdateEvent>(1000);
 
-                using (var iter = this.log.Scan((long)from, to))
-                {
-                    byte[] result;
-                    int entryLength;
-                    long currentAddress;
-                    MemoryStream reassembly = null;
+                var fetchTask = this.FetchEvents(from, replayChannel.Writer, prefetchChannel.Writer);
+                var replayTask = Task.Run(() => this.ReplayEvents(replayChannel.Reader, worker));
+                var prefetchTask = Task.Run(() => worker.RunPrefetchSession(prefetchChannel.Reader.ReadAllAsync(this.cancellationToken)));
 
-                    while (!this.cancellationToken.IsCancellationRequested)
-                    {
-                        PartitionUpdateEvent partitionEvent = null;
-
-                        while (!iter.GetNext(out result, out entryLength, out currentAddress))
-                        {
-                            if (currentAddress >= to)
-                            {
-                                return;
-                            }
-                            await iter.WaitAsync(this.cancellationToken).ConfigureAwait(false);
-                        }
-
-                        if ((result[0] & first) != none)
-                        {
-                            if ((result[0] & last) != none)
-                            {
-                                partitionEvent = (PartitionUpdateEvent)Serializer.DeserializeEvent(new ArraySegment<byte>(result, 1, entryLength - 1));
-                            }
-                            else
-                            {
-                                reassembly = new MemoryStream();
-                                reassembly.Write(result, 1, entryLength - 1);
-                            }
-                        }
-                        else
-                        {
-                            reassembly.Write(result, 1, entryLength - 1);
-
-                            if ((result[0] & last) != none)
-                            {
-                                reassembly.Position = 0;
-                                partitionEvent = (PartitionUpdateEvent)Serializer.DeserializeEvent(reassembly);
-                                reassembly = null;
-                            }
-                        }
-
-                        if (partitionEvent != null)
-                        {
-                            partitionEvent.NextCommitLogPosition = iter.NextAddress;
-                            await worker.ReplayUpdate(partitionEvent).ConfigureAwait(false);
-                        }
-                    }
-                }
+                await fetchTask;
+                await replayTask;
+                // note: we are not awaiting the prefetch task since completing the prefetches is not essential to continue.
             }
             catch (Exception exception)
                 when (this.cancellationToken.IsCancellationRequested && !Utils.IsFatal(exception))
             {
                 throw new OperationCanceledException("Partition was terminated.", exception, this.partition.ErrorHandler.Token);
+            }
+        }
+
+        async Task FetchEvents(long from, ChannelWriter<PartitionUpdateEvent> replayChannelWriter, ChannelWriter<TrackedObjectKey> prefetchChannelWriter)
+        {
+            await foreach (var partitionEvent in this.EventsToReplay(from))
+            {
+                this.cancellationToken.ThrowIfCancellationRequested();
+
+                await replayChannelWriter.WriteAsync(partitionEvent);
+
+                if (partitionEvent is IRequiresPrefetch evt)
+                {
+                    foreach (var key in evt.KeysToPrefetch)
+                    {
+                        await prefetchChannelWriter.WriteAsync(key);
+                    }
+                }
+            }
+
+            replayChannelWriter.Complete();
+            prefetchChannelWriter.Complete();
+        }
+
+        async Task ReplayEvents(ChannelReader<PartitionUpdateEvent> reader, StoreWorker worker)
+        {
+            await foreach (var partitionEvent in reader.ReadAllAsync(this.cancellationToken))
+            {
+                await worker.ReplayUpdate(partitionEvent);
+            }
+        }
+
+        async IAsyncEnumerable<PartitionUpdateEvent> EventsToReplay(long from)
+        {
+            long to = this.log.TailAddress;
+            using (FasterLogScanIterator iter = this.log.Scan(from, to))
+            {
+                byte[] result;
+                int entryLength;
+                long currentAddress;
+                MemoryStream reassembly = null;
+
+                while (!this.cancellationToken.IsCancellationRequested)
+                {
+                    PartitionUpdateEvent partitionEvent = null;
+
+                    while (!iter.GetNext(out result, out entryLength, out currentAddress))
+                    {
+                        if (currentAddress >= to)
+                        {
+                            yield break;
+                        }
+                        await iter.WaitAsync(this.cancellationToken).ConfigureAwait(false);
+                    }
+
+                    if ((result[0] & first) != none)
+                    {
+                        if ((result[0] & last) != none)
+                        {
+                            partitionEvent = (PartitionUpdateEvent)Serializer.DeserializeEvent(new ArraySegment<byte>(result, 1, entryLength - 1));
+                        }
+                        else
+                        {
+                            reassembly = new MemoryStream();
+                            reassembly.Write(result, 1, entryLength - 1);
+                        }
+                    }
+                    else
+                    {
+                        reassembly.Write(result, 1, entryLength - 1);
+
+                        if ((result[0] & last) != none)
+                        {
+                            reassembly.Position = 0;
+                            partitionEvent = (PartitionUpdateEvent)Serializer.DeserializeEvent(reassembly);
+                            reassembly = null;
+                        }
+                    }
+
+                    if (partitionEvent != null)
+                    {
+                        partitionEvent.NextCommitLogPosition = iter.NextAddress;
+                        yield return partitionEvent;
+                    }
+                }
             }
         }
     }

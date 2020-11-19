@@ -4,6 +4,8 @@
 namespace DurableTask.Netherite.Faster
 {
     using System;
+    using System.Collections.Generic;
+    using System.Threading;
     using System.Threading.Tasks;
 
     /// <summary>
@@ -13,7 +15,7 @@ namespace DurableTask.Netherite.Faster
     {
         public abstract void InitMainSession();
 
-        public abstract void Recover(out long commitLogPosition, out long inputQueuePosition);
+        public abstract Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync();
 
         public abstract void CompletePending();
 
@@ -31,6 +33,9 @@ namespace DurableTask.Netherite.Faster
 
         // perform a query
         public abstract Task QueryAsync(PartitionQueryEvent queryEvent, EffectTracker effectTracker);
+
+        // run a prefetch thread
+        public abstract Task RunPrefetchSession(IAsyncEnumerable<TrackedObjectKey> keys);
 
         // kick off a read of a tracked object, completing asynchronously if necessary
         public abstract void ReadAsync(PartitionReadEvent readEvent, EffectTracker effectTracker);

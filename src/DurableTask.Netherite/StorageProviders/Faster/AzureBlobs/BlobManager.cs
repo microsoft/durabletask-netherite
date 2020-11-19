@@ -41,7 +41,7 @@ namespace DurableTask.Netherite.Faster
 
         public const bool CONFIGURE_AWAIT_FOR_STORAGE_CALLS = true;
 
-        internal CheckpointInfo CheckpointInfo { get; private set; } = new CheckpointInfo();
+        internal CheckpointInfo CheckpointInfo { get; private set; }
 
         internal FasterTraceHelper TraceHelper { get; private set; }
         internal FasterTraceHelper StorageTracer => this.TraceHelper.IsTracingAtMostDetailedLevel ? this.TraceHelper : null;
@@ -53,7 +53,7 @@ namespace DurableTask.Netherite.Faster
         public IDevice ObjectLogDevice { get; private set; }
 
         IDevice[] PsfLogDevices;
-        readonly CheckpointInfo[] PsfCheckpointInfos;
+        internal CheckpointInfo[] PsfCheckpointInfos { get; }
         int PsfGroupCount => this.PsfCheckpointInfos.Length;
         const int InvalidPsfGroupOrdinal = -1;
 
@@ -207,6 +207,7 @@ namespace DurableTask.Netherite.Faster
             this.UseLocalFilesForTestingAndDebugging = (storageAccount == null);
             this.ContainerName = GetContainerName(taskHubName);
             this.partitionId = partitionId;
+            this.CheckpointInfo = new CheckpointInfo();
             this.PsfCheckpointInfos = Enumerable.Range(0, psfGroupCount).Select(ii => new CheckpointInfo()).ToArray();
 
             if (!this.UseLocalFilesForTestingAndDebugging)
@@ -758,17 +759,49 @@ namespace DurableTask.Netherite.Faster
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
-            if (this.GetLatestCheckpoint(out Guid indexToken, out Guid _, InvalidPsfGroupOrdinal))
-            {
-                yield return indexToken;
-            }
+            var indexToken = this.CheckpointInfo.IndexToken;
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetLogCheckpointTokens returned logToken={indexToken}");
+            yield return indexToken;
         }
 
         IEnumerable<Guid> ICheckpointManager.GetLogCheckpointTokens()
         {
-            if (this.GetLatestCheckpoint(out Guid _, out Guid logToken, InvalidPsfGroupOrdinal))
+            var logToken = this.CheckpointInfo.LogToken;
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetLogCheckpointTokens returned logToken={logToken}");
+            yield return logToken;
+        }
+
+        internal Task FindCheckpointsAsync()
+        {
+            var tasks = new List<Task>();
+            tasks.Add(FindCheckpoint(InvalidPsfGroupOrdinal));
+            for (int i = 0; i < this.PsfGroupCount; i++)
             {
-                yield return logToken;
+                tasks.Add(FindCheckpoint(i));
+            }
+            return Task.WhenAll(tasks);
+
+            async Task FindCheckpoint(int psfGroupOrdinal)
+            {
+                var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
+                CloudBlockBlob checkpointCompletedBlob = null;
+                try
+                {
+                    var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+                    checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
+                    await this.ConfirmLeaseIsGoodForAWhileAsync();
+                    var jsonString = await checkpointCompletedBlob.DownloadTextAsync();
+                    var checkpointInfo = JsonConvert.DeserializeObject<CheckpointInfo>(jsonString);
+                    if (isPsf)
+                        this.PsfCheckpointInfos[psfGroupOrdinal] = checkpointInfo;
+                    else
+                        this.CheckpointInfo = checkpointInfo;
+                }
+                catch (Exception e)
+                {
+                    this.HandleStorageError(nameof(FindCheckpoint), "could not determine latest checkpoint", checkpointCompletedBlob?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
+                    throw;
+                }
             }
         }
 
@@ -984,56 +1017,6 @@ namespace DurableTask.Netherite.Faster
             catch (Exception e)
             {
                 this.HandleStorageError(nameof(ICheckpointManager.GetSnapshotObjectLogDevice), "could not create checkpoint object device", null, e, true, this.PartitionErrorHandler.IsTerminated);
-                throw;
-            }
-            finally
-            {
-                SynchronousStorageAccessMaxConcurrency.Release();
-            }
-        }
-
-        internal bool GetLatestCheckpoint(out Guid indexToken, out Guid logToken, int psfGroupOrdinal)
-        {
-            var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
-            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetLatestCheckpoint Called on {tag}");
-            CloudBlockBlob target = null;
-            try
-            {
-                SynchronousStorageAccessMaxConcurrency.Wait();
-
-                var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-                var checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
-
-                if (checkpointCompletedBlob.Exists())
-                {
-
-                    target = checkpointCompletedBlob;
-                    this.ConfirmLeaseIsGoodForAWhile();
-                    var jsonString = checkpointCompletedBlob.DownloadText();
-                    var checkpointInfo = JsonConvert.DeserializeObject<CheckpointInfo>(jsonString);
-
-                    if (isPsf)
-                        this.PsfCheckpointInfos[psfGroupOrdinal] = checkpointInfo;
-                    else
-                        this.CheckpointInfo = checkpointInfo;
-
-                    indexToken = checkpointInfo.IndexToken;
-                    logToken = checkpointInfo.LogToken;
-
-                    this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Returned from {tag}, indexToken={indexToken} logToken={logToken}");
-                    return true;
-                }
-                else
-                {
-                    this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Returned false from {tag}");
-                    indexToken = default;
-                    logToken = default;
-                    return false;
-                }
-            }
-            catch (Exception e)
-            {
-                this.HandleStorageError(nameof(GetLatestCheckpoint), "could not determine latest checkpoint", target?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
             }
             finally
