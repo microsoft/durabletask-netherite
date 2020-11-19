@@ -20,6 +20,7 @@ namespace DurableTask.Netherite
     abstract class BatchWorker<T>
     {
         readonly Stopwatch stopwatch;
+        protected string Name { get; }
         protected readonly CancellationToken cancellationToken;
 
         volatile int state;
@@ -37,10 +38,13 @@ namespace DurableTask.Netherite
         /// </summary>
         public BatchWorker(string name, bool startSuspended, CancellationToken cancellationToken)
         {
+            this.Name = name;
             this.cancellationToken = cancellationToken;
             this.state = startSuspended ? SUSPENDED : IDLE;
             this.stopwatch = new Stopwatch();
         }
+
+        protected Action<string> Tracer { get; set; } = null;
 
         /// <summary>Implement this member in derived classes to process a batch</summary>
         protected abstract Task Process(IList<T> batch);
@@ -113,11 +117,6 @@ namespace DurableTask.Netherite
                     runAgain = true;
                     continue;
                 }
-                else if (entry is SemaphoreSlim credits)
-                {
-                    runAgain = true;
-                    credits.Release();
-                }
                 else
                 {
                     runAgain = true;
@@ -130,6 +129,8 @@ namespace DurableTask.Netherite
 
         async Task Work()
         {
+            this.Tracer?.Invoke("started");
+
             EventTraceContext.Clear();
             int? previousBatch = null;
 
@@ -144,6 +145,8 @@ namespace DurableTask.Netherite
 
                 if (!nextBatch.HasValue)
                 {
+                    this.Tracer?.Invoke("no work, starting to shut down");
+
                     // no work found. Announce that we are planning to shut down.
                     // Using an interlocked exchange to enforce store-load fence.
                     int read = Interlocked.Exchange(ref this.state, SHUTTINGDOWN);
@@ -161,21 +164,26 @@ namespace DurableTask.Netherite
                         if (read == SHUTTINGDOWN)
                         {
                             // shut down is complete
+                            this.Tracer?.Invoke("shut down");
                             return;
                         }
                         else
                         {
                             // shutdown was reverted by Notify()
                             Debug.Assert(read == RUNNING);
+                            this.Tracer?.Invoke("was told to continue");
+                            continue;
                         }
                     }
                     else
                     {
                         // we found more work. So we do not shutdown but go back to running.
+                        this.Tracer?.Invoke("found more work after all");
                         this.state = RUNNING;
                     }
                 }
 
+                this.Tracer?.Invoke("processing batch");
                 this.stopwatch.Restart();
 
                 try
@@ -185,6 +193,8 @@ namespace DurableTask.Netherite
 
                     // do the work, calling the virtual method
                     await this.Process(this.batch).ConfigureAwait(false);
+
+                    this.Tracer?.Invoke("notifying waiters");
 
                     // notify anyone who is waiting for completion
                     foreach (var w in this.waiters)
@@ -200,8 +210,8 @@ namespace DurableTask.Netherite
                     }
                 }
 
+                this.Tracer?.Invoke("done processing batch");
                 this.stopwatch.Stop();
-
                 previousBatch = this.batch.Count;
             }
         }
@@ -229,10 +239,12 @@ namespace DurableTask.Netherite
                 int currentState = this.state;
                 if (currentState == RUNNING)
                 {
+                    this.Tracer?.Invoke("already running");
                     return; // worker is already running
                 }
                 else if (currentState == SUSPENDED && !resume)
                 {
+                    this.Tracer?.Invoke("suspended");
                     return; // we do not want to start processing yet
                 }
                 else 
@@ -242,6 +254,7 @@ namespace DurableTask.Netherite
                     {
                         if (read != SHUTTINGDOWN)
                         {
+                            this.Tracer?.Invoke("launching");
                             Task.Run(this.Work);
                         }
                         break;
