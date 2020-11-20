@@ -23,9 +23,9 @@ namespace DurableTask.Netherite.Faster
 
         public abstract bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, out Guid checkpointGuid);
 
-        public abstract Guid StartIndexCheckpoint();
+        public abstract Guid? StartIndexCheckpoint();
 
-        public abstract Guid StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition);
+        public abstract Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition);
 
         public abstract ValueTask CompleteCheckpointAsync();
 

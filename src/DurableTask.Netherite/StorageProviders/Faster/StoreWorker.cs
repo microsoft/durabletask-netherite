@@ -54,6 +54,7 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper = traceHelper;
             this.blobManager = blobManager;
             this.random = new Random();
+            //this.Tracer = (string message) => this.traceHelper.FasterProgress($"{this.Name} {message}");
 
             // construct an effect tracker that we use to apply effects to the store
             this.effectTracker = new EffectTracker(
@@ -360,15 +361,21 @@ namespace DurableTask.Netherite.Faster
                         await this.pendingIndexCheckpoint.ConfigureAwait(false); // observe exceptions here
                         this.pendingIndexCheckpoint = null;
                         var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition);
-                        this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token);
-                        this.numberEventsSinceLastCheckpoint = 0;
+                        if (token.HasValue)
+                        {
+                            this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value);
+                            this.numberEventsSinceLastCheckpoint = 0;
+                        }
                     }
                 }
                 else if (this.CheckpointDue(out var trigger))
                 {
                     var token = this.store.StartIndexCheckpoint();
-                    this.pendingCheckpointTrigger = trigger;
-                    this.pendingIndexCheckpoint = this.WaitForCheckpointAsync(true, token);
+                    if (token.HasValue)
+                    {
+                        this.pendingCheckpointTrigger = trigger;
+                        this.pendingIndexCheckpoint = this.WaitForCheckpointAsync(true, token.Value);
+                    }
                 }
                 
                 if (this.lastPublishedTime + PublishInterval < DateTime.UtcNow)
@@ -384,7 +391,7 @@ namespace DurableTask.Netherite.Faster
                     // we can pretend that it was taken just now
                     this.ScheduleNextCheckpointTime();
                 }
-                
+
                 // make sure to complete ready read requests, or notify this worker
                 // if any read requests become ready to process at some point
                 var t = this.store.ReadyToCompletePendingAsync();

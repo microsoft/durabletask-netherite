@@ -156,13 +156,13 @@ namespace DurableTask.Netherite.Faster
             await this.checkpointTask.ConfigureAwait(false);
         }
 
-        public override Guid StartIndexCheckpoint()
+        public override Guid? StartIndexCheckpoint()
         {
             this.checkpointTask = Task.CompletedTask; // this implementation does not contain an index (yet).
             return default;
         }
 
-        public override Guid StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition)
+        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition)
         {
             var guid = Guid.NewGuid();
             this.StartStoreCheckpoint(commitLogPosition, inputQueuePosition, guid);

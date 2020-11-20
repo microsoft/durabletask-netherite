@@ -153,7 +153,9 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                await this.fht.CompleteCheckpointAsync(this.terminationToken).ConfigureAwait(false);
+                // workaround for hanging in CompleteCheckpointAsync: use custom thread.
+                await RunOnDedicatedThreadAsync(() => this.fht.CompleteCheckpointAsync(this.terminationToken).AsTask());
+                //await this.fht.CompleteCheckpointAsync(this.terminationToken);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -162,13 +164,21 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        public async static Task RunOnDedicatedThreadAsync(Func<Task> asyncAction)
+        {
+            Task<Task> tasktask = new Task<Task>(() => asyncAction());
+            var thread = new Thread(() => tasktask.RunSynchronously());
+            thread.Start();
+            await await tasktask;
+        }
+
         public override Task FinalizeCheckpointCompletedAsync(Guid guid)
         {
             return this.blobManager.FinalizeCheckpointCompletedAsync();
         }
 
 
-        public override Guid StartIndexCheckpoint()
+        public override Guid? StartIndexCheckpoint()
         {
             try
             {
@@ -193,7 +203,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override Guid StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition)
+        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition)
         {
             try
             {
