@@ -182,5 +182,10 @@ namespace DurableTask.Netherite
             tracker.ProcessEffectOn(this.GetOrAdd(key));
             return default;
         }
+
+        public Task Prefetch(IEnumerable<TrackedObjectKey> keys)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

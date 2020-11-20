@@ -59,6 +59,7 @@ namespace DurableTask.Netherite
             }
             else 
             {
+                this.Partition.Assert(clientRequestEvent.Phase == ClientRequestEventWithQuery.ProcessingPhase.Confirm);
                 this.PendingQueries.Remove(clientRequestEvent.EventIdString);
             }
         }
@@ -75,6 +76,10 @@ namespace DurableTask.Netherite
             }
         }
 
+        /// <summary>
+        /// This event represents the execution of the actual query. It is a read-only
+        /// query event.
+        /// </summary>
         internal class InstanceQueryEvent : PartitionQueryEvent
         {
             readonly ClientRequestEventWithQuery request;
@@ -100,12 +105,10 @@ namespace DurableTask.Netherite
 
                 await this.request.OnQueryCompleteAsync(result, partition);
 
+                // we now how to recycle the request event again in order to remove it from the list of pending queries
                 var again = (ClientRequestEventWithQuery)this.request.Clone();
-
-                again.NextInputQueuePosition = 0; // this event is no longer considered an external event
-                    
+                again.NextInputQueuePosition = 0; // this event is no longer considered an external event        
                 again.Phase = ClientRequestEventWithQuery.ProcessingPhase.Confirm;
-
                 partition.SubmitInternalEvent(again);
             }
         }

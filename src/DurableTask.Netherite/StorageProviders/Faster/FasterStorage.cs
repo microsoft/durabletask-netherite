@@ -6,6 +6,7 @@ namespace DurableTask.Netherite.Faster
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Azure.Storage;
@@ -231,6 +232,11 @@ namespace DurableTask.Netherite.Faster
                 // periodically bump the store worker so it can check if enough time has elapsed for doing a checkpoint or a load publish
                 this.storeWorker.Notify();
             }
+        }
+
+        public Task Prefetch(IEnumerable<TrackedObjectKey> keys)
+        {
+            return this.storeWorker.RunPrefetchSession(keys.ToAsyncEnumerable<TrackedObjectKey>());
         }
     }
 }

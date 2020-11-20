@@ -49,5 +49,11 @@ namespace DurableTask.Netherite
         /// </summary>
         /// <param name="evt">The collection of events to process.</param>
         void SubmitExternalEvents(IList<PartitionEvent> evt);
+
+        /// <summary>
+        /// Prefetches the supplied keys.
+        /// </summary>
+        /// <returns></returns>
+        Task Prefetch(IEnumerable<TrackedObjectKey> keys);
     }
 }

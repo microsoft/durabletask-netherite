@@ -40,7 +40,7 @@ namespace DurableTask.Netherite
             s.Append(this.InstanceIds.Count);
         }
 
-        IEnumerable<TrackedObjectKey> IRequiresPrefetch.KeysToPrefetch
+        public IEnumerable<TrackedObjectKey> KeysToPrefetch
         {
             get
             {

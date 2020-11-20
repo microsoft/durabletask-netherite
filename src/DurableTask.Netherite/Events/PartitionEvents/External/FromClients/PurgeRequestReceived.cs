@@ -23,7 +23,7 @@ namespace DurableTask.Netherite
         {
             int batchCount = 0;
 
-            PurgeBatchIssued makeBatchObject()
+            PurgeBatchIssued makeNewBatchObject()
                 => new PurgeBatchIssued()
                 {
                     PartitionId = partition.PartitionId,
@@ -34,7 +34,14 @@ namespace DurableTask.Netherite
                     InstanceQuery = this.InstanceQuery,
                 };
 
-            PurgeBatchIssued batch = makeBatchObject();
+            PurgeBatchIssued batch = makeNewBatchObject();
+
+            async Task ExecuteBatch()
+            {
+                await partition.State.Prefetch(batch.KeysToPrefetch);
+                partition.SubmitInternalEvent(batch);
+                await batch.WhenProcessed.Task;
+            }
 
             await foreach (var orchestrationState in instances)
             {
@@ -42,20 +49,18 @@ namespace DurableTask.Netherite
 
                 if (batch.InstanceIds.Count == MaxBatchSize)
                 {
-                    partition.SubmitInternalEvent(batch);
-                    await batch.WhenProcessed.Task;
-                    makeBatchObject();
+                    await ExecuteBatch();
+                    batch = makeNewBatchObject();
                 }
             }
 
             if (batch.InstanceIds.Count > 0)
             {
-                partition.SubmitInternalEvent(batch);
-                await batch.WhenProcessed.Task;
+                await ExecuteBatch();
             }
 
             partition.Send(new PurgeResponseReceived()
-            { 
+            {
                 ClientId = this.ClientId,
                 RequestId = this.RequestId,
                 NumberInstancesPurged = this.NumberInstancesPurged,
