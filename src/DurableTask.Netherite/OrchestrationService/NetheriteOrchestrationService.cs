@@ -419,7 +419,7 @@ namespace DurableTask.Netherite
             }
             else
             {
-                return null;
+                return JsonConvert.SerializeObject(new List<HistoryEvent>());
             }
         }
 

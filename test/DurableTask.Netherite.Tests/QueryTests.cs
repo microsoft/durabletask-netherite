@@ -16,6 +16,7 @@ namespace DurableTask.Netherite.Tests
     using Orchestrations = DurableTask.Netherite.Tests.ScenarioTests.Orchestrations;
     using Microsoft.Extensions.Logging;
     using DurableTask.Netherite;
+    using DurableTask.Core.History;
 
     // These tests are copied from AzureStorageScenarioTests
     [Collection("NetheriteTests")]
@@ -125,6 +126,74 @@ namespace DurableTask.Netherite.Tests
         {
             var instanceStates = await this.host.GetAllOrchestrationInstancesAsync();
             Assert.Equal(0, instanceStates.Count);
+        }
+
+
+        [Fact]
+        public async Task PurgeInstanceHistoryForTimePeriodDeletePartially()
+        {
+            DateTime startDateTime = DateTime.Now;
+            string firstInstanceId = Guid.NewGuid().ToString();
+            TestOrchestrationClient client = await this.host.StartOrchestrationAsync(typeof(Orchestrations.FanOutFanIn), 50, firstInstanceId);
+            await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
+            DateTime endDateTime = DateTime.Now;
+            await Task.Delay(5000);
+            string secondInstanceId = Guid.NewGuid().ToString();
+            client = await this.host.StartOrchestrationAsync(typeof(Orchestrations.FanOutFanIn), 50, secondInstanceId);
+            await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
+            string thirdInstanceId = Guid.NewGuid().ToString();
+            client = await this.host.StartOrchestrationAsync(typeof(Orchestrations.FanOutFanIn), 50, thirdInstanceId);
+            await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
+
+            IList<OrchestrationState> results = await this.host.GetAllOrchestrationInstancesAsync();
+            Assert.Equal(3, results.Count);
+            Assert.Equal("\"Done\"", results[0].Output);
+            Assert.Equal("\"Done\"", results[1].Output);
+            Assert.Equal("\"Done\"", results[2].Output);
+
+            List<HistoryStateEvent> firstHistoryEvents = await client.GetOrchestrationHistoryAsync(firstInstanceId);
+            Assert.True(firstHistoryEvents.Count > 0);
+
+            List<HistoryStateEvent> secondHistoryEvents = await client.GetOrchestrationHistoryAsync(secondInstanceId);
+            Assert.True(secondHistoryEvents.Count > 0);
+
+            List<HistoryStateEvent> thirdHistoryEvents = await client.GetOrchestrationHistoryAsync(thirdInstanceId);
+            Assert.True(secondHistoryEvents.Count > 0);
+
+            IList<OrchestrationState> firstOrchestrationStateList = await client.GetStateAsync(firstInstanceId);
+            Assert.Equal(1, firstOrchestrationStateList.Count);
+            Assert.Equal(firstInstanceId, firstOrchestrationStateList.First().OrchestrationInstance.InstanceId);
+
+            IList<OrchestrationState> secondOrchestrationStateList = await client.GetStateAsync(secondInstanceId);
+            Assert.Equal(1, secondOrchestrationStateList.Count);
+            Assert.Equal(secondInstanceId, secondOrchestrationStateList.First().OrchestrationInstance.InstanceId);
+
+            IList<OrchestrationState> thirdOrchestrationStateList = await client.GetStateAsync(thirdInstanceId);
+            Assert.Equal(1, thirdOrchestrationStateList.Count);
+            Assert.Equal(thirdInstanceId, thirdOrchestrationStateList.First().OrchestrationInstance.InstanceId);
+
+            await client.PurgeInstanceHistoryByTimePeriod(startDateTime, endDateTime, new List<OrchestrationStatus> { OrchestrationStatus.Completed, OrchestrationStatus.Terminated, OrchestrationStatus.Failed, OrchestrationStatus.Running });
+
+            List<HistoryStateEvent> firstHistoryEventsAfterPurging = await client.GetOrchestrationHistoryAsync(firstInstanceId);
+            Assert.Empty(firstHistoryEventsAfterPurging);
+
+            List<HistoryStateEvent> secondHistoryEventsAfterPurging = await client.GetOrchestrationHistoryAsync(secondInstanceId);
+            Assert.True(secondHistoryEventsAfterPurging.Count > 0);
+
+            List<HistoryStateEvent> thirdHistoryEventsAfterPurging = await client.GetOrchestrationHistoryAsync(thirdInstanceId);
+            Assert.True(thirdHistoryEventsAfterPurging.Count > 0);
+
+            firstOrchestrationStateList = await client.GetStateAsync(firstInstanceId);
+            Assert.Equal(0, firstOrchestrationStateList.Count);
+            Assert.Null(firstOrchestrationStateList.FirstOrDefault());
+
+            secondOrchestrationStateList = await client.GetStateAsync(secondInstanceId);
+            Assert.Equal(1, secondOrchestrationStateList.Count);
+            Assert.Equal(secondInstanceId, secondOrchestrationStateList.First().OrchestrationInstance.InstanceId);
+
+            thirdOrchestrationStateList = await client.GetStateAsync(thirdInstanceId);
+            Assert.Equal(1, thirdOrchestrationStateList.Count);
+            Assert.Equal(thirdInstanceId, thirdOrchestrationStateList.First().OrchestrationInstance.InstanceId);
         }
     }
 

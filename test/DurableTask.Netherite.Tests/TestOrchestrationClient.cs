@@ -9,6 +9,7 @@ namespace DurableTask.Netherite.Tests
     using System.Threading.Tasks;
     using DurableTask.Core;
     using DurableTask.Core.History;
+    using Newtonsoft.Json;
     using Xunit;
 
     class TestOrchestrationClient
@@ -120,56 +121,50 @@ namespace DurableTask.Netherite.Tests
         {
             Trace.TraceInformation($"Rewinding instance {this.instanceId} with reason = {reason}.");
 
+            // The Rewind API is not implemented yet on the Netherite backend
             throw new NotImplementedException();
-
-            // The Rewind API currently only exists in the service object
-            //AzureStorageOrchestrationService service = (AzureStorageOrchestrationService)this.client.ServiceClient;
-            //return service.RewindTaskOrchestrationAsync(this.instanceId, reason);
         }
 
         public Task PurgeInstanceHistory()
         {
             Trace.TraceInformation($"Purging history for instance with id - {this.instanceId}");
 
-            throw new NotImplementedException();
-
-            // The Purge Instance History API only exists in the service object
-            //AzureStorageOrchestrationService service = (AzureStorageOrchestrationService)this.client.ServiceClient;
-            //return service.PurgeInstanceHistoryAsync(this.instanceId);
+            var instance = new OrchestrationInstance { InstanceId = this.instanceId };
+            var service = (NetheriteOrchestrationService)this.client.ServiceClient;
+            return service.PurgeInstanceHistoryAsync(this.instanceId);
         }
 
         public Task PurgeInstanceHistoryByTimePeriod(DateTime createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus)
         {
             Trace.TraceInformation($"Purging history from {createdTimeFrom} to {createdTimeTo}");
 
-            throw new NotImplementedException();
-
-            // The Purge Instance History API only exists in the service object
-            //AzureStorageOrchestrationService service = (AzureStorageOrchestrationService)this.client.ServiceClient;
-            //return service.PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus);
+            var service = (NetheriteOrchestrationService)this.client.ServiceClient;
+            return service.PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus);
         }
 
-        public Task<List<HistoryStateEvent>> GetOrchestrationHistoryAsync(string instanceId)
+        public async Task<List<HistoryStateEvent>> GetOrchestrationHistoryAsync(string instanceId)
         {
             Trace.TraceInformation($"Getting history for instance with id - {this.instanceId}");
 
-            throw new NotImplementedException();
-
-            // GetOrchestrationHistoryAsync is exposed in the TaskHubClinet but requires execution id. 
-            // However, we need to get all the history records for an instance id not for specific execution.
-            //AzureStorageOrchestrationService service = (AzureStorageOrchestrationService)this.client.ServiceClient;
-            //string historyString = await service.GetOrchestrationHistoryAsync(instanceId, null);
-            //return JsonConvert.DeserializeObject<List<HistoryStateEvent>>(historyString);
+            var service = (NetheriteOrchestrationService)this.client.ServiceClient;
+            var state = await service.GetOrchestrationStateAsync(instanceId, false, false);
+            if (state == null)
+            {
+                return new List<HistoryStateEvent>();
+            }
+            else
+            {
+                string historyString = await ((IOrchestrationServiceClient)service).GetOrchestrationHistoryAsync(instanceId, state.OrchestrationInstance.ExecutionId);
+                return JsonConvert.DeserializeObject<List<HistoryStateEvent>>(historyString);
+            }
         }
 
         public Task<IList<OrchestrationState>> GetStateAsync(string instanceId)
         {
-            throw new NotImplementedException();
+            Trace.TraceInformation($"Getting orchestration state with instance id - {this.instanceId}");
 
-            //Trace.TraceInformation($"Getting orchestration state with instance id - {this.instanceId}");
-            // The GetStateAsync only exists in the service object
-            //AzureStorageOrchestrationService service = (AzureStorageOrchestrationService)this.client.ServiceClient;
-            //return await service.GetOrchestrationStateAsync(instanceId, true);
+            var service = (IOrchestrationServiceClient)this.client.ServiceClient;
+            return service.GetOrchestrationStateAsync(instanceId, true);
         }
 
         static TimeSpan AdjustTimeout(TimeSpan requestedTimeout)

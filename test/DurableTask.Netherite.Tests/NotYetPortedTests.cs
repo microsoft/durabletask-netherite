@@ -24,325 +24,12 @@ namespace DurableTask.Netherite.Tests
 
     public partial class ScenarioTests
     {
+
+
+     
+
+
         /// <summary>
-        /// End-to-end test which validates function chaining by implementing a naive factorial function orchestration.
-        /// </summary>
-        //[TestMethod]
-        //public async Task SequentialOrchestrationNoReplay()
-        //{
-        //    // Enable extended sesisons to ensure that the orchestration never gets replayed
-        //    using (TestOrchestrationHost host = TestHelpers.GetTestOrchestrationHost(enableExtendedSessions: true))
-        //    {
-        //        await host.StartAsync();
-
-        //        var client = await host.StartOrchestrationAsync(typeof(Orchestrations.FactorialNoReplay), 10);
-        //        var status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
-
-        //        Assert.AreEqual(OrchestrationStatus.Completed, status?.OrchestrationStatus);
-        //        Assert.AreEqual(10, JToken.Parse(status?.Input));
-        //        Assert.AreEqual(3628800, JToken.Parse(status?.Output));
-
-        //        await host.StopAsync();
-        //    }
-        //}
-
-        //[TestMethod]
-        //public async Task PurgeInstanceHistoryForSingleInstanceWithoutLargeMessageBlobs()
-        //{
-        //    using (TestOrchestrationHost host = TestHelpers.GetTestOrchestrationHost(enableExtendedSessions: false))
-        //    {
-        //        string instanceId = Guid.NewGuid().ToString();
-        //        await host.StartAsync();
-        //        TestOrchestrationClient client = await host.StartOrchestrationAsync(typeof(Orchestrations.Factorial), 110, instanceId);
-        //        await client.WaitForCompletionAsync(TimeSpan.FromSeconds(60));
-
-        //        List<HistoryStateEvent> historyEvents = await client.GetOrchestrationHistoryAsync(instanceId);
-        //        Assert.IsTrue(historyEvents.Count > 0);
-
-        //        IList<OrchestrationState> orchestrationStateList = await client.GetStateAsync(instanceId);
-        //        Assert.AreEqual(1, orchestrationStateList.Count);
-        //        Assert.AreEqual(instanceId, orchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //        await client.PurgeInstanceHistory();
-
-        //        List<HistoryStateEvent> historyEventsAfterPurging = await client.GetOrchestrationHistoryAsync(instanceId);
-        //        Assert.AreEqual(0, historyEventsAfterPurging.Count);
-
-        //        orchestrationStateList = await client.GetStateAsync(instanceId);
-        //        Assert.AreEqual(1, orchestrationStateList.Count);
-        //        Assert.IsNull(orchestrationStateList.First());
-
-        //        await host.StopAsync();
-        //    }
-        //}
-
-        //[TestMethod]
-        //public async Task PurgeInstanceHistoryForSingleInstanceWithLargeMessageBlobs()
-        //{
-        //using (TestOrchestrationHost host = TestHelpers.GetTestOrchestrationHost(enableExtendedSessions: false))
-        //{
-        //    await host.StartAsync();
-
-        //    string instanceId = Guid.NewGuid().ToString();
-        //    string message = this.GenerateMediumRandomStringPayload().ToString();
-        //    TestOrchestrationClient client = await host.StartOrchestrationAsync(typeof(Orchestrations.Echo), message, instanceId);
-        //    OrchestrationState status = await client.WaitForCompletionAsync(TimeSpan.FromMinutes(2));
-        //    Assert.AreEqual(OrchestrationStatus.Completed, status?.OrchestrationStatus);
-
-        //    List<HistoryStateEvent> historyEvents = await client.GetOrchestrationHistoryAsync(instanceId);
-        //    Assert.IsTrue(historyEvents.Count > 0);
-
-        //    IList<OrchestrationState> orchestrationStateList = await client.GetStateAsync(instanceId);
-        //    Assert.AreEqual(1, orchestrationStateList.Count);
-        //    Assert.AreEqual(instanceId, orchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //    int blobCount = await this.GetBlobCount("test-largemessages", instanceId);
-        //    Assert.IsTrue(blobCount > 0);
-
-        //    IList<OrchestrationState> results = await host.GetAllOrchestrationInstancesAsync();
-        //    Assert.AreEqual(1, results.Count);
-
-        //    await ValidateBlobUrlAsync(
-        //        host.TaskHub,
-        //        instanceId,
-        //        results.First(x => x.OrchestrationInstance.InstanceId == instanceId).Output,
-        //        Encoding.UTF8.GetByteCount(message));
-
-        //    await client.PurgeInstanceHistory();
-
-
-        //    List<HistoryStateEvent> historyEventsAfterPurging = await client.GetOrchestrationHistoryAsync(instanceId);
-        //    Assert.AreEqual(0, historyEventsAfterPurging.Count);
-
-        //    orchestrationStateList = await client.GetStateAsync(instanceId);
-        //    Assert.AreEqual(1, orchestrationStateList.Count);
-        //    Assert.IsNull(orchestrationStateList.First());
-
-        //    blobCount = await this.GetBlobCount("test-largemessages", instanceId);
-        //    Assert.AreEqual(0, blobCount);
-
-        //    await host.StopAsync();
-        //}
-        //}
-
-        //[TestMethod]
-        //public async Task PurgeInstanceHistoryForTimePeriodDeleteAll()
-        //{
-        //    using (TestOrchestrationHost host = TestHelpers.GetTestOrchestrationHost(enableExtendedSessions: false))
-        //    {
-        //        await host.StartAsync();
-        //        DateTime startDateTime = DateTime.Now;
-        //        string firstInstanceId = "instance1";
-        //        TestOrchestrationClient client = await host.StartOrchestrationAsync(typeof(Orchestrations.FanOutFanIn), 50, firstInstanceId);
-        //        await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
-        //        string secondInstanceId = "instance2";
-        //        client = await host.StartOrchestrationAsync(typeof(Orchestrations.FanOutFanIn), 50, secondInstanceId);
-        //        await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
-        //        string thirdInstanceId = "instance3";
-        //        client = await host.StartOrchestrationAsync(typeof(Orchestrations.FanOutFanIn), 50, thirdInstanceId);
-        //        await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
-
-        //        string fourthInstanceId = "instance4";
-        //        string message = this.GenerateMediumRandomStringPayload().ToString();
-        //        client = await host.StartOrchestrationAsync(typeof(Orchestrations.Echo), message, fourthInstanceId);
-        //        var status = await client.WaitForCompletionAsync(TimeSpan.FromMinutes(2));
-        //        Assert.AreEqual(OrchestrationStatus.Completed, status?.OrchestrationStatus);
-
-        //        IList<OrchestrationState> results = await host.GetAllOrchestrationInstancesAsync();
-        //        Assert.AreEqual(4, results.Count);
-        //        Assert.AreEqual("\"Done\"", results.First(x => x.OrchestrationInstance.InstanceId == firstInstanceId).Output);
-        //        Assert.AreEqual("\"Done\"", results.First(x => x.OrchestrationInstance.InstanceId == secondInstanceId).Output);
-        //        Assert.AreEqual("\"Done\"", results.First(x => x.OrchestrationInstance.InstanceId == thirdInstanceId).Output);
-
-        //        await ValidateBlobUrlAsync(
-        //            host.TaskHub,
-        //            fourthInstanceId,
-        //            results.First(x => x.OrchestrationInstance.InstanceId == fourthInstanceId).Output,
-        //            Encoding.UTF8.GetByteCount(message));
-
-        //        List<HistoryStateEvent> firstHistoryEvents = await client.GetOrchestrationHistoryAsync(firstInstanceId);
-        //        Assert.IsTrue(firstHistoryEvents.Count > 0);
-
-        //        List<HistoryStateEvent> secondHistoryEvents = await client.GetOrchestrationHistoryAsync(secondInstanceId);
-        //        Assert.IsTrue(secondHistoryEvents.Count > 0);
-
-        //        List<HistoryStateEvent> thirdHistoryEvents = await client.GetOrchestrationHistoryAsync(thirdInstanceId);
-        //        Assert.IsTrue(thirdHistoryEvents.Count > 0);
-
-        //        List<HistoryStateEvent> fourthHistoryEvents = await client.GetOrchestrationHistoryAsync(thirdInstanceId);
-        //        Assert.IsTrue(fourthHistoryEvents.Count > 0);
-
-        //        IList<OrchestrationState> firstOrchestrationStateList = await client.GetStateAsync(firstInstanceId);
-        //        Assert.AreEqual(1, firstOrchestrationStateList.Count);
-        //        Assert.AreEqual(firstInstanceId, firstOrchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //        IList<OrchestrationState> secondOrchestrationStateList = await client.GetStateAsync(secondInstanceId);
-        //        Assert.AreEqual(1, secondOrchestrationStateList.Count);
-        //        Assert.AreEqual(secondInstanceId, secondOrchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //        IList<OrchestrationState> thirdOrchestrationStateList = await client.GetStateAsync(thirdInstanceId);
-        //        Assert.AreEqual(1, thirdOrchestrationStateList.Count);
-        //        Assert.AreEqual(thirdInstanceId, thirdOrchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //        IList<OrchestrationState> fourthOrchestrationStateList = await client.GetStateAsync(fourthInstanceId);
-        //        Assert.AreEqual(1, fourthOrchestrationStateList.Count);
-        //        Assert.AreEqual(fourthInstanceId, fourthOrchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //        int blobCount = await this.GetBlobCount("test-largemessages", fourthInstanceId);
-        //        Assert.AreEqual(6, blobCount);
-
-        //        await client.PurgeInstanceHistoryByTimePeriod(
-        //            startDateTime,
-        //            DateTime.UtcNow,
-        //            new List<OrchestrationStatus>
-        //            {
-        //                OrchestrationStatus.Completed,
-        //                OrchestrationStatus.Terminated,
-        //                OrchestrationStatus.Failed,
-        //                OrchestrationStatus.Running
-        //            });
-
-        //        List<HistoryStateEvent> firstHistoryEventsAfterPurging = await client.GetOrchestrationHistoryAsync(firstInstanceId);
-        //        Assert.AreEqual(0, firstHistoryEventsAfterPurging.Count);
-
-        //        List<HistoryStateEvent> secondHistoryEventsAfterPurging = await client.GetOrchestrationHistoryAsync(secondInstanceId);
-        //        Assert.AreEqual(0, secondHistoryEventsAfterPurging.Count);
-
-        //        List<HistoryStateEvent> thirdHistoryEventsAfterPurging = await client.GetOrchestrationHistoryAsync(thirdInstanceId);
-        //        Assert.AreEqual(0, thirdHistoryEventsAfterPurging.Count);
-
-        //        List<HistoryStateEvent> fourthHistoryEventsAfterPurging = await client.GetOrchestrationHistoryAsync(fourthInstanceId);
-        //        Assert.AreEqual(0, fourthHistoryEventsAfterPurging.Count);
-
-        //        firstOrchestrationStateList = await client.GetStateAsync(firstInstanceId);
-        //        Assert.AreEqual(1, firstOrchestrationStateList.Count);
-        //        Assert.IsNull(firstOrchestrationStateList.First());
-
-        //        secondOrchestrationStateList = await client.GetStateAsync(secondInstanceId);
-        //        Assert.AreEqual(1, secondOrchestrationStateList.Count);
-        //        Assert.IsNull(secondOrchestrationStateList.First());
-
-        //        thirdOrchestrationStateList = await client.GetStateAsync(thirdInstanceId);
-        //        Assert.AreEqual(1, thirdOrchestrationStateList.Count);
-        //        Assert.IsNull(thirdOrchestrationStateList.First());
-
-        //        fourthOrchestrationStateList = await client.GetStateAsync(fourthInstanceId);
-        //        Assert.AreEqual(1, fourthOrchestrationStateList.Count);
-        //        Assert.IsNull(fourthOrchestrationStateList.First());
-
-        //        blobCount = await this.GetBlobCount("test-largemessages", fourthInstanceId);
-        //        Assert.AreEqual(0, blobCount);
-
-        //        await host.StopAsync();
-        //    }
-        //}
-
-        //private async Task<int> GetBlobCount(string containerName, string directoryName)
-        //{
-        //    string storageConnectionString = ConfigurationManager.AppSettings["StorageConnectionString"];
-        //    CloudStorageAccount storageAccount;
-        //    if (!CloudStorageAccount.TryParse(storageConnectionString, out storageAccount))
-        //    {
-        //        return 0;
-        //    }
-
-        //    CloudBlobClient cloudBlobClient = storageAccount.CreateCloudBlobClient();
-
-        //    CloudBlobContainer cloudBlobContainer = cloudBlobClient.GetContainerReference(containerName);
-        //    await cloudBlobContainer.CreateIfNotExistsAsync();
-        //    CloudBlobDirectory instanceDirectory = cloudBlobContainer.GetDirectoryReference(directoryName);
-        //    int blobCount = 0;
-        //    BlobContinuationToken blobContinuationToken = null;
-        //    do
-        //    {
-        //        BlobResultSegment results = await instanceDirectory.ListBlobsSegmentedAsync(blobContinuationToken);
-        //        blobContinuationToken = results.ContinuationToken;
-        //        blobCount += results.Results.Count();
-        //    } while (blobContinuationToken != null);
-
-        //    return blobCount;
-        //}
-
-
-        //[TestMethod]
-        //public async Task PurgeInstanceHistoryForTimePeriodDeletePartially()
-        //{
-        //    using (TestOrchestrationHost host = TestHelpers.GetTestOrchestrationHost(enableExtendedSessions: false))
-        //    {
-        //        // Execute the orchestrator twice. Orchestrator will be replied. However instances might be two.
-        //        await host.StartAsync();
-        //        DateTime startDateTime = DateTime.Now;
-        //        string firstInstanceId = Guid.NewGuid().ToString();
-        //        TestOrchestrationClient client = await host.StartOrchestrationAsync(typeof(Orchestrations.FanOutFanIn), 50, firstInstanceId);
-        //        await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
-        //        DateTime endDateTime = DateTime.Now;
-        //        await Task.Delay(5000);
-        //        string secondInstanceId = Guid.NewGuid().ToString();
-        //        client = await host.StartOrchestrationAsync(typeof(Orchestrations.FanOutFanIn), 50, secondInstanceId);
-        //        await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
-        //        string thirdInstanceId = Guid.NewGuid().ToString();
-        //        client = await host.StartOrchestrationAsync(typeof(Orchestrations.FanOutFanIn), 50, thirdInstanceId);
-        //        await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
-
-        //        IList<OrchestrationState> results = await host.GetAllOrchestrationInstancesAsync();
-        //        Assert.AreEqual(3, results.Count);
-        //        Assert.IsNotNull(results[0].Output.Equals("\"Done\""));
-        //        Assert.IsNotNull(results[1].Output.Equals("\"Done\""));
-        //        Assert.IsNotNull(results[2].Output.Equals("\"Done\""));
-
-
-        //        List<HistoryStateEvent> firstHistoryEvents = await client.GetOrchestrationHistoryAsync(firstInstanceId);
-        //        Assert.IsTrue(firstHistoryEvents.Count > 0);
-
-        //        List<HistoryStateEvent> secondHistoryEvents = await client.GetOrchestrationHistoryAsync(secondInstanceId);
-        //        Assert.IsTrue(secondHistoryEvents.Count > 0);
-
-        //        List<HistoryStateEvent> thirdHistoryEvents = await client.GetOrchestrationHistoryAsync(thirdInstanceId);
-        //        Assert.IsTrue(secondHistoryEvents.Count > 0);
-
-        //        IList<OrchestrationState> firstOrchestrationStateList = await client.GetStateAsync(firstInstanceId);
-        //        Assert.AreEqual(1, firstOrchestrationStateList.Count);
-        //        Assert.AreEqual(firstInstanceId, firstOrchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //        IList<OrchestrationState> secondOrchestrationStateList = await client.GetStateAsync(secondInstanceId);
-        //        Assert.AreEqual(1, secondOrchestrationStateList.Count);
-        //        Assert.AreEqual(secondInstanceId, secondOrchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //        IList<OrchestrationState> thirdOrchestrationStateList = await client.GetStateAsync(thirdInstanceId);
-        //        Assert.AreEqual(1, thirdOrchestrationStateList.Count);
-        //        Assert.AreEqual(thirdInstanceId, thirdOrchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //        await client.PurgeInstanceHistoryByTimePeriod(startDateTime, endDateTime, new List<OrchestrationStatus> { OrchestrationStatus.Completed, OrchestrationStatus.Terminated, OrchestrationStatus.Failed, OrchestrationStatus.Running });
-
-        //        List<HistoryStateEvent> firstHistoryEventsAfterPurging = await client.GetOrchestrationHistoryAsync(firstInstanceId);
-        //        Assert.AreEqual(0, firstHistoryEventsAfterPurging.Count);
-
-        //        List<HistoryStateEvent> secondHistoryEventsAfterPurging = await client.GetOrchestrationHistoryAsync(secondInstanceId);
-        //        Assert.IsTrue(secondHistoryEventsAfterPurging.Count > 0);
-
-        //        List<HistoryStateEvent> thirdHistoryEventsAfterPurging = await client.GetOrchestrationHistoryAsync(thirdInstanceId);
-        //        Assert.IsTrue(thirdHistoryEventsAfterPurging.Count > 0);
-
-        //        firstOrchestrationStateList = await client.GetStateAsync(firstInstanceId);
-        //        Assert.AreEqual(1, firstOrchestrationStateList.Count);
-        //        Assert.IsNull(firstOrchestrationStateList.First());
-
-        //        secondOrchestrationStateList = await client.GetStateAsync(secondInstanceId);
-        //        Assert.AreEqual(1, secondOrchestrationStateList.Count);
-        //        Assert.AreEqual(secondInstanceId, secondOrchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //        thirdOrchestrationStateList = await client.GetStateAsync(thirdInstanceId);
-        //        Assert.AreEqual(1, thirdOrchestrationStateList.Count);
-        //        Assert.AreEqual(thirdInstanceId, thirdOrchestrationStateList.First().OrchestrationInstance.InstanceId);
-
-        //        await host.StopAsync();
-        //    }
-        //}
-
-
- 
-
-         /// <summary>
         /// End-to-end test which validates the ContinueAsNew functionality by implementing character counter actor pattern.
         /// </summary>
         //[DataTestMethod]
@@ -368,15 +55,15 @@ namespace DurableTask.Netherite.Tests
         //    TestOrchestrationClient client = resultTuple.Item2;
 
         //    List<HistoryStateEvent> historyEvents = await client.GetOrchestrationHistoryAsync(instanceId);
-        //    Assert.IsTrue(historyEvents.Count > 0);
+        //    Assert.True(historyEvents.Count > 0);
 
         //    IList<OrchestrationState> orchestrationStateList = await client.GetStateAsync(instanceId);
-        //    Assert.AreEqual(1, orchestrationStateList.Count);
-        //    Assert.AreEqual(instanceId, orchestrationStateList.First().OrchestrationInstance.InstanceId);
+        //    Assert.Equal(1, orchestrationStateList.Count);
+        //    Assert.Equal(instanceId, orchestrationStateList.First().OrchestrationInstance.InstanceId);
 
         //    int blobCount = await this.GetBlobCount("test-largemessages", instanceId);
 
-        //    Assert.AreEqual(3, blobCount);
+        //    Assert.Equal(3, blobCount);
 
         //    await client.PurgeInstanceHistoryByTimePeriod(
         //        startDateTime,
@@ -390,14 +77,14 @@ namespace DurableTask.Netherite.Tests
         //        });
 
         //    historyEvents = await client.GetOrchestrationHistoryAsync(instanceId);
-        //    Assert.AreEqual(0, historyEvents.Count);
+        //    Assert.Equal(0, historyEvents.Count);
 
         //    orchestrationStateList = await client.GetStateAsync(instanceId);
-        //    Assert.AreEqual(1, orchestrationStateList.Count);
+        //    Assert.Equal(1, orchestrationStateList.Count);
         //    Assert.IsNull(orchestrationStateList.First());
 
         //    blobCount = await this.GetBlobCount("test-largemessages", instanceId);
-        //    Assert.AreEqual(0, blobCount);
+        //    Assert.Equal(0, blobCount);
         //}
 
         //private async Task<Tuple<string, TestOrchestrationClient>> ValidateCharacterCounterIntegrationTest(bool enableExtendedSessions)
@@ -440,7 +127,7 @@ namespace DurableTask.Netherite.Tests
 
         //        // Make sure it's still running and didn't complete early (or fail).
         //        var status = await client.GetStatusAsync();
-        //        Assert.IsTrue(
+        //        Assert.True(
         //            status?.OrchestrationStatus == OrchestrationStatus.Running ||
         //            status?.OrchestrationStatus == OrchestrationStatus.ContinuedAsNew);
 
@@ -449,9 +136,9 @@ namespace DurableTask.Netherite.Tests
 
         //        status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(10));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, status?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
         //        var result = status?.Output;
-        //        Assert.IsNotNull(result);
+        //        Assert.NotNull(result);
 
         //        await ValidateBlobUrlAsync(host.TaskHub, client.InstanceId, result);
         //        await ValidateBlobUrlAsync(host.TaskHub, client.InstanceId, status?.Input);
@@ -485,7 +172,7 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusFail = await client1.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Orchestrations.FactorialOrchestratorFail.ShouldFail = false;
 
@@ -498,8 +185,8 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusRewind = await client1.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
-        //        Assert.AreEqual("6", statusRewind?.Output);
+        //        Assert.Equal(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
+        //        Assert.Equal("6", statusRewind?.Output);
 
         //        await host.StopAsync();
         //    }
@@ -525,7 +212,7 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusFail = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Activities.HelloFailFanOut.ShouldFail2 = false;
 
@@ -533,8 +220,8 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusRewind = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
-        //        Assert.AreEqual("\"Done\"", statusRewind?.Output);
+        //        Assert.Equal(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
+        //        Assert.Equal("\"Done\"", statusRewind?.Output);
 
         //        await host.StopAsync();
         //    }
@@ -561,7 +248,7 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusFail = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Activities.HelloFailActivity.ShouldFail = false;
 
@@ -569,8 +256,8 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusRewind = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
-        //        Assert.AreEqual("\"Hello, World!\"", statusRewind?.Output);
+        //        Assert.Equal(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
+        //        Assert.Equal("\"Hello, World!\"", statusRewind?.Output);
 
         //        await host.StopAsync();
         //    }
@@ -592,7 +279,7 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusFail = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Activities.MultiplyMultipleActivityFail.ShouldFail1 = false;
 
@@ -600,7 +287,7 @@ namespace DurableTask.Netherite.Tests
 
         //        statusFail = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Activities.MultiplyMultipleActivityFail.ShouldFail2 = false;
 
@@ -608,8 +295,8 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusRewind = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
-        //        Assert.AreEqual("24", statusRewind?.Output);
+        //        Assert.Equal(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
+        //        Assert.Equal("24", statusRewind?.Output);
 
         //        await host.StopAsync();
         //    }
@@ -632,7 +319,7 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusFail = await clientParent.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Orchestrations.ChildWorkflowSubOrchestrationFail.ShouldFail1 = false;
 
@@ -640,7 +327,7 @@ namespace DurableTask.Netherite.Tests
 
         //        statusFail = await clientParent.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Orchestrations.ChildWorkflowSubOrchestrationFail.ShouldFail2 = false;
 
@@ -648,7 +335,7 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusRewind = await clientParent.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
 
         //        await host.StopAsync();
         //    }
@@ -671,7 +358,7 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusFail = await clientParent.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Activities.HelloFailSubOrchestrationActivity.ShouldFail1 = false;
 
@@ -679,7 +366,7 @@ namespace DurableTask.Netherite.Tests
 
         //        statusFail = await clientParent.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Activities.HelloFailSubOrchestrationActivity.ShouldFail2 = false;
 
@@ -687,7 +374,7 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusRewind = await clientParent.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
 
         //        await host.StopAsync();
         //    }
@@ -710,13 +397,13 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusFail = await clientGrandparent.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Activities.HelloFailNestedSuborchestration.ShouldFail1 = false;
 
         //        await clientGrandparent.RewindAsync("Rewind 1: Nested child activity still fails.");
 
-        //        Assert.AreEqual(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Failed, statusFail?.OrchestrationStatus);
 
         //        Activities.HelloFailNestedSuborchestration.ShouldFail2 = false;
 
@@ -724,14 +411,14 @@ namespace DurableTask.Netherite.Tests
 
         //        var statusRewind = await clientGrandparent.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
-        //        //Assert.AreEqual("\"Hello, Catherine!\"", statusRewind?.Output);
+        //        Assert.Equal(OrchestrationStatus.Completed, statusRewind?.OrchestrationStatus);
+        //        //Assert.Equal("\"Hello, Catherine!\"", statusRewind?.Output);
 
         //        await host.StopAsync();
         //    }
         //}
 
-  
+
         /// <summary>
         /// Test which validates the ETW event source.
         /// </summary>
@@ -757,7 +444,7 @@ namespace DurableTask.Netherite.Tests
         //        var client = await host.StartOrchestrationAsync(typeof(Orchestrations.Echo), message);
         //        var status = await client.WaitForCompletionAsync(TimeSpan.FromMinutes(2));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, status?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
         //        await ValidateBlobUrlAsync(
         //            host.TaskHub,
         //            client.InstanceId,
@@ -789,7 +476,7 @@ namespace DurableTask.Netherite.Tests
         //        var client = await host.StartOrchestrationAsync(typeof(Orchestrations.EchoBytes), readBytes);
         //        var status = await client.WaitForCompletionAsync(TimeSpan.FromMinutes(1));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, status?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
 
         //        // Large message payloads may actually get bigger when stored in blob storage.
         //        await ValidateBlobUrlAsync(host.TaskHub, client.InstanceId, status?.Output, (int)(readBytes.Length * 1.3));
@@ -820,7 +507,7 @@ namespace DurableTask.Netherite.Tests
         //        var client = await host.StartOrchestrationAsync(typeof(Orchestrations.Echo), message);
         //        var status = await client.WaitForCompletionAsync(TimeSpan.FromMinutes(1));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, status?.OrchestrationStatus);
+        //        Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
 
         //        // Large message payloads may actually get bigger when stored in blob storage.
         //        await ValidateBlobUrlAsync(host.TaskHub, client.InstanceId, status?.Output, (int)(readBytes.Length * 1.3));
@@ -854,9 +541,9 @@ namespace DurableTask.Netherite.Tests
 
         //        var status = await client.WaitForStartupAsync(TimeSpan.FromSeconds(10));
 
-        //        Assert.AreEqual(OrchestrationStatus.Running, status?.OrchestrationStatus);
-        //        Assert.AreEqual("0", status?.Input);
-        //        Assert.AreEqual(null, status?.Output);
+        //        Assert.Equal(OrchestrationStatus.Running, status?.OrchestrationStatus);
+        //        Assert.Equal("0", status?.Input);
+        //        Assert.Equal(null, status?.Output);
 
         //        // Delay long enough for the session to expire
         //        await Task.Delay(TimeSpan.FromSeconds(SessionTimeoutInseconds + 1));
@@ -866,7 +553,7 @@ namespace DurableTask.Netherite.Tests
 
         //        // Make sure it's still running and didn't complete early (or fail).
         //        status = await client.GetStatusAsync();
-        //        Assert.IsTrue(
+        //        Assert.True(
         //            status?.OrchestrationStatus == OrchestrationStatus.Running ||
         //            status?.OrchestrationStatus == OrchestrationStatus.ContinuedAsNew);
 
@@ -875,8 +562,8 @@ namespace DurableTask.Netherite.Tests
 
         //        status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(10));
 
-        //        Assert.AreEqual(OrchestrationStatus.Completed, status?.OrchestrationStatus);
-        //        Assert.AreEqual(1, JToken.Parse(status?.Output));
+        //        Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
+        //        Assert.Equal(1, JToken.Parse(status?.Output));
 
         //        await host.StopAsync();
         //    }
@@ -885,26 +572,26 @@ namespace DurableTask.Netherite.Tests
         //private static async Task ValidateBlobUrlAsync(string taskHubName, string instanceId, string value, int originalPayloadSize = 0)
         //{
         //    CloudStorageAccount account = CloudStorageAccount.Parse(TestHelpers.GetTestStorageAccountConnectionString());
-        //    Assert.IsTrue(value.StartsWith(account.BlobStorageUri.PrimaryUri.OriginalString));
-        //    Assert.IsTrue(value.Contains("/" + instanceId + "/"));
-        //    Assert.IsTrue(value.EndsWith(".json.gz"));
+        //    Assert.True(value.StartsWith(account.BlobStorageUri.PrimaryUri.OriginalString));
+        //    Assert.True(value.Contains("/" + instanceId + "/"));
+        //    Assert.True(value.EndsWith(".json.gz"));
 
         //    string containerName = $"{taskHubName.ToLowerInvariant()}-largemessages";
         //    CloudBlobClient client = account.CreateCloudBlobClient();
         //    CloudBlobContainer container = client.GetContainerReference(containerName);
-        //    Assert.IsTrue(await container.ExistsAsync(), $"Blob container {containerName} is expected to exist.");
+        //    Assert.True(await container.ExistsAsync(), $"Blob container {containerName} is expected to exist.");
 
         //    await client.GetBlobReferenceFromServerAsync(new Uri(value));
         //    CloudBlobDirectory instanceDirectory = container.GetDirectoryReference(instanceId);
 
         //    string blobName = value.Split('/').Last();
         //    CloudBlob blob = instanceDirectory.GetBlobReference(blobName);
-        //    Assert.IsTrue(await blob.ExistsAsync(), $"Blob named {blob.Uri} is expected to exist.");
+        //    Assert.True(await blob.ExistsAsync(), $"Blob named {blob.Uri} is expected to exist.");
 
         //    if (originalPayloadSize > 0)
         //    {
         //        await blob.FetchAttributesAsync();
-        //        Assert.IsTrue(blob.Properties.Length < originalPayloadSize, "Blob is expected to be compressed");
+        //        Assert.True(blob.Properties.Length < originalPayloadSize, "Blob is expected to be compressed");
         //    }
         //}
     }
