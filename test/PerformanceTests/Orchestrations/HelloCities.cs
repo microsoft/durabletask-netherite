@@ -153,6 +153,22 @@ namespace PerformanceTests
             return new OkObjectResult($"{pending+running+completed+other} orchestration instances ({pending} pending, {running} running, {completed} completed, {other} other)\n");
         }
 
+        [FunctionName(nameof(PurgeCities))]
+        public static async Task<IActionResult> PurgeCities(
+           [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "purgecities")] HttpRequest req,
+           [DurableClient] IDurableClient client,
+           ILogger log)
+        {
+            var queryCondition = new OrchestrationStatusQueryCondition()
+            {
+                InstanceIdPrefix = "Orch",
+            };
+
+            PurgeHistoryResult result = await client.PurgeInstanceHistoryAsync(default,default,default);
+
+            return new OkObjectResult($"purged {result.InstancesDeleted} orchestration instances.\n");
+        }
+
 
         [FunctionName(nameof(HelloSequence))]
         public static async Task<List<string>> HelloSequence([OrchestrationTrigger] IDurableOrchestrationContext context)
