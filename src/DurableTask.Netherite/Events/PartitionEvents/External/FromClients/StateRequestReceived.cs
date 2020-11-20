@@ -30,7 +30,7 @@ namespace DurableTask.Netherite
         public override void OnReadComplete(TrackedObject target, Partition partition)
         {
             var orchestrationState = ((InstanceState)target)?.OrchestrationState;
-            var editedState = orchestrationState?.ClearFieldsImmutably(this.IncludeInput, this.IncludeOutput);
+            var editedState = orchestrationState?.ClearFieldsImmutably(!this.IncludeInput, !this.IncludeOutput);
 
             var response = new StateResponseReceived()
             {

@@ -102,7 +102,7 @@ namespace DurableTask.Netherite
                 .Select(instanceState => instanceState?.OrchestrationState)
                 .Where(orchestrationState => orchestrationState != null 
                     && (query == null || query.Matches(orchestrationState)))
-                .Select(orchestrationState => orchestrationState.ClearFieldsImmutably(query.FetchInput, true))
+                .Select(orchestrationState => orchestrationState.ClearFieldsImmutably(!query.FetchInput, false))
                 .ToList();
         }
 
