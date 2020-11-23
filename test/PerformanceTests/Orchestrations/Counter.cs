@@ -58,10 +58,17 @@
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = nameof(Increment))] HttpRequest req,
             [DurableClient] IDurableClient client)
         {
-            string entityKey = await new StreamReader(req.Body).ReadToEndAsync();
-            var entityId = new EntityId("Counter", entityKey);
-            await client.SignalEntityAsync(entityId, "add", 1);
-            return new OkObjectResult($"increment was sent to {entityId}.\n");
+            try
+            {
+                string entityKey = await new StreamReader(req.Body).ReadToEndAsync();
+                var entityId = new EntityId("Counter", entityKey);
+                await client.SignalEntityAsync(entityId, "add", 1);
+                return new OkObjectResult($"increment was sent to {entityId}.\n");
+            }
+            catch(Exception e)
+            {
+                return new OkObjectResult(e.ToString());
+            }
         }
     }
 

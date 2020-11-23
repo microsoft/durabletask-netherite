@@ -12,11 +12,7 @@ namespace PerformanceTests
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
-    using System.Collections.Generic;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Dynamitey;
-    using System.Security.Cryptography;
-    using Microsoft.Azure.Storage.Blob;
     using Microsoft.WindowsAzure.Storage.Queue;
 
     /// <summary>
