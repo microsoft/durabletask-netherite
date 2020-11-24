@@ -163,7 +163,7 @@ namespace DurableTask.Netherite
                 this.eventId = eventId;
                 this.client = client;
                 this.timeoutKey = (due, timeoutId);
-                this.continuation = new TaskCompletionSource<ClientEvent>(TaskContinuationOptions.ExecuteSynchronously);
+                this.continuation = new TaskCompletionSource<ClientEvent>();
             }
 
             public void Respond(ClientEvent evt)

@@ -10,7 +10,7 @@ namespace DurableTask.Netherite.Faster
     using DurableTask.Core.Common;
 
     /// <summary>
-    /// Lease timing requires better reliability that what we get from asynchronous Task.Delay under starved thread pools, 
+    /// Lease timing requires better reliability that what we get from asynchronous Task.Delay, 
     /// so we implement a timer wheel.
     /// </summary>
     class LeaseTimer

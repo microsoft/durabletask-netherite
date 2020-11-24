@@ -30,7 +30,7 @@ namespace DurableTask.Netherite
                     QueryEventId = this.EventIdString,
                     BatchNumber = batchCount++,
                     InstanceIds = new List<string>(),
-                    WhenProcessed = new TaskCompletionSource<object>(),
+                    WhenProcessed = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously),
                     InstanceQuery = this.InstanceQuery,
                 };
 

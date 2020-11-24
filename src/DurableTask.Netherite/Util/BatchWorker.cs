@@ -77,7 +77,7 @@ namespace DurableTask.Netherite
 
         public virtual Task WaitForCompletionAsync()
         {
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             this.work.Enqueue(tcs);
             this.Notify();
             return tcs.Task;

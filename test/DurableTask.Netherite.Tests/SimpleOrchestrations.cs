@@ -114,8 +114,7 @@ namespace DurableTask.Netherite.Tests
     [KnownType(typeof(EventConversationOrchestration.Responder))]
     public sealed class EventConversationOrchestration : TaskOrchestration<string, string>
     {
-        readonly TaskCompletionSource<string> tcs
-            = new TaskCompletionSource<string>(TaskContinuationOptions.ExecuteSynchronously);
+        readonly TaskCompletionSource<string> tcs = new TaskCompletionSource<string>();
 
         // HACK: This is just a hack to communicate result of orchestration back to test
         public static bool OkResult;
@@ -159,8 +158,7 @@ namespace DurableTask.Netherite.Tests
 
         public class Responder : TaskOrchestration<string, string>
         {
-            readonly TaskCompletionSource<string> tcs
-                = new TaskCompletionSource<string>(TaskContinuationOptions.ExecuteSynchronously);
+            readonly TaskCompletionSource<string> tcs = new TaskCompletionSource<string>();
 
             public async override Task<string> RunTask(OrchestrationContext context, string input)
             {

@@ -265,7 +265,7 @@ namespace DurableTask.Netherite.EventHubs
             {
                 if (!this.shutdownSource.IsCancellationRequested)
                 {
-                    var tcs = new TaskCompletionSource<object>();
+                    var tcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
                     var registration = this.shutdownSource.Token.Register(() =>
                      {
                          tcs.TrySetResult(true);
