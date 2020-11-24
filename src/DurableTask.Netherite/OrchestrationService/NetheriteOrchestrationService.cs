@@ -247,7 +247,7 @@ namespace DurableTask.Netherite
             try
             {
 
-                this.Logger.LogInformation("NetheriteOrchestrationService stopping, workerId={workerId} isForced={}", this.Settings.WorkerId, isForced);
+                this.Logger.LogInformation("NetheriteOrchestrationService stopping, workerId={workerId} isForced={isForced}", this.Settings.WorkerId, isForced);
 
                 if (!this.Settings.KeepServiceRunning && this.serviceShutdownSource != null)
                 {

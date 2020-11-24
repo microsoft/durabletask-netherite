@@ -89,6 +89,7 @@ namespace DurableTask.Netherite.Tests
             // Need to wait for the instance to start before sending events to it.
             // TODO: This requirement may not be ideal and should be revisited.
             await client.WaitForStartupAsync(TimeSpan.FromSeconds(10));
+            Trace.TraceInformation($"Test progress: Counter is running.");
 
             // We should have one orchestration state
             var instanceStates = await this.host.GetAllOrchestrationInstancesAsync();
@@ -112,8 +113,10 @@ namespace DurableTask.Netherite.Tests
             await assertCounts(1, 0);
 
             // The end message will cause the actor to complete itself.
+            Trace.TraceInformation($"Test progress: Sending event to Counter.");
             await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpEnd);
-            status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(10));
+            status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
+            Trace.TraceInformation($"Test progress: Counter completed.");
 
             // The client and instance should be Completed
             Assert.NotNull(status);

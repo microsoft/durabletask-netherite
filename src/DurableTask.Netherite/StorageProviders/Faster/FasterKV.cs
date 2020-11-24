@@ -182,19 +182,14 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                for (int i = 0; i < 1000; i++)
+                if (this.fht.TakeIndexCheckpoint(out var token))
                 {
-                    if (this.fht.TakeIndexCheckpoint(out var token))
-                    {
-                        return token;
-                    }
-                    else
-                    {
-                        Thread.Sleep(10);
-                    }
+                    return token;
                 }
-
-                throw new InvalidOperationException("Faster refused index checkpoint");
+                else
+                {
+                    return null;
+                }
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -210,19 +205,16 @@ namespace DurableTask.Netherite.Faster
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
 
-                for(int i = 0; i < 1000; i++)
+                if (this.fht.TakeHybridLogCheckpoint(out var token))
                 {
-                    if (this.fht.TakeHybridLogCheckpoint(out var token))
-                    {
-                        // according to Badrish this ensures proper fencing w.r.t. session
-                        this.mainSession.Refresh();
+                    // according to Badrish this ensures proper fencing w.r.t. session
+                    this.mainSession.Refresh();
 
-                        return token;
-                    }
-                    else
-                    {
-                        Thread.Sleep(10);
-                    }
+                    return token;
+                }
+                else
+                {
+                    return null;
                 }
 
                 throw new InvalidOperationException("Faster refused store checkpoint");
