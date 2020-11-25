@@ -27,35 +27,17 @@ namespace DurableTask.Netherite.Tests
     {
         readonly TestFixture fixture;
         readonly TestOrchestrationHost host;
-        readonly TestTraceListener traceListener;
-
 
         public ScenarioTests(TestFixture fixture, ITestOutputHelper outputHelper)
         {
             this.fixture = fixture;
             this.host = fixture.Host;
-            fixture.LoggerProvider.Output = outputHelper;
-            this.traceListener = new TestTraceListener(outputHelper);
-            lock (fixture.LoggerProvider)
-            {
-                Trace.Listeners.Add(this.traceListener);
-            }
+            fixture.SetOutput(outputHelper);
         }
 
         public void Dispose()
         {
-            lock (this.fixture.LoggerProvider)
-            {
-                Trace.Listeners.Remove(this.traceListener);
-            }
-        }
-
-        internal class TestTraceListener : TraceListener
-        {
-            readonly ITestOutputHelper _output;
-            public TestTraceListener(ITestOutputHelper output) { this._output = output; }
-            public override void Write(string message) { }
-            public override void WriteLine(string message) { this._output.WriteLine(message); }
+            this.fixture.ClearOutput();
         }
 
         /// <summary>

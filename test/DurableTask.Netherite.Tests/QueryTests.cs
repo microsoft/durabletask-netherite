@@ -12,7 +12,7 @@ namespace DurableTask.Netherite.Tests
     using System.Linq;
     using System.Collections.Generic;
 
-    using TestTraceListener = DurableTask.Netherite.Tests.ScenarioTests.TestTraceListener;
+    using TestTraceListener = DurableTask.Netherite.Tests.TestFixture.TestTraceListener;
     using Orchestrations = DurableTask.Netherite.Tests.ScenarioTests.Orchestrations;
     using Microsoft.Extensions.Logging;
     using DurableTask.Netherite;
@@ -30,15 +30,16 @@ namespace DurableTask.Netherite.Tests
         {
             this.fixture = fixture;
             this.host = fixture.Host;
-            this.fixture.LoggerProvider.Output = outputHelper;
-            this.traceListener = new TestTraceListener(outputHelper);
-            Trace.Listeners.Add(this.traceListener);
+            this.fixture.SetOutput(outputHelper);
 
             // purge all instances prior to each test
             this.host.PurgeAllAsync().Wait();
         }
 
-        public void Dispose() => Trace.Listeners.Remove(this.traceListener);
+        public void Dispose() 
+        {
+            this.fixture.ClearOutput();
+        }
 
         /// <summary>
         /// Ported from AzureStorageScenarioTests
@@ -209,22 +210,18 @@ namespace DurableTask.Netherite.Tests
 
         public NonFixtureQueryTests(ITestOutputHelper outputHelper)
         {
-            this.traceListener = new TestTraceListener(outputHelper);
+            this.traceListener = new TestTraceListener() { Output = outputHelper };
             this.loggerFactory = new LoggerFactory();
             this.provider = new XunitLoggerProvider(outputHelper);
             this.loggerFactory.AddProvider(this.provider);
-            lock (this.provider)
-            {
-                Trace.Listeners.Add(this.traceListener);
-            }
+            Trace.Listeners.Add(this.traceListener);
         }
 
         public void Dispose()
         {
-            lock (this.provider)
-            {
-                Trace.Listeners.Remove(this.traceListener);
-            }
+            this.provider.Output = null;
+            this.traceListener.Output = null;
+            Trace.Listeners.Remove(this.traceListener);
         }
 
         /// <summary>

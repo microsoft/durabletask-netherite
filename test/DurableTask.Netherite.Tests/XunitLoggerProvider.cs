@@ -44,27 +44,24 @@ namespace DurableTask.Netherite.Tests
                 // Write the information to the system trace
                 string formattedString = formatter(state, exception);
 
-                lock (this.provider)
+                switch (logLevel)
                 {
-                    switch (logLevel)
-                    {
-                        case LogLevel.Information:
-                        case LogLevel.Debug:
-                        case LogLevel.Trace:
-                            System.Diagnostics.Trace.TraceInformation($"{formattedString}");
-                            break;
-                        case LogLevel.Error:
-                        case LogLevel.Critical:
-                            System.Diagnostics.Trace.TraceError($"{formattedString}");
-                            if (exception != null)
-                                System.Diagnostics.Trace.TraceError(exception.ToString());
-                            break;
-                        case LogLevel.Warning:
-                            System.Diagnostics.Trace.TraceWarning($"{formattedString}");
-                            if (exception != null)
-                                System.Diagnostics.Trace.TraceWarning(exception.ToString());
-                            break;
-                    }
+                    case LogLevel.Information:
+                    case LogLevel.Debug:
+                    case LogLevel.Trace:
+                        System.Diagnostics.Trace.TraceInformation($"{formattedString}");
+                        break;
+                    case LogLevel.Error:
+                    case LogLevel.Critical:
+                        System.Diagnostics.Trace.TraceError($"{formattedString}");
+                        if (exception != null)
+                            System.Diagnostics.Trace.TraceError(exception.ToString());
+                        break;
+                    case LogLevel.Warning:
+                        System.Diagnostics.Trace.TraceWarning($"{formattedString}");
+                        if (exception != null)
+                            System.Diagnostics.Trace.TraceWarning(exception.ToString());
+                        break;
                 }
             }
 
