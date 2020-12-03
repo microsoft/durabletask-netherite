@@ -57,6 +57,12 @@ namespace DurableTask.Netherite.Faster
             this.underLease = underLease;
         }
 
+        /// <inheritdoc/>
+        public override string ToString()
+        {
+            return $"AzureStorageDevice {this.blockBlobDirectory.Prefix}{this.blobName}";
+        }
+
         public async Task StartAsync()
         {
             this.BlobManager?.StorageTracer?.FasterStorageProgress($"AzureStorageDevice.StartAsync Called target={this.pageBlobDirectory.Prefix}{this.blobName}");
@@ -71,10 +77,27 @@ namespace DurableTask.Netherite.Faster
                 {
                     await this.BlobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
                 }
-                var response = await this.pageBlobDirectory.ListBlobsSegmentedAsync(useFlatBlobListing: false, blobListingDetails: BlobListingDetails.None, maxResults: 1000,
-                    currentToken: continuationToken, options: BlobManager.BlobRequestOptionsWithRetry, operationContext: null)
-                    .ConfigureAwait(BlobManager.CONFIGURE_AWAIT_FOR_STORAGE_CALLS);
 
+                BlobResultSegment response = null;
+                
+                await this.BlobManager.PerformWithRetriesAsync(
+                    BlobManager.AsynchronousStorageReadMaxConcurrency,
+                    true,
+                    "PageBlobDirectory.ListBlobsSegmentedAsync",
+                    $"continuationToken={continuationToken}",
+                    this.pageBlobDirectory.Prefix,
+                    2000,
+                    true,
+                    async (numAttempts) => {
+                        response = await this.pageBlobDirectory.ListBlobsSegmentedAsync(
+                            useFlatBlobListing: false,
+                            blobListingDetails: BlobListingDetails.None,
+                            maxResults: 100,
+                            currentToken: continuationToken,
+                            options: BlobManager.BlobRequestOptionsWithRetry,
+                            operationContext: null);
+                    });
+ 
                 foreach (IListBlobItem item in response.Results)
                 {
                     if (item is CloudPageBlob pageBlob)
@@ -137,8 +160,9 @@ namespace DurableTask.Netherite.Faster
         /// </summary>
         public override void Dispose()
         {
+            // there are no resources that need to be freed
         }
-
+ 
         /// <summary>
         /// <see cref="IDevice.RemoveSegmentAsync(int, AsyncCallback, IAsyncResult)"/>
         /// </summary>
@@ -147,28 +171,47 @@ namespace DurableTask.Netherite.Faster
         /// <param name="result"></param>
         public override void RemoveSegmentAsync(int segment, AsyncCallback callback, IAsyncResult result)
         {
-            if (this.blobs.TryRemove(segment, out BlobEntry blob))
+            if (this.blobs.TryRemove(segment, out BlobEntry entry))
             {
-                CloudPageBlob pageBlob = blob.PageBlob;
+                CloudPageBlob pageBlob = entry.PageBlob;
+                Task deletionTask = this.BlobManager.PerformWithRetriesAsync(
+                    null,
+                    this.underLease,
+                    "CloudPageBlob.DeleteAsync",
+                    "(RemoveSegment)",
+                    pageBlob.Name,
+                    5000,
+                    true,
+                    async (numAttempts) =>
+                    {
+                        await pageBlob.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
+                    });
 
-                if (this.underLease)
-                {
-                    this.BlobManager.ConfirmLeaseIsGoodForAWhile();
-                }
-
-                if (!this.PartitionErrorHandler.IsTerminated)
-                {
-                    pageBlob.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token)
-                       .ContinueWith((Task t) =>
-                       {
-                           if (t.IsFaulted)
-                           {
-                               this.BlobManager?.HandleStorageError(nameof(RemoveSegmentAsync), "could not remove page blob for segment", pageBlob?.Name, t.Exception, false, true);
-                           }
-                           callback(result);
-                       });
-                }
+                deletionTask.ContinueWith((Task t) => callback(result));
             }
+        }
+
+        /// <summary>
+        /// Delete the device blobs in storage.
+        /// </summary>
+        /// <returns></returns>
+        Task DeleteAsync()
+        {
+            Task Delete(BlobEntry entry)
+            {
+                CloudPageBlob pageBlob = entry.PageBlob;
+                return this.BlobManager.PerformWithRetriesAsync(
+                    BlobManager.AsynchronousStorageWriteMaxConcurrency,
+                    this.underLease,
+                    "CloudPageBlob.DeleteAsync",
+                    "(DeleteAsync)",
+                    pageBlob.Name,
+                    5000,
+                    false,
+                    (numAttempts) => pageBlob.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token));
+            }
+
+           return Task.WhenAll(this.blobs.Values.Select(Delete).ToList());
         }
 
         /// <summary>
@@ -239,28 +282,23 @@ namespace DurableTask.Netherite.Faster
 
         async Task WritePortionToBlobAsync(UnmanagedMemoryStream stream, CloudPageBlob blob, IntPtr sourceAddress, long destinationAddress, long offset, uint length)
         {
-            this.BlobManager?.StorageTracer?.FasterStorageProgress($"AzureStorageDevice.WritePortionToBlobAsync Called target={blob.Name} length={length} destinationAddress={destinationAddress + offset}");
-            var stopwatch = new Stopwatch();
-
-            try
+            using (stream)
             {
-                await BlobManager.AsynchronousStorageWriteMaxConcurrency.WaitAsync();
-
-                int numAttempts = 0;
-                long streamPosition = stream.Position;
-
-                while(true) // retry loop
-                {
-                    numAttempts++;
-                    try
+                long originalStreamPosition = stream.Position;
+                await this.BlobManager.PerformWithRetriesAsync(
+                    BlobManager.AsynchronousStorageWriteMaxConcurrency,
+                    true,
+                    "CloudPageBlob.WritePagesAsync",
+                    $"length={length} destinationAddress={destinationAddress + offset}",
+                    blob.Name,
+                    1000 + (int)length / 1000,
+                    true,
+                    async (numAttempts) =>
                     {
-                        if (this.underLease)
+                        if (numAttempts > 0)
                         {
-                            await this.BlobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
+                            stream.Seek(originalStreamPosition, SeekOrigin.Begin); // must go back to original position before retry
                         }
-
-                        this.BlobManager?.StorageTracer?.FasterStorageProgress($"starting upload target={blob.Name} length={length} destinationAddress={destinationAddress + offset} attempt={numAttempts}");
-                        stopwatch.Restart();
 
                         if (length > 0)
                         {
@@ -268,47 +306,11 @@ namespace DurableTask.Netherite.Faster
 
                             await blob.WritePagesAsync(stream, destinationAddress + offset,
                                 contentChecksum: null, accessCondition: null, options: blobRequestOptions, operationContext: null, cancellationToken: this.PartitionErrorHandler.Token)
-                                .ConfigureAwait(BlobManager.CONFIGURE_AWAIT_FOR_STORAGE_CALLS);
+                                .ConfigureAwait(false);
                         }
-
-                        stopwatch.Stop();
-
-                        if (stopwatch.ElapsedMilliseconds > 1000 + length / 1000)
-                        {
-                            this.BlobManager?.TraceHelper.FasterPerfWarning($"CloudPageBlob.WritePagesAsync took {stopwatch.ElapsedMilliseconds:f1}ms, which is excessive; target={blob.Name} length={length} destinationAddress={destinationAddress + offset}");
-                        }
-                        break;
-                    }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
-                    {
-                        stopwatch.Stop();
-                        if (BlobUtils.IsTimeout(e))
-                        {
-                            this.BlobManager?.TraceHelper.FasterPerfWarning($"CloudPageBlob.WritePagesAsync timed out after {stopwatch.ElapsedMilliseconds:f1}ms, retrying now; numAttempts={numAttempts} target={blob.Name} length={length} destinationAddress={destinationAddress + offset}");
-                        }
-                        else
-                        {
-                            TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                            this.BlobManager?.HandleStorageError(nameof(WritePortionToBlobAsync), $"could not write to page blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob?.Name, e, false, true);
-                            await Task.Delay(nextRetryIn);
-                        }
-                        stream.Seek(streamPosition, SeekOrigin.Begin); // must go back to original position before retry
-                        continue;
-                    }
-                    catch (Exception exception) when (!Utils.IsFatal(exception))
-                    {
-                        this.BlobManager?.HandleStorageError(nameof(WritePortionToBlobAsync), $"could not write to page blob target={blob.Name} length={length} destinationAddress={destinationAddress + offset}", blob?.Name, exception, true, this.PartitionErrorHandler.IsTerminated);
-                        throw;
-                    }
-                };
-            }
-            finally
-            {
-                BlobManager.AsynchronousStorageWriteMaxConcurrency.Release();
-                stream.Dispose();
+                    });
             }
         }
-
 
         unsafe Task ReadFromBlobUnsafeAsync(CloudPageBlob blob, long sourceAddress, long destinationAddress, uint readLength)
         {
@@ -317,27 +319,22 @@ namespace DurableTask.Netherite.Faster
 
         async Task ReadFromBlobAsync(UnmanagedMemoryStream stream, CloudPageBlob blob, long sourceAddress, long destinationAddress, uint readLength)
         {
-            this.BlobManager?.StorageTracer?.FasterStorageProgress($"AzureStorageDevice.ReadFromBlobAsync Called target={blob.Name} readLength={readLength} sourceAddress={sourceAddress}");
-            var stopwatch = new Stopwatch();
-
-            try
+            using (stream)
             {
-                await BlobManager.AsynchronousStorageReadMaxConcurrency.WaitAsync();
-
-                int numAttempts = 0;
-
-                while (true) // retry loop
-                {
-                    numAttempts++;         
-                    try
+                await this.BlobManager.PerformWithRetriesAsync(
+                    BlobManager.AsynchronousStorageReadMaxConcurrency,
+                    true,
+                    "CloudPageBlob.DownloadRangeToStreamAsync",
+                    $"readLength={readLength} sourceAddress={sourceAddress}",
+                    blob.Name,
+                    1000 + (int) readLength / 1000,
+                    true,
+                    async (numAttempts) =>
                     {
-                        if (this.underLease)
+                        if (numAttempts > 0)
                         {
-                            await this.BlobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
+                            stream.Seek(0, SeekOrigin.Begin); // must go back to original position before retrying
                         }
-
-                        this.BlobManager?.StorageTracer?.FasterStorageProgress($"starting download target={blob.Name} readLength={readLength} sourceAddress={sourceAddress} attempt={numAttempts}");
-                        stopwatch.Restart();
 
                         if (readLength > 0)
                         {
@@ -346,50 +343,14 @@ namespace DurableTask.Netherite.Faster
 
                             await blob
                                 .DownloadRangeToStreamAsync(stream, sourceAddress, readLength, accessCondition: null, options: blobRequestOptions, operationContext: null, cancellationToken: this.PartitionErrorHandler.Token)
-                                .ConfigureAwait(BlobManager.CONFIGURE_AWAIT_FOR_STORAGE_CALLS);
-                        }
-
-                        stopwatch.Stop();
-                        this.BlobManager?.StorageTracer?.FasterStorageProgress($"finished download target={blob.Name} readLength={readLength} sourceAddress={sourceAddress} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1}");
-
-                        if (stopwatch.ElapsedMilliseconds > 1000 + readLength / 1000)
-                        {
-                            this.BlobManager?.TraceHelper.FasterPerfWarning($"CloudPageBlob.DownloadRangeToStreamAsync took {stopwatch.ElapsedMilliseconds / 1000}s, which is excessive; target={blob.Name} readLength={readLength} sourceAddress={sourceAddress}");
+                                .ConfigureAwait(false);
                         }
 
                         if (stream.Position != readLength)
                         {
                             throw new InvalidDataException($"wrong amount of data received from page blob, expected={readLength}, actual={stream.Position}");
                         }
-                        break;
-                    }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
-                    {
-                        stopwatch.Stop();
-                        if (BlobUtils.IsTimeout(e))
-                        {
-                            this.BlobManager?.TraceHelper.FasterPerfWarning($"CloudPageBlob.DownloadRangeToStreamAsync timed out after {stopwatch.ElapsedMilliseconds:f1}ms, retrying now; numAttempts={numAttempts} target={blob.Name} readLength={readLength} sourceAddress={sourceAddress}");
-                        }
-                        else
-                        {
-                            TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                            this.BlobManager?.HandleStorageError(nameof(ReadFromBlobAsync), $"could not read from page blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob?.Name, e, false, true);
-                            await Task.Delay(nextRetryIn);
-                        }
-                        stream.Seek(0, SeekOrigin.Begin); // must go back to original position before retrying
-                        continue;
-                    }
-                    catch (Exception exception) when (!Utils.IsFatal(exception))
-                    {
-                        this.BlobManager?.HandleStorageError(nameof(ReadFromBlobAsync), "could not read from page blob", blob?.Name, exception, true, this.PartitionErrorHandler.IsTerminated);
-                        throw;
-                    }
-                }
-            }
-            finally
-            {
-                BlobManager.AsynchronousStorageReadMaxConcurrency.Release();
-                stream.Dispose();
+                    });
             }
         }
 

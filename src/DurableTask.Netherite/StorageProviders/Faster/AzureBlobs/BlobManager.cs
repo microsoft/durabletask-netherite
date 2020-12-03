@@ -21,7 +21,7 @@ namespace DurableTask.Netherite.Faster
     /// <summary>
     /// Provides management of blobs and blob names associated with a partition, and logic for partition lease maintenance and termination.
     /// </summary>
-    class BlobManager : ICheckpointManager, ILogCommitManager
+    partial class BlobManager : ICheckpointManager, ILogCommitManager
     {
         readonly uint partitionId;
         readonly CancellationTokenSource shutDownOrTermination;
@@ -38,8 +38,6 @@ namespace DurableTask.Netherite.Faster
         readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(45); // max time the lease stays after unclean shutdown
         readonly TimeSpan LeaseRenewal = TimeSpan.FromSeconds(30); // how often we renew the lease
         readonly TimeSpan LeaseSafetyBuffer = TimeSpan.FromSeconds(10); // how much time we want left on the lease before issuing a protected access
-
-        public const bool CONFIGURE_AWAIT_FOR_STORAGE_CALLS = true;
 
         internal CheckpointInfo CheckpointInfo { get; private set; }
 
@@ -66,7 +64,6 @@ namespace DurableTask.Netherite.Faster
 
         internal static SemaphoreSlim AsynchronousStorageReadMaxConcurrency = new SemaphoreSlim(Environment.ProcessorCount * 25);
         internal static SemaphoreSlim AsynchronousStorageWriteMaxConcurrency = new SemaphoreSlim(Environment.ProcessorCount * 25);
-        internal static SemaphoreSlim SynchronousStorageAccessMaxConcurrency = new SemaphoreSlim(Environment.ProcessorCount * 3);
 
         volatile System.Diagnostics.Stopwatch leaseTimer;
 
@@ -89,17 +86,17 @@ namespace DurableTask.Netherite.Faster
             ObjectLogDevice = this.ObjectLogDevice,
             PageSizeBits = 17, // 128kB
             MutableFraction = 0.9,
-            SegmentSizeBits = 
+            SegmentSizeBits =
                 usePremiumStorage ? 35 // 32 GB
                                   : 32, // 4 GB
             CopyReadsToTail = true,
             MemorySizeBits =
-                (numPartitions <=  1) ? 25 : // 32MB
-                (numPartitions <=  2) ? 24 : // 16MB
-                (numPartitions <=  4) ? 23 : // 8MB
-                (numPartitions <=  8) ? 22 : // 4MB
+                (numPartitions <= 1) ? 25 : // 32MB
+                (numPartitions <= 2) ? 24 : // 16MB
+                (numPartitions <= 4) ? 23 : // 8MB
+                (numPartitions <= 8) ? 22 : // 4MB
                 (numPartitions <= 16) ? 21 : // 2MB
-                                        20 , // 1MB         
+                                        20, // 1MB         
         };
 
         public void Dispose()
@@ -114,7 +111,7 @@ namespace DurableTask.Netherite.Faster
 
         public CheckpointSettings StoreCheckpointSettings => new CheckpointSettings
         {
-            CheckpointManager = this.UseLocalFilesForTestingAndDebugging 
+            CheckpointManager = this.UseLocalFilesForTestingAndDebugging
                 ? new LocalFileCheckpointManager(this.CheckpointInfo, this.LocalCheckpointDirectoryPath, this.GetCheckpointCompletedBlobName())
                 : (ICheckpointManager)this,
             CheckPointType = CheckpointType.FoldOver
@@ -147,7 +144,7 @@ namespace DurableTask.Netherite.Faster
         }
 #endif
 
-        public const int MaxRetries = 5;
+        public const int MaxRetries = 10;
 
         public static BlobRequestOptions BlobRequestOptionsAggressiveTimeout = new BlobRequestOptions()
         {
@@ -161,7 +158,7 @@ namespace DurableTask.Netherite.Faster
         {
             RetryPolicy = default, // no automatic retry
             NetworkTimeout = TimeSpan.FromSeconds(15),
-            ServerTimeout = TimeSpan.FromSeconds(15), 
+            ServerTimeout = TimeSpan.FromSeconds(15),
             MaximumExecutionTime = TimeSpan.FromSeconds(15),
         };
 
@@ -175,7 +172,7 @@ namespace DurableTask.Netherite.Faster
 
         public static TimeSpan GetDelayBetweenRetries(int numAttempts)
             => TimeSpan.FromSeconds(Math.Pow(2, (numAttempts - 1)));
-       
+
         // For tests only; TODO consider adding PSFs
         internal BlobManager(CloudStorageAccount storageAccount, CloudStorageAccount secondaryStorageAccount, string taskHubName, ILogger logger, Microsoft.Extensions.Logging.LogLevel logLevelLimit, uint partitionId, IPartitionErrorHandler errorHandler)
             : this(storageAccount, secondaryStorageAccount, taskHubName, logger, logLevelLimit, partitionId, errorHandler, 0)
@@ -194,12 +191,12 @@ namespace DurableTask.Netherite.Faster
         /// <param name="errorHandler">A handler for errors encountered in this partition</param>
         /// <param name="psfGroupCount">Number of PSF groups to be created in FASTER</param>
         public BlobManager(
-            CloudStorageAccount storageAccount, 
-            CloudStorageAccount secondaryStorageAccount, 
-            string taskHubName, 
-            ILogger logger, 
-            Microsoft.Extensions.Logging.LogLevel logLevelLimit, 
-            uint partitionId, IPartitionErrorHandler errorHandler, 
+            CloudStorageAccount storageAccount,
+            CloudStorageAccount secondaryStorageAccount,
+            string taskHubName,
+            ILogger logger,
+            Microsoft.Extensions.Logging.LogLevel logLevelLimit,
+            uint partitionId, IPartitionErrorHandler errorHandler,
             int psfGroupCount)
         {
             this.cloudStorageAccount = storageAccount;
@@ -381,10 +378,12 @@ namespace DurableTask.Netherite.Faster
         async Task AcquireOwnership()
         {
             var newLeaseTimer = new System.Diagnostics.Stopwatch();
+            int numAttempts = 0;
 
             while (true)
             {
                 this.PartitionErrorHandler.Token.ThrowIfCancellationRequested();
+                numAttempts++;
 
                 try
                 {
@@ -392,8 +391,13 @@ namespace DurableTask.Netherite.Faster
 
                     if (!this.UseLocalFilesForTestingAndDebugging)
                     {
-                        this.leaseId = await this.eventLogCommitBlob.AcquireLeaseAsync(this.LeaseDuration, null, accessCondition: null, options: BlobManager.BlobRequestOptionsDefault, operationContext: null, cancellationToken: this.PartitionErrorHandler.Token)
-                            .ConfigureAwait(BlobManager.CONFIGURE_AWAIT_FOR_STORAGE_CALLS);
+                        this.leaseId = await this.eventLogCommitBlob.AcquireLeaseAsync(
+                            this.LeaseDuration,
+                            null,
+                            accessCondition: null,
+                            options: BlobManager.BlobRequestOptionsDefault,
+                            operationContext: null,
+                            cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
                         this.TraceHelper.LeaseAcquired();
                     }
 
@@ -417,9 +421,27 @@ namespace DurableTask.Netherite.Faster
                     try
                     {
                         // Create blob with empty content, then try again
-                        this.TraceHelper.LeaseProgress("Creating commit blob");
-                        await this.eventLogCommitBlob.UploadFromByteArrayAsync(Array.Empty<byte>(), 0, 0)
-                            .ConfigureAwait(BlobManager.CONFIGURE_AWAIT_FOR_STORAGE_CALLS);
+                        await this.PerformWithRetriesAsync(
+                            null,
+                            false,
+                            "CloudBlockBlob.UploadFromByteArrayAsync",
+                            "(Create commit blob)",
+                            this.eventLogCommitBlob.Name,
+                            2000,
+                            true,
+                            async (numAttempts) =>
+                            {
+                                try
+                                {
+                                    await this.eventLogCommitBlob.UploadFromByteArrayAsync(Array.Empty<byte>(), 0, 0);
+                                }
+                                catch (StorageException ex2) when (BlobUtils.LeaseConflictOrExpired(ex2))
+                                {
+                                    // creation race, try from top
+                                    this.TraceHelper.LeaseProgress("Creation race observed, retrying");
+                                }
+                            });
+
                         continue;
                     }
                     catch (StorageException ex2) when (BlobUtils.LeaseConflictOrExpired(ex2))
@@ -428,6 +450,20 @@ namespace DurableTask.Netherite.Faster
                         this.TraceHelper.LeaseProgress("Creation race observed, retrying");
                         continue;
                     }
+                }
+                catch (StorageException ex) when (numAttempts < BlobManager.MaxRetries && BlobUtils.IsTransientStorageError(ex, this.PartitionErrorHandler.Token))
+                {
+                    if (BlobUtils.IsTimeout(ex))
+                    {
+                        this.TraceHelper.FasterPerfWarning($"Lease acquisition timed out, retrying now");
+                    }
+                    else
+                    {
+                        TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
+                        this.TraceHelper.FasterPerfWarning($"Lease acquisition experienced transient error, retrying in {nextRetryIn}");
+                        await Task.Delay(nextRetryIn);
+                    }
+                    continue;
                 }
                 catch (Exception e)
                 {
@@ -451,13 +487,13 @@ namespace DurableTask.Netherite.Faster
                 {
                     this.TraceHelper.LeaseProgress($"Renewing lease at {this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds}s");
                     await this.eventLogCommitBlob.RenewLeaseAsync(acc, this.PartitionErrorHandler.Token)
-                        .ConfigureAwait(BlobManager.CONFIGURE_AWAIT_FOR_STORAGE_CALLS);
+                        .ConfigureAwait(false);
                     this.TraceHelper.LeaseProgress($"Renewed lease at {this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds}s");
                 }
 
                 this.leaseTimer = nextLeaseTimer;
             }
-            catch(OperationCanceledException)
+            catch (OperationCanceledException)
             {
                 // o.k. during termination or shutdown
             }
@@ -475,7 +511,7 @@ namespace DurableTask.Netherite.Faster
             {
                 while (true)
                 {
-                    int timeLeft = (int) (this.LeaseRenewal - this.leaseTimer.Elapsed).TotalMilliseconds;
+                    int timeLeft = (int)(this.LeaseRenewal - this.leaseTimer.Elapsed).TotalMilliseconds;
 
                     if (timeLeft <= 0)
                     {
@@ -487,7 +523,7 @@ namespace DurableTask.Netherite.Faster
                     }
 
                     // wait for successful renewal, or exit the loop as this throws
-                    await this.NextLeaseRenewalTask.ConfigureAwait(false); 
+                    await this.NextLeaseRenewalTask.ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -527,8 +563,11 @@ namespace DurableTask.Netherite.Faster
 
                         AccessCondition acc = new AccessCondition() { LeaseId = this.leaseId };
 
-                        await this.eventLogCommitBlob.ReleaseLeaseAsync(accessCondition: acc, options: BlobManager.BlobRequestOptionsDefault, operationContext: null, cancellationToken: this.PartitionErrorHandler.Token)
-                            .ConfigureAwait(BlobManager.CONFIGURE_AWAIT_FOR_STORAGE_CALLS);
+                        await this.eventLogCommitBlob.ReleaseLeaseAsync(
+                            accessCondition: acc,
+                            options: BlobManager.BlobRequestOptionsDefault,
+                            operationContext: null,
+                            cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
 
                         this.TraceHelper.LeaseReleased();
                     }
@@ -574,74 +613,43 @@ namespace DurableTask.Netherite.Faster
         void ILogCommitManager.Commit(long beginAddress, long untilAddress, byte[] commitMetadata)
         {
             this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.Commit Called beginAddress={beginAddress} untilAddress={untilAddress}");
-            var stopwatch = new Stopwatch();
-            int numAttempts = 0;
 
-            while (true)
-            {
-                numAttempts++;
+            AccessCondition acc = new AccessCondition() { LeaseId = this.leaseId };
 
-                AccessCondition acc = new AccessCondition() { LeaseId = this.leaseId };
-                try
+            this.PerformWithRetries(
+                false,
+                "CloudBlockBlob.UploadFromByteArray",
+                "(commit log)",
+                this.eventLogCommitBlob.Name,
+                1000,
+                true,
+                (int numAttempts) =>
                 {
-                    SynchronousStorageAccessMaxConcurrency.Wait();
-
-                    this.PartitionErrorHandler.Token.ThrowIfCancellationRequested();
-                    var blobRequestOptions = numAttempts > 2 ? BlobManager.BlobRequestOptionsDefault : BlobManager.BlobRequestOptionsAggressiveTimeout;
-                    stopwatch.Restart();
-                    this.eventLogCommitBlob.UploadFromByteArray(commitMetadata, 0, commitMetadata.Length, acc, blobRequestOptions);
-                    stopwatch.Stop();
-                    this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.Commit Returned latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1}");
-
-                    if (stopwatch.ElapsedMilliseconds > 1000)
+                    try
                     {
-                        this.TraceHelper.FasterPerfWarning($"CloudBlockBlob.UploadFromByteArray took {stopwatch.ElapsedMilliseconds / 1000}s, which is excessive; target={this.eventLogCommitBlob.Name} length={commitMetadata.Length}");
+                        var blobRequestOptions = numAttempts > 2 ? BlobManager.BlobRequestOptionsDefault : BlobManager.BlobRequestOptionsAggressiveTimeout;
+                        this.eventLogCommitBlob.UploadFromByteArray(commitMetadata, 0, commitMetadata.Length, acc, blobRequestOptions);
+                        return true;
                     }
-
-                    return;
-                }
-                catch (StorageException ex) when (BlobUtils.LeaseConflict(ex))
-                {
-                    // We lost the lease to someone else. Terminate ownership immediately.
-                    this.TraceHelper.LeaseLost(nameof(ILogCommitManager.Commit));
-                    this.HandleStorageError(nameof(ILogCommitManager.Commit), "could not commit because of lost lease", this.eventLogCommitBlob?.Name, ex, true, this.PartitionErrorHandler.IsTerminated);
-                    throw;
-                }
-                catch (StorageException ex) when (BlobUtils.LeaseExpired(ex) && numAttempts < BlobManager.MaxRetries)
-                {
-                    // if we get here, the lease renewal task did not complete in time
-                    // wait for it to complete or throw
-                    this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: wait for next renewal");
-                    this.NextLeaseRenewalTask.Wait();
-                    this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: renewal complete");
-                    continue;
-                }
-                catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, CancellationToken.None) && numAttempts < BlobManager.MaxRetries)
-                {
-                    stopwatch.Stop();
-                    if (BlobUtils.IsTimeout(e))
+                    catch (StorageException ex) when (BlobUtils.LeaseConflict(ex))
                     {
-                        this.TraceHelper.FasterPerfWarning($"CloudBlockBlob.UploadFromByteArray timed out after {stopwatch.ElapsedMilliseconds:f1}ms, retrying now; numAttempts={numAttempts} target={this.eventLogCommitBlob.Name} length={commitMetadata.Length}");
+                        // We lost the lease to someone else. Terminate ownership immediately.
+                        this.TraceHelper.LeaseLost(nameof(ILogCommitManager.Commit));
+                        this.HandleStorageError(nameof(ILogCommitManager.Commit), "could not commit because of lost lease", this.eventLogCommitBlob?.Name, ex, true, this.PartitionErrorHandler.IsTerminated);
+                        throw;
                     }
-                    else
+                    catch (StorageException ex) when (BlobUtils.LeaseExpired(ex) && numAttempts < BlobManager.MaxRetries)
                     {
-                        TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                        this.HandleStorageError(nameof(ILogCommitManager.Commit), $"could not write to commit blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", this.eventLogCommitBlob.Name, e, false, true);
-                        Thread.Sleep(nextRetryIn);
+                        // if we get here, the lease renewal task did not complete in time
+                        // give it another chance to complete
+                        this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: wait for next renewal");
+                        this.NextLeaseRenewalTask.Wait();
+                        this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: renewal complete");
+                        return false;
                     }
-                    continue;
-                }
-                catch (Exception e)
-                {
-                    this.HandleStorageError(nameof(ILogCommitManager.Commit), "could not write commit", this.eventLogCommitBlob.Name, e, true, this.PartitionErrorHandler.IsTerminated);
-                    throw;
-                }
-                finally
-                {
-                    SynchronousStorageAccessMaxConcurrency.Release();
-                }
-            }
+                });
         }
+    
 
         IEnumerable<long> ILogCommitManager.ListCommits()
         {
@@ -652,72 +660,50 @@ namespace DurableTask.Netherite.Faster
         byte[] ILogCommitManager.GetCommitMetadata(long commitNum)
         {
             this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.GetCommitMetadata Called (thread={Thread.CurrentThread.ManagedThreadId})");
-            var stopwatch = new Stopwatch();
-            int numAttempts = 0;
+            AccessCondition acc = new AccessCondition() { LeaseId = this.leaseId };
+            using var stream = new MemoryStream();
 
-            while (true)
-            {
-                numAttempts++;
+            this.PerformWithRetries(
+               false,
+               "CloudBlockBlob.DownloadToStream",
+               "(read commit log)",
+               this.eventLogCommitBlob.Name,
+               1000,
+               true,
+               (int numAttempts) =>
+               {
+                   if (numAttempts > 0)
+                   {
+                       stream.Seek(0, SeekOrigin.Begin);
+                   }
 
-                AccessCondition acc = new AccessCondition() { LeaseId = this.leaseId };
-                try
-                {
-                    SynchronousStorageAccessMaxConcurrency.Wait();
-                    this.PartitionErrorHandler.Token.ThrowIfCancellationRequested();
-                    using var stream = new MemoryStream();
-                    var blobRequestOptions = numAttempts > 2 ? BlobManager.BlobRequestOptionsDefault : BlobManager.BlobRequestOptionsAggressiveTimeout;
-                    stopwatch.Restart();
-                    this.eventLogCommitBlob.DownloadToStream(stream, acc, blobRequestOptions);
-                    stopwatch.Stop();
-                    if (stopwatch.ElapsedMilliseconds > 1000)
-                    {
-                        this.TraceHelper.FasterPerfWarning($"CloudBlockBlob.DownloadToStream took {stopwatch.ElapsedMilliseconds / 1000}s, which is excessive; target={this.eventLogCommitBlob.Name} length={stream.Position}");
-                    }
-                    var bytes = stream.ToArray();
-                    this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.GetCommitMetadata Returned {bytes?.Length ?? null} bytes, latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1}");
-                    return bytes.Length == 0 ? null : bytes;
-                }
-                catch (StorageException ex) when (BlobUtils.LeaseConflict(ex))
-                {
-                    // We lost the lease to someone else. Terminate ownership immediately.
-                    this.TraceHelper.LeaseLost(nameof(ILogCommitManager.GetCommitMetadata));
-                    this.HandleStorageError(nameof(ILogCommitManager.Commit), "could not read latest commit due to lost lease", this.eventLogCommitBlob?.Name, ex, true, this.PartitionErrorHandler.IsTerminated);
-                    throw;
-                }
-                catch (StorageException ex) when (BlobUtils.LeaseExpired(ex) && numAttempts < BlobManager.MaxRetries)
-                {
-                    // if we get here, the lease renewal task did not complete in time
-                    // wait for it to complete or throw
-                    this.TraceHelper.LeaseProgress("ILogCommitManager.GetCommitMetadata: wait for next renewal");
-                    this.NextLeaseRenewalTask.Wait();
-                    this.TraceHelper.LeaseProgress("ILogCommitManager.GetCommitMetadata: renewal complete");
-                    continue;
-                }
-                catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, CancellationToken.None) && numAttempts < BlobManager.MaxRetries)
-                {
-                    stopwatch.Stop();
-                    if (BlobUtils.IsTimeout(e))
-                    {
-                        this.TraceHelper.FasterPerfWarning($"CloudBlockBlob.DownloadToStream timed out after {stopwatch.ElapsedMilliseconds:f1}ms, retrying now; numAttempts={numAttempts} target={this.eventLogCommitBlob.Name}");
-                    }
-                    else
-                    {
-                        TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                        this.HandleStorageError(nameof(ILogCommitManager.Commit), $"could not read latest commit, will retry in {nextRetryIn}s, numAttempts={numAttempts}", this.eventLogCommitBlob.Name, e, false, true);
-                        Thread.Sleep(nextRetryIn);
-                    }
-                    continue;
-                }
-                catch (Exception e)
-                {
-                    this.HandleStorageError(nameof(ILogCommitManager.GetCommitMetadata), "could not read latest commit", this.eventLogCommitBlob.Name, e, true, this.PartitionErrorHandler.IsTerminated);
-                    throw;
-                }
-                finally
-                {
-                    SynchronousStorageAccessMaxConcurrency.Release();
-                }
-            }
+                   try
+                   {
+                       var blobRequestOptions = numAttempts > 2 ? BlobManager.BlobRequestOptionsDefault : BlobManager.BlobRequestOptionsAggressiveTimeout;
+                       this.eventLogCommitBlob.DownloadToStream(stream, acc, blobRequestOptions);
+                       return true;
+                   }
+                   catch (StorageException ex) when (BlobUtils.LeaseConflict(ex))
+                   {
+                       // We lost the lease to someone else. Terminate ownership immediately.
+                       this.TraceHelper.LeaseLost(nameof(ILogCommitManager.GetCommitMetadata));
+                       this.HandleStorageError(nameof(ILogCommitManager.Commit), "could not read latest commit due to lost lease", this.eventLogCommitBlob?.Name, ex, true, this.PartitionErrorHandler.IsTerminated);
+                       throw;
+                   }
+                   catch (StorageException ex) when (BlobUtils.LeaseExpired(ex) && numAttempts < BlobManager.MaxRetries)
+                   {
+                       // if we get here, the lease renewal task did not complete in time
+                       // give it another chance to complete
+                       this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: wait for next renewal");
+                       this.NextLeaseRenewalTask.Wait();
+                       this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: renewal complete");
+                       return false;
+                   }
+               });
+
+            var bytes = stream.ToArray();
+            this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.GetCommitMetadata Returned {bytes?.Length ?? null} bytes");
+            return bytes.Length == 0 ? null : bytes;
         }
 
 #endregion
@@ -819,210 +805,154 @@ namespace DurableTask.Netherite.Faster
         {
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitIndexCheckpoint Called on {tag}, indexToken={indexToken}");
-            CloudBlockBlob target = null;
-            try
-            {
-                var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-                var metaFileBlob = target = partDir.GetBlockBlobReference(this.GetIndexCheckpointMetaBlobName(indexToken));
+            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var metaFileBlob = partDir.GetBlockBlobReference(this.GetIndexCheckpointMetaBlobName(indexToken));
 
-                // we don't need a lease for the checkpoint data since the checkpoint token provides isolation
-                using (var blobStream = metaFileBlob.OpenWrite())
-                {
-                    using var writer = new BinaryWriter(blobStream);
-                    writer.Write(commitMetadata.Length);
-                    writer.Write(commitMetadata);
-                    writer.Flush();
-                }
+            this.PerformWithRetries(
+             false,
+             "CloudBlockBlob.OpenWrite",
+             "(CommitIndexCheckpoint)",
+             metaFileBlob.Name,
+             1000,
+             true,
+             (numAttempts) =>
+             {
+                 using (var blobStream = metaFileBlob.OpenWrite())
+                 {
+                     using var writer = new BinaryWriter(blobStream);
+                     writer.Write(commitMetadata.Length);
+                     writer.Write(commitMetadata);
+                     writer.Flush();
+                     return true;
+                 }
+             });
 
-                (isPsf ? this.PsfCheckpointInfos[psfGroupOrdinal] : this.CheckpointInfo).IndexToken = indexToken;
-
-                this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitIndexCheckpoint Returned from {tag}, target={target.Name}");
-            }
-            catch (Exception e)
-            {
-                this.HandleStorageError(nameof(ICheckpointManager.CommitIndexCheckpoint), "could not write index checkpoint", target.Name, e, true, this.PartitionErrorHandler.IsTerminated);
-                throw;
-            }
+            (isPsf ? this.PsfCheckpointInfos[psfGroupOrdinal] : this.CheckpointInfo).IndexToken = indexToken;
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitIndexCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
         internal void CommitLogCheckpoint(Guid logToken, byte[] commitMetadata, int psfGroupOrdinal)
         {
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Called on {tag}, logToken={logToken}");
-            CloudBlockBlob target = null;
-            try
-            {
-                SynchronousStorageAccessMaxConcurrency.Wait();
+            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var metaFileBlob = partDir.GetBlockBlobReference(this.GetHybridLogCheckpointMetaBlobName(logToken));
 
-                var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-                var metaFileBlob = target = partDir.GetBlockBlobReference(this.GetHybridLogCheckpointMetaBlobName(logToken));
-                
-                // we don't need a lease for the checkpoint data since the checkpoint token provides isolation
-                using (var blobStream = metaFileBlob.OpenWrite())
+            this.PerformWithRetries(
+                false,
+                "CloudBlockBlob.OpenWrite",
+                "(CommitLogCheckpoint)",
+                metaFileBlob.Name,
+                1000,
+                true,
+                (numAttempts) =>
                 {
-                    using var writer = new BinaryWriter(blobStream);
-                    writer.Write(commitMetadata.Length);
-                    writer.Write(commitMetadata);
-                    writer.Flush();
-                }
+                    using (var blobStream = metaFileBlob.OpenWrite())
+                    {
+                        using var writer = new BinaryWriter(blobStream);
+                        writer.Write(commitMetadata.Length);
+                        writer.Write(commitMetadata);
+                        writer.Flush();
+                        return true;
+                    }
+                });
 
-                (isPsf ? this.PsfCheckpointInfos[psfGroupOrdinal] : this.CheckpointInfo).LogToken = logToken;
-
-                this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Returned from {tag}, target={target.Name}");
-            }
-            catch (Exception e)
-            {
-                this.HandleStorageError(nameof(ICheckpointManager.CommitLogCheckpoint), "could not write KV checkpoint", target?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
-                throw;
-            }
-            finally
-            {
-                SynchronousStorageAccessMaxConcurrency.Release();
-            }
+            (isPsf ? this.PsfCheckpointInfos[psfGroupOrdinal] : this.CheckpointInfo).LogToken = logToken;
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
         internal byte[] GetIndexCheckpointMetadata(Guid indexToken, int psfGroupOrdinal)
         {
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Called on {tag}, indexToken={indexToken}");
-            CloudBlockBlob target = null;
-            try
-            {
-                SynchronousStorageAccessMaxConcurrency.Wait();
+            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var metaFileBlob = partDir.GetBlockBlobReference(this.GetIndexCheckpointMetaBlobName(indexToken));
+            byte[] result = null;
 
-                var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-                var metaFileBlob = target = partDir.GetBlockBlobReference(this.GetIndexCheckpointMetaBlobName(indexToken));
-                
-                // we don't need a lease for the checkpoint data since the checkpoint token provides isolation
-                using var blobstream = metaFileBlob.OpenRead();
-                using var reader = new BinaryReader(blobstream);
-                var len = reader.ReadInt32();
-                var result = reader.ReadBytes(len);
-                this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Returned {result?.Length ?? null} bytes from {tag}, target={target.Name}");
-                return result;
-            }
-            catch (Exception e)
-            {
-                this.HandleStorageError(nameof(ICheckpointManager.GetIndexCheckpointMetadata), "could not read index checkpoint metadata", target?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
-                throw;
-            }
-            finally
-            {
-                SynchronousStorageAccessMaxConcurrency.Release();
-            }
+            this.PerformWithRetries(
+               false,
+               "CloudBlockBlob.OpenRead",
+               "(GetIndexCheckpointMetadata)",
+               metaFileBlob.Name,
+               1000,
+               true,
+               (numAttempts) =>
+               {
+                   using var blobstream = metaFileBlob.OpenRead();
+                   using var reader = new BinaryReader(blobstream);
+                   var len = reader.ReadInt32();
+                   result = reader.ReadBytes(len);
+                   return true;
+               });
+
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Returned {result?.Length ?? null} bytes from {tag}, target={metaFileBlob.Name}");
+            return result;
         }
-
         internal byte[] GetLogCheckpointMetadata(Guid logToken, int psfGroupOrdinal)
         {
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Called on {tag}, logToken={logToken}");
-            CloudBlockBlob target = null;
-            try
-            {
-                SynchronousStorageAccessMaxConcurrency.Wait();
+            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var metaFileBlob = partDir.GetBlockBlobReference(this.GetHybridLogCheckpointMetaBlobName(logToken));
+            byte[] result = null;
 
-                var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-                var metaFileBlob = target = partDir.GetBlockBlobReference(this.GetHybridLogCheckpointMetaBlobName(logToken));
-                
-                // we don't need a lease for the checkpoint data since the checkpoint token provides isolation
-                using var blobstream = metaFileBlob.OpenRead();
-                using var reader = new BinaryReader(blobstream);
-                var len = reader.ReadInt32();
-                var result = reader.ReadBytes(len);
-                this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Returned {result?.Length ?? null} bytes from {tag}, target={target.Name}");
-                return result;
-            }
-            catch (Exception e)
-            {
-                this.HandleStorageError(nameof(ICheckpointManager.GetLogCheckpointMetadata), "could not read log checkpoint metadata", target?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
-                throw;
-            }
-            finally
-            {
-                SynchronousStorageAccessMaxConcurrency.Release();
-            }
+            this.PerformWithRetries(
+                false,
+                "CloudBlockBlob.OpenRead",
+                "(GetLogCheckpointMetadata)",
+                metaFileBlob.Name,
+                1000,
+                true,
+                (numAttempts) => 
+                {
+                    using var blobstream = metaFileBlob.OpenRead();
+                    using var reader = new BinaryReader(blobstream);
+                    var len = reader.ReadInt32();
+                    result = reader.ReadBytes(len);
+                    return true;
+                });
+          
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Returned {result?.Length ?? null} bytes from {tag}, target={metaFileBlob.Name}");
+            return result;
         }
 
         internal IDevice GetIndexDevice(Guid indexToken, int psfGroupOrdinal)
         {
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexDevice Called on {tag}, indexToken={indexToken}");
-            try
-            {
-                SynchronousStorageAccessMaxConcurrency.Wait();
-
-                var (path, blobName) = this.GetPrimaryHashTableBlobName(indexToken);
-                var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-                var blobDirectory = partDir.GetDirectoryReference(path);
-                var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
-                device.StartAsync().Wait();
-                this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexDevice Returned from {tag}, target={blobDirectory.Prefix}{blobName}");
-                return device;
-            }
-            catch (Exception e)
-            {
-                this.HandleStorageError(nameof(ICheckpointManager.GetIndexDevice), "could not create index device", null, e, true, this.PartitionErrorHandler.IsTerminated);
-                throw;
-            }
-            finally
-            {
-                SynchronousStorageAccessMaxConcurrency.Release();
-            }
+            var (path, blobName) = this.GetPrimaryHashTableBlobName(indexToken);
+            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var blobDirectory = partDir.GetDirectoryReference(path);
+            var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
+            device.StartAsync().Wait();
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexDevice Returned from {tag}, target={blobDirectory.Prefix}{blobName}");
+            return device;
         }
 
         internal IDevice GetSnapshotLogDevice(Guid token, int psfGroupOrdinal)
         {
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotLogDevice Called on {tag}, token={token}");
-            try
-            {
-                SynchronousStorageAccessMaxConcurrency.Wait();
-
-                var (path, blobName) = this.GetLogSnapshotBlobName(token);
-                var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-                var blobDirectory = partDir.GetDirectoryReference(path);
-                var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
-
-                device.StartAsync().Wait();
-                this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotLogDevice Returned from {tag}, blobDirectory={blobDirectory} blobName={blobName}");
-                return device;
-            }
-            catch (Exception e)
-            {
-                this.HandleStorageError(nameof(ICheckpointManager.GetSnapshotLogDevice), "could not create checkpoint device", null, e, true, this.PartitionErrorHandler.IsTerminated);
-                throw;
-            }
-            finally
-            {
-                SynchronousStorageAccessMaxConcurrency.Release();
-            }
+            var (path, blobName) = this.GetLogSnapshotBlobName(token);
+            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var blobDirectory = partDir.GetDirectoryReference(path);
+            var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
+            device.StartAsync().Wait();
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotLogDevice Returned from {tag}, blobDirectory={blobDirectory} blobName={blobName}");
+            return device;
         }
 
         internal IDevice GetSnapshotObjectLogDevice(Guid token, int psfGroupOrdinal)
         {
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Called on {tag}, token={token}");
-            try
-            {
-                SynchronousStorageAccessMaxConcurrency.Wait();
-
-                var (path, blobName) = this.GetObjectLogSnapshotBlobName(token);
-                var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-                var blobDirectory = partDir.GetDirectoryReference(path);
-                var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
-                device.StartAsync().Wait();
-                this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Returned from {tag}, blobDirectory={blobDirectory} blobName={blobName}");
-                return device;
-            }
-            catch (Exception e)
-            {
-                this.HandleStorageError(nameof(ICheckpointManager.GetSnapshotObjectLogDevice), "could not create checkpoint object device", null, e, true, this.PartitionErrorHandler.IsTerminated);
-                throw;
-            }
-            finally
-            {
-                SynchronousStorageAccessMaxConcurrency.Release();
-            }
+            var (path, blobName) = this.GetObjectLogSnapshotBlobName(token);
+            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var blobDirectory = partDir.GetDirectoryReference(path);
+            var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
+            device.StartAsync().Wait();
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Returned from {tag}, blobDirectory={blobDirectory} blobName={blobName}");
+            return device;
         }
 
         #endregion
@@ -1032,11 +962,20 @@ namespace DurableTask.Netherite.Faster
             // write the final file that has all the checkpoint info
             void writeLocal(string path, string text)
                 => File.WriteAllText(Path.Combine(path, this.GetCheckpointCompletedBlobName()), text);
+
             async Task writeBlob(CloudBlobDirectory partDir, string text)
             {
                 var checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
-                await this.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(BlobManager.CONFIGURE_AWAIT_FOR_STORAGE_CALLS); // the lease protects the checkpoint completed file
-                await checkpointCompletedBlob.UploadTextAsync(text).ConfigureAwait(BlobManager.CONFIGURE_AWAIT_FOR_STORAGE_CALLS);
+                await this.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false); // the lease protects the checkpoint completed file
+                await this.PerformWithRetriesAsync(
+                    BlobManager.AsynchronousStorageWriteMaxConcurrency,
+                    true,
+                    "CloudBlockBlob.UploadTextAsync",
+                    "(finalize checkpoint)",
+                    checkpointCompletedBlob.Name,
+                    1000,
+                    true,
+                    (numAttempts) => checkpointCompletedBlob.UploadTextAsync(text));
             }
 
             // Primary FKV
