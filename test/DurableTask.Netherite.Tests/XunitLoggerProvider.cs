@@ -37,7 +37,7 @@ namespace DurableTask.Netherite.Tests
 
             public IDisposable BeginScope<TState>(TState state) => NoopDisposable.Instance;
 
-            public bool IsEnabled(LogLevel logLevel) => TestHelpers.UnitTestLogLevel <= logLevel;
+            public bool IsEnabled(LogLevel logLevel) => TestConstants.UnitTestLogLevel <= logLevel;
 
             public void Log<TState>(LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
             {
@@ -49,16 +49,16 @@ namespace DurableTask.Netherite.Tests
                     case LogLevel.Information:
                     case LogLevel.Debug:
                     case LogLevel.Trace:
-                        System.Diagnostics.Trace.TraceInformation($"{formattedString}");
+                        System.Diagnostics.Trace.TraceInformation(formattedString);
                         break;
                     case LogLevel.Error:
                     case LogLevel.Critical:
-                        System.Diagnostics.Trace.TraceError($"{formattedString}");
+                        System.Diagnostics.Trace.TraceError(formattedString);
                         if (exception != null)
                             System.Diagnostics.Trace.TraceError(exception.ToString());
                         break;
                     case LogLevel.Warning:
-                        System.Diagnostics.Trace.TraceWarning($"{formattedString}");
+                        System.Diagnostics.Trace.TraceWarning(formattedString);
                         if (exception != null)
                             System.Diagnostics.Trace.TraceWarning(exception.ToString());
                         break;

@@ -1574,7 +1574,7 @@ namespace DurableTask.Netherite.Tests
                     {
                         if (cachedTable == null)
                         {
-                            string connectionString = TestHelpers.GetAzureStorageConnectionString();
+                            string connectionString = TestConstants.GetAzureStorageConnectionString();
                             CloudTable table = CloudStorageAccount.Parse(connectionString).CreateCloudTableClient().GetTableReference("TestTable");
                             table.CreateIfNotExistsAsync().Wait();
                             cachedTable = table;

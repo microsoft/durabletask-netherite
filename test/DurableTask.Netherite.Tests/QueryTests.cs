@@ -24,7 +24,6 @@ namespace DurableTask.Netherite.Tests
     {
         readonly TestFixture fixture;
         readonly TestOrchestrationHost host;
-        readonly TestTraceListener traceListener;
 
         public QueryTests(TestFixture fixture, ITestOutputHelper outputHelper)
         {
@@ -230,12 +229,18 @@ namespace DurableTask.Netherite.Tests
         [Fact]
         public async void SingleServiceQuery()
         {
-            var settings = TestHelpers.GetNetheriteOrchestrationServiceSettings();
+            Trace.WriteLine("Starting the orchestration service...");
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
             await service.CreateAsync(true);
             await service.StartAsync();
-            var states = await service.GetOrchestrationStateAsync();
+            Trace.WriteLine("Orchestration service is started.");
+
+            var _ = await service.GetOrchestrationStateAsync();
+
+            Trace.WriteLine("shutting down the orchestration service...");
             await service.StopAsync();
+            Trace.WriteLine("Orchestration service is shut down.");
         }
     }
 }

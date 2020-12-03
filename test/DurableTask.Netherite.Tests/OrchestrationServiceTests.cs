@@ -28,7 +28,7 @@ namespace DurableTask.Netherite.Tests
         public async Task StopAsync_IsIdempotent()
         {
             int numStops = 3;
-            IOrchestrationService service = TestHelpers.GetTestOrchestrationService(this.loggerFactory);
+            IOrchestrationService service = TestConstants.GetTestOrchestrationService(this.loggerFactory);
             for (int i =0; i < numStops; i++)
             {
                 await service.StopAsync();
@@ -38,7 +38,7 @@ namespace DurableTask.Netherite.Tests
         [Fact]
         public async Task UnstartedService_CanBeSafelyStopped()
         {
-            IOrchestrationService service = TestHelpers.GetTestOrchestrationService(this.loggerFactory);
+            IOrchestrationService service = TestConstants.GetTestOrchestrationService(this.loggerFactory);
             await service.StopAsync();
         }
     }

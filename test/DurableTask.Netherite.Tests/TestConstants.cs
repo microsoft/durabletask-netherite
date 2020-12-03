@@ -7,7 +7,7 @@ namespace DurableTask.Netherite.Tests
     using DurableTask.Netherite;
     using Microsoft.Extensions.Logging;
 
-    static class TestHelpers
+    public static class TestConstants
     {
         public static NetheriteOrchestrationServiceSettings GetNetheriteOrchestrationServiceSettings()
         {
@@ -34,14 +34,12 @@ namespace DurableTask.Netherite.Tests
         public static NetheriteOrchestrationService GetTestOrchestrationService(ILoggerFactory loggerFactory) 
             => new NetheriteOrchestrationService(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
-        public static TestOrchestrationHost GetTestOrchestrationHost(ILoggerFactory loggerFactory)
+        internal static TestOrchestrationHost GetTestOrchestrationHost(ILoggerFactory loggerFactory)
             => new TestOrchestrationHost(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
         public static string GetTestTaskHubName()
         {
             return "test-taskhub";
-            //Configuration appConfig = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
-            //return appConfig.AppSettings.Settings["TaskHubName"].Value;
         }
 
         public const string DurableTaskTestPrefix = "DurableTaskTest";
@@ -66,8 +64,6 @@ namespace DurableTask.Netherite.Tests
 
         public static string GetEventHubsConnectionString()
         {
-            // NOTE: If using any of the memory options, modify GetStorageConnectionString to use the local file system.
-
             // Memory means TransportChoices.Memory and StorageChoices.Memory
             // return "Memory:1";
             // return "Memory:4";
