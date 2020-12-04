@@ -31,10 +31,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             this.typeLocator = new TestFunctionTypeLocator();
             this.settingsResolver = new TestSettingsResolver();
 
-            var defaultOptions = new NetheriteOrchestrationServiceSettings();
-
-            string storageConnectionString = 
-                Environment.GetEnvironmentVariable("AzureWebJobsStorage") ?? "useDevelopmentStorage=true;";
+            string storageConnectionString = Netherite.Tests.TestConstants.GetStorageConnectionString();
             string eventHubsConnectionString = "MemoryF:4";
 
             this.settingsResolver.AddSetting("StorageConnectionString", storageConnectionString);

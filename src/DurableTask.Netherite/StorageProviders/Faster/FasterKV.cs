@@ -22,7 +22,7 @@ namespace DurableTask.Netherite.Faster
         readonly BlobManager blobManager;
         readonly CancellationToken terminationToken;
 
-        ClientSession<Key, Value, EffectTracker, TrackedObject, object, Functions> mainSession;
+        ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> mainSession;
 
         internal const long HashTableSize = 1L << 16;
 
@@ -93,8 +93,9 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
         }
 
-        ClientSession<Key, Value, EffectTracker, TrackedObject, object, Functions> CreateASession()
-            => this.fht.NewSession<EffectTracker, TrackedObject, object, Functions>(new Functions(this.partition, this.StoreStats));
+
+        ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> CreateASession()
+            => this.fht.NewSession<EffectTracker, TrackedObject, object>(new Functions(this.partition, this.StoreStats));
 
         public override void InitMainSession() 
             => this.mainSession = this.CreateASession();
@@ -283,7 +284,7 @@ namespace DurableTask.Netherite.Faster
                                   .Where(orchestrationState => orchestrationState != null);
                 }
 #else
-                IAsyncEnumerable<OrchestrationState> queryPSFsAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, Functions> session)
+                IAsyncEnumerable<OrchestrationState> queryPSFsAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
                     => this.ScanOrchestrationStates(effectTracker, queryEvent);
 #endif
                 // create an individual session for this query so the main session can be used
@@ -450,7 +451,7 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                var result = await this.mainSession.ReadAsync(ref key, ref effectTracker, context:null, token: this.terminationToken).ConfigureAwait(false);
+                var result = await this.mainSession.ReadAsync(key, effectTracker, context:null, token: this.terminationToken).ConfigureAwait(false);
                 var (status, output) = result.Complete();
                 return output;
             }
@@ -469,7 +470,7 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                var result = await session.ReadAsync(ref key, ref effectTracker, context: null, token: this.terminationToken).ConfigureAwait(false);
+                var result = await session.ReadAsync(key, effectTracker, context: null, token: this.terminationToken).ConfigureAwait(false);
                 var (status, output) = result.Complete();
                 return output;
             }

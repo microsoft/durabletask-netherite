@@ -63,63 +63,23 @@ namespace DurableTask.Netherite.Faster
                 this.azureStorageDevice.BlobManager?.HandleStorageError(nameof(CreateAsync), "expect to be called on blobs that don't already exist and exactly once", pageBlob?.Name, null, false, false);
             }
 
-            try
-            {
-                await BlobManager.AsynchronousStorageReadMaxConcurrency.WaitAsync();
-
-                var stopwatch = new Stopwatch();
-                int numAttempts = 0;
-
-                while (true) // retry loop
+            await this.azureStorageDevice.BlobManager.PerformWithRetriesAsync(
+                BlobManager.AsynchronousStorageReadMaxConcurrency,
+                true,
+                "CloudPageBlob.CreateAsync",
+                "",
+                pageBlob.Name,
+                3000,
+                true,
+                (numAttempts) =>
                 {
-                    numAttempts++;
-
-                    try
-                    {
-                        var blobRequestOptions = BlobManager.BlobRequestOptionsDefault;
-
-                        this.azureStorageDevice.BlobManager?.StorageTracer?.FasterStorageProgress($"starting create page blob target={pageBlob.Name} size={size}");
-                        stopwatch.Restart();
-
-                        await pageBlob.CreateAsync(size,
-                            accessCondition: null, options: blobRequestOptions, operationContext: null, this.azureStorageDevice.PartitionErrorHandler.Token);
-
-                        stopwatch.Stop();
-                        this.azureStorageDevice.BlobManager?.StorageTracer?.FasterStorageProgress($"finished create page blob target={pageBlob.Name} size={size} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1}");
-
-                        if (stopwatch.ElapsedMilliseconds > 3000)
-                        {
-                            this.azureStorageDevice.BlobManager?.TraceHelper.FasterPerfWarning($"CloudPageBlob.CreateAsync took {stopwatch.ElapsedMilliseconds / 1000}s, which is excessive; target={pageBlob.Name} size={size}");
-                        }
-
-                        break;
-                    }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.azureStorageDevice.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
-                    {
-                        stopwatch.Stop();
-                        if (BlobUtils.IsTimeout(e))
-                        {
-                            this.azureStorageDevice.BlobManager?.TraceHelper.FasterPerfWarning($"CloudPageBlob.CreateAsync timed out after {stopwatch.ElapsedMilliseconds:f1}ms, retrying now; numAttempts={numAttempts} target={pageBlob.Name} size={size}");
-                        }
-                        else
-                        {
-                            TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                            this.azureStorageDevice.BlobManager?.HandleStorageError(nameof(CreateAsync), $"could not create page blob, will retry in {nextRetryIn}s, numAttempts={numAttempts}", pageBlob.Name, e, false, true);
-                            await Task.Delay(nextRetryIn);
-                        }
-                        continue;
-                    }
-                    catch (Exception e) when (!Utils.IsFatal(e))
-                    {
-                        this.azureStorageDevice.BlobManager?.HandleStorageError(nameof(CreateAsync), "could not create page blob", pageBlob.Name, e, true, this.azureStorageDevice.PartitionErrorHandler.IsTerminated);
-                        throw;
-                    }
-                }
-            }
-            finally
-            {
-                BlobManager.AsynchronousStorageReadMaxConcurrency.Release();
-            }
+                    return pageBlob.CreateAsync(
+                        size,
+                        accessCondition: null,
+                        options: BlobManager.BlobRequestOptionsDefault,
+                        operationContext: null,
+                        this.azureStorageDevice.PartitionErrorHandler.Token);
+                });
 
             // At this point the blob is fully created. After this line all consequent writers will write immediately. We just
             // need to clear the queue of pending writers.

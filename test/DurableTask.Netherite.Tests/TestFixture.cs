@@ -22,7 +22,7 @@ namespace DurableTask.Netherite.Tests
             this.LoggerFactory = new LoggerFactory();
             this.loggerProvider = new XunitLoggerProvider();
             this.LoggerFactory.AddProvider(this.loggerProvider);
-            this.Host = TestHelpers.GetTestOrchestrationHost(this.LoggerFactory);
+            this.Host = TestConstants.GetTestOrchestrationHost(this.LoggerFactory);
             this.Host.StartAsync().Wait();
             this.traceListener = new TestTraceListener();
             Trace.Listeners.Add(this.traceListener);
@@ -52,7 +52,7 @@ namespace DurableTask.Netherite.Tests
         {
             public ITestOutputHelper Output { get; set; }
             public override void Write(string message) {  }
-            public override void WriteLine(string message) { this.Output?.WriteLine(message); }
+            public override void WriteLine(string message) { this.Output?.WriteLine($"{DateTime.Now:o} {message}"); }
         }
     }
 }

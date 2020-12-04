@@ -63,8 +63,9 @@ curl http://localhost:7071/api/hellocities
 
 ### Run the 'Hello' Sample Locally, with EventHubs
 
-To use a real EventHubs, you first have to create an EventHubs namespace.
-You can do this by using the Azure portal GUI and creating the necessary structure as described in the section `Configuring EventHubs` below. Or quicker, edit and run the included script `scripts/create-eventhubs-instances.ps1`, which automatically creates a resource group, namespace, and event hubs using Azure CLI commands. The script performs the following commands:
+To use a real EventHubs, you first have to create an EventHubs namespace. Typically, you do this only the first time around because the event hubs itself is reusable between runs.
+
+You can create the required resources by using the Azure portal GUI as described in the section `Configuring EventHubs` below. Or quicker, edit and run the included script `scripts/create-eventhubs-instances.ps1`, which automatically creates a resource group, event hubs namespace, and event hubs using Azure CLI commands. The script performs the following commands:
 
 ```PowerShell
 # edit these parameters before running the script

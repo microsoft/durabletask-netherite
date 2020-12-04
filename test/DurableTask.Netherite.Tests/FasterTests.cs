@@ -41,7 +41,7 @@ namespace DurableTask.Netherite.Tests
             var random = new Random(0);
 
             var taskHubName = useAzure ? "test-taskhub" : Guid.NewGuid().ToString("N");
-            var account = useAzure ? CloudStorageAccount.Parse(TestHelpers.GetAzureStorageConnectionString()) : null;
+            var account = useAzure ? CloudStorageAccount.Parse(TestConstants.GetAzureStorageConnectionString()) : null;
             var logger = this.loggerFactory.CreateLogger("testlogger");
 
             await BlobManager.DeleteTaskhubStorageAsync(account, taskHubName);
