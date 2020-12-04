@@ -2,7 +2,7 @@
 
 ## Introduction
 
-DurableTask.Netherite is a distributed workflow execution engine for [Durable Functions](https://github.com/Azure/azure-functions-durable-extension) and the [Durable Task Framework](https://github.com/Azure/durabletask/). It is of potential interest to anyone who is developing durable workflow or actor applications on those platforms. Its application API surface is the same as the standard DF API, so applications can be ported with modest effort.
+DurableTask.Netherite is a distributed workflow execution engine for [Durable Functions](https://github.com/Azure/azure-functions-durable-extension) and the [Durable Task Framework](https://github.com/Azure/durabletask/). It is of potential interest to anyone who is developing durable workflow or actor applications on those platforms. Its application API surface is the same, so applications can be ported with modest effort.
 
 ### When to choose DurableTask.Netherite
 
@@ -21,7 +21,7 @@ The Durable Functions and Durable Task frameworks already support a multitude of
 
 ## Status
 
-The current version of Netherite is *0.1.0-alpha*.  Netherite already support almost all of DF's API. However, there are still some limitations that we plan to address in the near future, before moving to beta status:
+The current version of Netherite is *0.1.0-alpha*.  Netherite already support almost all of the DT and DF APIs. However, there are still some limitations that we plan to address in the near future, before moving to beta status:
 
 - **Auto-Scaling**. While it is already possible to dynamically change the number of host nodes (and have Netherite rebalance load automatically), support for doing so automatically is not implemented yet. 
 - **Query Performance**. We have not quite completed our implementation of a FASTER index to speed up queries that are enumerating or purging instance states.
@@ -32,7 +32,7 @@ The current version of Netherite is *0.1.0-alpha*.  Netherite already support al
 The solution `DurableTask.Netherite.sln` builds all the projects. This includes source, tests, and samples. It requires [.NET Core 3.1 SDK](https://dotnet.microsoft.com/download/dotnet-core/3.1). All dependencies are imported via NuGet. 
 
 The following GitHub projects provide the essential components for Netherite:
-* [Durable Task Framework](https://github.com/Azure/durabletask/) (DTFx). Provides the fundamental abstractions and APIs for the stateful serverless computation model. For examples, it defines the concepts of *instances*, *orchestrations*, *activities*, and *histories*. It also includes an provider model that allows swapping the backend. Specifically, Netherite defines a class `NetheriteOrchestrationService` that implement the interface `DurableTask.Core.IOrchestrationService`.
+* [Durable Task Framework](https://github.com/Azure/durabletask/) (DTFx). Provides the fundamental abstractions and APIs for the workflows-as-code computation model. For examples, it defines the concepts of *instances*, *orchestrations*, *activities*, and *histories*. It also includes an provider model that allows swapping the backend. Specifically, Netherite defines a class `NetheriteOrchestrationService` that implement the interface `DurableTask.Core.IOrchestrationService`.
 * [Durable Functions Extension](https://github.com/Azure/azure-functions-durable-extension) (DF).
 Provides the "glue" that makes it possible to run DTFx workflows on a serverless hosting platform. Specifically, it allows applications to define "Durable Functions", which can then be deployed to any context that can host Azure Functions. This can include managed hosting platforms (with consumption, premium, or dedicated plans), local development environments, or container-based platforms. DF also extends the DTFx programming model with support for Durable Entities and critical sections, and adds support for language bindings other than C#.
 * [FASTER Log and KV](https://github.com/Microsoft/FASTER). Provides the storage technology that Netherite uses for durably persisting instance states. It includes both a log abstraction, which Netherite uses to write a recovery log, and a KV abstraction, which Netherite uses to store the state of orchestration instances. Compared to a simple implementation using tables or blobs, FASTER can provide superior throughput because it can efficiently aggregate small storage accesses into a smaller number of larger operations on "storage devices", which are currently backed by Azure Page Blobs.
