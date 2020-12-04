@@ -36,5 +36,9 @@ steps:
 
 - task: VSTest@2
   inputs:
+    testSelector: 'testAssemblies'
+    testAssemblyVer2: '**\*Tests.dll'
+    searchFolder: '$(System.DefaultWorkingDirectory)'
+    otherConsoleOptions: '/Framework:.NETCoreApp,Version=v3.1 /logger:console;verbosity="normal"'
     platform: '$(buildPlatform)'
     configuration: '$(buildConfiguration)'
