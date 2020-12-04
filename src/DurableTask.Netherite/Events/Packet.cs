@@ -19,47 +19,26 @@ namespace DurableTask.Netherite
     /// </summary>
     static class Packet
     {
-        // we prefix packets with a byte indicating the format
-        // we use a flag (for json) or a version (for binary) to facilitate changing formats in the future
-        static readonly byte jsonVersion = 0;
-        static readonly byte binaryVersion = 1;
+        // we prefix packets with a byte indicating the version, to facilitate format changes in the future
+        static readonly byte version = 2;
 
-        static readonly JsonSerializerSettings serializerSettings 
-            = new JsonSerializerSettings() { TypeNameHandling = TypeNameHandling.Auto };
-
-        public static void Serialize(Event evt, Stream stream, bool useJson, byte[] taskHubGuid)
+        public static void Serialize(Event evt, Stream stream, byte[] taskHubGuid)
         {
             var writer = new BinaryWriter(stream, Encoding.UTF8);
 
-            if (useJson)
-            {
-                // serialize the json
-                string jsonContent = JsonConvert.SerializeObject(evt, typeof(Event), Packet.serializerSettings);
+            // first come the version and the taskhub
+            writer.Write(Packet.version);
+            writer.Write(taskHubGuid);
+            writer.Flush();
 
-                // first entry is the version and the taskhub
-                writer.Write(Packet.jsonVersion);
-                writer.Write(taskHubGuid);
-
-                // then we write the json string
-                writer.Write(jsonContent);
-            }
-            else
-            {
-                // first entry is the version and the taskhub
-                writer.Write(Packet.binaryVersion);
-                writer.Write(taskHubGuid);
-
-                writer.Flush();
-
-                // then we write the binary serialization to the stream
-                Serializer.SerializeEvent(evt, stream);
-            }
+            // then we write the binary serialization to the stream
+            Serializer.SerializeEvent(evt, stream);
         }
 
         public static void Deserialize<TEvent>(Stream stream, out TEvent evt, byte[] taskHubGuid) where TEvent : Event
         {
             var reader = new BinaryReader(stream);
-            var format = reader.ReadByte();
+            var version = reader.ReadByte();
             var destinationTaskHubGuid = reader.ReadBytes(16);
 
             if (taskHubGuid != null && !GuidMatches(taskHubGuid, destinationTaskHubGuid))
@@ -68,18 +47,13 @@ namespace DurableTask.Netherite
                 return;
             }
 
-            if (format == Packet.jsonVersion)
-            {
-                string jsonContent = reader.ReadString();
-                evt = (TEvent)JsonConvert.DeserializeObject(jsonContent, Packet.serializerSettings);
-            }
-            else if (format == Packet.binaryVersion)
+            if (version == Packet.version)
             {
                 evt = (TEvent)Serializer.DeserializeEvent(stream);
             }
             else
             {
-                throw new VersionNotFoundException($"Received packet with unhandled format indicator {format} - likely a versioning issue");
+                throw new VersionNotFoundException($"Received packet with unsupported version {version} - likely a versioning issue");
             }
         }
 

@@ -136,12 +136,6 @@ namespace DurableTask.Netherite
         public bool PersistStepsFirst { get; set; } = false;
 
         /// <summary>
-        /// Whether to use JSON serialization for eventhubs packets.
-        /// </summary>
-        [JsonConverter(typeof(StringEnumConverter))]
-        public JsonPacketUse UseJsonPackets { get; set; } = JsonPacketUse.Never;
-
-        /// <summary>
         /// Which packets to send in JSON format.
         /// </summary>
         public enum JsonPacketUse
