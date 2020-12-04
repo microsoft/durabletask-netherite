@@ -26,7 +26,6 @@ namespace DurableTask.Netherite.EventHubs
         public ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>> _clientSenders = new ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>>();
 
         public TransportAbstraction.IHost Host { get; set; }
-        public NetheriteOrchestrationServiceSettings.JsonPacketUse UseJsonPackets { get; set; }
         public EventHubsTraceHelper TraceHelper { get; set; }
 
         int GetClientBucket(Guid clientId) => (int)(Fnv1aHashHelper.ComputeHash(clientId.ToByteArray()) % (uint)this.clientClients.Count);
@@ -172,8 +171,7 @@ namespace DurableTask.Netherite.EventHubs
                     this.Host,
                     taskHubGuid,
                     partitionSender,
-                    this.TraceHelper,
-                    this.UseJsonPackets >= NetheriteOrchestrationServiceSettings.JsonPacketUse.ForAll);
+                    this.TraceHelper);
                 this.TraceHelper.LogDebug("Created PartitionSender {sender} from {clientId}", partitionSender.ClientId, client.ClientId);
                 return sender;
             });
@@ -190,8 +188,7 @@ namespace DurableTask.Netherite.EventHubs
                     this.Host,
                     taskHubGuid,
                     partitionSender,
-                    this.TraceHelper,
-                    this.UseJsonPackets >= NetheriteOrchestrationServiceSettings.JsonPacketUse.ForClients);
+                    this.TraceHelper);
                 this.TraceHelper.LogDebug("Created ClientSender {sender} from {clientId}", partitionSender.ClientId, client.ClientId);
                 return sender;
             });

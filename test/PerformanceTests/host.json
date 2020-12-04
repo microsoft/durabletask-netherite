@@ -74,10 +74,6 @@
         // set this to true to bypass Faster and instead use Azure blobs for the object store
         "UseAlternateObjectStore": "false",
 
-        // set this to "ForClients" or "ForAll" to use JSON, 
-        // instead of binary, representation of packets in EventHubs
-        "UseJsonPackets": "Never",
-
         // set this to "true" to disable all speculation
         "PersistStepsFirst": false,
 

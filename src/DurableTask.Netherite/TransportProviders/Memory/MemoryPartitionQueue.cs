@@ -24,7 +24,7 @@ namespace DurableTask.Netherite.Emulated
         protected override byte[] Serialize(PartitionEvent evt)
         {
             var stream = new MemoryStream();
-            Packet.Serialize(evt, stream, false, new byte[16]);
+            Packet.Serialize(evt, stream, new byte[16]);
             DurabilityListeners.ConfirmDurable(evt);
             return stream.ToArray();
         }

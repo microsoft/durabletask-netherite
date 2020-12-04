@@ -149,7 +149,6 @@ namespace DurableTask.Netherite.EventHubs
             {
                 Host = host,
                 TraceHelper = this.traceHelper,
-                UseJsonPackets = this.settings.UseJsonPackets,
             };
 
             await this.connections.StartAsync(this.parameters.StartPositions.Length);

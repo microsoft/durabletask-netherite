@@ -24,7 +24,7 @@ namespace DurableTask.Netherite.Emulated
         protected override byte[] Serialize(ClientEvent evt)
         {
             var stream = new MemoryStream();
-            Packet.Serialize(evt, stream, false, new byte[16]);
+            Packet.Serialize(evt, stream, new byte[16]);
             return stream.ToArray();
         }
 
