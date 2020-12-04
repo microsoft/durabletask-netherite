@@ -12,7 +12,7 @@ pool:
 variables:
   solution: 'DurableTask.Netherite.sln'
   buildPlatform: 'Any CPU'
-  buildConfiguration: 'Debug'
+  buildConfiguration: 'Release'
 
 steps:
 - task: NuGetToolInstaller@1
