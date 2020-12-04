@@ -34,14 +34,14 @@ steps:
       "%ProgramFiles(x86)%\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" init /server "(localdb)\MsSqlLocalDb"
       "%ProgramFiles(x86)%\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" start
 
-- task: DotNetCoreCLI@2
+- task: DotNetCoreCLI@3
     displayName: 'Running DurableTask.Netherite.AzureFunctions.Tests'
     inputs:
       command: test
       projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
       arguments: '--configuration $(buildConfiguration) --verbosity normal'
 
-- task: DotNetCoreCLI@2
+- task: DotNetCoreCLI@4
     displayName: 'Running DurableTask.Netherite.Tests'
     inputs:
       command: test
