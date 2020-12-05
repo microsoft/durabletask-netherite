@@ -73,7 +73,12 @@ namespace DurableTask.Netherite
         /// <inheritdoc/>
         public override string ToString()
         {
-            return $"NetheriteOrchestrationService on {this.configuredTransport}Transport and {this.configuredStorage}Storage";
+#if DEBUG
+            string configuration = "Debug";
+#else
+            string configuration = "Release";
+#endif
+            return $"NetheriteOrchestrationService on {this.configuredTransport}Transport and {this.configuredStorage}Storage, {configuration} build";
         }
 
         /// <summary>
