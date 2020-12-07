@@ -5,7 +5,7 @@ $name="unique-alphanumeric-name-no-dashes"
 $location="westus"
 $storageSku="Standard_LRS"
 $planSku="EP2"
-$numNodes=1
+$numNodes=4
 
 if (($name -eq "unique-alphanumeric-name-no-dashes")) 
 {
@@ -38,5 +38,5 @@ az resource update -n  $functionAppName/config/web  -g  $groupName --set propert
 az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EventHubsConnection=$Env:EventHubsConnection
 az functionapp config set -n $functionAppName -g $groupName --use-32bit-worker-process false
 
-#Write-Host "Publishing Code to Function App..."
-#func azure functionapp publish $functionAppName
+Write-Host "Publishing Code to Function App..."
+func azure functionapp publish $functionAppName
