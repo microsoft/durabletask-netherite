@@ -3,17 +3,23 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeSymbols>true</IncludeSymbols>
     <DebugType>embedded</DebugType>
-    <Description>Netherite durability provider extension for the Durable Task Framework.</Description>
-    <PackageTags>Azure Task Durable Orchestration Workflow Activity Reliable EventHubs</PackageTags>
-    <PackageId>DurableTask.Netherite</PackageId>
+    <RepositoryUrl>https://github.com/microsoft/durabletask-netherite</RepositoryUrl>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <Authors>Microsoft</Authors>
+    <PackageProjectUrl>https://github.com/microsoft/durabletask-netherite</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\sign.snk</AssemblyOriginatorKeyFile>
+    <Description>Netherite orchestration service provider for the Durable Task Framework.</Description>
+    <PackageTags>Azure Task Durable Orchestration Workflow Activity Reliable EventHubs</PackageTags>
+    <PackageId>Microsoft.Azure.DurableTask.Netherite</PackageId>
+    <PackageIcon>icon.png</PackageIcon>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
@@ -25,6 +31,11 @@
     <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
     <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
   </PropertyGroup>
+  
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="\"/>
+  </ItemGroup>
+
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <NoWarn>NU5125;NU5048</NoWarn>
   </PropertyGroup>
