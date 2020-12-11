@@ -32,11 +32,21 @@ namespace DurableTask.Netherite.Tests
             this.fixture.SetOutput(outputHelper);
 
             // purge all instances prior to each test
-            this.host.PurgeAllAsync().Wait();
+            if (! this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
+            {
+                throw new TimeoutException("timed out while purging instances before starting test");
+            }
         }
 
         public void Dispose() 
         {
+            // purge all instances after each test
+            // this helps to catch "bad states" (e.g. hung workers) caused by the tests
+            if (!this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
+            {
+                throw new TimeoutException("timed out while purging instances after running test");
+            }
+
             this.fixture.ClearOutput();
         }
 
