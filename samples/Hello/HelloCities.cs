@@ -28,7 +28,6 @@ namespace PerformanceTests
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "hellocities")] HttpRequest req,
             [DurableClient] IDurableClient client)
         {
-
             string orchestrationInstanceId = await client.StartNewAsync(nameof(HelloSequence));
             TimeSpan timeout = TimeSpan.FromSeconds(30);
             return await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, timeout);

@@ -38,5 +38,5 @@ az resource update -n  $functionAppName/config/web  -g  $groupName --set propert
 az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EventHubsConnection=$Env:EventHubsConnection
 az functionapp config set -n $functionAppName -g $groupName --use-32bit-worker-process false
 
-#Write-Host "Publishing Code to Function App..."
-#func azure functionapp publish $functionAppName
+Write-Host "Publishing Code to Function App..."
+func azure functionapp publish $functionAppName
