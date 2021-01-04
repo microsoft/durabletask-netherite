@@ -111,7 +111,7 @@ namespace DurableTask.Netherite
             {
                 if (this.logger.IsEnabled(LogLevel.Information))
                 {
-                    this.logger.LogDebug("Part{partition:D2} completed {workItemType}WorkItem {workItemId} instanceId={instanceId} status={status} producedMessageIds={producedMessageIds}",
+                    this.logger.LogInformation("Part{partition:D2} completed {workItemType}WorkItem {workItemId} instanceId={instanceId} status={status} producedMessageIds={producedMessageIds}",
                         partitionId, workItemType, workItemId, instanceId, status, producedMessageIds);
                 }
 
