@@ -9,7 +9,7 @@
       "DurableTask.Netherite.Events": "Warning",
       "DurableTask.Netherite.FasterStorage": "Warning",
       "DurableTask.Netherite.EventHubsTransport": "Warning",
-      "DurableTask.Netherite.WorkItems": "Information"
+      "DurableTask.Netherite.WorkItems": "Warning"
     }
   },
   "extensions": {
