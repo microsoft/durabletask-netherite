@@ -521,7 +521,8 @@ namespace DurableTask.Netherite
                     WorkItemTraceHelper.WorkItemType.Orchestration,
                     nextOrchestrationWorkItem.MessageBatch.WorkItemId,
                     nextOrchestrationWorkItem.MessageBatch.InstanceId,
-                    nextOrchestrationWorkItem.Type.ToString());
+                    nextOrchestrationWorkItem.Type.ToString(),
+                    WorkItemTraceHelper.FormatMessageIdList(nextOrchestrationWorkItem.MessageBatch.TracedMessages));
             }
      
             return nextOrchestrationWorkItem;
@@ -710,7 +711,8 @@ namespace DurableTask.Netherite
                     WorkItemTraceHelper.WorkItemType.Activity,
                     nextActivityWorkItem.WorkItemId,
                     nextActivityWorkItem.TaskMessage.OrchestrationInstance.InstanceId,
-                    nextActivityWorkItem.ExecutionType);
+                    nextActivityWorkItem.ExecutionType,
+                    WorkItemTraceHelper.FormatMessageId(nextActivityWorkItem.TaskMessage, nextActivityWorkItem.OriginWorkItem));
             }
 
             return nextActivityWorkItem;

@@ -74,17 +74,17 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TraceWorkItemStarted(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId, string executionType)
+        public void TraceWorkItemStarted(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId, string executionType, string consumedMessageIds)
         {
-            if (this.logLevelLimit <= LogLevel.Debug)
+            if (this.logLevelLimit <= LogLevel.Information)
             {
-                if (this.logger.IsEnabled(LogLevel.Debug))
+                if (this.logger.IsEnabled(LogLevel.Information))
                 {
-                    this.logger.LogDebug("Part{partition:D2} started {workItemType}WorkItem {workItemId} instanceId={instanceId} executionType={executionType}",
-                        partitionId, workItemType, workItemId, instanceId, executionType);
+                    this.logger.LogDebug("Part{partition:D2} started {workItemType}WorkItem {workItemId} instanceId={instanceId} executionType={executionType} consumedMessageIds={consumedMessageIds}",
+                        partitionId, workItemType, workItemId, instanceId, executionType, consumedMessageIds);
                 }
 
-                this.etw?.WorkItemStarted(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, executionType, TraceUtils.ExtensionVersion);
+                this.etw?.WorkItemStarted(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, executionType, consumedMessageIds, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -105,12 +105,11 @@ namespace DurableTask.Netherite
             }
         }
 
-
         public void TraceWorkItemCompleted(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId, object status, string producedMessageIds)
         {
-            if (this.logLevelLimit <= LogLevel.Debug)
+            if (this.logLevelLimit <= LogLevel.Information)
             {
-                if (this.logger.IsEnabled(LogLevel.Debug))
+                if (this.logger.IsEnabled(LogLevel.Information))
                 {
                     this.logger.LogDebug("Part{partition:D2} completed {workItemType}WorkItem {workItemId} instanceId={instanceId} status={status} producedMessageIds={producedMessageIds}",
                         partitionId, workItemType, workItemId, instanceId, status, producedMessageIds);
@@ -122,7 +121,7 @@ namespace DurableTask.Netherite
 
         public void TraceTaskMessageReceived(uint partitionId, TaskMessage message, string workItemId, string queuePosition)
         {
-            if (this.logLevelLimit <= LogLevel.Trace)
+            if (this.logLevelLimit <= LogLevel.Debug)
             {
                 (long commitLogPosition, string eventId) = EventTraceContext.Current;
                 string messageId = FormatMessageId(message, workItemId);
@@ -140,7 +139,7 @@ namespace DurableTask.Netherite
 
         public void TraceTaskMessageSent(uint partitionId, TaskMessage message, string workItemId, string sentEventId)
         {
-            if (this.logLevelLimit <= LogLevel.Trace)
+            if (this.logLevelLimit <= LogLevel.Debug)
             {
                 string messageId = FormatMessageId(message, workItemId);
 

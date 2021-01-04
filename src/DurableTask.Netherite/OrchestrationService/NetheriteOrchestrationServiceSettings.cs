@@ -175,7 +175,7 @@ namespace DurableTask.Netherite
         /// </summary>
         /// <remarks>This level applies to both ETW events and ILogger events.</remarks>
         [JsonConverter(typeof(StringEnumConverter))]
-        public LogLevel EventLogLevelLimit { get; set; } = LogLevel.Warning;
+        public LogLevel EventLogLevelLimit { get; set; } = LogLevel.Information;
 
         /// <summary>
         /// A lower limit on the severity level of work item trace events emitted.
