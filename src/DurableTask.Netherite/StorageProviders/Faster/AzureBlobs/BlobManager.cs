@@ -425,7 +425,8 @@ namespace DurableTask.Netherite.Faster
                             null,
                             false,
                             "CloudBlockBlob.UploadFromByteArrayAsync",
-                            "(Create commit blob)",
+                            "CreateCommitLog",
+                            "",
                             this.eventLogCommitBlob.Name,
                             2000,
                             true,
@@ -440,6 +441,8 @@ namespace DurableTask.Netherite.Faster
                                     // creation race, try from top
                                     this.TraceHelper.LeaseProgress("Creation race observed, retrying");
                                 }
+
+                                return 1;
                             });
 
                         continue;
@@ -460,7 +463,7 @@ namespace DurableTask.Netherite.Faster
                     else
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
-                        this.TraceHelper.FasterPerfWarning($"Lease acquisition experienced transient error, retrying in {nextRetryIn}");
+                        this.TraceHelper.FasterPerfWarning($"Lease acquisition failed transiently, retrying in {nextRetryIn}");
                         await Task.Delay(nextRetryIn);
                     }
                     continue;
@@ -489,6 +492,11 @@ namespace DurableTask.Netherite.Faster
                     await this.eventLogCommitBlob.RenewLeaseAsync(acc, this.PartitionErrorHandler.Token)
                         .ConfigureAwait(false);
                     this.TraceHelper.LeaseProgress($"Renewed lease at {this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds}s");
+
+                    if (nextLeaseTimer.ElapsedMilliseconds > 2000)
+                    {
+                        this.TraceHelper.FasterPerfWarning($"RenewLeaseAsync took {nextLeaseTimer.Elapsed.TotalSeconds:F1}s, which is excessive; {this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds}s past expiry");
+                    }
                 }
 
                 this.leaseTimer = nextLeaseTimer;
@@ -619,7 +627,8 @@ namespace DurableTask.Netherite.Faster
             this.PerformWithRetries(
                 false,
                 "CloudBlockBlob.UploadFromByteArray",
-                "(commit log)",
+                "WriteCommitLogMetadata",
+                "",
                 this.eventLogCommitBlob.Name,
                 1000,
                 true,
@@ -629,7 +638,7 @@ namespace DurableTask.Netherite.Faster
                     {
                         var blobRequestOptions = numAttempts > 2 ? BlobManager.BlobRequestOptionsDefault : BlobManager.BlobRequestOptionsAggressiveTimeout;
                         this.eventLogCommitBlob.UploadFromByteArray(commitMetadata, 0, commitMetadata.Length, acc, blobRequestOptions);
-                        return true;
+                        return (commitMetadata.Length, true);
                     }
                     catch (StorageException ex) when (BlobUtils.LeaseConflict(ex))
                     {
@@ -645,7 +654,7 @@ namespace DurableTask.Netherite.Faster
                         this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: wait for next renewal");
                         this.NextLeaseRenewalTask.Wait();
                         this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: renewal complete");
-                        return false;
+                        return (commitMetadata.Length, false);
                     }
                 });
         }
@@ -666,7 +675,8 @@ namespace DurableTask.Netherite.Faster
             this.PerformWithRetries(
                false,
                "CloudBlockBlob.DownloadToStream",
-               "(read commit log)",
+               "ReadCommitLogMetadata",
+               "",
                this.eventLogCommitBlob.Name,
                1000,
                true,
@@ -681,7 +691,7 @@ namespace DurableTask.Netherite.Faster
                    {
                        var blobRequestOptions = numAttempts > 2 ? BlobManager.BlobRequestOptionsDefault : BlobManager.BlobRequestOptionsAggressiveTimeout;
                        this.eventLogCommitBlob.DownloadToStream(stream, acc, blobRequestOptions);
-                       return true;
+                       return (stream.Position, true);
                    }
                    catch (StorageException ex) when (BlobUtils.LeaseConflict(ex))
                    {
@@ -697,7 +707,7 @@ namespace DurableTask.Netherite.Faster
                        this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: wait for next renewal");
                        this.NextLeaseRenewalTask.Wait();
                        this.TraceHelper.LeaseProgress("ILogCommitManager.Commit: renewal complete");
-                       return false;
+                       return (0, false);
                    }
                });
 
@@ -811,7 +821,8 @@ namespace DurableTask.Netherite.Faster
             this.PerformWithRetries(
              false,
              "CloudBlockBlob.OpenWrite",
-             "(CommitIndexCheckpoint)",
+             "WriteIndexCheckpointMetadata",
+             $"token={indexToken} size={commitMetadata.Length}",
              metaFileBlob.Name,
              1000,
              true,
@@ -823,7 +834,7 @@ namespace DurableTask.Netherite.Faster
                      writer.Write(commitMetadata.Length);
                      writer.Write(commitMetadata);
                      writer.Flush();
-                     return true;
+                     return (commitMetadata.Length, true);
                  }
              });
 
@@ -841,7 +852,8 @@ namespace DurableTask.Netherite.Faster
             this.PerformWithRetries(
                 false,
                 "CloudBlockBlob.OpenWrite",
-                "(CommitLogCheckpoint)",
+                "WriteHybridLogCheckpointMetadata",
+                $"token={logToken}",
                 metaFileBlob.Name,
                 1000,
                 true,
@@ -853,7 +865,7 @@ namespace DurableTask.Netherite.Faster
                         writer.Write(commitMetadata.Length);
                         writer.Write(commitMetadata);
                         writer.Flush();
-                        return true;
+                        return (commitMetadata.Length + 4, true);
                     }
                 });
 
@@ -872,7 +884,8 @@ namespace DurableTask.Netherite.Faster
             this.PerformWithRetries(
                false,
                "CloudBlockBlob.OpenRead",
-               "(GetIndexCheckpointMetadata)",
+               "ReadIndexCheckpointMetadata",
+               "",
                metaFileBlob.Name,
                1000,
                true,
@@ -882,7 +895,7 @@ namespace DurableTask.Netherite.Faster
                    using var reader = new BinaryReader(blobstream);
                    var len = reader.ReadInt32();
                    result = reader.ReadBytes(len);
-                   return true;
+                   return (len + 4, true);
                });
 
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Returned {result?.Length ?? null} bytes from {tag}, target={metaFileBlob.Name}");
@@ -899,7 +912,8 @@ namespace DurableTask.Netherite.Faster
             this.PerformWithRetries(
                 false,
                 "CloudBlockBlob.OpenRead",
-                "(GetLogCheckpointMetadata)",
+                "ReadLogCheckpointMetadata",
+                "",
                 metaFileBlob.Name,
                 1000,
                 true,
@@ -909,7 +923,7 @@ namespace DurableTask.Netherite.Faster
                     using var reader = new BinaryReader(blobstream);
                     var len = reader.ReadInt32();
                     result = reader.ReadBytes(len);
-                    return true;
+                    return (len + 4, true);
                 });
           
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Returned {result?.Length ?? null} bytes from {tag}, target={metaFileBlob.Name}");
@@ -971,11 +985,16 @@ namespace DurableTask.Netherite.Faster
                     BlobManager.AsynchronousStorageWriteMaxConcurrency,
                     true,
                     "CloudBlockBlob.UploadTextAsync",
-                    "(finalize checkpoint)",
+                    "WriteCheckpointMetadata",
+                    "",
                     checkpointCompletedBlob.Name,
                     1000,
                     true,
-                    (numAttempts) => checkpointCompletedBlob.UploadTextAsync(text));
+                    async (numAttempts) => 
+                    { 
+                        await checkpointCompletedBlob.UploadTextAsync(text);
+                        return text.Length;
+                    });
             }
 
             // Primary FKV

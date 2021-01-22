@@ -67,18 +67,21 @@ namespace DurableTask.Netherite.Faster
                 BlobManager.AsynchronousStorageReadMaxConcurrency,
                 true,
                 "CloudPageBlob.CreateAsync",
+                "CreateDevice",
                 "",
                 pageBlob.Name,
                 3000,
                 true,
-                (numAttempts) =>
+                async (numAttempts) =>
                 {
-                    return pageBlob.CreateAsync(
+                    await pageBlob.CreateAsync(
                         size,
                         accessCondition: null,
                         options: BlobManager.BlobRequestOptionsDefault,
                         operationContext: null,
                         this.azureStorageDevice.PartitionErrorHandler.Token);
+
+                    return 1;
                 });
 
             // At this point the blob is fully created. After this line all consequent writers will write immediately. We just

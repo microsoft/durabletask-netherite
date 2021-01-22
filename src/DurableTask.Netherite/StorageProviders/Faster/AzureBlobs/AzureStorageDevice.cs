@@ -84,6 +84,7 @@ namespace DurableTask.Netherite.Faster
                     BlobManager.AsynchronousStorageReadMaxConcurrency,
                     true,
                     "PageBlobDirectory.ListBlobsSegmentedAsync",
+                    "RecoverDevice",
                     $"continuationToken={continuationToken}",
                     this.pageBlobDirectory.Prefix,
                     2000,
@@ -96,6 +97,7 @@ namespace DurableTask.Netherite.Faster
                             currentToken: continuationToken,
                             options: BlobManager.BlobRequestOptionsWithRetry,
                             operationContext: null);
+                        return response.Results.Count(); // not accurate, in terms of bytes, but still useful for tracing purposes
                     });
  
                 foreach (IListBlobItem item in response.Results)
@@ -178,13 +180,15 @@ namespace DurableTask.Netherite.Faster
                     null,
                     this.underLease,
                     "CloudPageBlob.DeleteAsync",
-                    "(RemoveSegment)",
+                    "DeleteDeviceSegment",
+                    "",
                     pageBlob.Name,
                     5000,
                     true,
                     async (numAttempts) =>
                     {
                         await pageBlob.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
+                        return 1;
                     });
 
                 deletionTask.ContinueWith((Task t) => callback(result));
@@ -204,11 +208,16 @@ namespace DurableTask.Netherite.Faster
                     BlobManager.AsynchronousStorageWriteMaxConcurrency,
                     this.underLease,
                     "CloudPageBlob.DeleteAsync",
-                    "(DeleteAsync)",
+                    "DeleteDevice",
+                    "",
                     pageBlob.Name,
                     5000,
                     false,
-                    (numAttempts) => pageBlob.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token));
+                    async (numAttempts) =>
+                    { 
+                        await pageBlob.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
+                        return 1;
+                    });
             }
 
            return Task.WhenAll(this.blobs.Values.Select(Delete).ToList());
@@ -289,6 +298,7 @@ namespace DurableTask.Netherite.Faster
                     BlobManager.AsynchronousStorageWriteMaxConcurrency,
                     true,
                     "CloudPageBlob.WritePagesAsync",
+                    "WriteToDevice",
                     $"length={length} destinationAddress={destinationAddress + offset}",
                     blob.Name,
                     1000 + (int)length / 1000,
@@ -308,6 +318,8 @@ namespace DurableTask.Netherite.Faster
                                 contentChecksum: null, accessCondition: null, options: blobRequestOptions, operationContext: null, cancellationToken: this.PartitionErrorHandler.Token)
                                 .ConfigureAwait(false);
                         }
+
+                        return (long) length;
                     });
             }
         }
@@ -325,6 +337,7 @@ namespace DurableTask.Netherite.Faster
                     BlobManager.AsynchronousStorageReadMaxConcurrency,
                     true,
                     "CloudPageBlob.DownloadRangeToStreamAsync",
+                    "ReadFromDevice",
                     $"readLength={readLength} sourceAddress={sourceAddress}",
                     blob.Name,
                     1000 + (int) readLength / 1000,
@@ -350,6 +363,8 @@ namespace DurableTask.Netherite.Faster
                         {
                             throw new InvalidDataException($"wrong amount of data received from page blob, expected={readLength}, actual={stream.Position}");
                         }
+
+                        return readLength;
                     });
             }
         }

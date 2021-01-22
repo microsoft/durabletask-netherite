@@ -327,11 +327,18 @@ namespace DurableTask.Netherite
             this.WriteEvent(264, Account, TaskHub, PartitionId, Details, ExtensionVersion);
         }
 
-        [Event(265, Level = EventLevel.Warning, Version = 1)]
+        [Event(265, Level = EventLevel.Verbose, Version = 1)]
+        public void FasterAzureStorageAccessCompleted(string Account, string TaskHub, int PartitionId, string Intent, long Size, string Operation, string Target, double Latency, int Attempt, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(265, Account, TaskHub, PartitionId, Intent, Size, Operation, Target, Latency, Attempt, ExtensionVersion);
+        }
+
+        [Event(266, Level = EventLevel.Warning, Version = 1)]
         public void FasterPerfWarning(string Account, string TaskHub, int PartitionId, string Details, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(265, Account, TaskHub, PartitionId, Details, ExtensionVersion);
+            this.WriteEvent(266, Account, TaskHub, PartitionId, Details, ExtensionVersion);
         }
 
 
