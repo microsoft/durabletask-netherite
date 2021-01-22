@@ -24,8 +24,6 @@ namespace DurableTask.Netherite.Faster
 
         ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> mainSession;
 
-        internal const long HashTableSize = 1L << 16;
-
 #if FASTER_SUPPORTS_PSF
         // We currently place all PSFs into a single group with a single TPSFKey type
         internal const int PSFCount = 1;
@@ -42,7 +40,7 @@ namespace DurableTask.Netherite.Faster
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
             this.fht = new FasterKV<Key, Value>(
-                HashTableSize,
+                BlobManager.HashTableSize,
                 blobManager.StoreLogSettings(partition.Settings.UsePremiumStorage, partition.NumberPartitions()),
                 blobManager.StoreCheckpointSettings,
                 new SerializerSettings<Key, Value>

@@ -73,7 +73,7 @@ namespace DurableTask.Netherite
             }
 
             // Empirically observed transient cancellation exceptions that are not application initiated
-            if (e.InnerException is TaskCanceledException && !token.IsCancellationRequested)
+            if (e.InnerException is OperationCanceledException && !token.IsCancellationRequested)
             {
                 return true;
             }

@@ -62,10 +62,13 @@ namespace DurableTask.Netherite.Faster
 
         public IPartitionErrorHandler PartitionErrorHandler { get; private set; }
 
-        internal static SemaphoreSlim AsynchronousStorageReadMaxConcurrency = new SemaphoreSlim(Environment.ProcessorCount * 25);
-        internal static SemaphoreSlim AsynchronousStorageWriteMaxConcurrency = new SemaphoreSlim(Environment.ProcessorCount * 25);
+        internal static SemaphoreSlim AsynchronousStorageReadMaxConcurrency = new SemaphoreSlim(Math.Min(100, Environment.ProcessorCount * 10));
+        internal static SemaphoreSlim AsynchronousStorageWriteMaxConcurrency = new SemaphoreSlim(Math.Min(50, Environment.ProcessorCount * 7));
 
         volatile System.Diagnostics.Stopwatch leaseTimer;
+
+        internal const long HashTableSize = 1L << 14; // 16 k buckets, 1 GB
+        //internal const long HashTableSize = 1L << 14; // 8 M buckets, 512 GB
 
         public FasterLogSettings EventLogSettings(bool usePremiumStorage) => new FasterLogSettings
         {
