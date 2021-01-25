@@ -214,8 +214,8 @@ namespace DurableTask.Netherite.EventHubs
         async Task ITaskHub.StopAsync(bool isForced)
         {
             this.traceHelper.LogInformation("Shutting down EventHubsBackend");
-            this.traceHelper.LogDebug("Stopping client event loop");
-            this.shutdownSource.Cancel();
+            this.shutdownSource.Cancel(); // initiates shutdown of client and of all partitions
+
             this.traceHelper.LogDebug("Stopping client");
             await this.client.StopAsync().ConfigureAwait(false);
             this.traceHelper.LogDebug("Unregistering event processor");
@@ -239,7 +239,7 @@ namespace DurableTask.Netherite.EventHubs
 
         IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
         {
-            var processor = new EventHubsProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper);
+            var processor = new EventHubsProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper, this.shutdownSource.Token);
             return processor;
         }
 
