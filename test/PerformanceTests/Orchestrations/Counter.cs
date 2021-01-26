@@ -65,11 +65,53 @@
                 await client.SignalEntityAsync(entityId, "add", 1);
                 return new OkObjectResult($"increment was sent to {entityId}.\n");
             }
-            catch(Exception e)
+            catch (Exception e)
             {
                 return new OkObjectResult(e.ToString());
             }
         }
+
+        [FunctionName(nameof(CountSignals))]
+        public static async Task<IActionResult> CountSignals(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = nameof(CountSignals))] HttpRequest req,
+            [DurableClient] IDurableClient client)
+        {
+            try
+            {
+                int numberSignals = int.Parse(await new StreamReader(req.Body).ReadToEndAsync());
+                var entityId = new EntityId("Counter", Guid.NewGuid().ToString("N"));
+
+                DateTime startTime = DateTime.UtcNow;
+
+                // send the specified number of signals to the entity
+                // for max throughput we do this in parallel and without waiting
+                Parallel.For(0, numberSignals, (i) =>
+                {
+                    var asyncTask = client.SignalEntityAsync(entityId, "add", 1);
+                });
+
+                // poll the entity until the expected count is reached
+                while ((DateTime.UtcNow - startTime) < TimeSpan.FromMinutes(5))
+                {
+                    var response = await client.ReadEntityStateAsync<Counter>(entityId);
+
+                    if (response.EntityExists
+                        && response.EntityState.CurrentValue == numberSignals)
+                    {
+                        return new OkObjectResult($"received {numberSignals} signals in {(DateTime.UtcNow-startTime).TotalSeconds:F1}s.\n");
+                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(2));
+                }
+
+                return new OkObjectResult($"timed out after {(DateTime.UtcNow - startTime)}.\n");
+            }
+            catch (Exception e)
+            {
+                return new OkObjectResult(e.ToString());
+            }
+        }
+
     }
 
     public class Counter
