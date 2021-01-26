@@ -272,6 +272,9 @@ FakesAssemblies/
 .ntvs_analysis.dat
 node_modules/
 
+# ASP.NET
+**/[Ll]aunch[Ss]ettings.json
+
 # Visual Studio 6 build log
 *.plg
 
