@@ -105,17 +105,17 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TraceWorkItemCompleted(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId, object status, string producedMessageIds)
+        public void TraceWorkItemCompleted(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId, object status, double latencyMs, string producedMessageIds)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
                 if (this.logger.IsEnabled(LogLevel.Information))
                 {
-                    this.logger.LogInformation("Part{partition:D2} completed {workItemType}WorkItem {workItemId} instanceId={instanceId} status={status} producedMessageIds={producedMessageIds}",
-                        partitionId, workItemType, workItemId, instanceId, status, producedMessageIds);
+                    this.logger.LogInformation("Part{partition:D2} completed {workItemType}WorkItem {workItemId} instanceId={instanceId} status={status} latencyMs={latencyMs} producedMessageIds={producedMessageIds}",
+                        partitionId, workItemType, workItemId, instanceId, status, latencyMs, producedMessageIds);
                 }
 
-                this.etw?.WorkItemCompleted(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, status.ToString(), producedMessageIds, TraceUtils.ExtensionVersion);
+                this.etw?.WorkItemCompleted(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, status.ToString(), latencyMs, producedMessageIds, TraceUtils.ExtensionVersion);
             }
         }
 

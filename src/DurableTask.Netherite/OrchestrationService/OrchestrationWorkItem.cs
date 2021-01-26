@@ -24,6 +24,8 @@ namespace DurableTask.Netherite
 
         public List<string> NewMessagesOrigin { get; set; }
 
+        public double StartedAt { get; set; }
+
         public OrchestrationWorkItem(Partition partition, OrchestrationMessageBatch messageBatch, List<HistoryEvent> previousHistory = null)
         {
             this.Partition = partition;

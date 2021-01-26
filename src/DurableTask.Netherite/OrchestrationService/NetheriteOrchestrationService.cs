@@ -13,6 +13,7 @@ namespace DurableTask.Netherite
     using Newtonsoft.Json;
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
@@ -32,6 +33,8 @@ namespace DurableTask.Netherite
         readonly TransportConnectionString.TransportChoices configuredTransport;
 
         readonly WorkItemTraceHelper workItemTraceHelper;
+
+        readonly Stopwatch workItemStopwatch = new Stopwatch();
 
         /// <summary>
         /// The logger category prefix used for all ILoggers in this backend.
@@ -115,6 +118,8 @@ namespace DurableTask.Netherite
 
             if (this.configuredTransport != TransportConnectionString.TransportChoices.Memory)
                 this.LoadMonitorService = new AzureLoadMonitorTable(settings.StorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
+
+            this.workItemStopwatch.Start();
 
             this.Logger.LogInformation(
                 "trace generation limits: general={general} , transport={transport}, storage={storage}, events={events}; workitems={workitems}; etwEnabled={etwEnabled}; core.IsTraceEnabled={core}",
@@ -523,8 +528,10 @@ namespace DurableTask.Netherite
                     nextOrchestrationWorkItem.MessageBatch.InstanceId,
                     nextOrchestrationWorkItem.Type.ToString(),
                     WorkItemTraceHelper.FormatMessageIdList(nextOrchestrationWorkItem.MessageBatch.TracedMessages));
-            }
-     
+
+                nextOrchestrationWorkItem.StartedAt = this.workItemStopwatch.Elapsed.TotalMilliseconds;
+            } 
+
             return nextOrchestrationWorkItem;
         }
 
@@ -540,6 +547,7 @@ namespace DurableTask.Netherite
             var orchestrationWorkItem = (OrchestrationWorkItem)workItem;
             var messageBatch = orchestrationWorkItem.MessageBatch;
             var partition = orchestrationWorkItem.Partition;
+            var latencyMs = this.workItemStopwatch.Elapsed.TotalMilliseconds - orchestrationWorkItem.StartedAt;
 
             List<TaskMessage> localMessages = null;
             List<TaskMessage> remoteMessages = null;
@@ -626,6 +634,7 @@ namespace DurableTask.Netherite
                 messageBatch.WorkItemId,
                 workItem.InstanceId,
                 batchProcessedEvent.State.OrchestrationStatus,
+                latencyMs,
                 WorkItemTraceHelper.FormatMessageIdList(batchProcessedEvent.TracedTaskMessages));
 
             try
@@ -713,6 +722,8 @@ namespace DurableTask.Netherite
                     nextActivityWorkItem.TaskMessage.OrchestrationInstance.InstanceId,
                     nextActivityWorkItem.ExecutionType,
                     WorkItemTraceHelper.FormatMessageId(nextActivityWorkItem.TaskMessage, nextActivityWorkItem.OriginWorkItem));
+
+                nextActivityWorkItem.StartedAt = this.workItemStopwatch.Elapsed.TotalMilliseconds;
             }
 
             return nextActivityWorkItem;
@@ -729,6 +740,7 @@ namespace DurableTask.Netherite
         {
             var activityWorkItem = (ActivityWorkItem)workItem;
             var partition = activityWorkItem.Partition;
+            var latencyMs = this.workItemStopwatch.Elapsed.TotalMilliseconds - activityWorkItem.StartedAt;
 
             var activityCompletedEvent = new ActivityCompleted()
             {
@@ -746,6 +758,7 @@ namespace DurableTask.Netherite
                 activityWorkItem.WorkItemId,
                 activityWorkItem.TaskMessage.OrchestrationInstance.InstanceId,
                 WorkItemTraceHelper.ActivityStatus.Completed,
+                latencyMs,
                 WorkItemTraceHelper.FormatMessageId(responseMessage, activityWorkItem.WorkItemId));
 
             try

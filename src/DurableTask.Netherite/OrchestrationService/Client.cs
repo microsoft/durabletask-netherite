@@ -230,6 +230,7 @@ namespace DurableTask.Netherite
                 request.WorkItemId,
                 creationMessage.OrchestrationInstance.InstanceId,
                 WorkItemTraceHelper.ClientStatus.Create,
+                0,
                 WorkItemTraceHelper.FormatMessageIdList(request.TracedTaskMessages));
 
             var response = await this.PerformRequestWithTimeoutAndCancellation(this.shutdownToken, request, false).ConfigureAwait(false);
@@ -271,6 +272,7 @@ namespace DurableTask.Netherite
                     request.WorkItemId,
                     group.Key,
                     WorkItemTraceHelper.ClientStatus.Send,
+                    0,
                     WorkItemTraceHelper.FormatMessageIdList(group.Select((message) => (message, request.WorkItemId))));
             }
 

@@ -149,10 +149,10 @@ namespace DurableTask.Netherite
         }
 
         [Event(225, Level = EventLevel.Informational, Version = 1)]
-        public void WorkItemCompleted(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string Status, string ProducedMessageIds, string ExtensionVersion)
+        public void WorkItemCompleted(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string Status, double LatencyMs, string ProducedMessageIds, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(225, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, Status, ProducedMessageIds, ExtensionVersion);
+            this.WriteEvent(225, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, Status, LatencyMs, ProducedMessageIds, ExtensionVersion);
         }
 
         [Event(226, Level = EventLevel.Warning, Version = 1)]
