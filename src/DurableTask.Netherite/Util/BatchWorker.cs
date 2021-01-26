@@ -30,7 +30,7 @@ namespace DurableTask.Netherite
         const int SHUTTINGDOWN = 3;
         readonly ConcurrentQueue<object> work = new ConcurrentQueue<object>();
 
-        const int MAXBATCHSIZE = 10000;
+        const int MAXBATCHSIZE = 500;
         readonly object dummyEntry = new object();
 
         /// <summary>
