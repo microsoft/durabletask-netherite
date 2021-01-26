@@ -20,7 +20,13 @@
       "UseGracefulShutdown": "true",
       "storageProvider": {
         "StorageConnectionString": "$AzureWebJobsStorage",
-        "EventHubsConnectionString": "$EventHubsConnection"
+        "EventHubsConnectionString": "$EventHubsConnection",
+        "LogLevelLimit": "Information",
+        "StorageLogLevelLimit": "Debug",
+        "TransportLogLevelLimit": "Information",
+        "EventLogLevelLimit": "Information",
+        "WorkItemLogLevelLimit": "Information",
+        "TraceToBlob": "true"
       }
     }
   }
