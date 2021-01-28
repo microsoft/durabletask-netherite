@@ -24,7 +24,7 @@ namespace DurableTask.Netherite.Faster
         readonly IntakeWorker intakeWorker;
 
         public LogWorker(BlobManager blobManager, FasterLog log, Partition partition, StoreWorker storeWorker, FasterTraceHelper traceHelper, CancellationToken cancellationToken)
-            : base(nameof(LogWorker), true, cancellationToken)
+            : base(nameof(LogWorker), true, 500, cancellationToken)
         {
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
@@ -56,7 +56,7 @@ namespace DurableTask.Netherite.Faster
             readonly LogWorker logWorker;
             readonly List<PartitionUpdateEvent> updateEvents;
 
-            public IntakeWorker(CancellationToken token, LogWorker logWorker) : base(nameof(IntakeWorker), true, token)
+            public IntakeWorker(CancellationToken token, LogWorker logWorker) : base(nameof(IntakeWorker), true, int.MaxValue, token)
             {
                 this.logWorker = logWorker;
                 this.updateEvents = new List<PartitionUpdateEvent>();

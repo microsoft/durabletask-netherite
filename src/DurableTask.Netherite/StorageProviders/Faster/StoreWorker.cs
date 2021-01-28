@@ -45,7 +45,7 @@ namespace DurableTask.Netherite.Faster
 
 
         public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken) 
-            : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", true, cancellationToken)
+            : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", true, 500, cancellationToken)
         {
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 

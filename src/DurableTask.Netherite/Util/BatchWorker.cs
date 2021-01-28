@@ -19,6 +19,7 @@ namespace DurableTask.Netherite
     /// </summary>
     abstract class BatchWorker<T>
     {
+        readonly int maxBatchSize;
         readonly Stopwatch stopwatch;
         protected string Name { get; }
         protected readonly CancellationToken cancellationToken;
@@ -36,11 +37,12 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Constructor including a cancellation token.
         /// </summary>
-        public BatchWorker(string name, bool startSuspended, CancellationToken cancellationToken)
+        public BatchWorker(string name, bool startSuspended, int maxBatchSize, CancellationToken cancellationToken)
         {
             this.Name = name;
             this.cancellationToken = cancellationToken;
             this.state = startSuspended ? SUSPENDED : IDLE;
+            this.maxBatchSize = maxBatchSize;
             this.stopwatch = new Stopwatch();
         }
 

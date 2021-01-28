@@ -25,7 +25,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
 
         public EventHubsSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, EventHubsTraceHelper traceHelper)
-            : base(nameof(EventHubsSender<T>), false, CancellationToken.None)
+            : base(nameof(EventHubsSender<T>), false, 2000, CancellationToken.None)
         {
             this.host = host;
             this.taskHubGuid = taskHubGuid;
