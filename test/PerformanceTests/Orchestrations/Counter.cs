@@ -9,7 +9,9 @@
     using System.Net.Http;
     using System.Runtime.InteropServices;
     using System.Text;
+    using System.Threading;
     using System.Threading.Tasks;
+    using Dynamitey;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Azure.WebJobs;
@@ -85,11 +87,7 @@
                 DateTime startTime = DateTime.UtcNow;
 
                 // send the specified number of signals to the entity
-                // for max throughput we do this in parallel and without waiting
-                Parallel.For(0, numberSignals, (i) =>
-                {
-                    var asyncTask = client.SignalEntityAsync(entityId, "add", 1);
-                });
+                await SendIncrementSignals(client, numberSignals, 50, (i) => entityId);
 
                 // poll the entity until the expected count is reached
                 while ((DateTime.UtcNow - startTime) < TimeSpan.FromMinutes(5))
@@ -129,16 +127,16 @@
                 int numberSignals = int.Parse(input.Substring(0, commaPosition));
                 int numberEntities = int.Parse(input.Substring(commaPosition + 1));
                 var entityPrefix = Guid.NewGuid().ToString("N");
-                EntityId MakeEntityId(int i) => new EntityId("Counter", $"{entityPrefix}-{i:D8}");
-
+                EntityId MakeEntityId(int i) => new EntityId("Counter", $"{entityPrefix}-{i/100:D6}!{i%100:D2}");
                 DateTime startTime = DateTime.UtcNow;
 
-                // send the specified number of signals to the entity
-                // for max throughput we do this in parallel and without waiting
-                Parallel.For(0, numberSignals, (i) =>
+                if (numberSignals % numberEntities != 0)
                 {
-                    var asyncTask = client.SignalEntityAsync(MakeEntityId(i % numberEntities), "add", 1);
-                });
+                    throw new ArgumentException("numberSignals must be a multiple of numberEntities");
+                }
+
+                // send the specified number of signals to the entity
+                await SendIncrementSignals(client, numberSignals, 50, (i) => MakeEntityId(i % numberEntities));
 
                 // poll the entities until the expected count is reached
                 async Task<double?> WaitForCount(int i)
@@ -180,6 +178,36 @@
             }
         }
 
+        static async Task SendIncrementSignals(IDurableClient client, int numberSignals, int maxConcurrency, Func<int, EntityId> entityIdFactory)
+        {
+            // send the specified number of signals to the entity
+            // for better throughput we do this in parallel
+
+            using var semaphore = new SemaphoreSlim(maxConcurrency);
+
+            for (int i = 0; i < numberSignals; i++)
+            {
+                var entityId = entityIdFactory(i);
+                await semaphore.WaitAsync();
+                var task = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await client.SignalEntityAsync(entityId, "add", 1);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                });
+            }
+
+            // wait for tasks to complete
+            for (int i = 0; i < maxConcurrency; i++)
+            {
+                await semaphore.WaitAsync();
+            }
+        }
     }
 
     public class Counter
