@@ -26,6 +26,8 @@ namespace DurableTask.Netherite
         public static string FormatMessageIdList(IEnumerable<(TaskMessage message, string workItem)> messages)
             => string.Join(",", messages.Select(entry => FormatMessageId(entry.message, entry.workItem)));
 
+        public static string FormatEmptyMessageIdList() => string.Empty;
+
         public static string FormatClientWorkItemId(Guid clientId, long requestId)
            => $"{Client.GetShortId(clientId)}R{requestId}";
 
@@ -111,7 +113,7 @@ namespace DurableTask.Netherite
             {
                 if (this.logger.IsEnabled(LogLevel.Information))
                 {
-                    this.logger.LogInformation("Part{partition:D2} completed {workItemType}WorkItem {workItemId} instanceId={instanceId} status={status} latencyMs={latencyMs} producedMessageIds={producedMessageIds}",
+                    this.logger.LogInformation("Part{partition:D2} completed {workItemType}WorkItem {workItemId} instanceId={instanceId} status={status} latencyMs={latencyMs:F2} producedMessageIds={producedMessageIds}",
                         partitionId, workItemType, workItemId, instanceId, status, latencyMs, producedMessageIds);
                 }
 
