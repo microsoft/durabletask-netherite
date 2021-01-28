@@ -33,7 +33,7 @@
   </PropertyGroup>
   
   <ItemGroup>
-    <None Include="icon.png" Pack="true" PackagePath="\"/>
+    <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -46,7 +46,7 @@
     <PackageReference Include="Microsoft.Azure.Storage.Blob" Version="11.2.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="2.2.0" />
     <PackageReference Include="Microsoft.FASTER.Core" Version="1.8.0" />
-    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.5.0" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.5.1" />
     <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.*" PrivateAssets="All" />
     <PackageReference Include="System.Threading.Channels" Version="5.0.0" />
