@@ -142,8 +142,8 @@ namespace DurableTask.Netherite.EventHubs
             {
                 throw new InvalidOperationException($"The specified taskhub name does not match the task hub name in {this.taskhubParameters.Name}");
             }
-          
-            this.host.NumberPartitions = (uint) this.parameters.StartPositions.Length;
+
+            this.host.NumberPartitions = (uint)this.parameters.StartPositions.Length;
 
             this.connections = new EventHubsConnections(this.settings.EventHubsConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs)
             {
@@ -162,52 +162,64 @@ namespace DurableTask.Netherite.EventHubs
                 throw new NotSupportedException("Using multiple eventhubs for partitions is not yet supported.");
             }
 
+            if (this.client == null)
+            {
+                throw new InvalidOperationException("client must be started before partition hosting is started.");
+            }
+
             string partitionsHub = PartitionHubs[0];
 
-            // Use standard eventProcessor offered by EventHubs or a custom one
-            if (this.settings.EventProcessorManagement == "EventHubs")
+            switch (this.settings.PartitionManagement)
             {
+                case PartitionManagementOptions.EventProcessorHost:
+                    {
+                        this.traceHelper.LogInformation("Registering EventProcessorHost with EventHubs");
 
-                this.eventProcessorHost = new EventProcessorHost(
-                        partitionsHub,
-                        EventHubsTransport.PartitionConsumerGroup,
-                        this.settings.EventHubsConnectionString,
-                        this.settings.StorageConnectionString,
-                        this.cloudBlobContainer.Name);
+                        this.eventProcessorHost = new EventProcessorHost(
+                                partitionsHub,
+                                EventHubsTransport.PartitionConsumerGroup,
+                                this.settings.EventHubsConnectionString,
+                                this.settings.StorageConnectionString,
+                                this.cloudBlobContainer.Name);
 
-                var processorOptions = new EventProcessorOptions()
-                {
-                    InitialOffsetProvider = (s) => EventPosition.FromSequenceNumber(this.parameters.StartPositions[int.Parse(s)] - 1),
-                    MaxBatchSize = 300,
-                    PrefetchCount = 500,
-                };
+                        var processorOptions = new EventProcessorOptions()
+                        {
+                            InitialOffsetProvider = (s) => EventPosition.FromSequenceNumber(this.parameters.StartPositions[int.Parse(s)] - 1),
+                            MaxBatchSize = 300,
+                            PrefetchCount = 500,
+                        };
 
-                await this.eventProcessorHost.RegisterEventProcessorFactoryAsync(this, processorOptions).ConfigureAwait(false);
-            }
-            else if (this.settings.EventProcessorManagement.StartsWith("Custom"))
-            {
-                this.traceHelper.LogWarning($"EventProcessorManagement: {this.settings.EventProcessorManagement}");
-                this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
-                        partitionsHub,
-                        EventHubsTransport.PartitionConsumerGroup,
-                        this.settings.EventHubsConnectionString,
-                        this.settings.StorageConnectionString,
-                        this.cloudBlobContainer.Name,
-                        this.host, 
-                        this, 
-                        this.connections,
-                        this.parameters, 
-                        this.settings,
-                        this.traceHelper,
-                        this.settings.WorkerId);
+                        await this.eventProcessorHost.RegisterEventProcessorFactoryAsync(this, processorOptions).ConfigureAwait(false);
+                        break;
+                    }
 
-                var thread = new Thread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript));
-                thread.Name = "ScriptedEventProcessorHost";
-                thread.Start();
-            }
-            else
-            {
-                throw new InvalidOperationException("Unknown EventProcessorManagement setting!");
+                case PartitionManagementOptions.Scripted:
+                    {
+                        this.traceHelper.LogInformation($"Starting scripted partition host");
+                        this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
+                                partitionsHub,
+                                EventHubsTransport.PartitionConsumerGroup,
+                                this.settings.EventHubsConnectionString,
+                                this.settings.StorageConnectionString,
+                                this.cloudBlobContainer.Name,
+                                this.host,
+                                this,
+                                this.connections,
+                                this.parameters,
+                                this.settings,
+                                this.traceHelper,
+                                this.settings.WorkerId);
+
+                        var thread = new Thread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript));
+                        thread.Name = "ScriptedEventProcessorHost";
+                        thread.Start();
+                        break;
+                    }
+
+                case PartitionManagementOptions.ClientOnly:
+                    {
+                        break;
+                    }
             }
         }
 
@@ -218,20 +230,29 @@ namespace DurableTask.Netherite.EventHubs
 
             this.traceHelper.LogDebug("Stopping client");
             await this.client.StopAsync().ConfigureAwait(false);
-            this.traceHelper.LogDebug("Unregistering event processor");
 
-            if (this.settings.EventProcessorManagement == "EventHubs")
+            switch (this.settings.PartitionManagement)
             {
-                await this.eventProcessorHost.UnregisterEventProcessorAsync().ConfigureAwait(false);
+                case PartitionManagementOptions.EventProcessorHost:
+                    {
+                        this.traceHelper.LogDebug("Unregistering event processor");
+                        await this.eventProcessorHost.UnregisterEventProcessorAsync().ConfigureAwait(false);
+                        break;
+                    }
+
+                case PartitionManagementOptions.Scripted:
+                    {
+                        this.traceHelper.LogDebug("Stopping event processor");
+                        await this.scriptedEventProcessorHost.StopAsync();
+                        break;
+                    }
+
+                case PartitionManagementOptions.ClientOnly:
+                    {
+                        break;
+                    }
             }
-            else if (this.settings.EventProcessorManagement.StartsWith("Custom"))
-            {
-                await this.scriptedEventProcessorHost.StopAsync();
-            }
-            else
-            {
-                throw new InvalidOperationException("Unknown EventProcessorManagement setting!");
-            }
+
             this.traceHelper.LogDebug("Closing connections");
             await this.connections.StopAsync().ConfigureAwait(false);
             this.traceHelper.LogInformation("EventHubsBackend shutdown completed");

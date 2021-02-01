@@ -71,8 +71,8 @@
         // set this to "true" to disable all speculation
         "PersistStepsFirst": false,
 
-        // set this to "Custom" to control the scenario with a partition script
-        "EventProcessorManagement": "EventHubs",
+        // can set this to "Scripted" to control the scenario with a partition script
+        "PartitionManagement": "EventProcessorHost",
 
         // this controls what log information is produced by the various components
         // it limits production of the events, and thus can be used to prevent overheads

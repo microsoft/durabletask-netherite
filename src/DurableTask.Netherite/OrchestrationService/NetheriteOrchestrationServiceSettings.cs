@@ -20,12 +20,7 @@ namespace DurableTask.Netherite
         /// </summary>
         public string EventHubsConnectionString { get; set; }
 
-        /// <summary>
-        /// Gets or sets the EventProcessor management
-        /// </summary>
-        public string EventProcessorManagement { get; set; } = "EventHubs";
-
-        /// <summary>
+         /// <summary>
         /// Gets or sets the connection string for the Azure storage account, supporting all types of blobs, and table storage.
         /// </summary>
         public string StorageConnectionString { get; set; }
@@ -78,6 +73,12 @@ namespace DurableTask.Netherite
         public int ActivityDispatcherCount { get; set; } = 1;
 
         /// <summary>
+        /// Gets or sets the partition management option
+        /// </summary>
+        [JsonConverter(typeof(StringEnumConverter))]
+        public PartitionManagementOptions PartitionManagement { get; set; } = PartitionManagementOptions.EventProcessorHost;
+
+        /// <summary>
         /// Gets or sets a flag indicating whether to enable caching of execution cursors to avoid replay.
         /// Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
         /// </summary>
@@ -86,6 +87,7 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Whether we should carry over unexecuted raised events to the next iteration of an orchestration on ContinueAsNew.
         /// </summary>
+        [JsonConverter(typeof(StringEnumConverter))]
         public BehaviorOnContinueAsNew EventBehaviourForContinueAsNew { get; set; } = BehaviorOnContinueAsNew.Carryover;
 
         /// <summary>
@@ -134,27 +136,6 @@ namespace DurableTask.Netherite
         /// Forces steps to pe persisted before applying their effects, thus disabling all speculation.
         /// </summary>
         public bool PersistStepsFirst { get; set; } = false;
-
-        /// <summary>
-        /// Which packets to send in JSON format.
-        /// </summary>
-        public enum JsonPacketUse
-        {
-            /// <summary>
-            /// Never send packets in JSON format
-            /// </summary>
-            Never,
-
-            /// <summary>
-            /// Send packets to clients in JSON format
-            /// </summary>
-            ForClients,
-
-            /// <summary>
-            /// Send all packets in JSON format
-            /// </summary>
-            ForAll,
-        }
 
         /// <summary>
         /// A lower limit on the severity level of trace events emitted by the transport layer.
