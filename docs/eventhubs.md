@@ -1,24 +1,87 @@
 # EventHubs Configuration
 
-## Partitions
+## Creating the Event Hubs
 
-To run a Durable Functions application on Netherite, you must configure an EventHubs namespace that connects clients and partitions using persistent queues. This namespace must contain the following EventHubs:
+To run a Durable Functions application on Netherite, you must first (a) create an **EventHubs namespace**, and (b) create certain **EvenHubs** in that namespace. Specfically, the namespace is expected to contain the following event hubs:
 
-* An event hub called `partitions` with 1-32 partitions. We recommend 12 as a default.
-* Four event hubs called `clients0`, `clients1`, `clients2` and `clients3` with 32 partitions each.
+* **An event hub called `partitions`** with 1-32 partitions.
 
-You can create these manually in the Azure portal, or via the Azure CLI:
+  | value | indication |
+  |-------|------------|
+  | 12 | Performs well across a range of 1-12 nodes. *This is the recommended default*. |
+  | 32 | Permits maximal scaleout of up to 32 nodes, but is not recommended for running on a single node with less than 8 cores. |
+  | 1  | Achieves optimal performance on a single node. Useful only if there is no intention to *ever* scale out. |
+
+* **Four event hubs called `clients0`, `clients1`, `clients2` and `clients3`** with 32 partitions each.
+
+  These are used for sending responses back to the clients. By design, we use vastly more partitions (128) than the expected number of clients.
+  The reason is that clients hash to these partitions randomly, and we want reduce the likelihood of hash conflicts.
+
+  
+### Manually, in the portal
+
+You can create the necessary event hubs manually in the portal, by following these steps:
+
+1. Go to the [online Azure Portal](https://ms.portal.azure.com)
+2. Choose "Create a resource"
+3. Type "Event Hubs" into the search box, then click it in the suggested search completions
+4. On the "Event Hubs" page, click the "Create" button
+5. Choose any namespace name, and tweak other options if desired (e.g. select an existing or new resource group)
+6. Click "Review + create"
+7. When complete, click "Go to resource"
+8. Click on "+ Event Hub"
+9. Enter "partitions" for the Name, and set the partition count to 12
+9. Hit "Create"
+8. Click on "+ Event Hub"
+9. Enter "clients0" for the Name, and set the partition count to 32
+9. Hit "Create"
+8. Click on "+ Event Hub"
+9. Enter "clients1" for the Name, and set the partition count to 32
+9. Hit "Create"
+8. Click on "+ Event Hub"
+9. Enter "clients2" for the Name, and set the partition count to 32
+9. Hit "Create"
+8. Click on "+ Event Hub"
+9. Enter "clients3" for the Name, and set the partition count to 32
+9. Hit "Create"
+
+### Via Azure CLI
+
+If you don't prefer using a graphical interface, or if you want to automate this process, we
+recommend using the Azure CLI commands to perform the configuration.
+
+If you don't already have a resource group you want to use, create it first:
 
 ```shell
-az eventhubs eventhub create --namespace-name <namepace> --resource-group <group> --name partitions --message-retention 1 --partition-count 12
-az eventhubs eventhub create --namespace-name <namepace> --resource-group <group> --name clients0 --message-retention 1 --partition-count 32
-az eventhubs eventhub create --namespace-name <namepace> --resource-group <group> --name clients1 --message-retention 1 --partition-count 32
-az eventhubs eventhub create --namespace-name <namepace> --resource-group <group> --name clients2 --message-retention 1 --partition-count 32
-az eventhubs eventhub create --namespace-name <namepace> --resource-group <group> --name clients3 --message-retention 1 --partition-count 32
+az group create --resource-group <group> --location <location>
 ```
 
+Then, create the eventhubs namespace:
+```shell
+az eventhubs namespace create --namespace-name <namespace> --resource-group <group> 
+```
+
+Finally, create the eventhubs:
+```shell
+az eventhubs eventhub create --namespace-name <namespace> --resource-group <group> --name partitions --message-retention 1 --partition-count 12
+az eventhubs eventhub create --namespace-name <namespace> --resource-group <group> --name clients0 --message-retention 1 --partition-count 32
+az eventhubs eventhub create --namespace-name <namespace> --resource-group <group> --name clients1 --message-retention 1 --partition-count 32
+az eventhubs eventhub create --namespace-name <namespace> --resource-group <group> --name clients2 --message-retention 1 --partition-count 32
+az eventhubs eventhub create --namespace-name <namespace> --resource-group <group> --name clients3 --message-retention 1 --partition-count 32
+```
 You can also edit and run the script `create-eventhubs-instances.ps1` to this end.  
 
+### Cleanup
+
+EventHubs accumulate charges for the reserved capacity (1 throughput unit, or TU, by default) even if not used.
+So, don't forget to delete EventHubs and Plan resources you no longer need, as they will continue to accrue charges.
+
+This is easiest if you use a resource group to contain all your resource (which may also contain your function app and Azure Storage account),
+and then delete that entire group in the portal, or from the CLI:
+
+```shell
+az group delete --resource-group <group>
+```
 
 ## Partition Count Considerations
 

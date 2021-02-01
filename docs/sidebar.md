@@ -1,4 +1,6 @@
 
+<p style="text-align: center;"><img src="images/icon.png" /></p>
+
 
 * [Introduction](/)
 
@@ -11,7 +13,7 @@
 
 * Configuration
   * [EventHubs](eventhubs.md)
-  * host.json
+  * [Settings](settings.md)
 
 * Deployment
   * Local

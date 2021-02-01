@@ -6,7 +6,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
   <meta name="description" content="Description">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
-  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/buble.css">
+  <link rel="stylesheet" href="buble-alt.css">
 </head>
 <body>
   <div id="app"></div>
@@ -14,8 +14,13 @@
     window.$docsify = {
       name: 'Netherite',
       repo: 'https://github.com/microsoft/durabletask-netherite',
-      loadSidebar: true,
-      subMaxLevel: 3
+      homepage: 'introduction.md',
+      loadSidebar: 'sidebar.md',
+      subMaxLevel: 3,
+      pagination: {
+        crossChapter: true,
+        crossChapterText: true,
+      },
     }
   </script>
   <!-- Docsify v4 -->
