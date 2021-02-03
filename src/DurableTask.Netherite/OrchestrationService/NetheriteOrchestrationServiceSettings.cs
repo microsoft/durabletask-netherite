@@ -44,6 +44,12 @@ namespace DurableTask.Netherite
         public string WorkerId { get; set; } = Environment.MachineName;
 
         /// <summary>
+        /// Gets or sets the number of partitions to use when creating a new taskhub. 
+        /// If a taskhub already exists, this number is irrelevant.
+        /// </summary>
+        public int PartitionCount { get; set; } = 12;
+
+        /// <summary>
         /// The name to use for the Azure table with the load information
         /// </summary>
         public string LoadInformationAzureTableName { get; set; } = "DurableTaskPartitions";

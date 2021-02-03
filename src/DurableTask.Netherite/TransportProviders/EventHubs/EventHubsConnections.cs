@@ -117,7 +117,7 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        public static async Task<long[]> GetQueuePositions(string connectionString, string[] partitionHubs)
+        public static async Task<long[]> GetQueuePositionsAsync(string connectionString, string[] partitionHubs)
         {
             var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0]);
             await connections.GetPartitionInformationAsync();

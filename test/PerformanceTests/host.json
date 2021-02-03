@@ -62,6 +62,8 @@
         "MaxNumberEventsBetweenCheckpoints": "10000",
         "MaxTimeMsBetweenCheckpoints": "60000",
 
+        "PartitionCount": 12,
+
         // set this to true to use the PSF support in Faster
         "UsePSFQueries": "false",
 

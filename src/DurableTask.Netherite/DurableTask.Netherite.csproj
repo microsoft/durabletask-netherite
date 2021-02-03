@@ -41,6 +41,7 @@
   </PropertyGroup>
   
   <ItemGroup>
+    <PackageReference Include="Azure.Messaging.EventHubs" Version="5.3.0-beta.4" />
     <PackageReference Include="Microsoft.Azure.Cosmos.Table" Version="1.0.8" />
     <PackageReference Include="Microsoft.Azure.EventHubs.Processor" Version="4.3.1" />
     <PackageReference Include="Microsoft.Azure.Storage.Blob" Version="11.2.2" />
