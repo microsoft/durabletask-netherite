@@ -143,7 +143,7 @@ namespace DurableTask.Netherite.Scaling
             switch (this.configuredTransport)
             {
                 case TransportConnectionString.TransportChoices.EventHubs:
-                    positions = await EventHubs.EventHubsConnections.GetQueuePositions(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
+                    positions = await EventHubs.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
                     break;
 
                 default:

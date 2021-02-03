@@ -95,7 +95,17 @@ namespace DurableTask.Netherite.EventHubs
                 throw new InvalidOperationException("Cannot create TaskHub: TaskHub already exists");
             }
 
-            long[] startPositions = await EventHubsConnections.GetQueuePositions(this.settings.EventHubsConnectionString, EventHubsTransport.PartitionHubs);
+            // ensure the task hubs exist, creating them if necessary
+            var tasks = new List<Task>();
+            tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.EventHubsConnectionString, PartitionHubs[0], this.settings.PartitionCount));
+            foreach (string taskhub in ClientHubs)
+            {
+                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.EventHubsConnectionString, taskhub, 32));
+            }
+            await Task.WhenAll(tasks);
+
+            // determine the start positions
+            long[] startPositions = await EventHubsConnections.GetQueuePositionsAsync(this.settings.EventHubsConnectionString, EventHubsTransport.PartitionHubs);
 
             var taskHubParameters = new TaskhubParameters()
             {
