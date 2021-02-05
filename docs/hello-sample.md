@@ -18,7 +18,7 @@ Also, you need an Azure subscription, to allocate and deploy the required resour
 
 ## Get it and build it
 
-The sample is in the directory [/samples/hello](https://github.com/microsoft/durabletask-netherite/tree/main/samples/Hello). You can download just this folder if you wish, or clone the entire repository. Note that powershell sometimes refuses to execute downloaded files; so using git clone may work better.
+The sample is in the directory [/samples/hello](https://github.com/microsoft/durabletask-netherite/tree/main/samples/Hello). You can download just this folder if you wish, or clone the entire repository. Note that PowerShell sometimes refuses to execute downloaded files; so using git clone may work better.
 
 The project contains a "minimal" .NET Azure Durable Functions project (much like the [DF Quick Start](https://docs.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-create-first-csharp?pivots=code-editor-visualstudio)):
 - a single file of code, `HelloCities.cs`, which defines three functions: a trigger, an orchestration, and an activity.
@@ -68,7 +68,7 @@ You can inspect these resources in the [Azure Portal](https://portal.azure.com),
 **CAUTION:** The EventHubs namespace incurs continuous charges even if not used. Delete them by running `delete.ps1` once you are done with this sample.
 
 Both the storage account and the EventHubs namespace have a *connection string* that is needed for the application to use them.
-Our powershell scripts automatically look them up using the CLI. Alternatively, you can manually set the environment variables `AzureWebJobsStorage` and `EventHubsConnection` to contain these connection strings.
+Our PowerShell scripts automatically look them up using the CLI. Alternatively, you can manually set the environment variables `AzureWebJobsStorage` and `EventHubsConnection` to contain these connection strings.
 
 ## Run or Debug locally
 
@@ -126,7 +126,7 @@ dotnet build -c Release
 
 Then, (optionally) review the following lines in `deploy-to-premium.ps1`:
 
-```powershell
+```PowerShell
 # edit these parameters before running the script
 $numNodes=2
 $planSku="EP1"
