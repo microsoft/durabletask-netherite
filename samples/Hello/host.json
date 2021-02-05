@@ -6,8 +6,8 @@
       "extendedSessionsEnabled": "true",
       "UseGracefulShutdown": true,
       "storageProvider": {
-        "StorageConnectionString": "$AzureWebJobsStorage",
-        "EventHubsConnectionString": "$EventHubsConnection"
+        "StorageConnectionName": "AzureWebJobsStorage",
+        "EventHubsConnectionName": "EventHubsConnection"
       }
     }
   }
