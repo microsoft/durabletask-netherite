@@ -1,4 +1,4 @@
-﻿<p style="text-align: center; float: right;"><img src="src/DurableTask.Netherite/icon.png" /></p>
+<img align="right" src="src/DurableTask.Netherite/icon.png"/>
 
 # Netherite
 
@@ -10,7 +10,7 @@ As Netherite is intended to be a drop-in backend replacement, it does not modify
 
 ## Getting Started
 
-To get started, you can either try out the sample, or take an existing DF app and switch it to the Netherite backend.
+To get started, you can either try out the sample, or take an existing DF app and switch it to the Netherite backend. You can also read our [documentation](https://microsoft.github.io/durabletask-netherite/#/README).
 
 **The hello sample.**
 For a quick start, take a look at [hello sample](https://microsoft.github.io/durabletask-netherite/#/hello-sample.md). We included scripts that make it easy to build, run, and deploy this application. Also, this sample is a great starting point for creating your own projects.
@@ -32,7 +32,7 @@ To achieve better performance, Netherite represents queues and partition states 
 - Partitions communicate via ordered, persistent event streams, over EventHubs.
 - The state of a partition is stored using a combination of an immutable log and checkpoints, in Azure PageBlobs.
 
-For some other considerations about how to choose the engine, see [the documentation](https://microsoft.github.io/durabletask-netherite/#/considerations.md).
+For some other considerations about how to choose the engine, see [the documentation](https://microsoft.github.io/durabletask-netherite/#/engine.md).
 
 ## Status
 
