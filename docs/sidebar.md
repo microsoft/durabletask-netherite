@@ -1,25 +1,17 @@
 
 <p style="text-align: center;"><img src="images/icon.png" /></p>
 
-
-* [Introduction](/)
+* [Introduction](introduction.md)
 
 * Getting Started
-  * [The 'Hello' Sample](hello-sample.md)
-
+  * ['Hello' Sample](hello-sample.md)
+  
 * Concepts
-  * [Build and Dependencies](build.md)
-  * Storage Organization
+  * [Which engine to choose?](engine.md)
+  * [Build](build.md)
+  * [Storage Organization](storage.md)
+  * [Emulation Mode](emulation.md)
 
-* Configuration
-  * [EventHubs](eventhubs.md)
-  * [Settings](settings.md)
-
-* Deployment
-  * Local
-  * Function app
-  * Container
-
-* Monitoring
+* [Settings](settings.md)  
 
 * [General Information](general.md)

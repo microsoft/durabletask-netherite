@@ -4,15 +4,29 @@ Netherite is a distributed workflow execution engine for [Durable Functions](htt
 
 It is of potential interest to anyone developing applications on those platforms who has an appetite for performance, scalability, and reliability. 
 
-As Netherite is intended to be a drop-in backend replacement, it does not modify the application API. Existing applications can switch backends with little effort.
+As Netherite is intended to be a drop-in backend replacement, it does not modify the application API. Existing applications can switch to this backend with little effort.
 
-## Why a new execution engine?
+## Getting Started
 
-The default execution engine used by Durable Functions today is relying on Azure Storage, which makes it very easy to configure and operate. It uses queues for sending messages between partitions, and tables or blobs for storing the current state of instances (i.e. orchestrations and entities). However, a limiting property of this architecture is that it executes large numbers of small storage accesses. For example, executing a single orchestration with three activities may require a total of 4 dequeue operations, 3 enqueue operations, 4 table reads, and 4 table writes. Thus, the overall throughput quickly becomes limited by how many I/O operations Azure Storage allows per second. 
+To get started, you can either try out the sample, or take an existing DF app and switch it to the Netherite backend.
 
-To achieve more throughput, Netherite represents queues and partition states differently, to improve batching:
-- Partitions communicate via ordered, persistent event streams.
-- The state of a partition (including the state of orchestrations and entities belonging to that partition) is stored using a combination of an immutable log and checkpoints.
+**The hello sample.**
+For a quick start, take a look at [hello sample](#/hello-sample.md). We included scripts that make it easy to build, run, and deploy this application. Also, this sample is a great starting point for creating your own projects.
+
+**Configure an existing DF app to use Netherite.**
+If you have a .NET Durable Functions application already, and want to configure it to use Netherite as the backend, do the following:
+- Add the NuGet package `Microsoft.Azure.DurableTask.Netherite.AzureFunctions` to your functions project.
+- Create an EventHubs namespace. You can do this in the Azure portal, or using the Azure CLI.
+- Configure `EventHubsConnection` with the connection string for the Event Hubs namespace. You can do this using an environment variable, or with a function app configuration settings.
+- Optionally, update the host.json to tweak the [settings for Netherite](#/settings.md).
+
+## Why a new engine?
+
+The default Azure Storage engine stores messages in Azure Storage queues and instance states in Azure Storage tables. It executes large numbers of small storage accesses. For example, executing a single orchestration with three activities may require a total of 4 dequeue operations, 3 enqueue operations, 4 table reads, and 4 table writes. Thus, the overall throughput quickly becomes limited by how many I/O operations Azure Storage allows per second. 
+
+To achieve better performance, Netherite represents queues and partition states differently, to improve batching:
+- Partitions communicate via ordered, persistent event streams, over EventHubs.
+- The state of a partition is stored using a combination of an immutable log and checkpoints, in Azure PageBlobs.
 
 Just as in the [previous architecture](https://docs.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-perf-and-scale#orchestrator-scale-out), partitions are load-balanced at runtime over the available nodes. However, unlike before, Netherite partitions apply to both activities and orchestrations, so there is not a distinction between control queues and work-item queues.
 
@@ -29,36 +43,6 @@ Another advantage of this architecture is that we can store the current input qu
 - *Azure Storage Page Blobs* provide the underlying raw storage for the logs.
 
 In the future, we plan to support alternatives for these components. For example, Kafka instead of EventHubs, and K8s persistent volumes instead of Azure Page Blobs.
-
-## Which engine to choose
-
-The Durable Functions and Durable Task frameworks already support a multitude of execution engines. Choosing the right one depends on many factors that are specific to the intended scenario. Here are some considerations.
-
-**Stronger guarantees**.
-Like all back-ends for DF and DTFx, Netherite provides at-least-once guarantees for executing activities. 
-It also provides some additional, stronger guarantees:
-
-- All communication within a TaskHub (i.e. between orchestrations, activities, and entities) is transactionally consistent ("exactly-once"), since the EventHubs API allows us to deliver messages between partitions without any risk of duplication.
-- All messages (between clients, orchestrations, activities, and entities) are delivered in order, because this is already guaranteed by EventHubs. For example, when sending a sequence of events or signals to an orchestration or entity, the delivery order is guaranteed to be the same as the sending order. 
-
-**Better performance**.  
-Netherite may provide higher throughput and lower latency, compared to 
-
-- EventHubs can scale up to 32 partitions and 20 throughput units, which allows 20 MB/s worth of messages to be processed on 32 nodes. 
-- Page Blobs allows more batching than table storage, which improves maximum throughput.
-- Netherite can handle streams of entity signals more efficiently, because there is no need for explicit message sorting and deduplication
-- EventHubs supports long polling. This improves latency compared to standard polling on message queues, especially in low-scale situations when polling intervals are high.
-- Clients can connect to Netherite via a bidirectional EventHubs connection. This means that a client waiting for an orchestration to complete is notified more quickly.
-- Netherite caches instance and entity states in memory, which improves latency if they are accessed repeatedly.
-- Multiple orchestration steps can be persisted in a single storage write, which reduces latency when issuing a sequence of very short activities. It can improve throughput by up to 10x.
-
-**Operational complexity**.
-Because Netherite is built from more components (EventHubs, AzureStorage, Faster), its operational complexity is a bit higher compared to the default Azure Storage backend.
-
-- Netherite requires users configure the EventHubs partition structure prior to running the application.
-- The state of instances and orchestrations is encoded nontrivially in storage. Thus, it cannot be easily inspected using Azure Storage Explorer. Instead, such queries must be directed via the client API to the running service. 
-
-This may improve in the future as we add more tooling.
 
 ## Status
 
