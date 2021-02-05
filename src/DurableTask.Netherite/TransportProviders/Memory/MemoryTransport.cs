@@ -33,8 +33,8 @@ namespace DurableTask.Netherite.Emulated
         {
             this.host = host;
             this.settings = settings;
-            TransportConnectionString.Parse(settings.EventHubsConnectionString, out _, out _, out int? numberPartitions);
-            this.numberPartitions = (uint) numberPartitions.Value;
+            TransportConnectionString.Parse(settings.ResolvedTransportConnectionString, out _, out _);
+            this.numberPartitions = (uint) settings.PartitionCount;
             this.logger = logger;
         }
 

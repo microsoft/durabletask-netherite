@@ -63,15 +63,7 @@ namespace DurableTask.Netherite.AzureFunctions
             // copy all applicable fields from both the options and the storageProvider options
             JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.extensionOptions), eventSourcedSettings);
             JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.extensionOptions.StorageProvider), eventSourcedSettings);
-
-            // resolve any indirection in the specification of the two connection strings
-            eventSourcedSettings.StorageConnectionString = this.ResolveIndirection(
-                eventSourcedSettings.StorageConnectionString,
-                nameof(NetheriteOrchestrationServiceSettings.StorageConnectionString));
-            eventSourcedSettings.EventHubsConnectionString = this.ResolveIndirection(
-                eventSourcedSettings.EventHubsConnectionString,
-                nameof(NetheriteOrchestrationServiceSettings.EventHubsConnectionString));
-
+ 
             // if worker id is specified in environment, it overrides the configured setting
             string workerId = Environment.GetEnvironmentVariable("WorkerId");
             if (!string.IsNullOrEmpty(workerId))
@@ -83,13 +75,6 @@ namespace DurableTask.Netherite.AzureFunctions
                 eventSourcedSettings.WorkerId = workerId;
             }
 
-            if (this.TraceToConsole || this.TraceToBlob)
-            {
-                // capture trace events generated in the backend and redirect them to additional sinks
-                this.loggerFactory = new LoggerFactoryWrapper(this.loggerFactory, eventSourcedSettings.HubName, eventSourcedSettings.WorkerId, this);
-            }
-
-
             eventSourcedSettings.HubName = this.extensionOptions.HubName;
 
             if (taskHubNameOverride != null)
@@ -97,7 +82,13 @@ namespace DurableTask.Netherite.AzureFunctions
                 eventSourcedSettings.HubName = taskHubNameOverride;
             }
 
-            // TODO sanitize hubname
+            eventSourcedSettings.Validate((name) => this.connectionStringResolver.Resolve(name));
+
+            if (this.TraceToConsole || this.TraceToBlob)
+            {
+                // capture trace events generated in the backend and redirect them to additional sinks
+                this.loggerFactory = new LoggerFactoryWrapper(this.loggerFactory, eventSourcedSettings.HubName, eventSourcedSettings.WorkerId, this);
+            }
 
             return eventSourcedSettings;
         }
@@ -111,13 +102,13 @@ namespace DurableTask.Netherite.AzureFunctions
 
                 if (this.TraceToBlob && BlobLogger == null)
                 {
-                    BlobLogger = new BlobLogger(settings.StorageConnectionString, settings.WorkerId);
+                    BlobLogger = new BlobLogger(settings.ResolvedStorageConnectionString, settings.WorkerId);
                 }
 
                 var key = new DurableClientAttribute()
                 {
                     TaskHub = settings.HubName,
-                    ConnectionName = settings.StorageConnectionString,
+                    ConnectionName = settings.ResolvedStorageConnectionString,
                 };
  
                 this.defaultProvider = this.cachedProviders.GetOrAdd(key, _ =>
@@ -136,7 +127,7 @@ namespace DurableTask.Netherite.AzureFunctions
             var settings = this.GetNetheriteOrchestrationServiceSettings(attribute.TaskHub);
 
             if (string.Equals(this.defaultProvider.Settings.HubName, settings.HubName, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(this.defaultProvider.Settings.StorageConnectionString, settings.StorageConnectionString, StringComparison.OrdinalIgnoreCase))
+                 string.Equals(this.defaultProvider.Settings.ResolvedStorageConnectionString, settings.ResolvedStorageConnectionString, StringComparison.OrdinalIgnoreCase))
             {
                 return this.defaultProvider;
             }
@@ -144,7 +135,7 @@ namespace DurableTask.Netherite.AzureFunctions
             DurableClientAttribute key = new DurableClientAttribute()
             {
                 TaskHub = settings.HubName,
-                ConnectionName = settings.StorageConnectionString,
+                ConnectionName = settings.ResolvedStorageConnectionString,
             };
 
             return this.cachedProviders.GetOrAdd(key, _ =>
@@ -155,45 +146,5 @@ namespace DurableTask.Netherite.AzureFunctions
             });
         }
 
-        string ResolveIndirection(string value, string propertyName)
-        {
-            string envName;
-            string setting;
-
-            if (string.IsNullOrEmpty(value))
-            {
-                envName = propertyName;
-            }
-            else if (value.StartsWith("$"))
-            {
-                envName = value.Substring(1);
-            }
-            else if (value.StartsWith("%") && value.EndsWith("%"))
-            {
-                envName = value.Substring(1, value.Length - 2);
-            }
-            else
-            {
-                envName = null;
-            }
-
-            if (envName != null)
-            {
-                setting = this.connectionStringResolver.Resolve(envName);
-            }
-            else
-            {
-                setting = value;
-            }
-
-            if (string.IsNullOrEmpty(setting))
-            {
-                throw new InvalidOperationException($"Could not resolve '{envName}' for required property '{propertyName}' in EventSourced storage provider settings.");
-            }
-            else
-            {
-                return setting;
-            }
-        }
     }
 }

@@ -53,9 +53,8 @@
 
       "storageProvider": {
 
-        "StorageConnectionString": "$AzureWebJobsStorage",
-        "EventHubsConnectionString": "$EventHubsConnection",
-        "PremiumStorageConnectionString": "",
+        "StorageConnectionName": "AzureWebJobsStorage",
+        "EventHubsConnectionName": "EventHubsConnection",
 
         "TakeStateCheckpointWhenStoppingPartition": "true",
         "MaxNumberBytesBetweenCheckpoints": "20000000",
@@ -88,7 +87,7 @@
         // the following can be used to split and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context
         "TraceToConsole": false,
-        "TraceToBlob": true
+        "TraceToBlob": false
       }
     }
   }

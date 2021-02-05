@@ -22,7 +22,7 @@ namespace DurableTask.Netherite.AzureFunctions
         public NetheriteProvider(
             NetheriteOrchestrationService service,
             NetheriteOrchestrationServiceSettings settings)
-            : base("Netherite", service, service, settings.StorageConnectionString)
+            : base("Netherite", service, service, settings.ResolvedStorageConnectionString)
         {
             this.Service = service;
             this.Settings = settings;
@@ -37,11 +37,6 @@ namespace DurableTask.Netherite.AzureFunctions
         public override bool GuaranteesOrderedDelivery => true;
 
         public override TimeSpan MaximumDelayTime { get; set; } = TimeSpan.MaxValue;
-
-        /// <summary>
-        /// The app setting containing the Azure Storage connection string.
-        /// </summary>
-        public override string ConnectionName => "StorageConnectionString";
 
         /// <inheritdoc/>
         public async override Task<string> RetrieveSerializedEntityState(EntityId entityId, JsonSerializerSettings serializerSettings)

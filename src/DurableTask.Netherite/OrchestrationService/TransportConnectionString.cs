@@ -5,6 +5,7 @@ namespace DurableTask.Netherite
 {
     using System;
     using System.Collections.Generic;
+    using System.Runtime;
     using System.Text;
     using Microsoft.Azure.EventHubs;
 
@@ -48,22 +49,29 @@ namespace DurableTask.Netherite
             EventHubs = 1,
         }
 
+
         /// <summary>
         /// Determines the components to use given a transport connection string.
         /// </summary>
-        public static void Parse(string transportConnectionString, out StorageChoices storage, out TransportChoices transport, out int? numPartitions)
+        public static bool IsEmulatorSpecification(string specification)
         {
-            if (transportConnectionString.StartsWith("Memory"))
+            return specification == "Memory" || specification == "MemoryF";         
+        }
+
+        /// <summary>
+        /// Determines the components to use given a transport connection string.
+        /// </summary>
+        public static void Parse(string specification, out StorageChoices storage, out TransportChoices transport)
+        {
+            if (IsEmulatorSpecification(specification))
             {
                 transport = TransportChoices.Memory;
-                storage = transportConnectionString.StartsWith("MemoryF") ? StorageChoices.Faster : StorageChoices.Memory;
-                numPartitions = int.Parse(transportConnectionString.Substring(transportConnectionString.IndexOf(":") + 1));       
+                storage = specification == "MemoryF" ? StorageChoices.Faster : StorageChoices.Memory;
             }
             else
             {
                 transport = TransportChoices.EventHubs;
                 storage = StorageChoices.Faster;
-                numPartitions = null; // number of partitions is detected dynamically, not specified by transportConnectionString
             }            
         }
  

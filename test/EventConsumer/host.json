@@ -19,8 +19,9 @@
       "rollbackEntityOperationsOnExceptions": "true",
       "UseGracefulShutdown": "true",
       "storageProvider": {
-        "StorageConnectionString": "$AzureWebJobsStorage",
-        "EventHubsConnectionString": "$EventHubsConnection",
+        "StorageConnectionName": "AzureWebJobsStorage",
+        "EventHubsConnectionName": "EventHubsConnection",
+        "partitionCount":  12,
         "LogLevelLimit": "Information",
         "StorageLogLevelLimit": "Debug",
         "TransportLogLevelLimit": "Information",

@@ -47,8 +47,8 @@ namespace DurableTask.Netherite.EventHubs
         {
             this.host = host;
             this.settings = settings;
-            this.cloudStorageAccount = CloudStorageAccount.Parse(this.settings.StorageConnectionString);
-            string namespaceName = TransportConnectionString.EventHubsNamespaceName(settings.EventHubsConnectionString);
+            this.cloudStorageAccount = CloudStorageAccount.Parse(this.settings.ResolvedStorageConnectionString);
+            string namespaceName = TransportConnectionString.EventHubsNamespaceName(settings.ResolvedTransportConnectionString);
             this.traceHelper = new EventHubsTraceHelper(loggerFactory, settings.TransportLogLevelLimit, this.cloudStorageAccount.Credentials.AccountName, settings.HubName, namespaceName);
             this.ClientId = Guid.NewGuid();
             var blobContainerName = GetContainerName(settings.HubName);
@@ -97,15 +97,15 @@ namespace DurableTask.Netherite.EventHubs
 
             // ensure the task hubs exist, creating them if necessary
             var tasks = new List<Task>();
-            tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.EventHubsConnectionString, PartitionHubs[0], this.settings.PartitionCount));
+            tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, PartitionHubs[0], this.settings.PartitionCount));
             foreach (string taskhub in ClientHubs)
             {
-                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.EventHubsConnectionString, taskhub, 32));
+                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 32));
             }
             await Task.WhenAll(tasks);
 
             // determine the start positions
-            long[] startPositions = await EventHubsConnections.GetQueuePositionsAsync(this.settings.EventHubsConnectionString, EventHubsTransport.PartitionHubs);
+            long[] startPositions = await EventHubsConnections.GetQueuePositionsAsync(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHubs);
 
             var taskHubParameters = new TaskhubParameters()
             {
@@ -155,7 +155,7 @@ namespace DurableTask.Netherite.EventHubs
 
             this.host.NumberPartitions = (uint)this.parameters.StartPositions.Length;
 
-            this.connections = new EventHubsConnections(this.settings.EventHubsConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs)
+            this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs)
             {
                 Host = host,
                 TraceHelper = this.traceHelper,
@@ -188,8 +188,8 @@ namespace DurableTask.Netherite.EventHubs
                         this.eventProcessorHost = new EventProcessorHost(
                                 partitionsHub,
                                 EventHubsTransport.PartitionConsumerGroup,
-                                this.settings.EventHubsConnectionString,
-                                this.settings.StorageConnectionString,
+                                this.settings.ResolvedTransportConnectionString,
+                                this.settings.ResolvedStorageConnectionString,
                                 this.cloudBlobContainer.Name);
 
                         var processorOptions = new EventProcessorOptions()
@@ -209,8 +209,8 @@ namespace DurableTask.Netherite.EventHubs
                         this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
                                 partitionsHub,
                                 EventHubsTransport.PartitionConsumerGroup,
-                                this.settings.EventHubsConnectionString,
-                                this.settings.StorageConnectionString,
+                                this.settings.ResolvedTransportConnectionString,
+                                this.settings.ResolvedStorageConnectionString,
                                 this.cloudBlobContainer.Name,
                                 this.host,
                                 this,

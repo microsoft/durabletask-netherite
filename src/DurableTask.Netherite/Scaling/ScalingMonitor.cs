@@ -39,7 +39,7 @@ namespace DurableTask.Netherite.Scaling
             this.partitionLoadTableName = partitionLoadTableName;
             this.taskHubName = taskHubName;
 
-            TransportConnectionString.Parse(eventHubsConnectionString, out _, out this.configuredTransport, out _);
+            TransportConnectionString.Parse(eventHubsConnectionString, out _, out this.configuredTransport);
 
             this.table = new AzureLoadMonitorTable(storageConnectionString, partitionLoadTableName, taskHubName);
         }

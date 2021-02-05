@@ -11,17 +11,15 @@ namespace DurableTask.Netherite.Tests
     {
         public static string GetEventHubsConnectionString()
             // use the eventhubs connection string, if specified in environment, or else use the in-memory emulation with 4 partitions
-            => GetTestSetting("EventHubsConnectionString", "MemoryF:4");
+            => GetTestSetting("EventHubsConnection", "MemoryF:4");
 
         public static string GetAzureStorageConnectionString()
             // use the storage connection string, if specified in the environment, or else use the storage emulator
-            => GetTestSetting("StorageConnectionString", "UseDevelopmentStorage=true;");
-
-        public const string NetheriteTestPrefix = "NetheriteTest";
+            => GetTestSetting("AzureWebJobsStorage", "UseDevelopmentStorage=true;");
 
         static string GetTestSetting(string name, string defaultValue)
         {
-            var envSetting = Environment.GetEnvironmentVariable(NetheriteTestPrefix + name);
+            var envSetting = Environment.GetEnvironmentVariable(name);
             return envSetting ?? defaultValue;
         }
 
@@ -34,8 +32,8 @@ namespace DurableTask.Netherite.Tests
         {
             return new NetheriteOrchestrationServiceSettings
             {
-                EventHubsConnectionString = GetEventHubsConnectionString(),
-                StorageConnectionString = GetStorageConnectionString(),
+                ResolvedTransportConnectionString = GetEventHubsConnectionString(),
+                ResolvedStorageConnectionString = GetStorageConnectionString(),
                 HubName = GetTestTaskHubName(),
                 TransportLogLevelLimit = LogLevel.Trace,
                 StorageLogLevelLimit = LogLevel.Trace,

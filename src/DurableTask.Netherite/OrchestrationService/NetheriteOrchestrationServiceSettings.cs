@@ -16,27 +16,32 @@ namespace DurableTask.Netherite
     public class NetheriteOrchestrationServiceSettings
     {
         /// <summary>
-        /// Gets or sets the connection string for the event hubs namespace, if needed.
-        /// </summary>
-        public string EventHubsConnectionString { get; set; }
-
-         /// <summary>
-        /// Gets or sets the connection string for the Azure storage account, supporting all types of blobs, and table storage.
-        /// </summary>
-        public string StorageConnectionString { get; set; }
-
-        /// <summary>
-        /// Gets or sets the connection string for a premium Azure storage account supporting page blobs only.
-        /// </summary>
-        public string PremiumStorageConnectionString { get; set; }
-
-        [JsonIgnore]
-        internal bool UsePremiumStorage => !string.IsNullOrEmpty(this.PremiumStorageConnectionString);
-
-        /// <summary>
         /// The name of the taskhub. Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
         /// </summary>
         public string HubName { get; set; }
+
+        /// <summary>
+        /// Gets or sets the name for resolving the Azure storage connection string.
+        /// </summary>
+        public string StorageConnectionName { get; set; } = "AzureWebJobsStorage";
+
+        /// <summary>
+        /// Gets or sets the name for resolving the Eventhubs namespace connection string.
+        /// Alternatively, may contain special strings specifying the use of the emulator.
+        /// </summary>
+        public string EventHubsConnectionName { get; set; } = "EventHubsConnection";
+
+        /// <summary>
+        /// The resolved storage connection string. Is never serialized or deserialized.
+        /// </summary>
+        [JsonIgnore]
+        public string ResolvedStorageConnectionString { get; set; }
+
+        /// <summary>
+        /// The resolved event hubs connection string. Is never serialized or deserialized.
+        /// </summary>
+        [JsonIgnore]
+        public string ResolvedTransportConnectionString { get; set; }
 
         /// <summary>
         /// Gets or sets the identifier for the current worker.
@@ -144,6 +149,14 @@ namespace DurableTask.Netherite
         public bool PersistStepsFirst { get; set; } = false;
 
         /// <summary>
+        /// Gets or sets the name used for resolving the premium Azure storage connection string, if used.
+        /// </summary>
+        public string PremiumStorageConnectionName { get; set; } = null;
+
+        [JsonIgnore]
+        internal bool UsePremiumStorage => !string.IsNullOrEmpty(this.PremiumStorageConnectionName);
+
+        /// <summary>
         /// A lower limit on the severity level of trace events emitted by the transport layer.
         /// </summary>
         /// <remarks>This level applies to both ETW events and ILogger events.</remarks>
@@ -179,58 +192,72 @@ namespace DurableTask.Netherite
         public LogLevel LogLevelLimit { get; set; } = LogLevel.Information;
 
         /// <summary>
-        /// Validates the specified <see cref="NetheriteOrchestrationServiceSettings"/> object.
+        /// Validates the settings, throwing exceptions if there are issues.
         /// </summary>
-        /// <param name="settings">The <see cref="NetheriteOrchestrationServiceSettings"/> object to validate.</param>
-        /// <returns>Returns <paramref name="settings"/> if successfully validated.</returns>
-        public static NetheriteOrchestrationServiceSettings Validate(NetheriteOrchestrationServiceSettings settings)
+        /// <param name="connectionStringResolver">The connection string resolver.</param>
+        public void Validate(Func<string,string> connectionStringResolver)
         {
-            if (settings == null)
+            if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
             {
-                throw new ArgumentNullException(nameof(settings));
-            }
-
-            if (string.IsNullOrEmpty(settings.EventHubsConnectionString))
-            {
-                throw new ArgumentNullException(nameof(settings.EventHubsConnectionString));
-            }
-
-            TransportConnectionString.Parse(settings.EventHubsConnectionString, out var storage, out var transport, out int? numPartitions);
-
-            if (storage != TransportConnectionString.StorageChoices.Memory || transport != TransportConnectionString.TransportChoices.Memory)
-            {
-                if (string.IsNullOrEmpty(settings.StorageConnectionString))
+                if (string.IsNullOrEmpty(this.StorageConnectionName))
                 {
-                    throw new ArgumentNullException(nameof(settings.StorageConnectionString));
+                    throw new InvalidOperationException($"Must specify {nameof(this.StorageConnectionName)} for Netherite storage provider.");
+                }
+
+                this.ResolvedStorageConnectionString = connectionStringResolver(this.StorageConnectionName);
+
+                if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
+                {
+                    throw new InvalidOperationException($"Could not resolve {nameof(this.StorageConnectionName)}:{this.ResolvedStorageConnectionString} for Netherite storage provider.");
                 }
             }
 
-            if ((transport != TransportConnectionString.TransportChoices.EventHubs))
+            if (string.IsNullOrEmpty(this.ResolvedTransportConnectionString))
             {
-                if (numPartitions < 1 || numPartitions > 32)
+                if (string.IsNullOrEmpty(this.EventHubsConnectionName))
                 {
-                    throw new ArgumentOutOfRangeException(nameof(settings.EventHubsConnectionString));
+                    throw new InvalidOperationException($"Must specify {nameof(this.EventHubsConnectionName)} for Netherite storage provider.");
+                }
+
+                if (TransportConnectionString.IsEmulatorSpecification(this.EventHubsConnectionName))
+                {
+                    this.ResolvedTransportConnectionString = this.EventHubsConnectionName;
+                }
+                else
+                {
+                    this.ResolvedTransportConnectionString = connectionStringResolver(this.EventHubsConnectionName);
+
+                    if (string.IsNullOrEmpty(this.ResolvedTransportConnectionString))
+                    {
+                        throw new InvalidOperationException($"Could not resolve {nameof(this.EventHubsConnectionName)}:{this.EventHubsConnectionName} for Netherite storage provider.");
+                    }
                 }
             }
-            else
+
+            TransportConnectionString.Parse(this.ResolvedTransportConnectionString, out var storage, out var transport);
+
+            if (this.PartitionCount < 1 || this.PartitionCount > 32)
             {
-                if (string.IsNullOrEmpty(TransportConnectionString.EventHubsNamespaceName(settings.EventHubsConnectionString)))
+                throw new ArgumentOutOfRangeException(nameof(this.PartitionCount));
+            }
+
+            if (transport == TransportConnectionString.TransportChoices.EventHubs)
+            {
+                if (string.IsNullOrEmpty(TransportConnectionString.EventHubsNamespaceName(this.ResolvedTransportConnectionString)))
                 {
-                    throw new FormatException(nameof(settings.EventHubsConnectionString));
+                    throw new FormatException("Eventhubs connection string has an invalid format.");
                 }
             }
 
-            if (settings.MaxConcurrentOrchestratorFunctions <= 0)
+            if (this.MaxConcurrentOrchestratorFunctions <= 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(settings.MaxConcurrentOrchestratorFunctions));
+                throw new ArgumentOutOfRangeException(nameof(this.MaxConcurrentOrchestratorFunctions));
             }
 
-            if (settings.MaxConcurrentActivityFunctions <= 0)
+            if (this.MaxConcurrentActivityFunctions <= 0)
             {
-                throw new ArgumentOutOfRangeException(nameof(settings.MaxConcurrentActivityFunctions));
+                throw new ArgumentOutOfRangeException(nameof(this.MaxConcurrentActivityFunctions));
             }
-
-            return settings;
         }      
     }
 }

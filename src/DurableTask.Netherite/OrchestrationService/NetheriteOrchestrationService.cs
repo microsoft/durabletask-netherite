@@ -90,12 +90,12 @@ namespace DurableTask.Netherite
         public NetheriteOrchestrationService(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory)
         {
             this.Settings = settings;
-            TransportConnectionString.Parse(this.Settings.EventHubsConnectionString, out this.configuredStorage, out this.configuredTransport, out _);
+            TransportConnectionString.Parse(this.Settings.ResolvedTransportConnectionString, out this.configuredStorage, out this.configuredTransport);
             this.Logger = loggerFactory.CreateLogger(LoggerCategoryName);
             this.LoggerFactory = loggerFactory;
             this.StorageAccountName = this.configuredTransport == TransportConnectionString.TransportChoices.Memory
-                ? this.Settings.StorageConnectionString
-                : CloudStorageAccount.Parse(this.Settings.StorageConnectionString).Credentials.AccountName;
+                ? this.Settings.ResolvedStorageConnectionString
+                : CloudStorageAccount.Parse(this.Settings.ResolvedStorageConnectionString).Credentials.AccountName;
 
             EtwSource.Log.OrchestrationServiceCreated(this.ServiceInstanceId, this.StorageAccountName, this.Settings.HubName, this.Settings.WorkerId, TraceUtils.ExtensionVersion);
             this.Logger.LogInformation("NetheriteOrchestrationService created, workerId={workerId}, processorCount={processorCount}, transport={transport}, storage={storage}", Environment.ProcessorCount, this.Settings.WorkerId, this.configuredTransport, this.configuredStorage);
@@ -117,7 +117,7 @@ namespace DurableTask.Netherite
             this.workItemTraceHelper = new WorkItemTraceHelper(loggerFactory, settings.WorkItemLogLevelLimit, this.StorageAccountName, this.Settings.HubName);
 
             if (this.configuredTransport != TransportConnectionString.TransportChoices.Memory)
-                this.LoadMonitorService = new AzureLoadMonitorTable(settings.StorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
+                this.LoadMonitorService = new AzureLoadMonitorTable(settings.ResolvedStorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
 
             this.workItemStopwatch.Start();
 
@@ -144,7 +144,7 @@ namespace DurableTask.Netherite
                     return new MemoryStorage(this.Logger);
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    return new Faster.FasterStorage(this.Settings.StorageConnectionString, this.Settings.PremiumStorageConnectionString, this.Settings.HubName, this.LoggerFactory);
+                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.PremiumStorageConnectionName, this.Settings.HubName, this.LoggerFactory);
 
                 default:
                     throw new NotImplementedException("no such storage choice");
@@ -163,7 +163,7 @@ namespace DurableTask.Netherite
                     break;
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(this.Settings.StorageConnectionString, this.Settings.HubName).ConfigureAwait(false);
+                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(this.Settings.ResolvedStorageConnectionString, this.Settings.HubName).ConfigureAwait(false);
                     break;
 
                 default:
