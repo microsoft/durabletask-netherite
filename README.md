@@ -1,4 +1,4 @@
-﻿<p style="text-align: center; float: right;"><img src="src/DurableTask.Netherite/icon.png" /></p>
+<img align="right" src="src/DurableTask.Netherite/icon.png"/>
 
 # Netherite
 
