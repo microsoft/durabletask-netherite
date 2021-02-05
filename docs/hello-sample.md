@@ -9,7 +9,7 @@ First, make sure you have the following installed on your machine:
 You can run `dotnet --list-runtimes` to check what is installed.
 2. [Azure Functions Core Tools 3.x](https://docs.microsoft.com/en-us/azure/azure-functions/functions-run-local?tabs=windows%2Ccsharp%2Cbash) or later.
 You can run `func --version` to check what is installed.
-3. [The Azure CLI >= 2.18.0](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) or later.
+3. [The Azure CLI 2.18.0](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) or later.
 You can run `az --version` to check what is installed.
 4. [PowerShell 7.1](https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell?view=powershell-7.1) or later.
 You can check what is installed with `pwsh --version`. PowerShell is easy to install or update via `dotnet tool install --global PowerShell`.
@@ -18,7 +18,7 @@ Also, you need an Azure subscription, to allocate and deploy the required resour
 
 ## Get it and build it
 
-The sample is in the directory [/samples/hello](https://github.com/microsoft/durabletask-netherite/tree/main/samples/Hello). You can download just this folder if you wish, or clone the entire repository. Note that powershell sometimes complains about executing downloaded files; so using git clone may work better.
+The sample is in the directory [/samples/hello](https://github.com/microsoft/durabletask-netherite/tree/main/samples/Hello). You can download just this folder if you wish, or clone the entire repository. Note that powershell sometimes refuses to execute downloaded files; so using git clone may work better.
 
 The project contains a "minimal" .NET Azure Durable Functions project (much like the [DF Quick Start](https://docs.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-create-first-csharp?pivots=code-editor-visualstudio)):
 - a single file of code, `HelloCities.cs`, which defines three functions: a trigger, an orchestration, and an activity.
@@ -70,17 +70,22 @@ You can inspect these resources in the [Azure Portal](https://portal.azure.com),
 Both the storage account and the EventHubs namespace have a *connection string* that is needed for the application to use them.
 Our powershell scripts automatically look them up using the CLI. Alternatively, you can manually set the environment variables `AzureWebJobsStorage` and `EventHubsConnection` to contain these connection strings.
 
-## Run it locally
+## Run or Debug locally
 
-To start the application on your local machine for debugging, simply run the `run.ps1` script. 
+To start the application on your local machine, do *one* of A, B, or C, whichever you prefer:
 
-Alternatively, if you prefer to see everything that is happening in detail, you can also do the steps manually:
+A.  Follow these steps:
 
-1. set the environment variables `AzureWebJobsStorage` and `EventHubsConnection` to the respective connection strings
-2. enter the directory `bin\Debug\netcoreapp3.1`
-2. start the functions runtime with `func start`
+  1. set the environment variables `AzureWebJobsStorage` and `EventHubsConnection` to the respective connection strings. You can look these up in the [Azure portal](portal.azure.com) or with the CLI.
+  2. go to the directory `bin\Debug\netcoreapp3.1`.
+  2. start the functions runtime with `func start`.
 
-Or, if you are in Visual Studio, you can start the local functions debugger as usual, if you set `AzureWebJobsStorage` and `EventHubsConnection` to the respective connection strings before starting Visual Studio.
+B.  Run the `run.ps1` script. This is the same as A, but automatic.
+
+C. Follow these steps:
+
+  1. set the environment variables `AzureWebJobsStorage` and `EventHubsConnection` to the respective connection strings.
+  2. Open the project in Visual Studio or VS Code and start debugging. You can also set a breakpoint.
 
 After executing this script successfully, near the bottom of the output, you should see a list of all three published functions:
 
@@ -88,7 +93,7 @@ After executing this script successfully, near the bottom of the output, you sho
 Http Functions:
 
         HelloCities: [GET,POST] http://localhost:7071/api/hellocities
-[```
+```
 
 You can now *test the running app* by issuing an HTTP request in a separate terminal:
 
@@ -96,7 +101,7 @@ You can now *test the running app* by issuing an HTTP request in a separate term
 curl http://localhost:7071/api/hellocities
 ```
 
-Which produces the following output, as expected:
+Which should trigger any breakpoints you have set, and eventually produces the following output, as expected:
 ```
 ["Tokyo","Seattle","London"]
 ```
@@ -163,10 +168,10 @@ Which produces the following output, as expected:
 
 If you need to update the application, you can rebuild it and redeploy it the same way. You can also change the number of nodes. This allows you to manually scale.
 
-## Cleanup
+## Delete Azure Resources
 
 Don't forget to delete the resources when you're done, as they will continue to accrue charges.
 
 To delete all the Azure Resources we created earlier, just execute the script `delete.ps1` and make sure to confirm your intention by hitting `y`.
 
-**Taskhub only** If you just want to clear the taskhub, but not all the resources, you can run the script `clear.ps`. It deletes the containers in the Azure Blob Storage. You should probably stop the function app before doing so. Also, note that after you do this, you cannot restart the app for some time, because Azure Storage blob containers are unavailable after deletion for some time, maybe 30-60 seconds.
+**Taskhub only** If you just want to clear the taskhub, but not delete the resources, you can run the script `clear.ps`. It deletes the containers in the Azure Blob Storage. You should probably stop the function app before doing so. Also, note that after you do this, you cannot restart the app for some time, because Azure Storage blob containers are unavailable after deletion for some time, maybe 30-60 seconds.
