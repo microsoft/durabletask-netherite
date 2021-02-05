@@ -22,6 +22,7 @@ namespace DurableTask.Netherite.Tests
             this.LoggerFactory = new LoggerFactory();
             this.loggerProvider = new XunitLoggerProvider();
             this.LoggerFactory.AddProvider(this.loggerProvider);
+            TestConstants.ValidateEnvironment();
             this.Host = TestConstants.GetTestOrchestrationHost(this.LoggerFactory);
             this.Host.StartAsync().Wait();
             this.traceListener = new TestTraceListener();

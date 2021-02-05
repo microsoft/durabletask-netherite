@@ -8,33 +8,30 @@ namespace DurableTask.Netherite.Tests
     using Microsoft.Extensions.Logging;
 
     public static class TestConstants
-    {
-        public static string GetEventHubsConnectionString()
-            // use the eventhubs connection string, if specified in environment, or else use the in-memory emulation with 4 partitions
-            => GetTestSetting("EventHubsConnection", "MemoryF:4");
-
-        public static string GetAzureStorageConnectionString()
-            // use the storage connection string, if specified in the environment, or else use the storage emulator
-            => GetTestSetting("AzureWebJobsStorage", "UseDevelopmentStorage=true;");
-
-        static string GetTestSetting(string name, string defaultValue)
+    {   
+        public const string StorageConnectionName ="AzureWebJobsStorage";
+        public const string EventHubsConnectionName ="EventHubsConnection";
+        public const string TaskHubName ="test-taskhub";
+        
+        public static void ValidateEnvironment()
         {
-            var envSetting = Environment.GetEnvironmentVariable(name);
-            return envSetting ?? defaultValue;
-        }
-
-        public static string GetTestTaskHubName()
-        {
-            return "test-taskhub";
+            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(StorageConnectionName)))
+            {
+                throw new InvalidOperationException($"To run tests, environment must define '{StorageConnectionName}'");
+            }
+            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(EventHubsConnectionName)))
+            {
+                throw new InvalidOperationException($"To run tests, environment must define '{EventHubsConnectionName}'");
+            }
         }
 
         public static NetheriteOrchestrationServiceSettings GetNetheriteOrchestrationServiceSettings()
         {
-            return new NetheriteOrchestrationServiceSettings
+            var settings = new NetheriteOrchestrationServiceSettings
             {
-                ResolvedTransportConnectionString = GetEventHubsConnectionString(),
-                ResolvedStorageConnectionString = GetStorageConnectionString(),
-                HubName = GetTestTaskHubName(),
+                StorageConnectionName = StorageConnectionName,
+                EventHubsConnectionName = EventHubsConnectionName,
+                HubName = TaskHubName,
                 TransportLogLevelLimit = LogLevel.Trace,
                 StorageLogLevelLimit = LogLevel.Trace,
                 LogLevelLimit = LogLevel.Trace,
@@ -46,6 +43,10 @@ namespace DurableTask.Netherite.Tests
                 //MaxNumberBytesBetweenCheckpoints = 10000000, // set this low for testing frequent checkpointing
                 //MaxNumberEventsBetweenCheckpoints = 10, // set this low for testing frequent checkpointing
             };
+
+            settings.Validate((name) => Environment.GetEnvironmentVariable(name));
+
+            return settings;
         }
 
         public static LogLevel UnitTestLogLevel = LogLevel.Trace;
@@ -58,16 +59,5 @@ namespace DurableTask.Netherite.Tests
 
 
         public static bool DeleteStorageBeforeRunningTests => true; // set to false for testing log-based recovery
-
-        public static string GetStorageConnectionString()
-        {
-            return GetAzureStorageConnectionString();
-        }
-
-        public static string GetPremiumStorageConnectionString()
-        {
-            // we are using the same storage in the unit tests
-            return GetAzureStorageConnectionString();
-        }
     }
 }

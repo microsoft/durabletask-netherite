@@ -31,12 +31,6 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             this.typeLocator = new TestFunctionTypeLocator();
             this.settingsResolver = new TestSettingsResolver();
 
-            string storageConnectionString = Netherite.Tests.TestConstants.GetStorageConnectionString();
-            string eventHubsConnectionString = "MemoryF:4";
-
-            this.settingsResolver.AddSetting("StorageConnectionString", storageConnectionString);
-            this.settingsResolver.AddSetting("EventHubsConnectionString", eventHubsConnectionString);
-
             this.functionsHost = new HostBuilder()
                 .ConfigureLogging(
                     loggingBuilder =>

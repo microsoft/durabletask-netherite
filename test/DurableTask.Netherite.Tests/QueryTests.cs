@@ -219,6 +219,7 @@ namespace DurableTask.Netherite.Tests
 
         public NonFixtureQueryTests(ITestOutputHelper outputHelper)
         {
+            TestConstants.ValidateEnvironment();
             this.traceListener = new TestTraceListener() { Output = outputHelper };
             this.loggerFactory = new LoggerFactory();
             this.provider = new XunitLoggerProvider(outputHelper);

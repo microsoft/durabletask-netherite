@@ -80,9 +80,16 @@ namespace DurableTask.Netherite
         /// </summary>
         public static string EventHubsNamespaceName(string transportConnectionString)
         {
-            var builder = new EventHubsConnectionStringBuilder(transportConnectionString);
-            var host = builder.Endpoint.Host;
-            return host.Substring(0, host.IndexOf('.'));
+            try
+            {
+                var builder = new EventHubsConnectionStringBuilder(transportConnectionString);
+                var host = builder.Endpoint.Host;
+                return host.Substring(0, host.IndexOf('.'));
+            }
+            catch(Exception e)
+            {
+                throw new FormatException("Could not parse the specified Eventhubs namespace connection string.", e);
+            }
         }
     }
 }

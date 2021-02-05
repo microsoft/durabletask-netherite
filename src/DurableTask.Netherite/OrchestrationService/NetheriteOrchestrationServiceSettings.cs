@@ -208,7 +208,7 @@ namespace DurableTask.Netherite
 
                 if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
                 {
-                    throw new InvalidOperationException($"Could not resolve {nameof(this.StorageConnectionName)}:{this.ResolvedStorageConnectionString} for Netherite storage provider.");
+                    throw new InvalidOperationException($"Could not resolve {nameof(this.StorageConnectionName)}:{this.StorageConnectionName} for Netherite storage provider.");
                 }
             }
 
@@ -243,10 +243,8 @@ namespace DurableTask.Netherite
 
             if (transport == TransportConnectionString.TransportChoices.EventHubs)
             {
-                if (string.IsNullOrEmpty(TransportConnectionString.EventHubsNamespaceName(this.ResolvedTransportConnectionString)))
-                {
-                    throw new FormatException("Eventhubs connection string has an invalid format.");
-                }
+                // validates the connection string
+                TransportConnectionString.EventHubsNamespaceName(this.ResolvedTransportConnectionString);            
             }
 
             if (this.MaxConcurrentOrchestratorFunctions <= 0)

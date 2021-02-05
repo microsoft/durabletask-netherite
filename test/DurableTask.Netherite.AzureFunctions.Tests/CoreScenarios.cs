@@ -6,6 +6,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
     using System;
     using System.Collections.Generic;
     using System.Threading.Tasks;
+    using DurableTask.Netherite.Tests;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Newtonsoft.Json;
@@ -17,6 +18,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
         public CoreScenarios(ITestOutputHelper output)
             : base(output)
         {
+            TestConstants.ValidateEnvironment();
             this.AddFunctions(typeof(Functions));
         }
 
