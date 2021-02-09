@@ -1,0 +1,350 @@
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+namespace PerformanceTests
+{
+    using System;
+    using System.IO;
+    using System.Threading.Tasks;
+    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.WebJobs;
+    using Microsoft.Azure.WebJobs.Extensions.Http;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.Extensions.Logging;
+    using Newtonsoft.Json;
+    using System.Collections.Generic;
+    using Microsoft.Azure.WebJobs.Extensions.DurableTask;
+    using System.Linq;
+    using System.Collections.Concurrent;
+    using System.Threading;
+    using System.Net.Http;
+
+    /// <summary>
+    /// Http triggers for starting, awaiting, counting, or purging large numbers of orchestration instances
+    /// 
+    /// Example invocations:
+    ///     curl https://.../start -d HelloCities.1000
+    ///     curl https://.../start -d HelloCities.0.500
+    ///     curl https://.../start -d HelloCities.500.1000
+    ///     curl https://.../await -d 1000
+    ///     curl https://.../count -d 1000
+    ///     curl https://.../purge -d 1000
+    ///     curl https://.../query  
+    /// </summary>
+    public static class ManyOrchestrations
+    {
+        [FunctionName(nameof(Start))]
+        public static async Task<IActionResult> Start(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest req,
+            [DurableClient] IDurableClient client,
+            ILogger log)
+        {
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            int firstdot = requestBody.IndexOf('.');
+            int seconddot = requestBody.LastIndexOf('.');
+            string orchestrationName = requestBody.Substring(0, firstdot);
+            int numberOrchestrations;
+            int offset;
+            if (firstdot == seconddot)
+            {
+                offset = 0;
+                numberOrchestrations = int.Parse(requestBody.Substring(firstdot + 1));
+            }
+            else
+            {
+                offset = int.Parse(requestBody.Substring(firstdot + 1, seconddot - (firstdot + 1)));
+                numberOrchestrations = int.Parse(requestBody.Substring(seconddot + 1)) - offset;
+            }
+
+            // start the specified number of orchestration instances
+            try
+            {
+                log.LogWarning($"Starting {numberOrchestrations} instances of {orchestrationName}...");
+
+                var stopwatch = new System.Diagnostics.Stopwatch();
+                stopwatch.Start();
+
+                // start all the orchestrations
+                await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, (iteration) =>
+                {
+                    var orchestrationInstanceId = $"Orch{iteration + offset:X5}";
+                    log.LogInformation($"starting {orchestrationInstanceId}");
+                    return client.StartNewAsync(orchestrationName, orchestrationInstanceId);
+                });
+
+                double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
+
+                string message = $"Started all {numberOrchestrations} orchestrations in {elapsedSeconds:F2}s.";
+
+                log.LogWarning($"Started all {numberOrchestrations} orchestrations in {elapsedSeconds:F2}s.");
+ 
+                return new OkObjectResult($"{message}\n");
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(new { error = e.ToString() });
+            }
+        }
+
+        [FunctionName(nameof(Await))]
+        public static async Task<IActionResult> Await(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest req,
+            [DurableClient] IDurableClient client,
+            ILogger log)
+        {
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            int numberOrchestrations = int.Parse(requestBody);
+            DateTime deadline = DateTime.UtcNow + TimeSpan.FromMinutes(5);
+
+            // wait for the specified number of orchestration instances to complete
+            try
+            {
+                log.LogWarning($"Awaiting {numberOrchestrations} orchestration instances...");
+
+                var stopwatch = new System.Diagnostics.Stopwatch();
+                stopwatch.Start();
+
+                var tasks = new List<Task<bool>>();
+
+                int completed = 0;
+
+                // start all the orchestrations
+                await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
+                {
+                    var orchestrationInstanceId = $"Orch{iteration:X5}";
+                    IActionResult response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, deadline - DateTime.UtcNow);
+
+                    if (response is ObjectResult objectResult
+                        && objectResult.Value is HttpResponseMessage responseMessage
+                        && responseMessage.StatusCode == System.Net.HttpStatusCode.OK
+                        && responseMessage.Content is StringContent stringContent)
+                    {
+                        log.LogInformation($"{orchestrationInstanceId} completed");
+                        Interlocked.Increment(ref completed);
+                    }
+                });
+
+                return new OkObjectResult(
+                    completed == numberOrchestrations 
+                    ? $"all {numberOrchestrations} orchestration instances completed.\n" 
+                    : $"only {completed}/{numberOrchestrations} orchestration instances completed.\n");             
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(new { error = e.ToString() });
+            }
+        }
+
+        [FunctionName(nameof(Count))]
+        public static async Task<IActionResult> Count(
+          [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "count")] HttpRequest req,
+          [DurableClient] IDurableClient client,
+          ILogger log)
+        {
+            try
+            {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                int numberOrchestrations = int.Parse(requestBody);
+                DateTime deadline = DateTime.UtcNow + TimeSpan.FromMinutes(5);
+
+                var queryCondition = new OrchestrationStatusQueryCondition()
+                {
+                    InstanceIdPrefix = "Orch",
+                };
+
+                int completed = 0;
+                int pending = 0;
+                int running = 0;
+                int other = 0;
+
+                long earliestStart = long.MaxValue;
+                long latestUpdate = 0;
+                bool gotTimeRange = false;
+
+                object lockForUpdate = new object();
+
+                var stopwatch = new System.Diagnostics.Stopwatch();
+                stopwatch.Start();
+
+                var tasks = new List<Task<bool>>();
+
+                log.LogWarning($"Checking the status of {numberOrchestrations} orchestration instances...");
+                await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
+                {
+                    var orchestrationInstanceId = $"Orch{iteration:X5}";
+                    var status = await client.GetStatusAsync(orchestrationInstanceId);
+
+                    lock (lockForUpdate)
+                    {
+                        if (status == null)
+                        {
+                            other++;
+                        }
+                        else
+                        {
+                            earliestStart = Math.Min(earliestStart, status.CreatedTime.Ticks);
+                            latestUpdate = Math.Max(latestUpdate, status.LastUpdatedTime.Ticks);
+                            gotTimeRange = true;
+
+                            if (status.RuntimeStatus == OrchestrationRuntimeStatus.Pending)
+                            {
+                                pending++;
+                            }
+                            else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Running)
+                            {
+                                running++;
+                            }
+                            else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Completed)
+                            {
+                                completed++;
+                            }
+                            else
+                            {
+                                other++;
+                            }
+                        }
+                    }
+                });
+
+                double elapsedSeconds = 0;
+
+                if (gotTimeRange)
+                {
+                    elapsedSeconds = (new DateTime(latestUpdate) - new DateTime(earliestStart)).TotalSeconds;
+                }
+
+                var resultObject = new
+                { 
+                    completed,
+                    running,
+                    pending,
+                    other,
+                    elapsedSeconds,
+                };
+
+                return new OkObjectResult($"{JsonConvert.SerializeObject(resultObject)}\n");
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(new { error = e.ToString() });
+            }
+        }
+       
+        [FunctionName(nameof(Query))]
+        public static async Task<IActionResult> Query(
+          [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequest req,
+          [DurableClient] IDurableClient client,
+          ILogger log)
+        {
+            try
+            {
+                var queryCondition = new OrchestrationStatusQueryCondition()
+                {
+                    InstanceIdPrefix = "Orch",
+                };
+
+                int completed = 0;
+                int pending = 0;
+                int running = 0;
+                int other = 0;
+
+                long earliestStart = long.MaxValue;
+                long latestUpdate = 0;
+
+                do
+                {
+                    OrchestrationStatusQueryResult result = await client.ListInstancesAsync(queryCondition, CancellationToken.None);
+                    queryCondition.ContinuationToken = result.ContinuationToken;
+
+                    foreach (var status in result.DurableOrchestrationState)
+                    {
+                        if (status.RuntimeStatus == OrchestrationRuntimeStatus.Pending)
+                        {
+                            pending++;
+                        }
+                        else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Running)
+                        {
+                            running++;
+                        }
+                        else if (status.RuntimeStatus == OrchestrationRuntimeStatus.Completed)
+                        {
+                            completed++;
+                        }
+                        else
+                        {
+                            other++;
+                        }
+
+                        earliestStart = Math.Min(earliestStart, status.CreatedTime.Ticks);
+                        latestUpdate = Math.Max(latestUpdate, status.LastUpdatedTime.Ticks);
+                    }
+
+                } while (queryCondition.ContinuationToken != null);
+
+                double elapsedSeconds = 0;
+
+                if (completed + pending + running + other > 0)
+                {
+                    elapsedSeconds = (new DateTime(latestUpdate) - new DateTime(earliestStart)).TotalSeconds;
+                }
+
+                var resultObject = new
+                { 
+                    completed,
+                    running,
+                    pending,
+                    other,
+                    elapsedSeconds,
+                };
+
+                return new OkObjectResult($"{JsonConvert.SerializeObject(resultObject)}\n");
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(new { error = e.ToString() });
+            }
+        }
+
+        [FunctionName(nameof(Purge))]
+        public static async Task<IActionResult> Purge(
+           [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest req,
+           [DurableClient] IDurableClient client,
+           ILogger log)
+        {
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            int numberOrchestrations = int.Parse(requestBody);
+            DateTime deadline = DateTime.UtcNow + TimeSpan.FromMinutes(5);
+
+            // wait for the specified number of orchestration instances to complete
+            try
+            {
+                log.LogWarning($"Purging {numberOrchestrations} orchestration instances...");
+
+                var stopwatch = new System.Diagnostics.Stopwatch();
+                stopwatch.Start();
+
+                var tasks = new List<Task<bool>>();
+
+                int deleted = 0;
+
+                // start all the orchestrations
+                await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
+                {
+                    var orchestrationInstanceId = $"Orch{iteration:X5}";
+                    var response = await client.PurgeInstanceHistoryAsync(orchestrationInstanceId);
+                    
+                    Interlocked.Add(ref deleted, response.InstancesDeleted);
+                });
+
+                return new OkObjectResult(
+                    deleted == numberOrchestrations
+                    ? $"all {numberOrchestrations} orchestration instances purged.\n"
+                    : $"only {deleted}/{numberOrchestrations} orchestration instances purged.\n");
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(new { error = e.ToString() });
+            }
+        }
+    }
+}
