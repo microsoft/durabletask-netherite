@@ -12,6 +12,9 @@
   * [Storage Organization](storage.md)
   * [Emulation Mode](emulation.md)
 
+* Performance
+  * [Throughput](throughput.md)
+  
 * [Settings](settings.md)  
 
 * [General Information](general.md)
