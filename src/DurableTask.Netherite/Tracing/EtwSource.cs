@@ -156,10 +156,10 @@ namespace DurableTask.Netherite
         }
 
         [Event(226, Level = EventLevel.Warning, Version = 1)]
-        public void WorkItemDiscarded(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string SessionId, string ExtensionVersion)
+        public void WorkItemDiscarded(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string ReplacedBy, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(226, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, SessionId, ExtensionVersion);
+            this.WriteEvent(226, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, ReplacedBy, ExtensionVersion);
         }
 
         [Event(227, Level = EventLevel.Verbose, Version = 1)]
