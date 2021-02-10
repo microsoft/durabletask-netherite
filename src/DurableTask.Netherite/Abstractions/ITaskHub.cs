@@ -19,8 +19,8 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Creates this taskhub in storage.
         /// </summary>
-        /// <returns>after the taskhub has been created in storage.</returns>
-        Task CreateAsync();
+        /// <returns>true if the taskhub was actually created, false if it already existed.</returns>
+        Task<bool> CreateIfNotExistsAsync();
 
         /// <summary>
         /// Deletes this taskhub and all of its associated data in storage.

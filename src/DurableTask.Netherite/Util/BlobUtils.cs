@@ -126,5 +126,10 @@ namespace DurableTask.Netherite
             var information = e.RequestInformation.ExtendedErrorInformation;
             return (e.RequestInformation.HttpStatusCode == 404) && (information.ErrorCode.Equals(BlobErrorCodeStrings.BlobNotFound));
         }
+
+        public static bool BlobAlreadyExists(StorageException e)
+        {
+            return (e.RequestInformation.HttpStatusCode == 409);
+        }
     }
 }

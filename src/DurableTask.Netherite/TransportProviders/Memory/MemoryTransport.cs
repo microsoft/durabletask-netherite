@@ -38,12 +38,13 @@ namespace DurableTask.Netherite.Emulated
             this.logger = logger;
         }
 
-        async Task ITaskHub.CreateAsync()
+        async Task<bool> ITaskHub.CreateIfNotExistsAsync()
         {
             await Task.Delay(simulatedDelay).ConfigureAwait(false);
             this.clientQueues = new Dictionary<Guid, IMemoryQueue<ClientEvent>>();
             this.partitionQueues = new IMemoryQueue<PartitionEvent>[this.numberPartitions];
             this.partitions = new TransportAbstraction.IPartition[this.numberPartitions];
+            return true;
         }
 
         Task ITaskHub.DeleteAsync()

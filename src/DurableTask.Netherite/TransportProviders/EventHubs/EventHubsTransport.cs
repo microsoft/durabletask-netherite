@@ -86,14 +86,9 @@ namespace DurableTask.Netherite.EventHubs
             return (parameters != null && parameters.TaskhubName == this.settings.HubName);
         }
 
-        async Task ITaskHub.CreateAsync()
+        async Task<bool> ITaskHub.CreateIfNotExistsAsync()
         {
             await this.cloudBlobContainer.CreateIfNotExistsAsync().ConfigureAwait(false);
-
-            if (await this.TryLoadExistingTaskhubAsync().ConfigureAwait(false) != null)
-            {
-                throw new InvalidOperationException("Cannot create TaskHub: TaskHub already exists");
-            }
 
             // ensure the task hubs exist, creating them if necessary
             var tasks = new List<Task>();
@@ -119,14 +114,27 @@ namespace DurableTask.Netherite.EventHubs
                 StartPositions = startPositions
             };
 
-            // save the taskhub parameters in a blob
-            var jsonText = JsonConvert.SerializeObject(
-                taskHubParameters,
-                Newtonsoft.Json.Formatting.Indented,
-                new JsonSerializerSettings() { TypeNameHandling = TypeNameHandling.None });
-            await this.taskhubParameters.UploadTextAsync(jsonText).ConfigureAwait(false);
+            // try to create the taskhub blob
+            try
+            {
+                var jsonText = JsonConvert.SerializeObject(
+                    taskHubParameters,
+                    Newtonsoft.Json.Formatting.Indented,
+                    new JsonSerializerSettings() { TypeNameHandling = TypeNameHandling.None });
+
+                var noOverwrite = AccessCondition.GenerateIfNoneMatchCondition("*");
+                await this.taskhubParameters.UploadTextAsync(jsonText, null, noOverwrite, null, null).ConfigureAwait(false);
+            }
+            catch(StorageException e) when (BlobUtils.BlobAlreadyExists(e))
+            {
+                // taskhub already exists, possibly because a different node created it faster
+                return false;
+            }
+
+            // we successfully created the taskhub
+            return true;
         }
-      
+
         async Task ITaskHub.DeleteAsync()
         {
             if (await this.taskhubParameters.ExistsAsync().ConfigureAwait(false))

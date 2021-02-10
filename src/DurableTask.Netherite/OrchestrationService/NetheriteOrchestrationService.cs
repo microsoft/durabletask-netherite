@@ -186,12 +186,12 @@ namespace DurableTask.Netherite
                 if (recreateInstanceStore)
                 {
                     await this.taskHub.DeleteAsync().ConfigureAwait(false);
-                    await this.taskHub.CreateAsync().ConfigureAwait(false);
+                    await this.taskHub.CreateIfNotExistsAsync().ConfigureAwait(false);
                 }
             }
             else
             {
-                await this.taskHub.CreateAsync().ConfigureAwait(false);
+                await this.taskHub.CreateIfNotExistsAsync().ConfigureAwait(false);
             }
 
             if (!(this.LoadMonitorService is null))
