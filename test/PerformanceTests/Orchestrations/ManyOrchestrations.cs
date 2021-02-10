@@ -18,14 +18,14 @@ namespace PerformanceTests
     using System.Collections.Concurrent;
     using System.Threading;
     using System.Net.Http;
+    using DurableTask.Core.Stats;
 
     /// <summary>
     /// Http triggers for starting, awaiting, counting, or purging large numbers of orchestration instances
     /// 
     /// Example invocations:
     ///     curl https://.../start -d HelloCities.1000
-    ///     curl https://.../start -d HelloCities.0.500
-    ///     curl https://.../start -d HelloCities.500.1000
+    ///     curl https://.../start -d HelloCities.1000.100
     ///     curl https://.../await -d 1000
     ///     curl https://.../count -d 1000
     ///     curl https://.../purge -d 1000
@@ -44,41 +44,62 @@ namespace PerformanceTests
             int seconddot = requestBody.LastIndexOf('.');
             string orchestrationName = requestBody.Substring(0, firstdot);
             int numberOrchestrations;
-            int offset;
+            int? portionSize;
+
             if (firstdot == seconddot)
             {
-                offset = 0;
                 numberOrchestrations = int.Parse(requestBody.Substring(firstdot + 1));
+                portionSize = null;
             }
             else
             {
-                offset = int.Parse(requestBody.Substring(firstdot + 1, seconddot - (firstdot + 1)));
-                numberOrchestrations = int.Parse(requestBody.Substring(seconddot + 1)) - offset;
+                numberOrchestrations = int.Parse(requestBody.Substring(firstdot + 1, seconddot - (firstdot + 1)));
+                portionSize = int.Parse(requestBody.Substring(seconddot + 1));
             }
-
-            // start the specified number of orchestration instances
+         
             try
             {
-                log.LogWarning($"Starting {numberOrchestrations} instances of {orchestrationName}...");
-
-                var stopwatch = new System.Diagnostics.Stopwatch();
-                stopwatch.Start();
-
-                // start all the orchestrations
-                await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, (iteration) =>
+                if (!portionSize.HasValue)
                 {
-                    var orchestrationInstanceId = $"Orch{iteration + offset:X5}";
-                    log.LogInformation($"starting {orchestrationInstanceId}");
-                    return client.StartNewAsync(orchestrationName, orchestrationInstanceId);
-                });
+                    log.LogWarning($"Starting {numberOrchestrations} instances of {orchestrationName} from within HttpTrigger...");
 
-                double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
+                    var stopwatch = new System.Diagnostics.Stopwatch();
+                    stopwatch.Start();
 
-                string message = $"Started all {numberOrchestrations} orchestrations in {elapsedSeconds:F2}s.";
+                    // start all the orchestrations
+                    await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, (iteration) =>
+                    {
+                        var orchestrationInstanceId = InstanceId(iteration);
+                        log.LogInformation($"starting {orchestrationInstanceId}");
+                        return client.StartNewAsync(orchestrationName, orchestrationInstanceId);
+                    });
 
-                log.LogWarning($"Started all {numberOrchestrations} orchestrations in {elapsedSeconds:F2}s.");
- 
-                return new OkObjectResult($"{message}\n");
+                    double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
+
+                    string message = $"Started all {numberOrchestrations} orchestrations in {elapsedSeconds:F2}s.";
+
+                    log.LogWarning($"Started all {numberOrchestrations} orchestrations in {elapsedSeconds:F2}s.");
+
+                    return new OkObjectResult($"{message}\n");
+                }
+                else
+                {
+                    log.LogWarning($"Starting {numberOrchestrations} instances of {orchestrationName} via launcher entities...");
+                    int pos = 0;
+                    int launcher = 0;
+                    var tasks = new List<Task>();
+                    while (pos < numberOrchestrations)
+                    {
+                        int portion = Math.Min(portionSize.Value, (numberOrchestrations - pos));
+                        var entityId = new EntityId(nameof(LauncherEntity), $"launcher{launcher / 100:D6}!{launcher % 100:D2}");
+                        tasks.Add(client.SignalEntityAsync(entityId, nameof(LauncherEntity.Launch), (orchestrationName, portion, pos)));
+                        pos += portion;
+                        launcher++;
+                    }
+                    await Task.WhenAll(tasks);
+
+                    return new OkObjectResult($"Signaled {launcher} entities for starting {numberOrchestrations} orchestrations.\n");
+                }
             }
             catch (Exception e)
             {
@@ -111,7 +132,7 @@ namespace PerformanceTests
                 // start all the orchestrations
                 await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
                 {
-                    var orchestrationInstanceId = $"Orch{iteration:X5}";
+                    var orchestrationInstanceId = InstanceId(iteration);
                     IActionResult response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, deadline - DateTime.UtcNow);
 
                     if (response is ObjectResult objectResult
@@ -171,7 +192,7 @@ namespace PerformanceTests
                 log.LogWarning($"Checking the status of {numberOrchestrations} orchestration instances...");
                 await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
                 {
-                    var orchestrationInstanceId = $"Orch{iteration:X5}";
+                    var orchestrationInstanceId = InstanceId(iteration);
                     var status = await client.GetStatusAsync(orchestrationInstanceId);
 
                     lock (lockForUpdate)
@@ -330,7 +351,7 @@ namespace PerformanceTests
                 // start all the orchestrations
                 await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
                 {
-                    var orchestrationInstanceId = $"Orch{iteration:X5}";
+                    var orchestrationInstanceId = InstanceId(iteration);
                     var response = await client.PurgeInstanceHistoryAsync(orchestrationInstanceId);
                     
                     Interlocked.Add(ref deleted, response.InstancesDeleted);
@@ -344,6 +365,21 @@ namespace PerformanceTests
             catch (Exception e)
             {
                 return new ObjectResult(new { error = e.ToString() });
+            }
+        }
+
+        // we can use this to run on a subset of the available partitions
+        static readonly int? restrictedPlacement = null;
+
+        public static string InstanceId(int index)
+        {
+            if (restrictedPlacement == null)
+            {
+                return $"Orch{index:X5}";
+            }
+            else
+            {
+                return $"Orch{index:X5}!{(index % restrictedPlacement):D2}";
             }
         }
     }
