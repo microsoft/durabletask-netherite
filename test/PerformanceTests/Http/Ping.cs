@@ -16,6 +16,7 @@ namespace PerformanceTests
     using System.Net.Http;
     using Newtonsoft.Json.Linq;
     using System.Linq;
+    using Newtonsoft.Json;
 
     /// <summary>
     /// A very simple Http Trigger that is useful for testing whether the orchestration service has started correctly, and what its
@@ -45,7 +46,7 @@ namespace PerformanceTests
                       && responseMessage.StatusCode == System.Net.HttpStatusCode.OK
                       && responseMessage.Content is StringContent stringContent)
                     {
-                        return await stringContent.ReadAsStringAsync();
+                        return (string) JToken.Parse(await stringContent.ReadAsStringAsync());
                     }
                     else
                     {
