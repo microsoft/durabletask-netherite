@@ -102,7 +102,7 @@ namespace DurableTask.Netherite.AzureFunctions
 
                 if (this.TraceToBlob && BlobLogger == null)
                 {
-                    BlobLogger = new BlobLogger(settings.ResolvedStorageConnectionString, settings.WorkerId);
+                    BlobLogger = new BlobLogger(settings.ResolvedStorageConnectionString, settings.HubName, settings.WorkerId);
                 }
 
                 var key = new DurableClientAttribute()
