@@ -24,12 +24,13 @@ namespace PerformanceTests
     /// Http triggers for starting, awaiting, counting, or purging large numbers of orchestration instances
     /// 
     /// Example invocations:
-    ///     curl https://.../start -d HelloCities.1000
-    ///     curl https://.../start -d HelloCities.1000.100
-    ///     curl https://.../await -d 1000
-    ///     curl https://.../count -d 1000
-    ///     curl https://.../purge -d 1000
-    ///     curl https://.../query  
+    ///     curl https://.../start -d HelloSequence.1000        launch 1000 HelloSequence instances, from the http trigger
+    ///     curl https://.../start -d HelloSequence.10000.200   launch 10000 HelloSequence instances, in portions of 200, from launcher entities
+    ///     curl https://.../await -d 1000                      waits for the 1000 instances to complete
+    ///     curl https://.../count -d 1000                      check the status of the 1000 instances and reports the (last completed - first started) time range
+    ///     curl https://.../purge -d 1000                      purges the 1000 instances
+    ///     curl https://.../query                              waits for the 1000 instances to complete
+    ///     
     /// </summary>
     public static class ManyOrchestrations
     {
