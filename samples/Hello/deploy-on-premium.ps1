@@ -17,7 +17,7 @@ if (-not (Test-Path -Path ./bin/Release/netcoreapp3.1/bin)) {
 # look up the eventhubs namespace connection string
 $eventHubsConnectionString = (az eventhubs namespace authorization-rule keys list --resource-group $groupName --namespace-name $namespaceName --name RootManageSharedAccessKey | ConvertFrom-Json).primaryConnectionString
 
-if ((az functionapp show --resource-group $groupName --name $functionAppName | ConvertFrom-Json).name -ne $functionAppName)
+if (-not ((az functionapp list --query "[].name"| ConvertFrom-Json) -contains $functionAppName))
 {
 	Write-Host "Creating Function App..."
 	az functionapp plan create --resource-group  $groupName --name  $functionAppName --location $location --sku $planSku

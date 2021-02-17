@@ -1,13 +1,16 @@
 #!/usr/bin/pwsh
+param (
+	$Configuration="Release"
+	)
 
 # read the parameters
 . ./settings.ps1
 
-# enter the directory with the debug binaries
-if (-not (Test-Path -Path ./bin/Debug/netcoreapp3.1/bin)) {
-    throw 'No debug binaries found. Must `dotnet build` first.'
+# enter the directory with the binaries
+if (-not (Test-Path -Path ./bin/$Configuration/netcoreapp3.1/bin)) {
+    throw "No $Configuration binaries found. Must `dotnet build -c $Configuration` first."
 } else {
-    cd bin/Debug/netcoreapp3.1
+	Push-Location -Path bin/$Configuration/netcoreapp3.1  
 }
 
 # look up the two connection strings and assign them to the respective environment variables
@@ -16,3 +19,5 @@ $Env:EventHubsConnection = (az eventhubs namespace authorization-rule keys list 
 
 # start the function app locally
 func start --no-build
+
+Pop-Location
