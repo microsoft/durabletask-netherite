@@ -1,7 +1,8 @@
 #!/usr/bin/pwsh
 param (
 	$Plan="EP2", 
-	$NumNodes="4", 
+	$MinNodes="1", 
+	$MaxNodes="20", 
 	$Configuration="Release"
 	)
 
@@ -30,9 +31,17 @@ else
 	Write-Host "Function app already exists."
 }
 
-Write-Host "Configuring Scale=$NumNodes..."
-az functionapp plan update -g $groupName -n $functionAppName --max-burst $numNodes --number-of-workers $numNodes --min-instances $numNodes 
-az resource update -n $functionAppName/config/web -g $groupName --set properties.minimumElasticInstanceCount=$numNodes --resource-type Microsoft.Web/sites
+Write-Host "Configuring Scale=$MinNodes-$MaxNodes"
+az functionapp plan update -g $groupName -n $functionAppName --max-burst $MaxNodes --number-of-workers $MinNodes --min-instances $MinNodes 
+az resource update -n $functionAppName/config/web -g $groupName --set properties.minimumElasticInstanceCount=$MinNodes --resource-type Microsoft.Web/sites
+if ($MinNode -eq $MaxNodes)
+{
+	az resource update -n $functionAppName/config/web -g $groupName --set properties.functionsRuntimeScaleMonitoringEnabled=0 --resource-type Microsoft.Web/sites
+}
+else
+{
+	az resource update -n $functionAppName/config/web -g $groupName --set properties.functionsRuntimeScaleMonitoringEnabled=1 --resource-type Microsoft.Web/sites
+}
 
 Write-Host "Publishing Code to Function App..."
 func azure functionapp publish $functionAppName
