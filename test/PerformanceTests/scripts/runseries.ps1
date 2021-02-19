@@ -1,14 +1,14 @@
 #!/usr/bin/pwsh
 param (
-	$Plan="EP1", 
+	$Plan="EP2", 
 	$NumNodes="4", 
 	$Configuration="Release",
 	$WaitForDeploy=60,
 	$NumReps=6,
 	$Orchestration="HelloSequence",
-	$NumOrchestrations=1000,
-	$StarterEntities=0,
-	$DelayAfterRun=10
+	$NumOrchestrations=10000,
+	$StarterEntities=200,
+	$DelayAfterRun=25
 	)
 
 # import the parameter settings from the file in the same directory

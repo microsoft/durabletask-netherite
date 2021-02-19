@@ -17,7 +17,7 @@ Push-Location -Path bin/$Configuration/netcoreapp3.1
 # look up the eventhubs namespace connection string
 $eventHubsConnectionString = (az eventhubs namespace authorization-rule keys list --resource-group $groupName --namespace-name $namespaceName --name RootManageSharedAccessKey | ConvertFrom-Json).primaryConnectionString
 
-if (-not ((az functionapp list --query "[].name"| ConvertFrom-Json) -contains $functionAppName))
+if (-not ((az functionapp list -g $groupName --query "[].name"| ConvertFrom-Json) -contains $functionAppName))
 {
 	Write-Host "Creating $Plan Function App..."
 	az functionapp plan create --resource-group  $groupName --name  $functionAppName --location $location --sku $Plan
@@ -31,8 +31,8 @@ else
 }
 
 Write-Host "Configuring Scale=$NumNodes..."
-az functionapp plan update -g  $groupName -n  $functionAppName --max-burst $numNodes --number-of-workers $numNodes --min-instances $numNodes 
-az resource update -n  $functionAppName/config/web  -g  $groupName --set properties.minimumElasticInstanceCount=$numNodes --resource-type Microsoft.Web/sites
+az functionapp plan update -g $groupName -n $functionAppName --max-burst $numNodes --number-of-workers $numNodes --min-instances $numNodes 
+az resource update -n $functionAppName/config/web -g $groupName --set properties.minimumElasticInstanceCount=$numNodes --resource-type Microsoft.Web/sites
 
 Write-Host "Publishing Code to Function App..."
 func azure functionapp publish $functionAppName
