@@ -26,6 +26,11 @@ namespace DurableTask.Netherite.Scaling
         readonly AzureLoadMonitorTable table;
 
         /// <summary>
+        /// The name of the taskhub.
+        /// </summary>
+        public string TaskHubName => this.taskHubName;
+
+        /// <summary>
         /// Creates an instance of the scaling monitor, with the given parameters.
         /// </summary>
         /// <param name="storageConnectionString">The storage connection string.</param>
@@ -45,26 +50,54 @@ namespace DurableTask.Netherite.Scaling
         }
 
         /// <summary>
+        /// The metrics that are collected prior to making a scaling decision
+        /// </summary>
+        public struct Metrics
+        {
+            /// <summary>
+            ///  the most recent load information published for each partition
+            /// </summary>
+            public Dictionary<uint, PartitionLoadInfo> LoadInformation { get; set; }
+
+            /// <summary>
+            /// Whether the taskhub is idle
+            /// </summary>
+            public bool TaskHubIsIdle { get; set; }
+        }
+
+        /// <summary>
+        /// Collect the metrics for making the scaling decision.
+        /// </summary>
+        /// <returns>The collected metrics.</returns>
+        public async Task<Metrics> CollectMetrics()
+        {
+            var loadInformation = await this.table.QueryAsync(CancellationToken.None).ConfigureAwait(false);
+            var taskhubIsIdle = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
+            return new Metrics()
+            { 
+                LoadInformation = loadInformation,
+                TaskHubIsIdle = taskhubIsIdle,
+            };
+
+        }
+
+        /// <summary>
         /// Makes a scale recommendation.
         /// </summary>
         /// <returns></returns>
-        public async Task<ScaleRecommendation> GetScaleRecommendation(int workerCount)
+        public ScaleRecommendation GetScaleRecommendation(int workerCount, Metrics metrics)
         {
-            Dictionary<uint, PartitionLoadInfo> loadInformation = await this.table.QueryAsync(CancellationToken.None).ConfigureAwait(false);
-
-            bool taskHubIsIdle = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
-
-            if (workerCount == 0 && !taskHubIsIdle)
+            if (workerCount == 0 && !metrics.TaskHubIsIdle)
             {
                 return new ScaleRecommendation(ScaleAction.AddWorker, keepWorkersAlive: true, reason: "First worker");
             }
 
-            if (loadInformation.Values.Any(partitionLoadInfo => partitionLoadInfo.LatencyTrend.Length < PartitionLoadInfo.LatencyTrendLength))
+            if (metrics.LoadInformation.Values.Any(partitionLoadInfo => partitionLoadInfo.LatencyTrend.Length < PartitionLoadInfo.LatencyTrendLength))
             {
-                return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: !taskHubIsIdle, reason: "Not enough samples");
+                return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: !metrics.TaskHubIsIdle, reason: "Not enough samples");
             }
 
-            if (taskHubIsIdle)
+            if (metrics.TaskHubIsIdle)
             {
                 return new ScaleRecommendation(
                     scaleAction: workerCount > 0 ? ScaleAction.RemoveWorker : ScaleAction.None,
@@ -72,23 +105,23 @@ namespace DurableTask.Netherite.Scaling
                     reason: "Task hub is idle");
             }
 
-            int numberOfSlowPartitions = loadInformation.Values.Count(info => info.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
+            int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
 
             if (workerCount < numberOfSlowPartitions)
             {
-                // Some partitions are busy, so scale out until workerCount == partitionCount.
-                var partition = loadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
+                // scale up to the number of busy partitions
+                var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
                 return new ScaleRecommendation(
                     ScaleAction.AddWorker,
                     keepWorkersAlive: true,
                     reason: $"High latency in partition {partition.Key}: {partition.Value.LatencyTrend}");
             }
 
-            int numberOfNonIdlePartitions = loadInformation.Values.Count(info => info.LatencyTrend.Any(c => c != PartitionLoadInfo.Idle));
+            int numberOfNonIdlePartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Any(c => c != PartitionLoadInfo.Idle));
 
             if (workerCount > numberOfNonIdlePartitions)
             {
-                // If the work item queues are idle, scale down to the number of non-idle control queues.
+                // scale down to the number of non-idle partitions.
                 return new ScaleRecommendation(
                     ScaleAction.RemoveWorker,
                     keepWorkersAlive: true,
@@ -102,7 +135,7 @@ namespace DurableTask.Netherite.Scaling
             // that it's a slow scale-in that will get automatically corrected once latencies start increasing again.
             if (workerCount > 1 && (new Random()).Next(10) == 0)
             {
-                bool allPartitionsAreFast = !loadInformation.Values.Any(
+                bool allPartitionsAreFast = !metrics.LoadInformation.Values.Any(
                     info => info.LatencyTrend.Any(c => c == PartitionLoadInfo.MediumLatency || c == PartitionLoadInfo.HighLatency));
 
                 if (allPartitionsAreFast)
@@ -119,7 +152,7 @@ namespace DurableTask.Netherite.Scaling
             return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: $"Partition latencies are healthy");
         }
 
-        async Task<bool> TaskHubIsIdleAsync(Dictionary<uint, PartitionLoadInfo> loadInformation)
+        public async Task<bool> TaskHubIsIdleAsync(Dictionary<uint, PartitionLoadInfo> loadInformation)
         {
             // first, check if any of the partitions have queued work or are scheduled to wake up
             foreach (var p in loadInformation.Values)
