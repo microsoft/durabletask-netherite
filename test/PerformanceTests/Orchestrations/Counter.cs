@@ -1,4 +1,7 @@
-﻿namespace PerformanceTests.Orchestrations
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+namespace PerformanceTests.Orchestrations
 {
     using System;
     using System.Collections.Generic;

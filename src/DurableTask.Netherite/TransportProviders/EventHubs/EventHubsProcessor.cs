@@ -326,7 +326,7 @@ namespace DurableTask.Netherite.EventHubs
                             }
                             else
                             {
-                                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} ignored packet #{seqno} for different taskhub", this.eventHubName, this.eventHubPartition, seqno);
+                                this.traceHelper.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition} ignored packet #{seqno} for different taskhub", this.eventHubName, this.eventHubPartition, seqno);
                                 continue;
                             }
 

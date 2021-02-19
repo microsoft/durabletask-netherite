@@ -26,7 +26,7 @@ namespace DurableTask.Netherite.AzureFunctions
         readonly Timer timer;
 #pragma warning restore IDE0052 
 
-        public BlobLogger(string storageConnectionString, string workerId)
+        public BlobLogger(string storageConnectionString, string hubName, string workerId)
         {
             this.starttime = DateTime.UtcNow;
 
@@ -34,7 +34,7 @@ namespace DurableTask.Netherite.AzureFunctions
             CloudBlobClient client = storageAccount.CreateCloudBlobClient();
             CloudBlobContainer container = client.GetContainerReference("logs");
             container.CreateIfNotExists();
-            this.blob = container.GetAppendBlobReference($"{workerId}.{this.starttime:o}.log");
+            this.blob = container.GetAppendBlobReference($"{hubName}.{workerId}.{this.starttime:o}.log");
             this.blob.CreateOrReplace();
 
             this.memoryStream = new MemoryStream();

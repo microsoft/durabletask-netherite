@@ -120,7 +120,7 @@ namespace PerformanceTests
                         endtime = state.LastUpdatedTime;
                     }
                     response = new OkObjectResult(new Response {
-                        Result = await stringContent.ReadAsStringAsync(),
+                        Result = (string)JToken.Parse(await stringContent.ReadAsStringAsync()),
                         Time = endtime, 
                         Duration = (endtime - starttime).TotalMilliseconds 
                     });
