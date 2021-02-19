@@ -9,6 +9,7 @@ namespace DurableTask.Netherite.AzureFunctions
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Core;
+    using DurableTask.Core.Common;
     using DurableTask.Netherite;
     using DurableTask.Netherite.Scaling;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
@@ -135,44 +136,66 @@ namespace DurableTask.Netherite.AzureFunctions
 
             async Task<ScaleMetrics> IScaleMonitor.GetMetricsAsync()
             {
-                return new NetheriteScaleMetrics()
+                try
                 {
-                    Metrics = await this.scalingMonitor.CollectMetrics()
-                };
+                    return new NetheriteScaleMetrics()
+                    {
+                        Metrics = await this.scalingMonitor.CollectMetrics()
+                    };
+                }
+                catch (Exception e) when (!Utils.IsFatal(e))
+                {
+                    this.extension.TraceWarningEvent(this.scalingMonitor.TaskHubName,
+                                            string.Empty,
+                                            string.Empty,
+                                            $"Netherite backend: IScaleMonitor.GetMetricsAsync() failed: {e}");
+                    throw;
+                }
             }
 
             ScaleStatus IScaleMonitor.GetScaleStatus(ScaleStatusContext context)
             {
-                var metrics = ((NetheriteScaleMetrics)context.Metrics.Last()).Metrics;
-                ScaleRecommendation recommendation = this.scalingMonitor.GetScaleRecommendation(context.WorkerCount, metrics);
-                ScaleStatus scaleStatus = new ScaleStatus();
-                bool writeToUserLogs;
-
-                switch (recommendation.Action)
+                try
                 {
-                    case ScaleAction.AddWorker:
-                        scaleStatus.Vote = ScaleVote.ScaleOut;
-                        writeToUserLogs = true;
-                        break;
-                    case ScaleAction.RemoveWorker:
-                        scaleStatus.Vote = ScaleVote.ScaleIn;
-                        writeToUserLogs = true;
-                        break;
-                    default:
-                        scaleStatus.Vote = ScaleVote.None;
-                        writeToUserLogs = false;
-                        break;
+                    var metrics = ((NetheriteScaleMetrics)context.Metrics.Last()).Metrics;
+                    ScaleRecommendation recommendation = this.scalingMonitor.GetScaleRecommendation(context.WorkerCount, metrics);
+                    ScaleStatus scaleStatus = new ScaleStatus();
+                    bool writeToUserLogs;
+
+                    switch (recommendation.Action)
+                    {
+                        case ScaleAction.AddWorker:
+                            scaleStatus.Vote = ScaleVote.ScaleOut;
+                            writeToUserLogs = true;
+                            break;
+                        case ScaleAction.RemoveWorker:
+                            scaleStatus.Vote = ScaleVote.ScaleIn;
+                            writeToUserLogs = true;
+                            break;
+                        default:
+                            scaleStatus.Vote = ScaleVote.None;
+                            writeToUserLogs = false;
+                            break;
+                    }
+
+                    if (scaleStatus.Vote != ScaleVote.None)
+                        this.extension.TraceInformationalEvent(
+                                            this.scalingMonitor.TaskHubName,
+                                            string.Empty,
+                                            string.Empty,
+                                            $"Durable Functions Trigger Scale Decision: {scaleStatus.Vote.ToString()}, Reason: {recommendation.Reason}",
+                                            writeToUserLogs: writeToUserLogs);
+
+                    return scaleStatus;
                 }
-
-                if (scaleStatus.Vote != ScaleVote.None)
-                    this.extension.TraceInformationalEvent(
-                                        this.scalingMonitor.TaskHubName,
-                                        string.Empty,
-                                        string.Empty,
-                                        $"Durable Functions Trigger Scale Decision: {scaleStatus.Vote.ToString()}, Reason: {recommendation.Reason}",
-                                        writeToUserLogs: writeToUserLogs);
-
-                return scaleStatus;
+                catch(Exception e) when (!Utils.IsFatal(e))
+                {
+                    this.extension.TraceWarningEvent(this.scalingMonitor.TaskHubName,
+                                            string.Empty,
+                                            string.Empty,
+                                            $"Netherite backend: IScaleMonitor.GetScaleStatus failed: {e}");
+                    throw;
+                }
             }
         }
     }
