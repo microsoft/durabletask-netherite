@@ -52,9 +52,22 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             this.AddFunctions(typeof(ClientFunctions));
         }
 
-        Task IAsyncLifetime.InitializeAsync() => this.functionsHost.StartAsync();
+        async Task IAsyncLifetime.InitializeAsync()
+        {
+           await this.functionsHost.StartAsync();
+        }
 
-        Task IAsyncLifetime.DisposeAsync() => this.functionsHost.StopAsync();
+        async Task IAsyncLifetime.DisposeAsync() 
+        {
+            try
+            {
+                await this.functionsHost.StopAsync();
+            }
+            catch(OperationCanceledException)
+            {
+
+            }
+        }
 
         protected void AddFunctions(Type functionType) => this.typeLocator.AddFunctionType(functionType);
 
