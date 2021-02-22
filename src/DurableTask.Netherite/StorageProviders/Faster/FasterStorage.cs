@@ -68,12 +68,12 @@ namespace DurableTask.Netherite.Faster
 #endif
 
             this.blobManager = new BlobManager(
-                this.storageAccount, 
-                this.pageBlobStorageAccount, 
-                this.taskHubName, 
-                this.logger, 
-                this.partition.Settings.StorageLogLevelLimit, 
-                partition.PartitionId, 
+                this.storageAccount,
+                this.pageBlobStorageAccount,
+                this.taskHubName,
+                this.logger,
+                this.partition.Settings.StorageLogLevelLimit,
+                partition.PartitionId,
                 errorHandler,
                 psfCount);
 

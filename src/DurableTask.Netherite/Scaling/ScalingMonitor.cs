@@ -60,9 +60,14 @@ namespace DurableTask.Netherite.Scaling
             public Dictionary<uint, PartitionLoadInfo> LoadInformation { get; set; }
 
             /// <summary>
+            /// A reason why the taskhub is not idle, or null if it is idle
+            /// </summary>
+            public string Busy { get; set; }
+
+            /// <summary>
             /// Whether the taskhub is idle
             /// </summary>
-            public bool TaskHubIsIdle { get; set; }
+            public bool TaskHubIsIdle => string.IsNullOrEmpty(this.Busy);
         }
 
         /// <summary>
@@ -72,11 +77,11 @@ namespace DurableTask.Netherite.Scaling
         public async Task<Metrics> CollectMetrics()
         {
             var loadInformation = await this.table.QueryAsync(CancellationToken.None).ConfigureAwait(false);
-            var taskhubIsIdle = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
+            var busy = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
             return new Metrics()
             { 
                 LoadInformation = loadInformation,
-                TaskHubIsIdle = taskhubIsIdle,
+                Busy = busy,
             };
 
         }
@@ -89,7 +94,7 @@ namespace DurableTask.Netherite.Scaling
         {
             if (workerCount == 0 && !metrics.TaskHubIsIdle)
             {
-                return new ScaleRecommendation(ScaleAction.AddWorker, keepWorkersAlive: true, reason: "First worker");
+                return new ScaleRecommendation(ScaleAction.AddWorker, keepWorkersAlive: true, reason: metrics.Busy);
             }
 
             if (metrics.LoadInformation.Values.Any(partitionLoadInfo => partitionLoadInfo.LatencyTrend.Length < PartitionLoadInfo.LatencyTrendLength))
@@ -152,19 +157,15 @@ namespace DurableTask.Netherite.Scaling
             return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: $"Partition latencies are healthy");
         }
 
-        public async Task<bool> TaskHubIsIdleAsync(Dictionary<uint, PartitionLoadInfo> loadInformation)
+        public async Task<string> TaskHubIsIdleAsync(Dictionary<uint, PartitionLoadInfo> loadInformation)
         {
             // first, check if any of the partitions have queued work or are scheduled to wake up
-            foreach (var p in loadInformation.Values)
+            foreach (var kvp in loadInformation)
             {
-                if (p.Activities > 0 || p.WorkItems > 0 || p.Requests > 0 || p.Outbox > 0)
+                string busy = kvp.Value.IsBusy();
+                if (!string.IsNullOrEmpty(busy))
                 {
-                    return false;
-                }
-
-                if (p.Wakeup.HasValue && p.Wakeup.Value < DateTime.UtcNow + TimeSpan.FromSeconds(10))
-                {
-                    return false;
+                    return $"P{kvp.Key:D2} {busy}";
                 }
             }
 
@@ -173,30 +174,36 @@ namespace DurableTask.Netherite.Scaling
 
             long[] positions;
 
-            switch (this.configuredTransport)
+            if (this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
-                case TransportConnectionString.TransportChoices.EventHubs:
-                    positions = await EventHubs.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
-                    break;
+                positions = await EventHubs.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
 
-                default:
-                    return false;
+                for (uint i = 0; i < positions.Length; i++)
+                {
+                    if (!loadInformation.TryGetValue(i, out var loadInfo))
+                    {
+                        return $"P{i:D2} has no load information published yet";
+                    }
+                    if (positions[i] > loadInfo.InputQueuePosition)
+                    {
+                        return $"P{i:D2} has input queue position {loadInfo.InputQueuePosition} which is {positions[i] - loadInfo.InputQueuePosition} behind latest position {positions[i]}";
+                    }
+                }
             }
 
-            for (uint i = 0; i < positions.Length; i++)
+            // finally, check if we have waited long enough
+            foreach (var kvp in loadInformation)
             {
-                if (!loadInformation.TryGetValue(i, out var loadInfo))
+                string latencyTrend = kvp.Value.LatencyTrend;
+
+                if (!PartitionLoadInfo.IsLongIdle(latencyTrend))
                 {
-                    return false;
-                }
-                if (positions[i] > loadInfo.InputQueuePosition)
-                {
-                    return false;
+                    return $"P{kvp.Key:D2} had some activity recently, latency trend is {latencyTrend}";
                 }
             }
 
             // we have concluded that there are no pending work items, timers, or unprocessed input queue entries
-            return true;
+            return null;
         }  
     }
 }

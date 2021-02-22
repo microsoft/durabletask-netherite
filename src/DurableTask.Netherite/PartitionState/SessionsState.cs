@@ -62,13 +62,30 @@ namespace DurableTask.Netherite
             {
                 this.ConfirmDurable(kvp.Value);
             }
-        }        
+        }
 
         public override void UpdateLoadInfo(PartitionLoadInfo info)
         {
-            info.WorkItems += this.Sessions.Count;
-            double now = this.Partition.CurrentTimeMs;
-            info.WorkItemLatencyMs = (long) this.Sessions.Values.Select(session => session.CurrentBatch?.WaitTimeMs(now) ?? 0).DefaultIfEmpty().Max();
+            if (this.Sessions.Count > 0)
+            {
+                info.WorkItems += this.Sessions.Count;
+
+                double now = this.Partition.CurrentTimeMs;
+                var maxLatencyInQueue = (long)this.Sessions.Values.Select(session => session.CurrentBatch?.WaitTimeMs(now) ?? 0).DefaultIfEmpty().Max();
+
+                if (maxLatencyInQueue < 100)
+                {
+                    info.MarkActive();
+                }
+                else if (maxLatencyInQueue < 1000)
+                {
+                    info.MarkMediumLatency();
+                }
+                else
+                {
+                    info.MarkHighLatency();
+                }
+            }
         }
 
         public override string ToString()
