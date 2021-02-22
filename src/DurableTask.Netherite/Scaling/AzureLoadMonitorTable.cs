@@ -76,7 +76,7 @@ namespace DurableTask.Netherite.Scaling
 
         public async Task<Dictionary<uint, PartitionLoadInfo>> QueryAsync(CancellationToken cancellationToken)
         {
-            var query = new TableQuery<PartitionInfoEntity>().Where(TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.Equal, this.taskHubName));
+            var query = new TableQuery<PartitionInfoEntity>().Where(TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, this.taskHubName));
             TableContinuationToken continuationToken = null;
             Dictionary<uint, PartitionLoadInfo> result = new Dictionary<uint, PartitionLoadInfo>();
             do
