@@ -25,9 +25,10 @@ namespace DurableTask.Netherite.Scaling
             this.cancelWait = new CancellationTokenSource();
         }
 
-        public void Flush()
+        public Task FlushAsync()
         {
             this.cancelWait.Cancel(); // so that we don't have to wait the whole delay
+            return this.WaitForCompletionAsync();
         }
 
         protected override async Task Process(IList<(uint, PartitionLoadInfo)> batch)

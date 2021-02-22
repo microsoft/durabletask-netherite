@@ -87,6 +87,7 @@ namespace DurableTask.Netherite.Faster
         public void StartProcessing()
         {
             this.Resume();
+            var pokeLoop = this.PokeLoop();
         }
 
         public void SetCheckpointPositionsAfterRecovery(long commitLogPosition, long inputQueuePosition)
@@ -519,6 +520,22 @@ namespace DurableTask.Netherite.Faster
             }
 
             this.numberEventsSinceLastCheckpoint++;
+        }
+
+        async Task PokeLoop()
+        {
+            while (true)
+            {
+                await Task.Delay(StoreWorker.PokePeriod, this.cancellationToken).ConfigureAwait(false);
+
+                if (this.cancellationToken.IsCancellationRequested || this.isShuttingDown)
+                {
+                    break;
+                }
+
+                // periodically poke so we can checkpoint, and publish load
+                this.Notify();
+            }
         }
     }
 }

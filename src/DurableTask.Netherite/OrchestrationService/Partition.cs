@@ -165,7 +165,7 @@ namespace DurableTask.Netherite
             this.Assert(this.ErrorHandler.IsTerminated);
 
             // tell the load publisher to send all buffered info
-            this.LoadPublisher?.Flush();
+            await this.LoadPublisher?.FlushAsync();
 
             this.TraceHelper.TraceProgress("Stopped partition");
         }
