@@ -15,7 +15,7 @@ namespace DurableTask.Netherite.Scaling
     /// <summary>
     /// Monitors the performance of the Netherite backend and makes scaling decisions.
     /// </summary>
-    public class ScalingMonitor
+    public class ScalingMonitor 
     {
         readonly string storageConnectionString;
         readonly string eventHubsConnectionString;
@@ -97,11 +97,6 @@ namespace DurableTask.Netherite.Scaling
                 return new ScaleRecommendation(ScaleAction.AddWorker, keepWorkersAlive: true, reason: metrics.Busy);
             }
 
-            if (metrics.LoadInformation.Values.Any(partitionLoadInfo => partitionLoadInfo.LatencyTrend.Length < PartitionLoadInfo.LatencyTrendLength))
-            {
-                return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: !metrics.TaskHubIsIdle, reason: "Not enough samples");
-            }
-
             if (metrics.TaskHubIsIdle)
             {
                 return new ScaleRecommendation(
@@ -110,7 +105,7 @@ namespace DurableTask.Netherite.Scaling
                     reason: "Task hub is idle");
             }
 
-            int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
+            int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
 
             if (workerCount < numberOfSlowPartitions)
             {
@@ -122,7 +117,7 @@ namespace DurableTask.Netherite.Scaling
                     reason: $"High latency in partition {partition.Key}: {partition.Value.LatencyTrend}");
             }
 
-            int numberOfNonIdlePartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Any(c => c != PartitionLoadInfo.Idle));
+            int numberOfNonIdlePartitions = metrics.LoadInformation.Values.Count(info => ! PartitionLoadInfo.IsLongIdle(info.LatencyTrend));
 
             if (workerCount > numberOfNonIdlePartitions)
             {
@@ -138,10 +133,11 @@ namespace DurableTask.Netherite.Scaling
             // We also want to avoid scaling in unnecessarily when we've reached optimal scale-out. To balance these
             // goals, we check for low latencies and vote to scale down 10% of the time when we see this. The thought is
             // that it's a slow scale-in that will get automatically corrected once latencies start increasing again.
-            if (workerCount > 1 && (new Random()).Next(10) == 0)
+            if (workerCount > 1 && (new Random()).Next(8) == 0)
             {
                 bool allPartitionsAreFast = !metrics.LoadInformation.Values.Any(
-                    info => info.LatencyTrend.Any(c => c == PartitionLoadInfo.MediumLatency || c == PartitionLoadInfo.HighLatency));
+                    info => info.LatencyTrend.Length == PartitionLoadInfo.LatencyTrendLength 
+                        && info.LatencyTrend.Any(c => c == PartitionLoadInfo.MediumLatency || c == PartitionLoadInfo.HighLatency));
 
                 if (allPartitionsAreFast)
                 {
