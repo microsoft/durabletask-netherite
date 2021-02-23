@@ -11,7 +11,7 @@ param (
 	$DelayAfterRun=25
 	)
 
-# import the parameter settings from the file in the same directory
+# read the settings that are common to all scripts
 . ./settings.ps1
 
 # create the resources

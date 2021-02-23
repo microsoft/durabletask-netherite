@@ -1,6 +1,6 @@
 #!/usr/bin/pwsh
 
-# import the parameter settings from the file in the same directory
+# read the settings that are common to all scripts
 . ./settings.ps1
 
 Write-Host "Clearing storage account..."

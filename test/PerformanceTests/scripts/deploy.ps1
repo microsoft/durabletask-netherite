@@ -5,7 +5,7 @@ param (
 	$Configuration="Release"
 	)
 
-# read the settings
+# read the settings that are common to all scripts
 . ./settings.ps1
 
 Write-Host Building $Configuration Configuration...
