@@ -367,6 +367,12 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        public override ValueTask RemoveKeys(IEnumerable<TrackedObjectKey> keys)
+        {
+            // TODO
+            throw new NotImplementedException();
+        }
+
         #region storage access operation
 
         CloudBlockBlob GetBlob(TrackedObjectKey key)

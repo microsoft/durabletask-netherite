@@ -113,6 +113,7 @@ namespace DurableTask.Netherite
                 var effects = new EffectTracker(
                     this.partition,
                     this.ApplyToStore,
+                    this.RemoveFromStore,
                     () => (this.commitPosition, this.inputQueuePosition)
                 );
 
@@ -180,6 +181,15 @@ namespace DurableTask.Netherite
         public ValueTask ApplyToStore(TrackedObjectKey key, EffectTracker tracker)
         {
             tracker.ProcessEffectOn(this.GetOrAdd(key));
+            return default;
+        }
+
+        public ValueTask RemoveFromStore(IEnumerable<TrackedObjectKey> keys)
+        {
+            foreach (var key in keys)
+            {
+                this.trackedObjects.TryRemove(key, out _);
+            }
             return default;
         }
 

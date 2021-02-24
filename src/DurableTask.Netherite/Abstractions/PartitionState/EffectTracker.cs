@@ -17,15 +17,19 @@ namespace DurableTask.Netherite
     class EffectTracker : List<TrackedObjectKey>
     {
         readonly Func<TrackedObjectKey, EffectTracker, ValueTask> applyToStore;
+        readonly Func<IEnumerable<TrackedObjectKey>, ValueTask> removeFromStore;
         readonly Func<(long, long)> getPositions;
         readonly System.Diagnostics.Stopwatch stopWatch;
+        readonly HashSet<TrackedObjectKey> deletedKeys;
 
-        public EffectTracker(Partition partition, Func<TrackedObjectKey, EffectTracker, ValueTask> applyToStore, Func<(long, long)> getPositions)
+        public EffectTracker(Partition partition, Func<TrackedObjectKey, EffectTracker, ValueTask> applyToStore, Func<IEnumerable<TrackedObjectKey>, ValueTask> removeFromStore, Func<(long, long)> getPositions)
         {
             this.Partition = partition;
             this.applyToStore = applyToStore;
+            this.removeFromStore = removeFromStore;
             this.getPositions = getPositions;
             this.stopWatch = new System.Diagnostics.Stopwatch();
+            this.deletedKeys = new HashSet<TrackedObjectKey>();
             this.stopWatch.Start();
         }
 
@@ -55,6 +59,11 @@ namespace DurableTask.Netherite
         public void ProcessEffectOn(dynamic trackedObject)
         {
             trackedObject.Process(this.Effect, this);
+        }
+
+        public void AddDeletion(TrackedObjectKey key)
+        {
+            this.deletedKeys.Add(key);
         }
 
         public async Task ProcessUpdate(PartitionUpdateEvent updateEvent)
@@ -97,6 +106,12 @@ namespace DurableTask.Netherite
 
                         // pop this object now since we are done processing
                         this.RemoveAt(startPos);
+                    }
+
+                    if (this.deletedKeys.Count > 0)
+                    {
+                        await this.removeFromStore(this.deletedKeys);
+                        this.deletedKeys.Clear();
                     }
 
                     this.Effect = null;

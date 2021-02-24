@@ -512,6 +512,15 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        public override ValueTask RemoveKeys(IEnumerable<TrackedObjectKey> keys)
+        {
+            foreach (var key in keys)
+            {
+                this.mainSession.Delete(key);
+            }
+            return default;
+        }
+
         IAsyncEnumerable<OrchestrationState> ScanOrchestrationStates(
             EffectTracker effectTracker,
             PartitionQueryEvent queryEvent)
