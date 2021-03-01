@@ -18,6 +18,9 @@
       //"Function.Sender": "Information",
       //"Function.Receiver": "Information",
       //"Function.Completion": "Information",
+      "Function.Mapper": "Information",
+      "Function.Reducer": "Information",
+      "Function.Wordcount": "Information",
 
       // ------ The log levels below affect some (but not all) consumers
       // - limits what's displayed in the func.exe console
