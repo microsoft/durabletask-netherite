@@ -79,7 +79,8 @@ namespace PerformanceTests.WordCount
                     }
                     if (state.entryCount % 1000 == 0)
                     {
-                        log.LogError($"{context.EntityId}: processed {state.entryCount} words");
+                        // progress report
+                        log.LogWarning($"{context.EntityId}: processed {state.entryCount} words");
                     }
                     break;
 

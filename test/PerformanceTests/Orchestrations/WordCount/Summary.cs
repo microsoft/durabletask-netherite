@@ -39,6 +39,8 @@ namespace PerformanceTests.WordCount
             public int waitCount; // goes down to zero once we have reports from all reducers
             public int entryCount; // total number of words counted
             public List<(int, string)> topWords; // the top 20 words
+            public DateTime startTime;
+            public DateTime completionTime;
         }
 
         [FunctionName(nameof(Summary))]
@@ -59,6 +61,7 @@ namespace PerformanceTests.WordCount
                         state.waitCount = reducerCount;
                         state.topWords = new List<(int, string)>();
                         state.entryCount = 0;
+                        state.startTime = DateTime.UtcNow;
                         log.LogInformation($"{context.EntityId}: initialized, reducer count <- {reducerCount}");
                     }
                     break;
@@ -68,10 +71,15 @@ namespace PerformanceTests.WordCount
                     state.waitCount--;
                     state.entryCount += report.entryCount;
                     state.topWords.AddRange(report.topWords);
-                    state.topWords.Sort((a, b) => b.CompareTo(a)); // reverse order so most frequent words are first      
+                    state.topWords.Sort((a, b) => b.Item1.CompareTo(a.Item1)); // sort in reverse order so most frequent words are first      
                     if (state.topWords.Count > 20)
                     {
-                        state.topWords.RemoveRange(state.topWords.Count, state.topWords.Count - 20);
+                        state.topWords.RemoveRange(20, state.topWords.Count - 20);
+                    }
+                    log.LogInformation($"{context.EntityId}: received report ({state.waitCount} left)");
+                    if (state.waitCount == 0)
+                    {
+                        state.completionTime = DateTime.UtcNow;
                     }
        
                     break;
