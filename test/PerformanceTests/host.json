@@ -18,9 +18,10 @@
       //"Function.Sender": "Information",
       //"Function.Receiver": "Information",
       //"Function.Completion": "Information",
-      "Function.Mapper": "Information",
-      "Function.Reducer": "Information",
-      "Function.Wordcount": "Information",
+      "Function.Mapper": "Warning",
+      "Function.Reducer": "Warning",
+      "Function.Summary": "Warning",
+      "Function.Wordcount": "Warning",
 
       // ------ The log levels below affect some (but not all) consumers
       // - limits what's displayed in the func.exe console
@@ -75,22 +76,25 @@
         // set this to "true" to disable all speculation
         "PersistStepsFirst": false,
 
+        // How many TaskMessages to pack into a single event
+        "PackPartitionTaskMessages": 100,
+
         // can set this to "Scripted" to control the scenario with a partition script
         "PartitionManagement": "EventProcessorHost",
 
         // this controls what log information is produced by the various components
         // it limits production of the events, and thus can be used to prevent overheads
         // even when some consumers (e.g. Application Insights) are configured to trace information at the lowest level
-        "LogLevelLimit": "Information",
-        "StorageLogLevelLimit": "Information",
-        "TransportLogLevelLimit": "Information",
-        "EventLogLevelLimit": "Information",
-        "WorkItemLogLevelLimit": "Information",
+        "LogLevelLimit": "Trace",
+        "StorageLogLevelLimit": "Trace",
+        "TransportLogLevelLimit": "Trace",
+        "EventLogLevelLimit": "Trace",
+        "WorkItemLogLevelLimit": "Trace",
 
         // the following can be used to split and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context
         "TraceToConsole": false,
-        "TraceToBlob": false
+        "TraceToBlob": true
       }
     }
   }

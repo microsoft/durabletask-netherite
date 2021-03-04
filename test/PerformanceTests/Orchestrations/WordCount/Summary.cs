@@ -62,7 +62,7 @@ namespace PerformanceTests.WordCount
                         state.topWords = new List<(int, string)>();
                         state.entryCount = 0;
                         state.startTime = DateTime.UtcNow;
-                        log.LogInformation($"{context.EntityId}: initialized, reducer count <- {reducerCount}");
+                        log.LogWarning($"{context.EntityId}: initialized, reducer count <- {reducerCount}");
                     }
                     break;
 
@@ -76,7 +76,7 @@ namespace PerformanceTests.WordCount
                     {
                         state.topWords.RemoveRange(20, state.topWords.Count - 20);
                     }
-                    log.LogInformation($"{context.EntityId}: received report ({state.waitCount} left)");
+                    log.LogWarning($"{context.EntityId}: received report ({state.waitCount} left)");
                     if (state.waitCount == 0)
                     {
                         state.completionTime = DateTime.UtcNow;

@@ -62,7 +62,7 @@ namespace PerformanceTests.WordCount
                         state.countOfCompletedMappers = 0;
                         state.wordCount = new Dictionary<string, int>();
                         state.entryCount = 0;
-                        log.LogInformation($"{context.EntityId}: initialized, mapper count <- {mapperCount}");
+                        log.LogWarning($"{context.EntityId}: initialized, mapper count <- {mapperCount}");
                     }
                     break;
 

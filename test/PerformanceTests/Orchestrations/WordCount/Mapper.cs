@@ -44,7 +44,7 @@ namespace PerformanceTests.WordCount
                     }
                     else
                     {
-                        log.LogInformation($"{context.EntityId}: initialized, reducer count <- {reducerCount}");
+                        log.LogWarning($"{context.EntityId}: initialized, reducer count <- {reducerCount}");
                     }
                     context.SetState(reducerCount);
                     break;
@@ -68,7 +68,7 @@ namespace PerformanceTests.WordCount
                             context.SignalEntity(Reducer.GetEntityId(reducerNumber), nameof(Reducer.Ops.Inc), word);
                         }
                         s.Stop();
-                        log.LogInformation($"{context.EntityId}: Downloaded and processed {words.Length} words in {s.Elapsed.TotalSeconds:F3}s from {documentUrl}");
+                        log.LogWarning($"{context.EntityId}: Downloaded and processed {words.Length} words in {s.Elapsed.TotalSeconds:F3}s from {documentUrl}");
                         break;
                     }
 
