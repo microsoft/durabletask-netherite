@@ -12,10 +12,8 @@ namespace PerformanceTests.WordCount
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Dynamitey.DynamicObjects;
     using System.Collections.Generic;
     using System.Text;
-    using Microsoft.Extensions.Azure;
 
     /// <summary>
     /// Defines the REST operations for the word count test.
