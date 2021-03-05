@@ -78,11 +78,11 @@
         // this controls what log information is produced by the various components
         // it limits production of the events, and thus can be used to prevent overheads
         // even when some consumers (e.g. Application Insights) are configured to trace information at the lowest level
-        "LogLevelLimit": "Information",
-        "StorageLogLevelLimit": "Information",
-        "TransportLogLevelLimit": "Information",
-        "EventLogLevelLimit": "Information",
-        "WorkItemLogLevelLimit": "Information",
+        "LogLevelLimit": "Debug",
+        "StorageLogLevelLimit": "Debug",
+        "TransportLogLevelLimit": "Debug",
+        "EventLogLevelLimit": "Debug",
+        "WorkItemLogLevelLimit": "Debug",
 
         // the following can be used to split and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context
