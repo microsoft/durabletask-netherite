@@ -40,8 +40,6 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite*Tests.csproj'
-    AzureWebJobsStorage: $(AzureWebJobsStorage)
-    EventHubsConnection: $(EventHubsConnection)
     arguments: '--configuration $(buildConfiguration) --verbosity normal'
     testRunTitle: 'Running DurableTask.Netherite.AzureFunctions.Tests'
 
