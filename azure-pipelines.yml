@@ -42,7 +42,7 @@ steps:
     command: 'test' 
     projects: '**/DurableTask.Netherite*Tests.csproj'
     arguments: '--configuration $(buildConfiguration) --verbosity normal'
-    testRunTitle: 'Running Netherite Unit Tests on DevStorage/Memory'
+    testRunTitle: 'Netherite Unit Tests on DevStorage/Memory'
 
 - task: DotNetCoreCLI@2
   env:
@@ -52,5 +52,5 @@ steps:
     command: 'test' 
     projects: '**/DurableTask.Netherite*Tests.csproj'
     arguments: '--configuration $(buildConfiguration) --verbosity normal'
-    testRunTitle: 'Running Netherite Unit Tests on storageAccount/EventHubs'
+    testRunTitle: 'Netherite Unit Tests on storageAccount/EventHubs'
 
