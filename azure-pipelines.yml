@@ -13,6 +13,8 @@ variables:
   solution: 'DurableTask.Netherite.sln'
   buildPlatform: 'Any CPU'
   buildConfiguration: 'Release'
+  AzureWebJobsStorage: $(StorageConnectionString)
+  EventHubsConnection: $(TransportConnectionString)
 
 steps:
 - task: NuGetToolInstaller@1
