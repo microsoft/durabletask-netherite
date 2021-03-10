@@ -34,6 +34,15 @@ steps:
       "%ProgramFiles(x86)%\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" init /server "(localdb)\MsSqlLocalDb"
       "%ProgramFiles(x86)%\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" start
 
+- task: PowerShell@2
+  displayName: Define environment variables.
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Host "Setting environment variables for testing."
+      Write-Host "##vso[task.setvariable variable=AzureWebJobsStorage;]$(AzureWebJobsStorage)"
+      Write-Host "##vso[task.setvariable variable=EventHubsConnection;]$(EventHubsConnection)"
+
 - task: DotNetCoreCLI@2
   inputs:
     command: 'test'
