@@ -516,6 +516,7 @@ namespace DurableTask.Netherite.Faster
         {
             foreach (var key in keys)
             {
+                this.partition.Assert(!key.IsSingleton);
                 this.mainSession.Delete(key);
             }
             return default;
