@@ -22,7 +22,7 @@ namespace PerformanceTests.WordCount
     {
         [FunctionName("Wordcount")]
         public static async Task<IActionResult> Run(
-           [HttpTrigger(AuthorizationLevel.Function, "post", Route = "wordcount")] HttpRequest req,
+           [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "wordcount")] HttpRequest req,
            [DurableClient] IDurableClient client,
            ILogger log)
         {
