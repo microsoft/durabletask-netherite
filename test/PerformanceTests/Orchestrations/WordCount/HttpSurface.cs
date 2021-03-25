@@ -27,120 +27,98 @@ namespace PerformanceTests.WordCount
            ILogger log)
         {
             var queryParameters = req.Query;
-            string action = req.Query["action"];
 
-            if (String.IsNullOrEmpty(action))
+            // get mapper and reducer count from shape parameter
+            string shape = req.Query["shape"];
+            string[] counts = shape.Split('x');
+            int mapperCount, reducerCount;
+
+            // get list of URLs from request body
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            string[] urls = requestBody.Split();
+
+            if (!(counts.Length == 2 && int.TryParse(counts[0], out mapperCount) && int.TryParse(counts[1], out reducerCount)))
             {
-                return new BadRequestObjectResult("Please specify an action in the query parameters ?action=");
+                return new BadRequestObjectResult("Please specify the mapper count and reducer count in the query parameters,  e.g. &shape=10x10");
             }
 
-            switch (action.ToLower())
+            // ----- PHASE 1 ----------
+            // initialize all three types of entities prior to running the mapreduce
+
+            var initializationSignals = new List<Task>();
+
+            // initialize all the mapper entities
+            for (int i = 0; i < mapperCount; i++)
             {
-                case "init":
-                    {
-                        // initialize mapper and reducer entities prior to running the mapreduce
-                        string shape = req.Query["shape"];
-                        string[] counts = shape.Split('x');
-                        int mapperCount, reducerCount;
-                        if (counts.Length == 2 && int.TryParse(counts[0], out mapperCount) && int.TryParse(counts[1], out reducerCount))
-                        {
-                            var initializationSignals = new List<Task>();
-                            // initialize all the mapper entities
-                            for (int i = 0; i < mapperCount; i++)
-                            {
-                                initializationSignals.Add(client.SignalEntityAsync(Mapper.GetEntityId(i), nameof(Mapper.Ops.Init), reducerCount.ToString()));
-                            }
-                            // initialize all the reducer entities
-                            for (int i = 0; i < reducerCount; i++)
-                            {
-                                initializationSignals.Add(client.SignalEntityAsync(Reducer.GetEntityId(i), nameof(Reducer.Ops.Init), mapperCount.ToString()));
-                            }
-                            // initialize the summary entity
-                            initializationSignals.Add(client.SignalEntityAsync(Summary.GetEntityId(), nameof(Summary.Ops.Init), reducerCount.ToString()));
-                            await Task.WhenAll(initializationSignals);
-                            return (ActionResult)new OkObjectResult($"Done\n");
-                        }
-                        else
-                        {
-                            return new BadRequestObjectResult("Please specify the mapper count and reducer count in the query parameters,  e.g. &shape=10x10");
-                        }
-                    }
+                initializationSignals.Add(client.SignalEntityAsync(Mapper.GetEntityId(i), nameof(Mapper.Ops.Init), reducerCount.ToString()));
+            }
 
-                case "item":
-                    {
-                        // receive an item and forward it to the specified mapper
+            // initialize all the reducer entities
+            for (int i = 0; i < reducerCount; i++)
+            {
+                initializationSignals.Add(client.SignalEntityAsync(Reducer.GetEntityId(i), nameof(Reducer.Ops.Init), mapperCount.ToString()));
+            }
 
-                        string mapper = req.Query["mapper"];
-                        string data = req.Query["data"];
+            // initialize the summary entity
+            initializationSignals.Add(client.SignalEntityAsync(Summary.GetEntityId(), nameof(Summary.Ops.Init), reducerCount.ToString()));
+            
+            // we want to have the initialization completed before we start the test
+            await Task.WhenAll(initializationSignals);
 
-                        if (String.IsNullOrEmpty(mapper) || !int.TryParse(mapper, out var mapperNumber))
-                        {
-                            return new BadRequestObjectResult("Please specify the mapper number to send the item to in the query parameters &mapper=");
-                        }
-                        if (String.IsNullOrEmpty(data))
-                        {
-                            return new BadRequestObjectResult("Please specify the data to send to the mapper &data=");
-                        }
-                        await client.SignalEntityAsync(Mapper.GetEntityId(mapperNumber), nameof(Mapper.Ops.Item), data);
-                        return (ActionResult)new OkObjectResult($"Done\n");
-                    }
+            // ----- PHASE 2 ----------
+            // send work to the mappers
 
-                case "end":
-                    {
-                        // tell the mappers that we have reached the end of the data, and let them tell the reducers
-                        string shape = req.Query["shape"];
-                        string[] counts = shape.Split('x');
-                        int mapperCount, reducerCount;
-                        if (counts.Length == 2 && int.TryParse(counts[0], out mapperCount) && int.TryParse(counts[1], out reducerCount))
-                        {
-                            for (int i = 0; i < mapperCount; i++)
-                            {
-                                await client.SignalEntityAsync(Mapper.GetEntityId(i), nameof(Mapper.Ops.End));
-                            }
-                        }
-                        else
-                        {
-                            return new BadRequestObjectResult("Please specify the mapper count and reducer count in the query parameters,  e.g. &shape=10x10");
-                        }
+            int urlCount = 0;
 
-                        // wait for summary entity to contain the final result
-                        var startWaitingAt = DateTime.UtcNow;
-                        int entryCount = 0;
-                        List<(int, string)> topWords = null;
-                        TimeSpan executionTime = default;
-                        do
-                        {
-                            var summaryState = await client.ReadEntityStateAsync<Summary.SummaryState>(Summary.GetEntityId());
-                            if (summaryState.EntityExists && summaryState.EntityState.waitCount == 0)
-                            {
-                                entryCount = summaryState.EntityState.entryCount;
-                                topWords = summaryState.EntityState.topWords;
-                                executionTime = summaryState.EntityState.completionTime - summaryState.EntityState.startTime;
-                                break;
-                            }
-                        }
-                        while (DateTime.UtcNow < startWaitingAt + TimeSpan.FromMinutes(5));
+            foreach (var url in urls)
+            {
+                var trimmedUrl = url.Trim();
+                if (Uri.IsWellFormedUriString(trimmedUrl, UriKind.Absolute))
+                {
+                    int mapper = urlCount++ % mapperCount;
+                    var _ = client.SignalEntityAsync(Mapper.GetEntityId(mapper), nameof(Mapper.Ops.Item), url);
+                }
+            }
 
-                        if (topWords == null)
-                        {
-                            return (ActionResult)new OkObjectResult($"Timed out.\n");
-                        }
-                        else
-                        {
-                            var sb = new StringBuilder();
-                            sb.AppendLine($"----- {entryCount} words processed in {executionTime.TotalSeconds:F2}s, top 20 as follows -----");
-                            foreach ((int count, string word) in topWords)
-                            {
-                                sb.AppendLine($"{count,10} {word}");
-                            }
-                            return (ActionResult)new OkObjectResult(sb.ToString());
-                        }
-                    }
+            for (int i = 0; i < mapperCount; i++)
+            {
+                var _ = client.SignalEntityAsync(Mapper.GetEntityId(i), nameof(Mapper.Ops.End));
+            }
 
-                default:
-                    {
-                        return new BadRequestObjectResult($"Unknown action: {action}\n");
-                    }
+            // ----- PHASE 3 ----------
+            // wait for summary entity to contain the final result
+
+            var startWaitingAt = DateTime.UtcNow;
+            int entryCount = 0;
+            List<(int, string)> topWords = null;
+            TimeSpan executionTime = default;
+            do
+            {
+                await Task.Delay(500);
+                var summaryState = await client.ReadEntityStateAsync<Summary.SummaryState>(Summary.GetEntityId());
+                if (summaryState.EntityExists && summaryState.EntityState.waitCount == 0)
+                {
+                    entryCount = summaryState.EntityState.entryCount;
+                    topWords = summaryState.EntityState.topWords;
+                    executionTime = summaryState.EntityState.completionTime - summaryState.EntityState.startTime;
+                    break;
+                }
+            }
+            while (DateTime.UtcNow < startWaitingAt + TimeSpan.FromMinutes(5));
+
+            if (topWords == null)
+            {
+                return (ActionResult)new OkObjectResult($"Timed out.\n");
+            }
+            else
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine($"----- {urlCount} urls with {entryCount} words processed in {executionTime.TotalSeconds:F2}s, top 20 as follows -----");
+                foreach ((int count, string word) in topWords)
+                {
+                    sb.AppendLine($"{count,10} {word}");
+                }
+                return (ActionResult)new OkObjectResult(sb.ToString());
             }
         }
     }
