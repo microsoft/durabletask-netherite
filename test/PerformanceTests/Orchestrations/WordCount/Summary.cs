@@ -41,6 +41,7 @@ namespace PerformanceTests.WordCount
             public List<(int, string)> topWords; // the top 20 words
             public DateTime startTime;
             public DateTime completionTime;
+            public double executionTimeInSeconds;
         }
 
         [FunctionName(nameof(Summary))]
@@ -84,6 +85,7 @@ namespace PerformanceTests.WordCount
                     if (state.waitCount == 0)
                     {
                         state.completionTime = DateTime.UtcNow;
+                        state.executionTimeInSeconds = (state.completionTime - state.startTime).TotalSeconds;
                     }
        
                     break;

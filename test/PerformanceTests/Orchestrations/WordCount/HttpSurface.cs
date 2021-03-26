@@ -91,7 +91,7 @@ namespace PerformanceTests.WordCount
             var startWaitingAt = DateTime.UtcNow;
             int entryCount = 0;
             List<(int, string)> topWords = null;
-            TimeSpan executionTime = default;
+            double executionTime = 0;
             do
             {
                 await Task.Delay(500);
@@ -100,7 +100,7 @@ namespace PerformanceTests.WordCount
                 {
                     entryCount = summaryState.EntityState.entryCount;
                     topWords = summaryState.EntityState.topWords;
-                    executionTime = summaryState.EntityState.completionTime - summaryState.EntityState.startTime;
+                    executionTime = summaryState.EntityState.executionTimeInSeconds;
                     break;
                 }
             }
@@ -113,7 +113,7 @@ namespace PerformanceTests.WordCount
             else
             {
                 var sb = new StringBuilder();
-                sb.AppendLine($"----- {urlCount} urls with {entryCount} words processed in {executionTime.TotalSeconds:F2}s, top 20 as follows -----");
+                sb.AppendLine($"----- {urlCount} urls with {entryCount} words processed in {executionTime:F2}s, top 20 as follows -----");
                 foreach ((int count, string word) in topWords)
                 {
                     sb.AppendLine($"{count,10} {word}");
