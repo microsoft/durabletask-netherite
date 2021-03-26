@@ -4,27 +4,28 @@
     "logLevel": {
       "default": "Warning",
 
-      // No need to trace function information for all functions
-      "Function": "None",
-      "Host": "None",
+      // ------ NOTE: the log levels in this section affect some, but NOT ALL consumers
+      // - limits what gets displayed in the func.exe console (which is extremely costly)
+      // - limits what gets stored in application insights
+      // - does not limit what is collected by ETW
+      // - does not limit what is traced to console
+      // - does not limit what is shown in Live Metrics side panel
 
+      // ---- the triggers below can be enabled to get specific host tracing
+      "Host": "None",
       //"Host.Aggregator": "Trace",
       //"Host.Results": "Error",
       //"Host.Triggers.DurableTask": "Information",
 
       // ---- the triggers below can be enabled to get information on specific functions
+      "Function": "None", 
       //"Function.HelloCities": "Information",
       //"Function.HelloSequence": "Information",
-      //"Function.Sender": "Information",
-      //"Function.Receiver": "Information",
-      //"Function.Completion": "Information",
-
-      // ------ The log levels below affect some (but not all) consumers
-      // - limits what's displayed in the func.exe console
-      // - limits what gets stored in application insights
-      // - does not limit what is collected by ETW
-      // - does not limit what is traced to console
-      // - does not limit what is shown in Live Metrics side panel
+      "Function.Producer": "Warning",
+      "Function.Consumer": "Warning",
+      "Function.Completion": "Warning",
+ 
+      // --- the levels below are used to control the Netherite tracing
       "DurableTask.Netherite": "Information",
       "DurableTask.Netherite.FasterStorage": "Warning",
       "DurableTask.Netherite.EventHubsTransport": "Warning",
