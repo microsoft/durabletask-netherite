@@ -91,7 +91,7 @@ namespace PerformanceTests.WordCount
                         context.SignalEntity(Summary.GetEntityId(), nameof(Summary.Ops.Report), new Summary.Report()
                         {
                             entryCount = state.entryCount,
-                            topWords = state.wordCount.OrderByDescending(kvp => kvp.Value).Take(20).Select(kvp => (kvp.Value,kvp.Key)).ToList(),
+                            topWords = state.wordCount.OrderByDescending(kvp => kvp.Value).Take(20).ToList(),
                         });
                     }
                     break;

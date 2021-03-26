@@ -31,7 +31,7 @@ namespace PerformanceTests.WordCount
         public class Report
         {
             public int entryCount;
-            public List<(int, string)> topWords;
+            public List<KeyValuePair<string, int>> topWords;
         }
 
         public class SummaryState
@@ -70,12 +70,16 @@ namespace PerformanceTests.WordCount
                     var report = context.GetInput<Report>();
                     state.waitCount--;
                     state.entryCount += report.entryCount;
-                    state.topWords.AddRange(report.topWords);
-                    state.topWords.Sort((a, b) => b.Item1.CompareTo(a.Item1)); // sort in reverse order so most frequent words are first      
-                    if (state.topWords.Count > 20)
+
+                    var wordCount = new Dictionary<string,int>(report.topWords);
+                    foreach(var (count, word) in state.topWords)
                     {
-                        state.topWords.RemoveRange(20, state.topWords.Count - 20);
+                        wordCount.TryGetValue(word, out int currentCount);
+                        wordCount[word] = currentCount + count;
                     }
+
+                    state.topWords = wordCount.OrderByDescending(kvp => kvp.Value).Take(20).Select(kvp => (kvp.Value, kvp.Key)).ToList();
+
                     log.LogWarning($"{context.EntityId}: received report ({state.waitCount} left)");
                     if (state.waitCount == 0)
                     {
