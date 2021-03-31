@@ -14,6 +14,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Hosting;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Extensions.Options;
     using Xunit;
     using Xunit.Abstractions;
 
@@ -30,6 +31,10 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             this.logProvider = new TestLogProvider(output);
             this.typeLocator = new TestFunctionTypeLocator();
             this.settingsResolver = new TestSettingsResolver();
+            var options = new DurableTaskOptions();
+            var optionsWrapper = new OptionsWrapper<DurableTaskOptions>(options);
+            options.StorageProvider["type"] = "Netherite";
+            options.HubName = "test-taskhub";
 
             this.functionsHost = new HostBuilder()
                 .ConfigureLogging(
@@ -46,6 +51,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
                         services.AddSingleton<IConnectionStringResolver>(this.settingsResolver);
                         services.AddSingleton<ITypeLocator>(this.typeLocator);
                         services.AddSingleton<IDurabilityProviderFactory, NetheriteProviderFactory>();
+                        services.AddSingleton<IOptions<DurableTaskOptions>>(optionsWrapper);
                     })
                 .Build();
 

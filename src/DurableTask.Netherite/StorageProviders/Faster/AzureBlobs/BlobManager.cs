@@ -92,7 +92,7 @@ namespace DurableTask.Netherite.Faster
             SegmentSizeBits =
                 usePremiumStorage ? 35 // 32 GB
                                   : 32, // 4 GB
-            CopyReadsToTail = true,
+            CopyReadsToTail = FASTER.core.CopyReadsToTail.None,
             MemorySizeBits =
                 (numPartitions <= 1) ? 25 : // 32MB
                 (numPartitions <= 2) ? 24 : // 16MB
