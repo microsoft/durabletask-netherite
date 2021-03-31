@@ -12,19 +12,23 @@
       // - does not limit what is shown in Live Metrics side panel
 
       // ---- the triggers below can be enabled to get specific host tracing
-      "Host": "None",
+      "Host": "Information",
       //"Host.Aggregator": "Trace",
       //"Host.Results": "Error",
       //"Host.Triggers.DurableTask": "Information",
 
       // ---- the triggers below can be enabled to get information on specific functions
-      "Function": "None", 
+      "Function": "Warning",
       //"Function.HelloCities": "Information",
       //"Function.HelloSequence": "Information",
-      "Function.Producer": "Warning",
-      "Function.Consumer": "Warning",
-      "Function.Completion": "Warning",
- 
+      //"Function.Producer": "Warning",
+      //"Function.Consumer": "Warning",
+      //"Function.Completion": "Warning",
+      //"Function.Mapper": "Warning",
+      //"Function.Reducer": "Warning",
+      //"Function.Summary": "Warning",
+      //"Function.Wordcount": "Warning",
+
       // --- the levels below are used to control the Netherite tracing
       "DurableTask.Netherite": "Information",
       "DurableTask.Netherite.FasterStorage": "Warning",
@@ -73,17 +77,20 @@
         // set this to "true" to disable all speculation
         "PersistStepsFirst": false,
 
+        // How many TaskMessages to pack into a single event
+        "PackPartitionTaskMessages": 100,
+
         // can set this to "Scripted" to control the scenario with a partition script
         "PartitionManagement": "EventProcessorHost",
 
         // this controls what log information is produced by the various components
         // it limits production of the events, and thus can be used to prevent overheads
         // even when some consumers (e.g. Application Insights) are configured to trace information at the lowest level
-        "LogLevelLimit": "Information",
-        "StorageLogLevelLimit": "Information",
-        "TransportLogLevelLimit": "Information",
-        "EventLogLevelLimit": "Information",
-        "WorkItemLogLevelLimit": "Information",
+        "LogLevelLimit": "Debug",
+        "StorageLogLevelLimit": "Debug",
+        "TransportLogLevelLimit": "Debug",
+        "EventLogLevelLimit": "Debug",
+        "WorkItemLogLevelLimit": "Debug",
 
         // the following can be used to split and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context
