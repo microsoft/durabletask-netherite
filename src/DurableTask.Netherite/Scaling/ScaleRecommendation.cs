@@ -4,6 +4,8 @@
 namespace DurableTask.Netherite.Scaling
 {
     using System;
+    using Newtonsoft.Json;
+    using Newtonsoft.Json.Converters;
 
     /// <summary>
     /// Represents a scale recommendation for the task hub given the current performance metrics.
@@ -26,6 +28,7 @@ namespace DurableTask.Netherite.Scaling
         /// <summary>
         /// Gets the recommended scale action for the current task hub.
         /// </summary>
+        [JsonConverter(typeof(StringEnumConverter))]
         public ScaleAction Action { get; }
 
         /// <summary>

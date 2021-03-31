@@ -86,10 +86,27 @@ namespace DurableTask.Netherite
         public override void UpdateLoadInfo(PartitionLoadInfo info)
         {
             info.Activities = this.Pending.Count + this.LocalBacklog.Count + this.QueuedRemotes.Count;
-            info.ActivityLatencyMs = Enumerable.Concat(this.LocalBacklog, this.QueuedRemotes)
-                .Select(a => (long)(DateTime.UtcNow - a.IssueTime).TotalMilliseconds)
-                .DefaultIfEmpty()
-                .Max();
+
+            if (info.Activities > 0)
+            {
+                var maxLatencyInQueue = Enumerable.Concat(this.LocalBacklog, this.QueuedRemotes)
+                    .Select(a => (long)(DateTime.UtcNow - a.IssueTime).TotalMilliseconds)
+                    .DefaultIfEmpty()
+                    .Max();
+
+                if (maxLatencyInQueue < 100)
+                {
+                    info.MarkActive();
+                }
+                else if (maxLatencyInQueue < 1000)
+                {
+                    info.MarkMediumLatency();
+                }
+                else
+                {
+                    info.MarkHighLatency();
+                }
+            }
         }
 
         public override string ToString()

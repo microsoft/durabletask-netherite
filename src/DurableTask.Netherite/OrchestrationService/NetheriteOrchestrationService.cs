@@ -132,6 +132,31 @@ namespace DurableTask.Netherite
                 DurableTask.Core.Tracing.DefaultEventSource.Log.IsTraceEnabled);
         }
 
+        /// <summary>
+        /// Get a scaling monitor for autoscaling.
+        /// </summary>
+        /// <param name="monitor">The returned scaling monitor.</param>
+        /// <returns>true if autoscaling is supported, false otherwise</returns>
+        public bool TryGetScalingMonitor(out ScalingMonitor monitor)
+        {
+            if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster
+                || this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
+            {
+                monitor = new ScalingMonitor(
+                    this.Settings.ResolvedStorageConnectionString, 
+                    this.Settings.ResolvedTransportConnectionString, 
+                    this.Settings.LoadInformationAzureTableName, 
+                    this.Settings.HubName,
+                    this.LoggerFactory.CreateLogger($"{LoggerCategoryName}.Scaling"));
+                return true;
+            }
+            else
+            {
+                monitor = null;
+                return false;
+            }
+        }
+
         /******************************/
         // storage provider
         /******************************/

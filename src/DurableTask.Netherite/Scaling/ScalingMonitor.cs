@@ -11,11 +11,12 @@ namespace DurableTask.Netherite.Scaling
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Netherite.EventHubs;
+    using Microsoft.Extensions.Logging;
 
     /// <summary>
     /// Monitors the performance of the Netherite backend and makes scaling decisions.
     /// </summary>
-    public class ScalingMonitor
+    public class ScalingMonitor 
     {
         readonly string storageConnectionString;
         readonly string eventHubsConnectionString;
@@ -25,6 +26,18 @@ namespace DurableTask.Netherite.Scaling
 
         readonly AzureLoadMonitorTable table;
 
+        Metrics? CachedMetrics;
+
+        /// <summary>
+        /// The name of the taskhub.
+        /// </summary>
+        public string TaskHubName => this.taskHubName;
+
+        /// <summary>
+        /// A logger for scaling events.
+        /// </summary>
+        public ILogger Logger { get; }
+
         /// <summary>
         /// Creates an instance of the scaling monitor, with the given parameters.
         /// </summary>
@@ -32,12 +45,18 @@ namespace DurableTask.Netherite.Scaling
         /// <param name="eventHubsConnectionString">The connection string for the transport layer.</param>
         /// <param name="partitionLoadTableName">The name of the storage table with the partition load information.</param>
         /// <param name="taskHubName">The name of the taskhub.</param>
-        public ScalingMonitor(string storageConnectionString, string eventHubsConnectionString, string partitionLoadTableName, string taskHubName)
+        public ScalingMonitor(
+            string storageConnectionString, 
+            string eventHubsConnectionString, 
+            string partitionLoadTableName, 
+            string taskHubName,
+            ILogger logger)
         {
             this.storageConnectionString = storageConnectionString;
             this.eventHubsConnectionString = eventHubsConnectionString;
             this.partitionLoadTableName = partitionLoadTableName;
             this.taskHubName = taskHubName;
+            this.Logger = logger;
 
             TransportConnectionString.Parse(eventHubsConnectionString, out _, out this.configuredTransport);
 
@@ -45,26 +64,67 @@ namespace DurableTask.Netherite.Scaling
         }
 
         /// <summary>
+        /// The metrics that are collected prior to making a scaling decision
+        /// </summary>
+        public struct Metrics
+        {
+            /// <summary>
+            ///  the most recent load information published for each partition
+            /// </summary>
+            public Dictionary<uint, PartitionLoadInfo> LoadInformation { get; set; }
+
+            /// <summary>
+            /// A reason why the taskhub is not idle, or null if it is idle
+            /// </summary>
+            public string Busy { get; set; }
+
+            /// <summary>
+            /// Whether the taskhub is idle
+            /// </summary>
+            public bool TaskHubIsIdle => string.IsNullOrEmpty(this.Busy);
+
+            /// <summary>
+            /// The time at which the metrics were collected
+            /// </summary>
+            public DateTime Timestamp;
+        }
+
+        /// <summary>
+        /// Collect the metrics for making the scaling decision.
+        /// </summary>
+        /// <returns>The collected metrics.</returns>
+        public async Task<Metrics> CollectMetrics()
+        {
+            DateTime now = DateTime.UtcNow;
+
+            if (this.CachedMetrics.HasValue && now - this.CachedMetrics.Value.Timestamp < TimeSpan.FromSeconds(1.5))
+            {
+                return this.CachedMetrics.Value;
+            }
+
+            var loadInformation = await this.table.QueryAsync(CancellationToken.None).ConfigureAwait(false);
+            var busy = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
+
+            return (this.CachedMetrics = new Metrics()
+            { 
+                LoadInformation = loadInformation,
+                Busy = busy,
+                Timestamp = now,
+            }).Value;
+        }
+
+        /// <summary>
         /// Makes a scale recommendation.
         /// </summary>
         /// <returns></returns>
-        public async Task<ScaleRecommendation> GetScaleRecommendation(int workerCount)
+        public ScaleRecommendation GetScaleRecommendation(int workerCount, Metrics metrics)
         {
-            Dictionary<uint, PartitionLoadInfo> loadInformation = await this.table.QueryAsync(CancellationToken.None).ConfigureAwait(false);
-
-            bool taskHubIsIdle = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
-
-            if (workerCount == 0 && !taskHubIsIdle)
+            if (workerCount == 0 && !metrics.TaskHubIsIdle)
             {
-                return new ScaleRecommendation(ScaleAction.AddWorker, keepWorkersAlive: true, reason: "First worker");
+                return new ScaleRecommendation(ScaleAction.AddWorker, keepWorkersAlive: true, reason: metrics.Busy);
             }
 
-            if (loadInformation.Values.Any(partitionLoadInfo => partitionLoadInfo.LatencyTrend.Length < PartitionLoadInfo.LatencyTrendLength))
-            {
-                return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: !taskHubIsIdle, reason: "Not enough samples");
-            }
-
-            if (taskHubIsIdle)
+            if (metrics.TaskHubIsIdle)
             {
                 return new ScaleRecommendation(
                     scaleAction: workerCount > 0 ? ScaleAction.RemoveWorker : ScaleAction.None,
@@ -72,23 +132,23 @@ namespace DurableTask.Netherite.Scaling
                     reason: "Task hub is idle");
             }
 
-            int numberOfSlowPartitions = loadInformation.Values.Count(info => info.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
+            int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
 
             if (workerCount < numberOfSlowPartitions)
             {
-                // Some partitions are busy, so scale out until workerCount == partitionCount.
-                var partition = loadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
+                // scale up to the number of busy partitions
+                var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
                 return new ScaleRecommendation(
                     ScaleAction.AddWorker,
                     keepWorkersAlive: true,
                     reason: $"High latency in partition {partition.Key}: {partition.Value.LatencyTrend}");
             }
 
-            int numberOfNonIdlePartitions = loadInformation.Values.Count(info => info.LatencyTrend.Any(c => c != PartitionLoadInfo.Idle));
+            int numberOfNonIdlePartitions = metrics.LoadInformation.Values.Count(info => ! PartitionLoadInfo.IsLongIdle(info.LatencyTrend));
 
             if (workerCount > numberOfNonIdlePartitions)
             {
-                // If the work item queues are idle, scale down to the number of non-idle control queues.
+                // scale down to the number of non-idle partitions.
                 return new ScaleRecommendation(
                     ScaleAction.RemoveWorker,
                     keepWorkersAlive: true,
@@ -100,10 +160,11 @@ namespace DurableTask.Netherite.Scaling
             // We also want to avoid scaling in unnecessarily when we've reached optimal scale-out. To balance these
             // goals, we check for low latencies and vote to scale down 10% of the time when we see this. The thought is
             // that it's a slow scale-in that will get automatically corrected once latencies start increasing again.
-            if (workerCount > 1 && (new Random()).Next(10) == 0)
+            if (workerCount > 1 && (new Random()).Next(8) == 0)
             {
-                bool allPartitionsAreFast = !loadInformation.Values.Any(
-                    info => info.LatencyTrend.Any(c => c == PartitionLoadInfo.MediumLatency || c == PartitionLoadInfo.HighLatency));
+                bool allPartitionsAreFast = !metrics.LoadInformation.Values.Any(
+                    info => info.LatencyTrend.Length == PartitionLoadInfo.LatencyTrendLength 
+                        && info.LatencyTrend.Any(c => c == PartitionLoadInfo.MediumLatency || c == PartitionLoadInfo.HighLatency));
 
                 if (allPartitionsAreFast)
                 {
@@ -119,19 +180,15 @@ namespace DurableTask.Netherite.Scaling
             return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: $"Partition latencies are healthy");
         }
 
-        async Task<bool> TaskHubIsIdleAsync(Dictionary<uint, PartitionLoadInfo> loadInformation)
+        public async Task<string> TaskHubIsIdleAsync(Dictionary<uint, PartitionLoadInfo> loadInformation)
         {
             // first, check if any of the partitions have queued work or are scheduled to wake up
-            foreach (var p in loadInformation.Values)
+            foreach (var kvp in loadInformation)
             {
-                if (p.Activities > 0 || p.WorkItems > 0 || p.Requests > 0 || p.Outbox > 0)
+                string busy = kvp.Value.IsBusy();
+                if (!string.IsNullOrEmpty(busy))
                 {
-                    return false;
-                }
-
-                if (p.Wakeup.HasValue && p.Wakeup.Value < DateTime.UtcNow + TimeSpan.FromSeconds(10))
-                {
-                    return false;
+                    return $"P{kvp.Key:D2} {busy}";
                 }
             }
 
@@ -140,30 +197,36 @@ namespace DurableTask.Netherite.Scaling
 
             long[] positions;
 
-            switch (this.configuredTransport)
+            if (this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
-                case TransportConnectionString.TransportChoices.EventHubs:
-                    positions = await EventHubs.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
-                    break;
+                positions = await EventHubs.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
 
-                default:
-                    return false;
+                for (uint i = 0; i < positions.Length; i++)
+                {
+                    if (!loadInformation.TryGetValue(i, out var loadInfo))
+                    {
+                        return $"P{i:D2} has no load information published yet";
+                    }
+                    if (positions[i] > loadInfo.InputQueuePosition)
+                    {
+                        return $"P{i:D2} has input queue position {loadInfo.InputQueuePosition} which is {positions[i] - loadInfo.InputQueuePosition} behind latest position {positions[i]}";
+                    }
+                }
             }
 
-            for (uint i = 0; i < positions.Length; i++)
+            // finally, check if we have waited long enough
+            foreach (var kvp in loadInformation)
             {
-                if (!loadInformation.TryGetValue(i, out var loadInfo))
+                string latencyTrend = kvp.Value.LatencyTrend;
+
+                if (!PartitionLoadInfo.IsLongIdle(latencyTrend))
                 {
-                    return false;
-                }
-                if (positions[i] > loadInfo.InputQueuePosition)
-                {
-                    return false;
+                    return $"P{kvp.Key:D2} had some activity recently, latency trend is {latencyTrend}";
                 }
             }
 
             // we have concluded that there are no pending work items, timers, or unprocessed input queue entries
-            return true;
+            return null;
         }  
     }
 }
