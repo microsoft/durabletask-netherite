@@ -358,7 +358,7 @@ namespace DurableTask.Netherite.EventHubs
 
                                     if (partitionEvent != null)
                                     {
-                                        this.host.logger.LogDebug("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) received packet #{seqno} ({size} bytes) {event}", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno, eventDatum.Body.Count, partitionEvent);
+                                        this.host.logger.LogTrace("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) received packet #{seqno} ({size} bytes) {event}", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno, eventDatum.Body.Count, partitionEvent);
                                     }
                                     else
                                     {
@@ -378,7 +378,7 @@ namespace DurableTask.Netherite.EventHubs
                                 }
                                 else
                                 {
-                                    this.host.logger.LogDebug("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) discarded packet #{seqno} because it is already processed", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno);
+                                    this.host.logger.LogTrace("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) discarded packet #{seqno} because it is already processed", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno);
                                 }
                             }
 

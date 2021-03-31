@@ -9,6 +9,7 @@ namespace DurableTask.Netherite
     using System.Diagnostics;
     using System.Threading;
     using System.Threading.Tasks;
+    using DurableTask.Netherite.Faster;
 
     /// <summary>
     /// General pattern for an asynchronous worker that performs a work task, when notified,
@@ -23,6 +24,7 @@ namespace DurableTask.Netherite
         readonly Stopwatch stopwatch;
         protected string Name { get; }
         protected readonly CancellationToken cancellationToken;
+        readonly PartitionTraceHelper traceHelper;
 
         volatile int state;
         const int IDLE = 0;
@@ -37,13 +39,14 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Constructor including a cancellation token.
         /// </summary>
-        public BatchWorker(string name, bool startSuspended, int maxBatchSize, CancellationToken cancellationToken)
+        public BatchWorker(string name, bool startSuspended, int maxBatchSize, CancellationToken cancellationToken, PartitionTraceHelper traceHelper)
         {
             this.Name = name;
             this.cancellationToken = cancellationToken;
             this.state = startSuspended ? SUSPENDED : IDLE;
             this.maxBatchSize = maxBatchSize;
             this.stopwatch = new Stopwatch();
+            this.traceHelper = traceHelper;
         }
 
         protected Action<string> Tracer { get; set; } = null;
@@ -142,7 +145,7 @@ namespace DurableTask.Netherite
 
                 if (previousBatch.HasValue)
                 {
-                    this.WorkLoopCompleted(previousBatch.Value, this.stopwatch.Elapsed.TotalMilliseconds, nextBatch);
+                    this.traceHelper?.BatchWorkerProgress(this.Name, previousBatch.Value, this.stopwatch.Elapsed.TotalMilliseconds, nextBatch);
                 }
 
                 if (!nextBatch.HasValue)
@@ -216,16 +219,6 @@ namespace DurableTask.Netherite
                 this.stopwatch.Stop();
                 previousBatch = this.batch.Count;
             }
-        }
-
-        /// <summary>
-        /// Can be overridden by subclasses to trace progress of the batch work loop
-        /// </summary>
-        /// <param name="batchSize">The size of the batch that was processed</param>
-        /// <param name="elapsedMilliseconds">The time in milliseconds it took to process</param>
-        /// <param name="nextBatch">If there is more work, the current queue size of the next batch, or null otherwise</param>
-        protected virtual void WorkLoopCompleted(int batchSize, double elapsedMilliseconds, int? nextBatch)
-        {
         }
 
         public void Resume()

@@ -18,7 +18,7 @@ namespace DurableTask.Netherite.Scaling
         public static TimeSpan AggregatePublishInterval = TimeSpan.FromSeconds(2);
         readonly CancellationTokenSource cancelWait = new CancellationTokenSource();
 
-        public LoadPublisher(ILoadMonitorService service, CancellationToken token, ILogger logger) : base(nameof(LoadPublisher), false, int.MaxValue, token)
+        public LoadPublisher(ILoadMonitorService service, CancellationToken token, ILogger logger) : base(nameof(LoadPublisher), false, int.MaxValue, token, null)
         {
             this.service = service;
             this.logger = logger;

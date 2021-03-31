@@ -166,35 +166,35 @@ namespace DurableTask.Netherite
         /// </summary>
         /// <remarks>This level applies to both ETW events and ILogger events.</remarks>
         [JsonConverter(typeof(StringEnumConverter))]
-        public LogLevel TransportLogLevelLimit { get; set; } = LogLevel.Information;
+        public LogLevel TransportLogLevelLimit { get; set; } = LogLevel.Debug;
 
         /// <summary>
         /// A lower limit on the severity level of trace events emitted by the storage layer.
         /// </summary>
         /// <remarks>This level applies to both ETW events and ILogger events.</remarks>
         [JsonConverter(typeof(StringEnumConverter))]
-        public LogLevel StorageLogLevelLimit { get; set; } = LogLevel.Information;
+        public LogLevel StorageLogLevelLimit { get; set; } = LogLevel.Debug;
 
         /// <summary>
         /// A lower limit on the severity level of event processor trace events emitted.
         /// </summary>
         /// <remarks>This level applies to both ETW events and ILogger events.</remarks>
         [JsonConverter(typeof(StringEnumConverter))]
-        public LogLevel EventLogLevelLimit { get; set; } = LogLevel.Information;
+        public LogLevel EventLogLevelLimit { get; set; } = LogLevel.Debug;
 
         /// <summary>
         /// A lower limit on the severity level of work item trace events emitted.
         /// </summary>
         /// <remarks>This level applies to both ETW events and ILogger events.</remarks>
         [JsonConverter(typeof(StringEnumConverter))]
-        public LogLevel WorkItemLogLevelLimit { get; set; } = LogLevel.Information;
+        public LogLevel WorkItemLogLevelLimit { get; set; } = LogLevel.Debug;
 
         /// <summary>
         /// A lower limit on the severity level of all other trace events emitted.
         /// </summary>
         /// <remarks>This level applies to both ETW events and ILogger events.</remarks>
         [JsonConverter(typeof(StringEnumConverter))]
-        public LogLevel LogLevelLimit { get; set; } = LogLevel.Information;
+        public LogLevel LogLevelLimit { get; set; } = LogLevel.Debug;
 
         /// <summary>
         /// Validates the settings, throwing exceptions if there are issues.

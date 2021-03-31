@@ -43,8 +43,8 @@ namespace DurableTask.Netherite.Faster
         public static TimeSpan PokePeriod = TimeSpan.FromSeconds(3); // allows storeworker to checkpoint and publish load even while idle
 
 
-        public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken)
-            : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", true, 500, cancellationToken)
+        public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken) 
+            : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", true, 500, cancellationToken, partition.TraceHelper)
         {
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
@@ -375,11 +375,6 @@ namespace DurableTask.Netherite.Faster
             {
                 this.partition.ErrorHandler.HandleError("StoreWorker.Process", "Encountered exception while working on store", exception, true, false);
             }
-        }
-
-        protected override void WorkLoopCompleted(int batchSize, double elapsedMilliseconds, int? nextBatch)
-        {
-            this.traceHelper.FasterProgress($"StoreWorker completed batch: batchSize={batchSize} elapsedMilliseconds={elapsedMilliseconds} nextBatch={nextBatch}");
         }
 
         public async Task<(long,long)> WaitForCheckpointAsync(bool isIndexCheckpoint, Guid checkpointToken)

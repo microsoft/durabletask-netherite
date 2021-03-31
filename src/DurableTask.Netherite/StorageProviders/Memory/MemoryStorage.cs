@@ -22,7 +22,7 @@ namespace DurableTask.Netherite
         readonly ConcurrentDictionary<TrackedObjectKey, TrackedObject> trackedObjects
             = new ConcurrentDictionary<TrackedObjectKey, TrackedObject>();
 
-        public MemoryStorage(ILogger logger) : base(nameof(MemoryStorage), true, int.MaxValue, CancellationToken.None)
+        public MemoryStorage(ILogger logger) : base(nameof(MemoryStorage), true, int.MaxValue, CancellationToken.None, null)
         {
             this.logger = logger;
             this.GetOrAdd(TrackedObjectKey.Activities);

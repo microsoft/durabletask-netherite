@@ -375,7 +375,6 @@ namespace DurableTask.Netherite.Faster
             }
             this.TraceHelper.LeaseProgress("Access is waiting for fresh lease");
             this.NextLeaseRenewalTask.Wait();
-            this.TraceHelper.LeaseProgress("Access has fresh lease now");
         }
 
         async Task AcquireOwnership()
@@ -494,7 +493,7 @@ namespace DurableTask.Netherite.Faster
                     this.TraceHelper.LeaseProgress($"Renewing lease at {this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds}s");
                     await this.eventLogCommitBlob.RenewLeaseAsync(acc, this.PartitionErrorHandler.Token)
                         .ConfigureAwait(false);
-                    this.TraceHelper.LeaseProgress($"Renewed lease at {this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds}s");
+                    this.TraceHelper.LeaseRenewed(this.leaseTimer.Elapsed.TotalSeconds, this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds);
 
                     if (nextLeaseTimer.ElapsedMilliseconds > 2000)
                     {
@@ -510,7 +509,7 @@ namespace DurableTask.Netherite.Faster
             }
             catch (Exception)
             {
-                this.TraceHelper.LeaseProgress("Failed to renew lease");
+                this.TraceHelper.LeaseLost(this.leaseTimer.Elapsed.TotalSeconds, nameof(RenewLeaseTask));
                 throw;
             }
         }
@@ -580,7 +579,7 @@ namespace DurableTask.Netherite.Faster
                             operationContext: null,
                             cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
 
-                        this.TraceHelper.LeaseReleased();
+                        this.TraceHelper.LeaseReleased(this.leaseTimer.Elapsed.TotalSeconds);
                     }
                     catch (OperationCanceledException)
                     {
@@ -646,7 +645,7 @@ namespace DurableTask.Netherite.Faster
                     catch (StorageException ex) when (BlobUtils.LeaseConflict(ex))
                     {
                         // We lost the lease to someone else. Terminate ownership immediately.
-                        this.TraceHelper.LeaseLost(nameof(ILogCommitManager.Commit));
+                        this.TraceHelper.LeaseLost(this.leaseTimer.Elapsed.TotalSeconds, nameof(ILogCommitManager.Commit));
                         this.HandleStorageError(nameof(ILogCommitManager.Commit), "could not commit because of lost lease", this.eventLogCommitBlob?.Name, ex, true, this.PartitionErrorHandler.IsTerminated);
                         throw;
                     }
@@ -699,7 +698,7 @@ namespace DurableTask.Netherite.Faster
                    catch (StorageException ex) when (BlobUtils.LeaseConflict(ex))
                    {
                        // We lost the lease to someone else. Terminate ownership immediately.
-                       this.TraceHelper.LeaseLost(nameof(ILogCommitManager.GetCommitMetadata));
+                       this.TraceHelper.LeaseLost(this.leaseTimer.Elapsed.TotalSeconds, nameof(ILogCommitManager.GetCommitMetadata));
                        this.HandleStorageError(nameof(ILogCommitManager.Commit), "could not read latest commit due to lost lease", this.eventLogCommitBlob?.Name, ex, true, this.PartitionErrorHandler.IsTerminated);
                        throw;
                    }

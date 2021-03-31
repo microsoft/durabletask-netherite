@@ -292,7 +292,8 @@ namespace DurableTask.Netherite
                     this.Partition.PartitionId, 
                     WorkItemTraceHelper.WorkItemType.Orchestration, 
                     evt.WorkItemId, evt.InstanceId, 
-                    session != null ? this.GetSessionPosition(session) : null); 
+                    session != null ? this.GetSessionPosition(session) : null,
+                    "session was replaced"); 
                 
                 return;
             };
