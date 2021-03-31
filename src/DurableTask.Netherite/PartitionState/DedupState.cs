@@ -16,7 +16,7 @@ namespace DurableTask.Netherite
     class DedupState : TrackedObject
     {
         [DataMember]
-        public Dictionary<uint, long> LastProcessed { get; set; } = new Dictionary<uint, long>();
+        public Dictionary<uint, (long Position, int SubPosition)> LastProcessed { get; set; } = new Dictionary<uint, (long,int)>();
 
         [DataMember]
         public (long, long) Positions; // used by FasterAlt to persist positions
@@ -26,11 +26,12 @@ namespace DurableTask.Netherite
 
         bool IsNotDuplicate(PartitionMessageEvent evt)
         {
-            // detect duplicates of incoming partition-to-partition events by comparing commit log position of this event against last processed event from same partition
-            this.LastProcessed.TryGetValue(evt.OriginPartition, out long lastProcessed);
-            if (evt.OriginPosition > lastProcessed)
+            // detect duplicates of incoming partition-to-partition events by comparing commit log position /subposition of this event against last processed event from same partition
+            this.LastProcessed.TryGetValue(evt.OriginPartition, out (long,int) lastProcessed);
+
+            if (evt.DedupPosition.CompareTo(lastProcessed) > 0)
             {
-                this.LastProcessed[evt.OriginPartition] = evt.OriginPosition;
+                this.LastProcessed[evt.OriginPartition] = evt.DedupPosition;
                 return true;
             }
             else

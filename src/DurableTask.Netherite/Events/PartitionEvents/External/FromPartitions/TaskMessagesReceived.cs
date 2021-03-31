@@ -18,10 +18,19 @@ namespace DurableTask.Netherite
         public List<TaskMessage> DelayedTaskMessages { get; set; }
 
         [DataMember]
+        public int SubPosition { get; set; }
+
+        [DataMember]
         public string WorkItemId { get; set; }
 
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionToPartitionEventId(this.WorkItemId, this.PartitionId);
+
+        [IgnoreDataMember]
+        public override (long, int) DedupPosition => (this.OriginPosition, this.SubPosition);
+
+        [IgnoreDataMember]
+        public int NumberMessages => (this.TaskMessages?.Count ?? 0) + (this.DelayedTaskMessages?.Count ?? 0);
 
         protected override void ExtraTraceInformation(StringBuilder s)
         {

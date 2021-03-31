@@ -14,6 +14,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public long OriginPosition { get; set; }
 
+        [IgnoreDataMember]
+        public virtual (long, int) DedupPosition => (this.OriginPosition, 0); // overridden if a subposition is needed
+
         public override void DetermineEffects(EffectTracker effects)
         {
             effects.Add(TrackedObjectKey.Dedup);

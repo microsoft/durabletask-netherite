@@ -114,7 +114,7 @@ namespace DurableTask.Netherite
             public Partition Partition { get; set; }
 
             [IgnoreDataMember]
-int numAcks = 0;
+            int numAcks = 0;
 
             public void ConfirmDurable(Event evt)
             {
@@ -154,34 +154,76 @@ int numAcks = 0;
 
         public void Process(BatchProcessed evt, EffectTracker effects)
         {
-            var sorted = new Dictionary<uint, TaskMessagesReceived>();
-            foreach (var message in evt.RemoteMessages)
-            {   
-                var instanceId = message.OrchestrationInstance.InstanceId;
-                var destination = this.Partition.PartitionFunction(instanceId);          
-                if (!sorted.TryGetValue(destination, out var outmessage))
+            var batch = new Batch();
+            int subPosition = 0;
+
+            IEnumerable<(uint,TaskMessage)> Messages()
+            {
+                foreach (var message in evt.RemoteMessages)
                 {
-                    sorted[destination] = outmessage = new TaskMessagesReceived()
+                    var instanceId = message.OrchestrationInstance.InstanceId;
+                    var destination = this.Partition.PartitionFunction(instanceId);
+                    yield return (destination, message);
+                }
+            }
+
+            void AddMessage(TaskMessagesReceived outmessage, TaskMessage message)
+            {
+                if (Entities.IsDelayedEntityMessage(message, out _))
+                {
+                    (outmessage.DelayedTaskMessages ??= new List<TaskMessage>()).Add(message);
+                }
+                else if (message.Event is ExecutionStartedEvent executionStartedEvent && executionStartedEvent.ScheduledStartTime.HasValue)
+                {
+                    (outmessage.DelayedTaskMessages ??= new List<TaskMessage>()).Add(message);
+                }
+                else
+                {
+                    (outmessage.TaskMessages ??= new List<TaskMessage>()).Add(message);
+                }
+                outmessage.SubPosition = ++subPosition;
+            }
+
+            if (effects.Partition.Settings.PackPartitionTaskMessages > 1)
+            {
+                // pack multiple TaskMessages for the same destination into a single TaskMessagesReceived event
+                var sorted = new Dictionary<uint, TaskMessagesReceived>();
+                foreach ((uint destination, TaskMessage message) in Messages())
+                {
+                    if (!sorted.TryGetValue(destination, out var outmessage))
+                    {
+                        sorted[destination] = outmessage = new TaskMessagesReceived()
+                        {
+                            PartitionId = destination,
+                            WorkItemId = evt.WorkItemId,
+                        };
+                    }
+
+                    AddMessage(outmessage, message);
+
+                    // send the message if we have reached the pack limit
+                    if (outmessage.NumberMessages >= effects.Partition.Settings.PackPartitionTaskMessages)
+                    {
+                        batch.OutgoingMessages.Add(outmessage);
+                        sorted.Remove(destination);
+                    }
+                }
+                batch.OutgoingMessages.AddRange(sorted.Values);
+            }
+            else
+            {
+                // send each TaskMessage as a separate TaskMessagesReceived event
+                foreach ((uint destination, TaskMessage message) in Messages())
+                {
+                    var outmessage = new TaskMessagesReceived()
                     {
                         PartitionId = destination,
                         WorkItemId = evt.WorkItemId,
                     };
-                }
-                if (Entities.IsDelayedEntityMessage(message, out _))
-                {
-                    (outmessage.DelayedTaskMessages ?? (outmessage.DelayedTaskMessages = new List<TaskMessage>())).Add(message);
-                }
-                else if (message.Event is ExecutionStartedEvent executionStartedEvent && executionStartedEvent.ScheduledStartTime.HasValue)
-                {
-                    (outmessage.DelayedTaskMessages ?? (outmessage.DelayedTaskMessages = new List<TaskMessage>())).Add(message);
-                }
-                else
-                {
-                    (outmessage.TaskMessages ?? (outmessage.TaskMessages = new List<TaskMessage>())).Add(message);
+                    AddMessage(outmessage, message);
+                    batch.OutgoingMessages.Add(outmessage);
                 }
             }
-            var batch = new Batch();
-            batch.OutgoingMessages.AddRange(sorted.Values);
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
 
