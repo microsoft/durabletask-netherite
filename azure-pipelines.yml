@@ -40,7 +40,7 @@ steps:
     EventHubsConnection: 'Memory'
   inputs:
     command: 'test' 
-    projects: '**/DurableTask.Netherite*Tests.csproj'
+    projects: '**/DurableTask.Netherite.Tests.csproj'
     arguments: '--configuration $(buildConfiguration) --verbosity normal'
     testRunTitle: 'Netherite Unit Tests on DevStorage/Memory'
 
@@ -50,7 +50,7 @@ steps:
     EventHubsConnection: $(TransportConnectionString)
   inputs:
     command: 'test' 
-    projects: '**/DurableTask.Netherite*Tests.csproj'
+    projects: '**/DurableTask.Netherite.Tests.csproj'
     arguments: '--configuration $(buildConfiguration) --verbosity normal'
     testRunTitle: 'Netherite Unit Tests on storageAccount/EventHubs'
 
