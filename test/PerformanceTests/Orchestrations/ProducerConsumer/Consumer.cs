@@ -23,7 +23,7 @@ namespace PerformanceTests.ProducerConsumer
         }
 
         [FunctionName(nameof(Consumer))]
-        public static async Task HandleOperation(
+        public static Task HandleOperation(
             [EntityTrigger] IDurableEntityContext context, ILogger log)
         {
             var stopwatch = new Stopwatch();
@@ -71,6 +71,8 @@ namespace PerformanceTests.ProducerConsumer
             }
 
             log.LogInformation("{Entity} performed {Operation} in {Latency:F3}ms", context.EntityId, context.OperationName, stopwatch.Elapsed.TotalMilliseconds);
+
+            return Task.CompletedTask;
         }
     }
 }
