@@ -95,41 +95,41 @@ namespace PerformanceTests
 
         //---- http trigger
 
-        [Disable]
-        [FunctionName(nameof(RunTriggerSequence))]
-        public static async Task<IActionResult> RunTriggerSequence(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "RunTriggerSequence")] HttpRequest req,
-            [DurableClient] IDurableClient client,
-            ILogger log)
-        {
-            TimeSpan timeout = TimeSpan.FromSeconds(200);
-            string orchestrationInstanceId = await client.StartNewAsync(nameof(TriggeredSequence), null, new Input()
-            {
-                Length = 10,
-                WorkExponent = 0, 
-                DataExponent = 0,
-            });
-            var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, timeout);
-            return response;
-        }
+        //[Disable]
+        //[FunctionName(nameof(RunTriggerSequence))]
+        //public static async Task<IActionResult> RunTriggerSequence(
+        //    [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "RunTriggerSequence")] HttpRequest req,
+        //    [DurableClient] IDurableClient client,
+        //    ILogger log)
+        //{
+        //    TimeSpan timeout = TimeSpan.FromSeconds(200);
+        //    string orchestrationInstanceId = await client.StartNewAsync(nameof(TriggeredSequence), null, new Input()
+        //    {
+        //        Length = 10,
+        //        WorkExponent = 0, 
+        //        DataExponent = 0,
+        //    });
+        //    var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, timeout);
+        //    return response;
+        //}
 
-        [Disable]
-        [FunctionName(nameof(RunQueueSequence))]
-        public static async Task<IActionResult> RunQueueSequence(
-           [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "RunQueueSequence")] HttpRequest req,
-           [DurableClient] IDurableClient client,
-           ILogger log)
-        {
-            TimeSpan timeout = TimeSpan.FromSeconds(200);
-            string orchestrationInstanceId = await client.StartNewAsync(nameof(QueueSequence), null, new Input()
-            {
-                Length = 10,
-                WorkExponent = 0,
-                DataExponent = 0,
-            });
-            var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, timeout);
-            return response;
-        }
+        //[Disable]
+        //[FunctionName(nameof(RunQueueSequence))]
+        //public static async Task<IActionResult> RunQueueSequence(
+        //   [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "RunQueueSequence")] HttpRequest req,
+        //   [DurableClient] IDurableClient client,
+        //   ILogger log)
+        //{
+        //    TimeSpan timeout = TimeSpan.FromSeconds(200);
+        //    string orchestrationInstanceId = await client.StartNewAsync(nameof(QueueSequence), null, new Input()
+        //    {
+        //        Length = 10,
+        //        WorkExponent = 0,
+        //        DataExponent = 0,
+        //    });
+        //    var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, timeout);
+        //    return response;
+        //}
 
         //-------------- orchestrated sequence
 
@@ -160,117 +160,117 @@ namespace PerformanceTests
 
         //-------------- queue sequence
 
-        [Disable]
-        [FunctionName(nameof(QueueSequence))]
-        public static async Task<string> QueueSequence(
-            [OrchestrationTrigger] IDurableOrchestrationContext context,
-            ILogger logger)
-        {
-            Input input = context.GetInput<Input>();
-            input.InstanceId = context.InstanceId;
-            await context.CallActivityAsync(nameof(QueueSequenceTaskStart), input);
-            input = await context.WaitForExternalEvent<Input>("completed");
-            var result = $"queue sequence {context.InstanceId} completed in {input.Duration}s\n";
-            logger.LogWarning(result);
-            return result;
-        }
+        //[Disable]
+        //[FunctionName(nameof(QueueSequence))]
+        //public static async Task<string> QueueSequence(
+        //    [OrchestrationTrigger] IDurableOrchestrationContext context,
+        //    ILogger logger)
+        //{
+        //    Input input = context.GetInput<Input>();
+        //    input.InstanceId = context.InstanceId;
+        //    await context.CallActivityAsync(nameof(QueueSequenceTaskStart), input);
+        //    input = await context.WaitForExternalEvent<Input>("completed");
+        //    var result = $"queue sequence {context.InstanceId} completed in {input.Duration}s\n";
+        //    logger.LogWarning(result);
+        //    return result;
+        //}
 
-        [Disable]
-        [FunctionName(nameof(QueueSequenceTaskStart))]
-        public static async Task QueueSequenceTaskStart(
-            [ActivityTrigger] IDurableActivityContext context,
-            [Queue("sequence")] CloudQueue queue,
-            ILogger logger)
-        {
-            Input input = context.GetInput<Input>();
-            string content = JsonConvert.SerializeObject(input);
-            await queue.CreateIfNotExistsAsync();
-            await queue.AddMessageAsync(new CloudQueueMessage(content));
-        }
+        //[Disable]
+        //[FunctionName(nameof(QueueSequenceTaskStart))]
+        //public static async Task QueueSequenceTaskStart(
+        //    [ActivityTrigger] IDurableActivityContext context,
+        //    [Queue("sequence")] CloudQueue queue,
+        //    ILogger logger)
+        //{
+        //    Input input = context.GetInput<Input>();
+        //    string content = JsonConvert.SerializeObject(input);
+        //    await queue.CreateIfNotExistsAsync();
+        //    await queue.AddMessageAsync(new CloudQueueMessage(content));
+        //}
 
-        [Disable]
-        [FunctionName(nameof(QueueSequenceTask1))]
-        public static async Task QueueSequenceTask1(
-           [QueueTrigger("sequence")] string serialized,
-           [Queue("sequence")] CloudQueue queue,
-           [DurableClient] IDurableClient client,
-           ILogger logger)
-        {
-            Input input = JsonConvert.DeserializeObject<Input>(serialized);
+        //[Disable]
+        //[FunctionName(nameof(QueueSequenceTask1))]
+        //public static async Task QueueSequenceTask1(
+        //   [QueueTrigger("sequence")] string serialized,
+        //   [Queue("sequence")] CloudQueue queue,
+        //   [DurableClient] IDurableClient client,
+        //   ILogger logger)
+        //{
+        //    Input input = JsonConvert.DeserializeObject<Input>(serialized);
 
-            input = RunTask(input, logger, input.InstanceId);
+        //    input = RunTask(input, logger, input.InstanceId);
 
-            if (input.Position < input.Length)
-            {
-                // write to the queue to trigger the next task
-                string content = JsonConvert.SerializeObject(input);
-                await queue.AddMessageAsync(new CloudQueueMessage(content));
-            }
-            else
-            {
-                // notify the waiting orchestrator
-                await client.RaiseEventAsync(input.InstanceId, "completed", input);
-            }
-        }
+        //    if (input.Position < input.Length)
+        //    {
+        //        // write to the queue to trigger the next task
+        //        string content = JsonConvert.SerializeObject(input);
+        //        await queue.AddMessageAsync(new CloudQueueMessage(content));
+        //    }
+        //    else
+        //    {
+        //        // notify the waiting orchestrator
+        //        await client.RaiseEventAsync(input.InstanceId, "completed", input);
+        //    }
+        //}
 
-        //-------------- triggered sequence
+        ////-------------- triggered sequence
 
-        [Disable]
-        [FunctionName(nameof(TriggeredSequence))]
-        public static async Task<string> TriggeredSequence(
-            [OrchestrationTrigger] IDurableOrchestrationContext context, 
-            ILogger logger)
-        {
-            Input input = context.GetInput<Input>();
-            await context.CallActivityAsync(nameof(SequenceTaskStart), input);
-            input = await context.WaitForExternalEvent<Input>("completed");
-            var result = $"triggered sequence {context.InstanceId} completed in {input.Duration}s\n";
-            logger.LogWarning(result);
-            return result;
-        }
+        //[Disable]
+        //[FunctionName(nameof(TriggeredSequence))]
+        //public static async Task<string> TriggeredSequence(
+        //    [OrchestrationTrigger] IDurableOrchestrationContext context, 
+        //    ILogger logger)
+        //{
+        //    Input input = context.GetInput<Input>();
+        //    await context.CallActivityAsync(nameof(SequenceTaskStart), input);
+        //    input = await context.WaitForExternalEvent<Input>("completed");
+        //    var result = $"triggered sequence {context.InstanceId} completed in {input.Duration}s\n";
+        //    logger.LogWarning(result);
+        //    return result;
+        //}
 
-        [Disable]
-        [FunctionName(nameof(SequenceTaskStart))]
-        public static async Task SequenceTaskStart(
-            [ActivityTrigger] IDurableActivityContext context,
-            [Blob("tasks/step/0")] Microsoft.WindowsAzure.Storage.Blob.CloudBlobDirectory directory,
-            ILogger logger)
-        {
-            Input input = context.GetInput<Input>();
-            var blob = directory.GetBlockBlobReference(context.InstanceId);
-            string content = JsonConvert.SerializeObject(input);
-            await blob.Container.CreateIfNotExistsAsync();
-            await blob.UploadTextAsync(content);
-        }
+        //[Disable]
+        //[FunctionName(nameof(SequenceTaskStart))]
+        //public static async Task SequenceTaskStart(
+        //    [ActivityTrigger] IDurableActivityContext context,
+        //    [Blob("tasks/step/0")] Microsoft.WindowsAzure.Storage.Blob.CloudBlobDirectory directory,
+        //    ILogger logger)
+        //{
+        //    Input input = context.GetInput<Input>();
+        //    var blob = directory.GetBlockBlobReference(context.InstanceId);
+        //    string content = JsonConvert.SerializeObject(input);
+        //    await blob.Container.CreateIfNotExistsAsync();
+        //    await blob.UploadTextAsync(content);
+        //}
 
-        [Disable]
-        [FunctionName(nameof(TriggeredSequenceTask1))]
-        public static async Task TriggeredSequenceTask1(
-           [BlobTrigger("tasks/step/{iteration}/{instanceId}")] Stream inputStream,
-           [Blob("tasks/step")] Microsoft.WindowsAzure.Storage.Blob.CloudBlobDirectory directory,
-           [DurableClient] IDurableClient client,
-           string instanceId,
-           ILogger logger)
-        {
-            Input input;
+        //[Disable]
+        //[FunctionName(nameof(TriggeredSequenceTask1))]
+        //public static async Task TriggeredSequenceTask1(
+        //   [BlobTrigger("tasks/step/{iteration}/{instanceId}")] Stream inputStream,
+        //   [Blob("tasks/step")] Microsoft.WindowsAzure.Storage.Blob.CloudBlobDirectory directory,
+        //   [DurableClient] IDurableClient client,
+        //   string instanceId,
+        //   ILogger logger)
+        //{
+        //    Input input;
 
-            using (var streamReader = new StreamReader(inputStream))
-                input = JsonConvert.DeserializeObject<Input>(await streamReader.ReadToEndAsync());
+        //    using (var streamReader = new StreamReader(inputStream))
+        //        input = JsonConvert.DeserializeObject<Input>(await streamReader.ReadToEndAsync());
 
-            input = RunTask(input, logger, instanceId);
+        //    input = RunTask(input, logger, instanceId);
 
-            if (input.Position < input.Length)
-            {
-                // write the blob to trigger the next task
-                string content = JsonConvert.SerializeObject(input);
-                var blob = directory.GetBlockBlobReference($"{input.Position}/{instanceId}");
-                await blob.UploadTextAsync(content);
-            }
-            else
-            {
-                // notify the waiting orchestrator
-                await client.RaiseEventAsync(instanceId, "completed", input);
-            }
-        }
+        //    if (input.Position < input.Length)
+        //    {
+        //        // write the blob to trigger the next task
+        //        string content = JsonConvert.SerializeObject(input);
+        //        var blob = directory.GetBlockBlobReference($"{input.Position}/{instanceId}");
+        //        await blob.UploadTextAsync(content);
+        //    }
+        //    else
+        //    {
+        //        // notify the waiting orchestrator
+        //        await client.RaiseEventAsync(instanceId, "completed", input);
+        //    }
+        //}
     }
 }
