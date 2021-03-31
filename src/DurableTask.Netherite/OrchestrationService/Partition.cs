@@ -172,7 +172,10 @@ namespace DurableTask.Netherite
                 this.Assert(this.ErrorHandler.IsTerminated);
 
                 // tell the load publisher to send all buffered info
-                await this.LoadPublisher?.FlushAsync();
+                if (this.LoadPublisher != null)
+                {
+                    await this.LoadPublisher.FlushAsync();
+                }
 
                 this.TraceHelper.TracePartitionProgress("Stopped", ref this.LastTransition, this.CurrentTimeMs, $"takeCheckpoint={takeCheckpoint} clean={clean}");
             }
