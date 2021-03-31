@@ -68,12 +68,12 @@ namespace DurableTask.Netherite.Faster
 #endif
 
             this.blobManager = new BlobManager(
-                this.storageAccount, 
-                this.pageBlobStorageAccount, 
-                this.taskHubName, 
-                this.logger, 
-                this.partition.Settings.StorageLogLevelLimit, 
-                partition.PartitionId, 
+                this.storageAccount,
+                this.pageBlobStorageAccount,
+                this.taskHubName,
+                this.logger,
+                this.partition.Settings.StorageLogLevelLimit,
+                partition.PartitionId,
                 errorHandler,
                 psfCount);
 
@@ -170,9 +170,6 @@ namespace DurableTask.Netherite.Faster
 
                 this.TraceHelper.FasterProgress("Recovery complete");
             }
-
-            var ignoredTask = this.IdleLoop();
-
             return this.storeWorker.InputQueuePosition;
         }
 
@@ -181,7 +178,6 @@ namespace DurableTask.Netherite.Faster
             this.storeWorker.StartProcessing();
             this.logWorker.StartProcessing();
         }
-
 
         public async Task CleanShutdown(bool takeFinalCheckpoint)
         {
@@ -214,24 +210,6 @@ namespace DurableTask.Netherite.Faster
         public void SubmitInternalEvent(PartitionEvent evt)
         {
             this.logWorker.SubmitInternalEvent(evt);
-        }
-
-        async Task IdleLoop()
-        {
-            while (true)
-            {
-                await Task.Delay(StoreWorker.IdlingPeriod, this.terminationToken).ConfigureAwait(false);
-
-                //await this.TestStorageLatency();
-
-                if (this.terminationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-
-                // periodically bump the store worker so it can check if enough time has elapsed for doing a checkpoint or a load publish
-                this.storeWorker.Notify();
-            }
         }
 
         public Task Prefetch(IEnumerable<TrackedObjectKey> keys)

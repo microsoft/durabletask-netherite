@@ -5,12 +5,17 @@ namespace DurableTask.Netherite.AzureFunctions
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Core;
+    using DurableTask.Core.Common;
     using DurableTask.Netherite;
+    using DurableTask.Netherite.Scaling;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
+    using Microsoft.Azure.WebJobs.Host.Scale;
+    using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
 
@@ -96,6 +101,126 @@ namespace DurableTask.Netherite.AzureFunctions
                 DurableOrchestrationState = result.Instances.Select(ostate => ProviderUtils.ConvertOrchestrationStateToStatus(ostate)).ToList(),
                 ContinuationToken = result.ContinuationToken,
             };
+        }
+
+        public override bool TryGetScaleMonitor(
+            string functionId, 
+            string functionName, 
+            string hubName, 
+            string storageConnectionString, 
+            out IScaleMonitor scaleMonitor)
+        {
+            if (this.Service.TryGetScalingMonitor(out var monitor))
+            {
+                scaleMonitor = new ScaleMonitor(monitor);
+                return true;
+            }
+            else
+            {
+                scaleMonitor = null;
+                return false;
+            }
+        }
+
+        class ScaleMonitor : IScaleMonitor<ScaleMonitor.NetheriteScaleMetrics>
+        {
+            readonly ScalingMonitor scalingMonitor;
+            readonly ScaleMonitorDescriptor descriptor;
+
+            public ScaleMonitor(ScalingMonitor scalingMonitor)
+            {
+                this.scalingMonitor = scalingMonitor;
+                this.descriptor = new ScaleMonitorDescriptor($"DurableTaskTrigger-Netherite-{this.scalingMonitor.TaskHubName}".ToLower());
+            }
+
+            public ScaleMonitorDescriptor Descriptor => this.descriptor;
+
+            public class NetheriteScaleMetrics : ScaleMetrics
+            {
+                public ScalingMonitor.Metrics Metrics { get; set; }
+            }
+
+            async Task<ScaleMetrics> IScaleMonitor.GetMetricsAsync()
+            {
+                return await this.GetMetricsAsync();
+            }
+
+            public async Task<NetheriteScaleMetrics> GetMetricsAsync()
+            {
+                try
+                {
+                    Stopwatch sw = new Stopwatch();
+                    sw.Start();
+                    var metrics = await this.scalingMonitor.CollectMetrics();
+                    sw.Stop();
+
+                    this.scalingMonitor.Logger.LogInformation(
+                        "Collected scale info for {partitionCount} partitions in {latencyMs:F2}ms.",
+                        metrics.LoadInformation.Count, sw.Elapsed.TotalMilliseconds);
+
+                    return new NetheriteScaleMetrics()
+                    {
+                        Metrics = metrics
+                    };
+                }
+                catch (Exception e) when (!Utils.IsFatal(e))
+                {
+                    this.scalingMonitor.Logger.LogError("IScaleMonitor.GetMetricsAsync() failed: {exception}", e);
+                    throw;
+                }
+            }
+
+            ScaleStatus IScaleMonitor.GetScaleStatus(ScaleStatusContext context)
+            {
+                return this.GetScaleStatusCore(context.WorkerCount, context.Metrics?.Cast<NetheriteScaleMetrics>().ToArray());
+            }
+
+            public ScaleStatus GetScaleStatus(ScaleStatusContext<NetheriteScaleMetrics> context)
+            {
+                return this.GetScaleStatusCore(context.WorkerCount, context.Metrics?.ToArray());
+            }
+
+            ScaleStatus GetScaleStatusCore(int workerCount, NetheriteScaleMetrics[] metrics)
+            {
+                try
+                {
+                    ScaleStatus scaleStatus = new ScaleStatus();
+                    ScaleRecommendation recommendation;
+
+                    if (metrics.Length == 0)
+                    {
+                        recommendation = new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: "missing metrics");
+                    }
+                    else
+                    {
+                        recommendation = this.scalingMonitor.GetScaleRecommendation(workerCount, metrics[^1].Metrics);
+                    }
+
+                    switch (recommendation.Action)
+                    {
+                        case ScaleAction.AddWorker:
+                            scaleStatus.Vote = ScaleVote.ScaleOut;
+                            break;
+                        case ScaleAction.RemoveWorker:
+                            scaleStatus.Vote = ScaleVote.ScaleIn;
+                            break;
+                        default:
+                            scaleStatus.Vote = ScaleVote.None;
+                            break;
+                    }
+
+                    this.scalingMonitor.Logger.LogInformation(
+                        "Autoscaler recommends: {scaleRecommendation} because: {reason}",
+                        scaleStatus.Vote.ToString(), recommendation.Reason);
+
+                    return scaleStatus;
+                }
+                catch (Exception e) when (!Utils.IsFatal(e))
+                {
+                    this.scalingMonitor.Logger.LogError("IScaleMonitor.GetScaleStatus() failed: {exception}", e);
+                    throw;
+                }
+            }
         }
     }
 }

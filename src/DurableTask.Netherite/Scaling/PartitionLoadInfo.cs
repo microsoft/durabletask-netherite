@@ -5,6 +5,7 @@ namespace DurableTask.Netherite.Scaling
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Text;
 
     /// <summary>
@@ -43,6 +44,40 @@ namespace DurableTask.Netherite.Scaling
         public DateTime? Wakeup { get; set; }
 
         /// <summary>
+        /// Checks if this partition has pending work
+        /// </summary>
+        /// <returns>a description of some of the work, or null if no work</returns>
+        public string IsBusy()
+        {
+            if (this.Activities > 0)
+            {
+                return $"has {this.Activities} activities pending";
+            }
+
+            if (this.WorkItems > 0)
+            {
+                return $"has {this.WorkItems} work items pending";
+            }
+
+            if (this.Requests > 0)
+            {
+                return $"has {this.Requests} requests pending";
+            }
+
+            if (this.Outbox > 0)
+            {
+                return $"has {this.Outbox} unsent messages";
+            }
+
+            if (this.Wakeup.HasValue && this.Wakeup.Value < DateTime.UtcNow + TimeSpan.FromSeconds(10))
+            {
+                return $"has timer waking up at {this.Wakeup.Value}";
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// The input queue position of this partition, which is  the next expected EventHubs sequence number.
         /// </summary>
         public long InputQueuePosition { get; set; }
@@ -51,16 +86,6 @@ namespace DurableTask.Netherite.Scaling
         /// The commit log position of this partition.
         /// </summary>
         public long CommitLogPosition { get; set; }
-
-        /// <summary>
-        /// The latency of the activity queue.
-        /// </summary>
-        public long ActivityLatencyMs { get; set; }
-
-        /// <summary>
-        /// The latency of the work item queue.
-        /// </summary>
-        public long WorkItemLatencyMs { get; set; }
 
         /// <summary>
         /// The worker id of the host that is currently running this partition.
@@ -107,5 +132,77 @@ namespace DurableTask.Netherite.Scaling
         /// </summary>
         public static int LatencyTrendLength = 5;
 
+        /// <summary>
+        /// Whether a latency trend indicates the partition has been idle for a long time
+        /// </summary>
+        public static bool IsLongIdle(string latencyTrend) => latencyTrend.Count() == LatencyTrendLength && latencyTrend.All(c => c == Idle);
+
+        /// <summary>
+        /// Copy the load info for the next measuring interval
+        /// </summary>
+        /// <returns></returns>
+        public static PartitionLoadInfo FirstFrame(string workerId)
+        {
+            return new PartitionLoadInfo()
+            {
+                InputQueuePosition = 0,
+                CommitLogPosition = 0,
+                WorkerId = workerId,
+                LatencyTrend = Idle.ToString(),
+            };
+        }
+
+        /// <summary>
+        /// Copy the load info for the next measuring interval
+        /// </summary>
+        /// <returns></returns>
+        public PartitionLoadInfo NextFrame()
+        {
+            var copy = new PartitionLoadInfo()
+            {
+                InputQueuePosition = this.InputQueuePosition,
+                CommitLogPosition = this.CommitLogPosition,
+                WorkerId = this.WorkerId,
+                LatencyTrend = this.LatencyTrend,
+            };
+
+            if (copy.LatencyTrend.Length == PartitionLoadInfo.LatencyTrendLength)
+            {
+                copy.LatencyTrend = $"{copy.LatencyTrend[1..PartitionLoadInfo.LatencyTrendLength]}{Idle}";
+            }
+            else
+            {
+                copy.LatencyTrend = $"{copy.LatencyTrend}{Idle}";
+            }
+
+            return copy;
+        }
+
+        public void MarkActive()
+        {
+            char last = this.LatencyTrend[^1];
+            if (last == Idle)
+            {
+                this.LatencyTrend = $"{this.LatencyTrend[0..^1]}{LowLatency}"; 
+            }
+        }
+
+        public void MarkMediumLatency()
+        {
+            char last = this.LatencyTrend[^1];
+            if (last == Idle || last == LowLatency)
+            {
+                this.LatencyTrend = $"{this.LatencyTrend[0..^1]}{MediumLatency}"; 
+            }
+        }
+
+        public void MarkHighLatency()
+        {
+            char last = this.LatencyTrend[^1];
+            if (last == Idle || last == LowLatency || last == MediumLatency)
+            {
+                this.LatencyTrend = $"{this.LatencyTrend[0..^1]}{HighLatency}";
+            }
+        }
     }
 }
