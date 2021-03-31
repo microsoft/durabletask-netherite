@@ -15,6 +15,9 @@ namespace DurableTask.Netherite
     /// </summary>
     static class TraceUtils
     {
+        // DurableTask.Core has a public static variable that contains the app name
+        public static readonly string AppName = DurableTask.Core.Common.Utils.AppName;
+
         public static readonly string ExtensionVersion = FileVersionInfo.GetVersionInfo(typeof(NetheriteOrchestrationService).Assembly.Location).FileVersion;
 
         public static int GetEpisodeNumber(OrchestrationRuntimeState runtimeState)

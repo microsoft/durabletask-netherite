@@ -53,24 +53,24 @@ namespace DurableTask.Netherite.EventHubs
                     switch (logLevel)
                     {
                         case LogLevel.Trace:
-                            EtwSource.Log.EventHubsTrace(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.ExtensionVersion);
+                            EtwSource.Log.EventHubsTrace(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                             break;
 
                         case LogLevel.Debug:
-                            EtwSource.Log.EventHubsDebug(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.ExtensionVersion);
+                            EtwSource.Log.EventHubsDebug(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                             break;
 
                         case LogLevel.Information:
-                            EtwSource.Log.EventHubsInformation(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.ExtensionVersion);
+                            EtwSource.Log.EventHubsInformation(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                             break;
 
                         case LogLevel.Warning:
-                            EtwSource.Log.EventHubsWarning(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.ExtensionVersion);
+                            EtwSource.Log.EventHubsWarning(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                             break;
 
                         case LogLevel.Error:
                         case LogLevel.Critical:
-                            EtwSource.Log.EventHubsError(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.ExtensionVersion);
+                            EtwSource.Log.EventHubsError(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                             break;
 
                         default:

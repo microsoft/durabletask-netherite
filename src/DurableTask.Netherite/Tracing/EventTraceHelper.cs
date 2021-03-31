@@ -60,7 +60,7 @@ namespace DurableTask.Netherite
                     this.logger.LogInformation("Part{partition:D2}.{commitLogPosition:D10} {details} {event} eventId={eventId} pos=({nextCommitLogPosition},{nextInputQueuePosition}) latency=({queueLatencyMs:F0}, {fetchLatencyMs:F0}, {latencyMs:F0})", this.partitionId, commitLogPosition, details, evt, evt.EventIdString, nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs);
                 }
 
-                this.etw?.PartitionEventProcessed(this.account, this.taskHub, this.partitionId, commitLogPosition, category.ToString(), evt.EventIdString, evt.ToString(), nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs, replaying, TraceUtils.ExtensionVersion) ;
+                this.etw?.PartitionEventProcessed(this.account, this.taskHub, this.partitionId, commitLogPosition, category.ToString(), evt.EventIdString, evt.ToString(), nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs, replaying, TraceUtils.AppName, TraceUtils.ExtensionVersion) ;
             }
         }
 
@@ -125,7 +125,7 @@ namespace DurableTask.Netherite
                         this.partitionId, prefix, instanceId, executionId, workItemId, numNewEvents, totalEventCount, eventNames, eventType, episode);
                 }
 
-                this.etw?.InstanceUpdated(this.account, this.taskHub, this.partitionId, instanceId, executionId, workItemId, numNewEvents, totalEventCount, eventNames, eventType, episode, TraceUtils.ExtensionVersion);
+                this.etw?.InstanceUpdated(this.account, this.taskHub, this.partitionId, instanceId, executionId, workItemId, numNewEvents, totalEventCount, eventNames, eventType, episode, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -142,7 +142,7 @@ namespace DurableTask.Netherite
                         this.partitionId, prefix, instanceId, executionId, status, evt.EventIdString, latencyMs);
                 }
 
-                this.etw?.InstanceStatusFetched(this.account, this.taskHub, this.partitionId, instanceId, executionId, status, evt.EventIdString, latencyMs, TraceUtils.ExtensionVersion);
+                this.etw?.InstanceStatusFetched(this.account, this.taskHub, this.partitionId, instanceId, executionId, status, evt.EventIdString, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -159,7 +159,7 @@ namespace DurableTask.Netherite
                         this.partitionId, prefix, instanceId, executionId, eventCount, episode, evt.EventIdString, latencyMs);
                 }
 
-                this.etw?.InstanceHistoryFetched(this.account, this.taskHub, this.partitionId, instanceId, executionId ?? string.Empty, eventCount, episode, evt.EventIdString, latencyMs, TraceUtils.ExtensionVersion);
+                this.etw?.InstanceHistoryFetched(this.account, this.taskHub, this.partitionId, instanceId, executionId ?? string.Empty, eventCount, episode, evt.EventIdString, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -175,7 +175,7 @@ namespace DurableTask.Netherite
                     this.logger.LogWarning("Part{partition:D2}{prefix} Offload decision reportedLocalLoad={reportedLocalLoad} pending={pending} backlog={backlog} remotes={remotes} reportedRemotes={reportedRemotes}",
                         this.partitionId, prefix, reportedLocalLoad, pending, backlog, remotes, reportedRemotes);
 
-                    this.etw?.PartitionOffloadDecision(this.account, this.taskHub, this.partitionId, commitLogPosition, eventId, reportedLocalLoad, pending, backlog, remotes, reportedRemotes, TraceUtils.ExtensionVersion);
+                    this.etw?.PartitionOffloadDecision(this.account, this.taskHub, this.partitionId, commitLogPosition, eventId, reportedLocalLoad, pending, backlog, remotes, reportedRemotes, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }
@@ -190,7 +190,7 @@ namespace DurableTask.Netherite
                 {
                     this.logger.LogTrace("Part{partition:D2}.{commitLogPosition:D10} {details}", this.partitionId, commitLogPosition, details);
                 }
-                this.etw?.PartitionEventDetail(this.account, this.taskHub, this.partitionId, commitLogPosition, evt.EventIdString ?? "", details, TraceUtils.ExtensionVersion);
+                this.etw?.PartitionEventDetail(this.account, this.taskHub, this.partitionId, commitLogPosition, evt.EventIdString ?? "", details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -204,7 +204,7 @@ namespace DurableTask.Netherite
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
                     this.logger.LogTrace("Part{partition:D2}{prefix} {details}", this.partitionId, prefix, details);
                 }
-                this.etw?.PartitionEventDetail(this.account, this.taskHub, this.partitionId, commitLogPosition, eventId ?? "", details, TraceUtils.ExtensionVersion);
+                this.etw?.PartitionEventDetail(this.account, this.taskHub, this.partitionId, commitLogPosition, eventId ?? "", details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -218,7 +218,7 @@ namespace DurableTask.Netherite
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
                     this.logger.LogWarning("Part{partition:D2}{prefix} {details}", this.partitionId, prefix, details);
                 }
-                this.etw?.PartitionEventWarning(this.account, this.taskHub, this.partitionId, commitLogPosition, eventId ?? "", details, TraceUtils.ExtensionVersion);
+                this.etw?.PartitionEventWarning(this.account, this.taskHub, this.partitionId, commitLogPosition, eventId ?? "", details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
     }

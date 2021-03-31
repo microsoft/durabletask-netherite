@@ -37,7 +37,7 @@ namespace DurableTask.Netherite
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientProgress(this.account, this.taskHub, this.clientId, details, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientProgress(this.account, this.taskHub, this.clientId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }
@@ -52,22 +52,22 @@ namespace DurableTask.Netherite
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientError(this.account, this.taskHub, this.clientId, context, message, exception.ToString(), TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientError(this.account, this.taskHub, this.clientId, context, message, exception.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }
 
         public void TraceTimerProgress(string details)
         {
-            if (this.logLevelLimit <= LogLevel.Debug)
+            if (this.logLevelLimit <= LogLevel.Trace)
             {
-                if (this.logger.IsEnabled(LogLevel.Debug))
+                if (this.logger.IsEnabled(LogLevel.Trace))
                 {
-                    this.logger.LogDebug("{client} {details}", this.tracePrefix, details);
+                    this.logger.LogTrace("{client} {details}", this.tracePrefix, details);
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientTimerProgress(this.account, this.taskHub, this.clientId, details, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientTimerProgress(this.account, this.taskHub, this.clientId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }
@@ -82,7 +82,7 @@ namespace DurableTask.Netherite
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientRequestTimeout(this.account, this.taskHub, this.clientId, eventId.ToString(), (int) partitionId, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientRequestTimeout(this.account, this.taskHub, this.clientId, eventId.ToString(), (int) partitionId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }
@@ -97,7 +97,7 @@ namespace DurableTask.Netherite
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientEventSent(this.account, this.taskHub, this.clientId, @event.EventIdString, @event.ToString(), TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientEventSent(this.account, this.taskHub, this.clientId, @event.EventIdString, @event.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }
@@ -112,7 +112,7 @@ namespace DurableTask.Netherite
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientEventReceived(this.account, this.taskHub, this.clientId, @event.EventIdString, @event.ToString(), TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientEventReceived(this.account, this.taskHub, this.clientId, @event.EventIdString, @event.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }

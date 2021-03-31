@@ -25,7 +25,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
 
         public EventHubsSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, EventHubsTraceHelper traceHelper)
-            : base(nameof(EventHubsSender<T>), false, 2000, CancellationToken.None)
+            : base(nameof(EventHubsSender<T>), false, 2000, CancellationToken.None, null)
         {
             this.host = host;
             this.taskHubGuid = taskHubGuid;
@@ -33,11 +33,6 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper = traceHelper;
             this.eventHubName = this.sender.EventHubClient.EventHubName;
             this.eventHubPartition = this.sender.PartitionId;
-        }
-
-        protected override void WorkLoopCompleted(int batchSize, double elapsedMilliseconds, int? nextBatch)
-        {
-            this.traceHelper.LogDebug($"EventHubsSender completed batch: batchSize={batchSize} elapsedMilliseconds={elapsedMilliseconds} nextBatch={nextBatch}");
         }
 
         protected override async Task Process(IList<Event> toSend)
@@ -70,7 +65,7 @@ namespace DurableTask.Netherite.EventHubs
 
                     if (!tooBig && batch.TryAdd(eventData))
                     {
-                        this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} added packet to batch ({size} bytes) {evt} id={eventId}", this.eventHubName, this.eventHubPartition, eventData.Body.Count, evt, evt.EventIdString);
+                        this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} added packet to batch ({size} bytes) {evt} id={eventId}", this.eventHubName, this.eventHubPartition, eventData.Body.Count, evt, evt.EventIdString);
                         continue;
                     }
                     else

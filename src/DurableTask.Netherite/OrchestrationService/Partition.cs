@@ -34,6 +34,8 @@ namespace DurableTask.Netherite
 
         public double CurrentTimeMs => this.stopwatch.Elapsed.TotalMilliseconds;
 
+        public double LastTransition;
+
         public NetheriteOrchestrationServiceSettings Settings { get; private set; }
         public string StorageAccountName { get; private set; }
 
@@ -79,6 +81,7 @@ namespace DurableTask.Netherite
             this.EventTraceHelper = new EventTraceHelper(host.LoggerFactory, settings.EventLogLevelLimit, this);
             this.WorkItemTraceHelper = workItemTraceHelper;
             this.stopwatch.Start();
+            this.LastTransition = this.CurrentTimeMs;
         }
 
         public async Task<long> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, long firstInputQueuePosition)
@@ -86,7 +89,10 @@ namespace DurableTask.Netherite
             EventTraceContext.Clear();
 
             this.ErrorHandler = errorHandler;
-            this.TraceHelper.TraceProgress("Starting partition");
+
+            this.TraceHelper.TracePartitionProgress("Starting", ref this.LastTransition, this.CurrentTimeMs, "");
+
+            errorHandler.Token.Register(() => this.TraceHelper.TracePartitionProgress("Terminated", ref this.LastTransition, this.CurrentTimeMs, ""));
 
             await MaxConcurrentStarts.WaitAsync();
 
@@ -100,7 +106,6 @@ namespace DurableTask.Netherite
                 this.PendingTimers = new BatchTimer<PartitionEvent>(this.ErrorHandler.Token, this.TimersFired);
 
                 // goes to storage to create or restore the partition state
-                this.TraceHelper.TraceProgress("Loading partition state");
                 var inputQueuePosition = await this.State.CreateOrRestoreAsync(this, this.ErrorHandler, firstInputQueuePosition).ConfigureAwait(false);
 
                 // start processing the timers
@@ -109,7 +114,7 @@ namespace DurableTask.Netherite
                 // start processing the worker queues
                 this.State.StartProcessing();
 
-                this.TraceHelper.TraceProgress($"Started partition, nextInputQueuePosition={inputQueuePosition}");
+                this.TraceHelper.TracePartitionProgress("Started", ref this.LastTransition, this.CurrentTimeMs, $"nextInputQueuePosition={inputQueuePosition}");
                 return inputQueuePosition;
             }
             catch (Exception e) when (!Utils.IsFatal(e))
@@ -141,33 +146,36 @@ namespace DurableTask.Netherite
 
         public async Task StopAsync(bool isForced)
         {
-            this.TraceHelper.TraceProgress($"Stopping partition, isForced={isForced}");
-
-            try
+            if (!this.ErrorHandler.IsTerminated)
             {
-                if (!this.ErrorHandler.IsTerminated)
+                this.TraceHelper.TracePartitionProgress("Stopping", ref this.LastTransition, this.CurrentTimeMs, $"isForced={isForced}");
+
+                bool takeCheckpoint = this.Settings.TakeStateCheckpointWhenStoppingPartition && !isForced;
+
+                // for a clean shutdown we try to save some of the latest progress to storage and then release the lease
+                bool clean = true;
+                try
                 {
-                    bool takeCheckpoint = this.Settings.TakeStateCheckpointWhenStoppingPartition && !isForced;
-                    // for a clean shutdown we try to save some of the latest progress to storage and then release the lease
                     await this.State.CleanShutdown(takeCheckpoint).ConfigureAwait(false);
                 }
-            }
-            catch(OperationCanceledException) when (this.ErrorHandler.IsTerminated)
-            {
-                // o.k. during termination
-            }
-            catch (Exception e)
-            {
-                this.ErrorHandler.HandleError(nameof(StopAsync), "Could not shut down partition state cleanly", e, true, false);
-            }
+                catch (OperationCanceledException) when (this.ErrorHandler.IsTerminated)
+                {
+                    // o.k. during termination
+                }
+                catch (Exception e)
+                {
+                    this.ErrorHandler.HandleError(nameof(StopAsync), "Could not shut down partition state cleanly", e, true, false);
+                    clean = false;
+                }
 
-            // at this point, the partition has been terminated (either cleanly or by exception)
-            this.Assert(this.ErrorHandler.IsTerminated);
+                // at this point, the partition has been terminated (either cleanly or by exception)
+                this.Assert(this.ErrorHandler.IsTerminated);
 
-            // tell the load publisher to send all buffered info
-            await this.LoadPublisher?.FlushAsync();
+                // tell the load publisher to send all buffered info
+                await this.LoadPublisher?.FlushAsync();
 
-            this.TraceHelper.TraceProgress("Stopped partition");
+                this.TraceHelper.TracePartitionProgress("Stopped", ref this.LastTransition, this.CurrentTimeMs, $"takeCheckpoint={takeCheckpoint} clean={clean}");
+            }
         }
 
         void TimersFired(List<PartitionEvent> timersFired)

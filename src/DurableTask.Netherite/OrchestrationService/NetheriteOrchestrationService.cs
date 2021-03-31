@@ -97,7 +97,7 @@ namespace DurableTask.Netherite
                 ? this.Settings.ResolvedStorageConnectionString
                 : CloudStorageAccount.Parse(this.Settings.ResolvedStorageConnectionString).Credentials.AccountName;
 
-            EtwSource.Log.OrchestrationServiceCreated(this.ServiceInstanceId, this.StorageAccountName, this.Settings.HubName, this.Settings.WorkerId, TraceUtils.ExtensionVersion);
+            EtwSource.Log.OrchestrationServiceCreated(this.ServiceInstanceId, this.StorageAccountName, this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             this.Logger.LogInformation("NetheriteOrchestrationService created, workerId={workerId}, processorCount={processorCount}, transport={transport}, storage={storage}", Environment.ProcessorCount, this.Settings.WorkerId, this.configuredTransport, this.configuredStorage);
 
             switch (this.configuredTransport)
@@ -270,7 +270,7 @@ namespace DurableTask.Netherite
             {
                 this.startupException = e;
                 string message = $"NetheriteOrchestrationService failed to start: {e.Message}";
-                EtwSource.Log.OrchestrationServiceError(this.StorageAccountName, message, e.ToString(), this.Settings.HubName, this.Settings.WorkerId, TraceUtils.ExtensionVersion);
+                EtwSource.Log.OrchestrationServiceError(this.StorageAccountName, message, e.ToString(), this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 this.Logger.LogError("NetheriteOrchestrationService failed to start: {exception}", e);
                 throw;
             }
@@ -296,13 +296,13 @@ namespace DurableTask.Netherite
                     this.OrchestrationWorkItemQueue.Dispose();
 
                     this.Logger.LogInformation("NetheriteOrchestrationService stopped, workerId={workerId}", this.Settings.WorkerId);
-                    EtwSource.Log.OrchestrationServiceStopped(this.ServiceInstanceId, this.StorageAccountName, this.Settings.HubName, this.Settings.WorkerId, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.OrchestrationServiceStopped(this.ServiceInstanceId, this.StorageAccountName, this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
             catch (Exception e) when (!Utils.IsFatal(e))
             {
                 string message = $"NetheriteOrchestrationService failed to shut down: {e.Message}";
-                EtwSource.Log.OrchestrationServiceError(this.StorageAccountName, message, e.ToString(), this.Settings.HubName, this.Settings.WorkerId, TraceUtils.ExtensionVersion);
+                EtwSource.Log.OrchestrationServiceError(this.StorageAccountName, message, e.ToString(), this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 this.Logger.LogError("NetheriteOrchestrationService failed to shut down: {exception}", e);
                 throw;
             }
@@ -633,6 +633,21 @@ namespace DurableTask.Netherite
                 }
             }
 
+            if (partition.ErrorHandler.IsTerminated)
+            {
+                // we get here if the partition was terminated. The work is thrown away. 
+                // It's unavoidable by design, but let's at least create a warning.
+                this.workItemTraceHelper.TraceWorkItemDiscarded(
+                    partition.PartitionId,
+                    WorkItemTraceHelper.WorkItemType.Orchestration,
+                    messageBatch.WorkItemId,
+                    workItem.InstanceId,
+                    "",
+                    "partition was terminated");
+
+                return Task.CompletedTask;
+            }  
+
             // if this orchestration is not done, and extended sessions are enabled, we keep the work item so we can reuse the execution cursor
             bool cacheWorkItemForReuse = partition.Settings.ExtendedSessionsEnabled && state.OrchestrationStatus == OrchestrationStatus.Running;
 
@@ -661,23 +676,9 @@ namespace DurableTask.Netherite
                 batchProcessedEvent.State.OrchestrationStatus,
                 latencyMs,
                 WorkItemTraceHelper.FormatMessageIdList(batchProcessedEvent.TracedTaskMessages));
-
-            try
-            {
-                partition.SubmitInternalEvent(batchProcessedEvent);
-            }
-            catch(OperationCanceledException e)
-            {
-                // we get here if the partition was terminated. The work is thrown away. 
-                // It's unavoidable by design, but let's at least create a warning.
-                partition.ErrorHandler.HandleError(
-                    nameof(IOrchestrationService.CompleteTaskOrchestrationWorkItemAsync), 
-                    "Canceling completed orchestration work item because of partition termination", 
-                    e, 
-                    false, 
-                    true);
-            }
-
+ 
+            partition.SubmitInternalEvent(batchProcessedEvent);
+            
             return Task.CompletedTask;
         }
 
@@ -776,6 +777,22 @@ namespace DurableTask.Netherite
                 Timestamp = DateTime.UtcNow,
                 Response = responseMessage,
             };
+
+            if (partition.ErrorHandler.IsTerminated)
+            {
+                // we get here if the partition was terminated. The work is thrown away. 
+                // It's unavoidable by design, but let's at least create a warning.
+                this.workItemTraceHelper.TraceWorkItemDiscarded(
+                    partition.PartitionId,
+                    WorkItemTraceHelper.WorkItemType.Activity,
+                    activityWorkItem.WorkItemId,
+                    activityWorkItem.TaskMessage.OrchestrationInstance.InstanceId,
+                    "",
+                    "partition was terminated"
+                   );
+
+                return Task.CompletedTask;
+            }
 
             this.workItemTraceHelper.TraceWorkItemCompleted(
                 partition.PartitionId,

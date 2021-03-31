@@ -24,7 +24,7 @@ namespace DurableTask.Netherite.Faster
         readonly IntakeWorker intakeWorker;
 
         public LogWorker(BlobManager blobManager, FasterLog log, Partition partition, StoreWorker storeWorker, FasterTraceHelper traceHelper, CancellationToken cancellationToken)
-            : base(nameof(LogWorker), true, 500, cancellationToken)
+            : base(nameof(LogWorker), true, 500, cancellationToken, partition.TraceHelper)
         {
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
@@ -33,7 +33,7 @@ namespace DurableTask.Netherite.Faster
             this.partition = partition;
             this.storeWorker = storeWorker;
             this.traceHelper = traceHelper;
-            this.intakeWorker = new IntakeWorker(cancellationToken, this);
+            this.intakeWorker = new IntakeWorker(cancellationToken, this, partition.TraceHelper);
 
             this.maxFragmentSize = (1 << this.blobManager.EventLogSettings(partition.Settings.UsePremiumStorage).PageSizeBits) - 64; // faster needs some room for header, 64 bytes is conservative
         }
@@ -56,7 +56,7 @@ namespace DurableTask.Netherite.Faster
             readonly LogWorker logWorker;
             readonly List<PartitionUpdateEvent> updateEvents;
 
-            public IntakeWorker(CancellationToken token, LogWorker logWorker) : base(nameof(IntakeWorker), true, int.MaxValue, token)
+            public IntakeWorker(CancellationToken token, LogWorker logWorker, PartitionTraceHelper traceHelper) : base(nameof(IntakeWorker), true, int.MaxValue, token, traceHelper)
             {
                 this.logWorker = logWorker;
                 this.updateEvents = new List<PartitionUpdateEvent>();
@@ -87,11 +87,6 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 return Task.CompletedTask;
-            }
-
-            protected override void WorkLoopCompleted(int batchSize, double elapsedMilliseconds, int? nextBatch)
-            {
-                this.logWorker.traceHelper.FasterProgress($"IntakeWorker completed batch: batchSize={batchSize} elapsedMilliseconds={elapsedMilliseconds} nextBatch={nextBatch}");
             }
         }
 
@@ -187,11 +182,6 @@ namespace DurableTask.Netherite.Faster
             {
                 this.partition.ErrorHandler.HandleError("LogWorker.Process", "Encountered exception while working on commit log", e, true, false);
             }
-        }
-
-        protected override void WorkLoopCompleted(int batchSize, double elapsedMilliseconds, int? nextBatch)
-        {
-            this.traceHelper.FasterProgress($"LogWorker completed batch: batchSize={batchSize} elapsedMilliseconds={elapsedMilliseconds} nextBatch={nextBatch}");
         }
 
         public async Task ReplayCommitLog(long from, StoreWorker worker)

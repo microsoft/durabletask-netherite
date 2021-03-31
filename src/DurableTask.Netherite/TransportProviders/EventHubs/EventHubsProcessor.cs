@@ -279,7 +279,7 @@ namespace DurableTask.Netherite.EventHubs
 
         async Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
         {
-            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} receiving #{seqno}", this.eventHubName, this.eventHubPartition, packets.First().SystemProperties.SequenceNumber);
+            this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} receiving #{seqno}", this.eventHubName, this.eventHubPartition, packets.First().SystemProperties.SequenceNumber);
 
             PartitionIncarnation current = await this.currentIncarnation.ConfigureAwait(false);
 
@@ -322,7 +322,7 @@ namespace DurableTask.Netherite.EventHubs
 
                             if (partitionEvent != null)
                             {
-                                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} received packet #{seqno} ({size} bytes) {event}", this.eventHubName, this.eventHubPartition, seqno, eventData.Body.Count, partitionEvent);
+                                this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} received packet #{seqno} ({size} bytes) {event}", this.eventHubName, this.eventHubPartition, seqno, eventData.Body.Count, partitionEvent);
                             }
                             else
                             {
@@ -352,7 +352,7 @@ namespace DurableTask.Netherite.EventHubs
                         }
                         else
                         {
-                            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} discarded packet #{seqno} because it is already processed", this.eventHubName, this.eventHubPartition, seqno);
+                            this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} discarded packet #{seqno} because it is already processed", this.eventHubName, this.eventHubPartition, seqno);
                         }
                     }
                 }

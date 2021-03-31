@@ -38,7 +38,7 @@ namespace DurableTask.Netherite.Faster
             if (this.logLevelLimit <= LogLevel.Information)
             {
                 this.logger.LogInformation("Part{partition:D2} Created Store, inputQueuePosition={inputQueuePosition} latencyMs={latencyMs}", this.partitionId, inputQueuePosition, latencyMs);
-                this.etwLogInformation?.FasterStoreCreated(this.account, this.taskHub, this.partitionId, inputQueuePosition, latencyMs, TraceUtils.ExtensionVersion);
+                this.etwLogInformation?.FasterStoreCreated(this.account, this.taskHub, this.partitionId, inputQueuePosition, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
         public void FasterCheckpointStarted(Guid checkpointId, string reason, string storeStats, long commitLogPosition, long inputQueuePosition)
@@ -46,7 +46,7 @@ namespace DurableTask.Netherite.Faster
             if (this.logLevelLimit <= LogLevel.Information)
             {
                 this.logger.LogInformation("Part{partition:D2} Started Checkpoint {checkpointId}, reason={reason}, storeStats={storeStats}, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition}", this.partitionId, checkpointId, reason, storeStats, commitLogPosition, inputQueuePosition);
-                this.etwLogInformation?.FasterCheckpointStarted(this.account, this.taskHub, this.partitionId, checkpointId, reason, storeStats, commitLogPosition, inputQueuePosition, TraceUtils.ExtensionVersion);
+                this.etwLogInformation?.FasterCheckpointStarted(this.account, this.taskHub, this.partitionId, checkpointId, reason, storeStats, commitLogPosition, inputQueuePosition, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -55,7 +55,7 @@ namespace DurableTask.Netherite.Faster
             if (this.logLevelLimit <= LogLevel.Information)
             {
                 this.logger.LogInformation("Part{partition:D2} Persisted Checkpoint {checkpointId}, reason={reason}, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition} latencyMs={latencyMs}", this.partitionId, checkpointId, reason, commitLogPosition, inputQueuePosition, latencyMs);
-                this.etwLogInformation?.FasterCheckpointPersisted(this.account, this.taskHub, this.partitionId, checkpointId, reason, commitLogPosition, inputQueuePosition, latencyMs, TraceUtils.ExtensionVersion);
+                this.etwLogInformation?.FasterCheckpointPersisted(this.account, this.taskHub, this.partitionId, checkpointId, reason, commitLogPosition, inputQueuePosition, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
 
             if (latencyMs > 10000)
@@ -69,7 +69,7 @@ namespace DurableTask.Netherite.Faster
             if (this.logLevelLimit <= LogLevel.Debug)
             {
                 this.logger.LogDebug("Part{partition:D2} Persisted Log, commitLogPosition={commitLogPosition} numberEvents={numberEvents} sizeInBytes={sizeInBytes} latencyMs={latencyMs}", this.partitionId, commitLogPosition, numberEvents, sizeInBytes, latencyMs);
-                this.etwLogDebug?.FasterLogPersisted(this.account, this.taskHub, this.partitionId, commitLogPosition, numberEvents, sizeInBytes, latencyMs, TraceUtils.ExtensionVersion);
+                this.etwLogDebug?.FasterLogPersisted(this.account, this.taskHub, this.partitionId, commitLogPosition, numberEvents, sizeInBytes, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
 
             if (latencyMs > 10000)
@@ -83,7 +83,7 @@ namespace DurableTask.Netherite.Faster
             if (this.logLevelLimit <= LogLevel.Warning)
             {
                 this.logger.LogWarning("Part{partition:D2} Performance issue detected: {details}", this.partitionId, details);
-                this.etwLogDebug?.FasterPerfWarning(this.account, this.taskHub, this.partitionId, details, TraceUtils.ExtensionVersion);
+                this.etwLogWarning?.FasterPerfWarning(this.account, this.taskHub, this.partitionId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -92,7 +92,7 @@ namespace DurableTask.Netherite.Faster
             if (this.logLevelLimit <= LogLevel.Information)
             {
                 this.logger.LogInformation("Part{partition:D2} Loaded Checkpoint, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition}  storeStats={storeStats} latencyMs={latencyMs}", this.partitionId, commitLogPosition, inputQueuePosition, storeStats, latencyMs);
-                this.etwLogInformation?.FasterCheckpointLoaded(this.account, this.taskHub, this.partitionId, commitLogPosition, inputQueuePosition, storeStats, latencyMs, TraceUtils.ExtensionVersion);
+                this.etwLogInformation?.FasterCheckpointLoaded(this.account, this.taskHub, this.partitionId, commitLogPosition, inputQueuePosition, storeStats, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -101,7 +101,7 @@ namespace DurableTask.Netherite.Faster
             if (this.logLevelLimit <= LogLevel.Information)
             {
                 this.logger.LogInformation("Part{partition:D2} Replayed CommitLog, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition} numberEvents={numberEvents} sizeInBytes={sizeInBytes} storeStats={storeStats} latencyMs={latencyMs}", this.partitionId, commitLogPosition, inputQueuePosition, numberEvents, sizeInBytes, storeStats, latencyMs);
-                this.etwLogInformation?.FasterLogReplayed(this.account, this.taskHub, this.partitionId, commitLogPosition, inputQueuePosition, numberEvents, sizeInBytes, storeStats, latencyMs, TraceUtils.ExtensionVersion);
+                this.etwLogInformation?.FasterLogReplayed(this.account, this.taskHub, this.partitionId, commitLogPosition, inputQueuePosition, numberEvents, sizeInBytes, storeStats, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -110,7 +110,7 @@ namespace DurableTask.Netherite.Faster
             if (this.logLevelLimit <= LogLevel.Error)
             {
                 this.logger.LogError("Part{partition:D2} !!! Faster Storage Error : {context} : {exception}", this.partitionId, context, exception);
-                this.etwLogError?.FasterStorageError(this.account, this.taskHub, this.partitionId, context, exception.ToString(), TraceUtils.ExtensionVersion);
+                this.etwLogError?.FasterStorageError(this.account, this.taskHub, this.partitionId, context, exception.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -119,7 +119,7 @@ namespace DurableTask.Netherite.Faster
             if (this.logLevelLimit <= LogLevel.Debug)
             {
                 this.logger.LogDebug("Part{partition:D2} {details}", this.partitionId, details);
-                this.etwLogDebug?.FasterProgress(this.account, this.taskHub, this.partitionId, details, TraceUtils.ExtensionVersion);
+                this.etwLogDebug?.FasterProgress(this.account, this.taskHub, this.partitionId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -128,7 +128,7 @@ namespace DurableTask.Netherite.Faster
             if (this.logLevelLimit <= LogLevel.Trace)
             {
                 this.logger.LogTrace("Part{partition:D2} {details}", this.partitionId, details);
-                this.etwLogTrace?.FasterStorageProgress(this.account, this.taskHub, this.partitionId, details, TraceUtils.ExtensionVersion);
+                this.etwLogTrace?.FasterStorageProgress(this.account, this.taskHub, this.partitionId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -138,9 +138,10 @@ namespace DurableTask.Netherite.Faster
             {
                 this.logger.LogDebug("Part{partition:D2} storage access completed intent={intent} size={size} operation={operation} target={target} latency={latency} attempt={attempt}", 
                     this.partitionId, intent, size, operation, target, latency, attempt);
-                this.etwLogTrace?.FasterAzureStorageAccessCompleted(this.account, this.taskHub, this.partitionId, intent, size, operation, target, latency, attempt, TraceUtils.ExtensionVersion);
+                this.etwLogDebug?.FasterAzureStorageAccessCompleted(this.account, this.taskHub, this.partitionId, intent, size, operation, target, latency, attempt, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
+
 
         // ----- lease management events
 
@@ -148,26 +149,35 @@ namespace DurableTask.Netherite.Faster
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
-                this.logger.LogInformation("Part{partition:D2} Acquired lease", this.partitionId);
-                this.etwLogInformation?.FasterLeaseAcquired(this.account, this.taskHub, this.partitionId, TraceUtils.ExtensionVersion);
+                this.logger.LogInformation("Part{partition:D2} PartitionLease acquired", this.partitionId);
+                this.etwLogInformation?.FasterLeaseAcquired(this.account, this.taskHub, this.partitionId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
-        public void LeaseReleased()
+        public void LeaseRenewed(double elapsedSeconds, double timing)
+        {
+            if (this.logLevelLimit <= LogLevel.Debug)
+            {
+                this.logger.LogInformation("Part{partition:D2} PartitionLease renewed after {elapsedSeconds:F2}s timing={timing:F2}s", this.partitionId, elapsedSeconds, timing);
+                this.etwLogDebug?.FasterLeaseRenewed(this.account, this.taskHub, this.partitionId, elapsedSeconds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+            }
+        }
+
+        public void LeaseReleased(double elapsedSeconds)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
-                this.logger.LogInformation("Part{partition:D2} Released lease", this.partitionId);
-                this.etwLogInformation?.FasterLeaseReleased(this.account, this.taskHub, this.partitionId, TraceUtils.ExtensionVersion);
+                this.logger.LogInformation("Part{partition:D2} PartitionLease released after {elapsedSeconds:F2}s", this.partitionId, elapsedSeconds);
+                this.etwLogInformation?.FasterLeaseReleased(this.account, this.taskHub, this.partitionId, elapsedSeconds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
-        public void LeaseLost(string operation)
+        public void LeaseLost(double elapsedSeconds, string operation)
         {
             if (this.logLevelLimit <= LogLevel.Warning)
             {
-                this.logger.LogWarning("Part{partition:D2} Lease lost in {operation}", this.partitionId, operation);
-                this.etwLogWarning?.FasterLeaseLost(this.account, this.taskHub, this.partitionId, operation, TraceUtils.ExtensionVersion);
+                this.logger.LogWarning("Part{partition:D2} PartitionLease lost after {elapsedSeconds:F2}s in {operation}", this.partitionId, elapsedSeconds, operation);
+                this.etwLogWarning?.FasterLeaseLost(this.account, this.taskHub, this.partitionId, operation, elapsedSeconds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -175,8 +185,8 @@ namespace DurableTask.Netherite.Faster
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
-                this.logger.LogDebug("Part{partition:D2} Lease progress: {operation}", this.partitionId, operation);
-                this.etwLogDebug?.FasterLeaseProgress(this.account, this.taskHub, this.partitionId, operation, TraceUtils.ExtensionVersion);
+                this.logger.LogDebug("Part{partition:D2} PartitionLease progress: {operation}", this.partitionId, operation);
+                this.etwLogDebug?.FasterLeaseProgress(this.account, this.taskHub, this.partitionId, operation, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
     }

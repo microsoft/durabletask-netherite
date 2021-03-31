@@ -18,7 +18,7 @@ namespace DurableTask.Netherite.Emulated
         readonly string name;
         readonly ILogger logger;
 
-        public MemoryQueue(CancellationToken cancellationToken, string name, ILogger logger) : base(nameof(MemoryQueue<T,B>), true, int.MaxValue, cancellationToken)
+        public MemoryQueue(CancellationToken cancellationToken, string name, ILogger logger) : base(nameof(MemoryQueue<T,B>), true, int.MaxValue, cancellationToken, null)
         {
             this.name = name;
             this.logger = logger;

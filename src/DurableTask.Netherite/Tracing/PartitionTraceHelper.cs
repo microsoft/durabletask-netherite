@@ -27,15 +27,16 @@ namespace DurableTask.Netherite
             this.logLevelLimit = logLevelLimit;
         }
 
-        public void TraceProgress(string details)
+        public void TracePartitionProgress(string transition, ref double lastTransition, double time, string details)
         {
+            double latencyMs = time - lastTransition;
+            lastTransition = time;
+
             if (this.logLevelLimit <= LogLevel.Information)
             {
-                this.logger.LogInformation("Part{partition:D2} {details}", this.partitionId, details);
-                if (EtwSource.Log.IsEnabled())
-                {
-                    EtwSource.Log.PartitionProgress(this.account, this.taskHub, this.partitionId, details, TraceUtils.ExtensionVersion);
-                }
+                this.logger.LogInformation("Part{partition:D2} {transition} partition after {latencyMs:F2}ms {details}", this.partitionId, transition, latencyMs, details);
+                 
+                EtwSource.Log.PartitionProgress(this.account, this.taskHub, this.partitionId, transition, latencyMs, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -46,26 +47,18 @@ namespace DurableTask.Netherite
                 this.logger.LogInformation("Part{partition:D2} Publishing LoadInfo WorkItems={workItems} Activities={activities} Timers={timers} Requests={requests} Outbox={outbox} Wakeup={wakeup} WorkerId={workerId} LatencyTrend={latencyTrend} MissRate={missRate} InputQueuePosition={inputQueuePosition} CommitLogPosition={commitLogPosition}",
                     this.partitionId, info.WorkItems, info.Activities, info.Timers, info.Requests, info.Outbox, info.Wakeup, info.WorkerId, info.LatencyTrend, info.MissRate, info.InputQueuePosition, info.CommitLogPosition);
 
-                if (EtwSource.Log.IsEnabled())
-                {
-                    EtwSource.Log.PartitionLoadPublished(this.account, this.taskHub, this.partitionId, info.WorkItems, info.Activities, info.Timers, info.Requests, info.Outbox, info.Wakeup?.ToString("o") ?? "", info.WorkerId, info.LatencyTrend, info.MissRate, info.InputQueuePosition, info.CommitLogPosition, TraceUtils.ExtensionVersion);
-                }
+                EtwSource.Log.PartitionLoadPublished(this.account, this.taskHub, this.partitionId, info.WorkItems, info.Activities, info.Timers, info.Requests, info.Outbox, info.Wakeup?.ToString("o") ?? "", info.WorkerId, info.LatencyTrend, info.MissRate, info.InputQueuePosition, info.CommitLogPosition, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
-        public void TraceWorkItemProgress(string workItemId, string instanceId, string format, params object[] args)
+        public void BatchWorkerProgress(string worker, int batchSize, double elapsedMilliseconds, int? nextBatch)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
-                if (this.logger.IsEnabled(LogLevel.Debug))
-                {
-                    object[] objarray = new object[3 + args.Length];
-                    objarray[0] = this.partitionId;
-                    objarray[1] = workItemId;
-                    objarray[2] = instanceId;
-                    Array.Copy(args, 0, objarray, 3, args.Length);
-                    this.logger.LogDebug("Part{partition:D2} OrchestrationWorkItem workItemId={workItemId} instanceId={instanceId} " + format, objarray);
-                }
+                this.logger.LogDebug("Part{partition:D2} {worker} completed batch: batchSize={batchSize} elapsedMilliseconds={elapsedMilliseconds:F2} nextBatch={nextBatch}",
+                    this.partitionId, worker, batchSize, elapsedMilliseconds, nextBatch.ToString() ?? "");
+       
+                EtwSource.Log.BatchWorkerProgress(this.account, this.taskHub, this.partitionId, worker, batchSize, elapsedMilliseconds, nextBatch.ToString() ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
     }

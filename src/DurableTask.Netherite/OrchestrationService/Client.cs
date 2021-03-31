@@ -225,7 +225,8 @@ namespace DurableTask.Netherite
                             WorkItemTraceHelper.WorkItemType.Client,
                             request.WorkItemId,
                             group.Key,
-                            "");
+                            "",
+                            $"send failed with {e.GetType().FullName}");
                     }
 
                     if (this.client.ResponseWaiters.TryRemove(this.requestId, out var _))
@@ -241,7 +242,8 @@ namespace DurableTask.Netherite
                         WorkItemTraceHelper.WorkItemType.Client,
                         creationRequestReceived.WorkItemId,
                         creationRequestReceived.InstanceId,
-                        "");
+                        "",
+                        $"send failed with {e.GetType().FullName}");
                 }            
             }
 
