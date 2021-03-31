@@ -60,6 +60,7 @@ namespace DurableTask.Netherite.Faster
             this.effectTracker = new EffectTracker(
                 this.partition,
                 (key, tracker) => store.ProcessEffectOnTrackedObject(key, tracker),
+                (keys) => store.RemoveKeys(keys),
                 () => (this.CommitLogPosition, this.InputQueuePosition)
             );
         }

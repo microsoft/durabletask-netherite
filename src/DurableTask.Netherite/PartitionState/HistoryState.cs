@@ -43,14 +43,6 @@ namespace DurableTask.Netherite
             return $"History InstanceId={this.InstanceId} ExecutionId={this.ExecutionId} Events={this.History.Count}";
         }
 
-        void DeleteHistory()
-        {
-            this.History = null;
-            this.Episode = 0;
-            this.ExecutionId = null;
-            this.CachedOrchestrationWorkItem = null;
-        }
-
         public void Process(BatchProcessed evt, EffectTracker effects)
         {
             // can add events to the history, or replace it with a new history
@@ -98,16 +90,6 @@ namespace DurableTask.Netherite
                     this.CachedOrchestrationWorkItem = null;
                 }
             }
-        }
-
-        public void Process(DeletionRequestReceived deletionRequestReceived, EffectTracker effects)
-        {
-            this.DeleteHistory();
-        }
-
-        public void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
-        {
-            this.DeleteHistory();
         }
     }
 }

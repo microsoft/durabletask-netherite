@@ -48,6 +48,8 @@ namespace DurableTask.Netherite.Faster
 
         public abstract ValueTask ProcessEffectOnTrackedObject(FasterKV.Key k, EffectTracker tracker);
 
+        public abstract ValueTask RemoveKeys(IEnumerable<TrackedObjectKey> keys);
+
         public StoreStatistics StoreStats { get; } = new StoreStatistics();
 
         public class StoreStatistics

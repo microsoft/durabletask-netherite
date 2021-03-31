@@ -138,11 +138,13 @@ namespace DurableTask.Netherite
             if (this.OrchestrationState != null 
                 && (!deletionRequest.CreatedTime.HasValue || deletionRequest.CreatedTime.Value == this.OrchestrationState.CreatedTime))
             {
-                this.OrchestrationState = null;
                 numberInstancesDeleted++;
 
-                // we also delete this instance's history, and pending operations on it
-                effects.Add(TrackedObjectKey.History(this.InstanceId));
+                // delete instance object and history object
+                effects.AddDeletion(this.Key);
+                effects.AddDeletion(TrackedObjectKey.History(this.InstanceId));
+
+                // also delete all task messages headed for this instance
                 effects.Add(TrackedObjectKey.Sessions);
             }
 
@@ -163,9 +165,11 @@ namespace DurableTask.Netherite
             if (this.OrchestrationState != null
                 && purgeBatchIssued.InstanceQuery.Matches(this.OrchestrationState))
             {
-                this.OrchestrationState = null;
                 purgeBatchIssued.Purged.Add(this.InstanceId);
-                effects.Add(TrackedObjectKey.History(this.InstanceId));
+
+                // delete instance object and history object
+                effects.AddDeletion(this.Key);
+                effects.AddDeletion(TrackedObjectKey.History(this.InstanceId));
             }
         }
     }
