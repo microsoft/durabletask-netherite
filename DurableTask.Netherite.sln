@@ -33,6 +33,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EventProducer", "test\Event
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EventConsumer", "test\EventConsumer\EventConsumer.csproj", "{1D16A6FD-944C-49A1-8727-6236861F437A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScalingTests", "ScalingTests\ScalingTests.csproj", "{2F4D331C-62E4-47E8-852E-163166944DF8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -71,6 +73,10 @@ Global
 		{1D16A6FD-944C-49A1-8727-6236861F437A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1D16A6FD-944C-49A1-8727-6236861F437A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1D16A6FD-944C-49A1-8727-6236861F437A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2F4D331C-62E4-47E8-852E-163166944DF8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2F4D331C-62E4-47E8-852E-163166944DF8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2F4D331C-62E4-47E8-852E-163166944DF8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2F4D331C-62E4-47E8-852E-163166944DF8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -84,6 +90,7 @@ Global
 		{654DA6B4-2E2F-4386-BB9F-7CE5A13998DE} = {AB958467-9236-402E-833C-B8DE4841AB9F}
 		{5F2A1A00-13A2-40C5-A1D6-A3518E4645E8} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
 		{1D16A6FD-944C-49A1-8727-6236861F437A} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
+		{2F4D331C-62E4-47E8-852E-163166944DF8} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {238A9613-5411-41CF-BDEC-168CCD5C03FB}

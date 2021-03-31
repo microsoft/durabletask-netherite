@@ -76,7 +76,7 @@ namespace DurableTask.Netherite.Scaling
 
         public async Task<Dictionary<uint, PartitionLoadInfo>> QueryAsync(CancellationToken cancellationToken)
         {
-            var query = new TableQuery<PartitionInfoEntity>().Where(TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.Equal, this.taskHubName));
+            var query = new TableQuery<PartitionInfoEntity>().Where(TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, this.taskHubName));
             TableContinuationToken continuationToken = null;
             Dictionary<uint, PartitionLoadInfo> result = new Dictionary<uint, PartitionLoadInfo>();
             do
@@ -94,8 +94,6 @@ namespace DurableTask.Netherite.Scaling
                         Outbox = e.Outbox,
                         InputQueuePosition = e.InputQueuePosition,
                         CommitLogPosition = e.CommitLogPosition,
-                        ActivityLatencyMs = e.ActivityLatencyMs,
-                        WorkItemLatencyMs = e.WorkItemLatencyMs,
                         WorkerId = e.WorkerId,
                         LatencyTrend = e.LatencyTrend,
                         MissRate = e.MissRate,
@@ -116,8 +114,6 @@ namespace DurableTask.Netherite.Scaling
             public DateTime? NextTimer { get; set; }
             public long InputQueuePosition { get; set; }
             public long CommitLogPosition { get; set; }
-            public long ActivityLatencyMs { get; set; }
-            public long WorkItemLatencyMs { get; set; }
             public string WorkerId { get; set; }
             public string LatencyTrend { get; set; }
             public double MissRate { get; set; }
@@ -145,8 +141,6 @@ namespace DurableTask.Netherite.Scaling
                 this.Outbox = info.Outbox;
                 this.InputQueuePosition = info.InputQueuePosition;
                 this.CommitLogPosition = info.CommitLogPosition;
-                this.ActivityLatencyMs = info.ActivityLatencyMs;
-                this.WorkItemLatencyMs = info.WorkItemLatencyMs;
                 this.WorkerId = info.WorkerId;
                 this.LatencyTrend = info.LatencyTrend;
                 this.MissRate = info.MissRate;

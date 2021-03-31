@@ -36,15 +36,14 @@ namespace DurableTask.Netherite.Faster
         long timeOfNextCheckpoint;
 
         // periodic load publishing
-        long lastPublishedCommitLogPosition = 0;
-        long lastPublishedInputQueuePosition = 0;
-        string lastPublishedLatencyTrend = "";
-        DateTime lastPublishedTime = DateTime.MinValue;
-        public static TimeSpan PublishInterval = TimeSpan.FromSeconds(10);
-        public static TimeSpan IdlingPeriod = TimeSpan.FromSeconds(10.5);
+        PartitionLoadInfo loadInfo;
+        DateTime lastPublished;
+        string lastPublishedLatencyTrend;
+        public static TimeSpan PublishInterval = TimeSpan.FromSeconds(8);
+        public static TimeSpan PokePeriod = TimeSpan.FromSeconds(3); // allows storeworker to checkpoint and publish load even while idle
 
 
-        public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken) 
+        public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken)
             : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", true, 500, cancellationToken)
         {
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
@@ -54,7 +53,10 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper = traceHelper;
             this.blobManager = blobManager;
             this.random = new Random();
-            //this.Tracer = (string message) => this.traceHelper.FasterProgress($"{this.Name} {message}");
+
+            this.loadInfo = PartitionLoadInfo.FirstFrame(this.partition.Settings.WorkerId);
+            this.lastPublished = DateTime.MinValue;
+            this.lastPublishedLatencyTrend = "";
 
             // construct an effect tracker that we use to apply effects to the store
             this.effectTracker = new EffectTracker(
@@ -88,6 +90,7 @@ namespace DurableTask.Netherite.Faster
         public void StartProcessing()
         {
             this.Resume();
+            var pokeLoop = this.PokeLoop();
         }
 
         public void SetCheckpointPositionsAfterRecovery(long commitLogPosition, long inputQueuePosition)
@@ -156,94 +159,51 @@ namespace DurableTask.Netherite.Faster
 
         async Task PublishPartitionLoad()
         {
-            var info = new PartitionLoadInfo()
-            {
-                CommitLogPosition = this.CommitLogPosition,
-                InputQueuePosition = this.InputQueuePosition,
-                WorkerId = this.partition.Settings.WorkerId,
-                LatencyTrend = this.lastPublishedLatencyTrend,
-                MissRate = this.store.StoreStats.GetMissRate(),
-            };
             foreach (var k in TrackedObjectKey.GetSingletons())
             {
-                (await this.store.ReadAsync(k, this.effectTracker).ConfigureAwait(false))?.UpdateLoadInfo(info);
+                (await this.store.ReadAsync(k, this.effectTracker).ConfigureAwait(false)).UpdateLoadInfo(this.loadInfo);
             }
 
-            this.UpdateLatencyTrend(info);
-             
-            // to avoid unnecessary traffic for statically provisioned deployments,
-            // suppress load publishing if the state is not changing
-            if (info.CommitLogPosition == this.lastPublishedCommitLogPosition 
-                && info.InputQueuePosition == this.lastPublishedInputQueuePosition
-                && info.LatencyTrend == this.lastPublishedLatencyTrend)
+            this.loadInfo.MissRate = this.store.StoreStats.GetMissRate();
+
+            if (this.loadInfo.IsBusy() != null)
             {
-                return;
+                this.loadInfo.MarkActive();
             }
 
-            // to avoid publishing not-yet committed state, publish
-            // only after the current log is persisted.
-            var task = this.LogWorker.WaitForCompletionAsync()
-                .ContinueWith((t) => this.partition.LoadPublisher?.Submit((this.partition.PartitionId, info)));
-
-            this.lastPublishedCommitLogPosition = this.CommitLogPosition;
-            this.lastPublishedInputQueuePosition = this.InputQueuePosition;
-            this.lastPublishedLatencyTrend = info.LatencyTrend;
-            this.lastPublishedTime = DateTime.UtcNow;
-
-            this.partition.TraceHelper.TracePartitionLoad(info);
-
-            // trace top load
-            // this.partition.TraceHelper.TraceProgress($"LockMonitor top {LockMonitor.TopN}: {LockMonitor.Instance.Report()}");
-            // LockMonitor.Instance.Reset();
-        }
-
-        void UpdateLatencyTrend(PartitionLoadInfo info)
-        {
-            int activityLatencyCategory;
-
-            if (info.Activities == 0)
+            // we suppress the load publishing if a partition is long time idle and positions are unchanged
+            bool publish = false;
+          
+            if (this.loadInfo.CommitLogPosition < this.CommitLogPosition)
             {
-                activityLatencyCategory = 0;
+                this.loadInfo.CommitLogPosition = this.CommitLogPosition;
+                publish = true;
             }
-            else if (info.ActivityLatencyMs < 100)
+            if (this.loadInfo.InputQueuePosition < this.InputQueuePosition)
             {
-                activityLatencyCategory = 1;
+                this.loadInfo.InputQueuePosition = this.InputQueuePosition;
+                publish = true;
             }
-            else if (info.ActivityLatencyMs < 1000)
+            if (!PartitionLoadInfo.IsLongIdle(this.loadInfo.LatencyTrend) || this.loadInfo.LatencyTrend != this.lastPublishedLatencyTrend)
             {
-                activityLatencyCategory = 2;
-            }
-            else
-            {
-                activityLatencyCategory = 3;
+                publish = true;
             }
 
-            int workItemLatencyCategory;
+            if (publish)
+            {
+                // take the current load info and put the next frame in its place
+                var loadInfoToPublish = this.loadInfo;
+                this.loadInfo = loadInfoToPublish.NextFrame();
+                this.lastPublished = DateTime.UtcNow;
+                this.lastPublishedLatencyTrend = loadInfoToPublish.LatencyTrend;
 
-            if (info.WorkItems == 0)
-            {
-                workItemLatencyCategory = 0;
-            }
-            else if (info.WorkItemLatencyMs < 100)
-            {
-                workItemLatencyCategory = 1;
-            }
-            else if (info.WorkItemLatencyMs < 1000)
-            {
-                workItemLatencyCategory = 2;
-            }
-            else
-            {
-                workItemLatencyCategory = 3;
-            }
+                this.partition.TraceHelper.TracePartitionLoad(loadInfoToPublish);
 
-            if (info.LatencyTrend.Length == PartitionLoadInfo.LatencyTrendLength)
-            {
-                info.LatencyTrend = info.LatencyTrend.Substring(1, PartitionLoadInfo.LatencyTrendLength - 1);
+                // to avoid publishing not-yet committed state, publish
+                // only after the current log is persisted.
+                var task = this.LogWorker.WaitForCompletionAsync()
+                    .ContinueWith((t) => this.partition.LoadPublisher?.Submit((this.partition.PartitionId, loadInfoToPublish)));
             }
-
-            info.LatencyTrend = info.LatencyTrend
-                + PartitionLoadInfo.LatencyCategories[Math.Max(activityLatencyCategory, workItemLatencyCategory)];         
         }
 
         enum CheckpointTrigger
@@ -336,6 +296,9 @@ namespace DurableTask.Netherite.Faster
                         this.partition.Assert(partitionEvent.NextInputQueuePosition > this.InputQueuePosition);
                         this.InputQueuePosition = partitionEvent.NextInputQueuePosition;
                     }
+
+                    // since we are processing actual events, our latency category is at least "low"
+                    this.loadInfo.MarkActive();
                 }
 
                 if (this.isShuttingDown || this.cancellationToken.IsCancellationRequested)
@@ -379,7 +342,7 @@ namespace DurableTask.Netherite.Faster
                     }
                 }
                 
-                if (this.lastPublishedTime + PublishInterval < DateTime.UtcNow)
+                if (this.lastPublished + PublishInterval < DateTime.UtcNow)
                 {
                     await this.PublishPartitionLoad().ConfigureAwait(false);
                 }
@@ -520,6 +483,22 @@ namespace DurableTask.Netherite.Faster
             }
 
             this.numberEventsSinceLastCheckpoint++;
+        }
+
+        async Task PokeLoop()
+        {
+            while (true)
+            {
+                await Task.Delay(StoreWorker.PokePeriod, this.cancellationToken).ConfigureAwait(false);
+
+                if (this.cancellationToken.IsCancellationRequested || this.isShuttingDown)
+                {
+                    break;
+                }
+
+                // periodically poke so we can checkpoint, and publish load
+                this.Notify();
+            }
         }
     }
 }
