@@ -239,6 +239,11 @@ namespace DurableTask.Netherite
 
                 await this.taskHub.StartAsync().ConfigureAwait(false);
 
+                if (this.Settings.PartitionCount != this.NumberPartitions)
+                {
+                    this.Logger.LogWarning("NetheriteOrchestrationService is ignoring configuration setting partitionCount={specifiedPartitions} because existing TaskHub has {actualPartitions} partitions", this.Settings.PartitionCount, this.NumberPartitions);
+                }
+
                 System.Diagnostics.Debug.Assert(this.client != null, "Backend should have added client");
             }
             catch (Exception e) when (!Utils.IsFatal(e))
@@ -247,6 +252,11 @@ namespace DurableTask.Netherite
                 string message = $"NetheriteOrchestrationService failed to start: {e.Message}";
                 EtwSource.Log.OrchestrationServiceError(this.StorageAccountName, message, e.ToString(), this.Settings.HubName, this.Settings.WorkerId, TraceUtils.ExtensionVersion);
                 this.Logger.LogError("NetheriteOrchestrationService failed to start: {exception}", e);
+
+                this.serviceShutdownSource.Cancel();
+                this.serviceShutdownSource.Dispose();
+                this.serviceShutdownSource = null;
+
                 throw;
             }
         }
@@ -620,6 +630,8 @@ namespace DurableTask.Netherite
                 BatchLength = messageBatch.BatchLength,
                 NewEvents = (List<HistoryEvent>)newOrchestrationRuntimeState.NewEvents,
                 WorkItemForReuse = cacheWorkItemForReuse ? orchestrationWorkItem : null,
+                PackPartitionTaskMessages = partition.Settings.PackPartitionTaskMessages,
+                PersistFirst = partition.Settings.PersistStepsFirst ? BatchProcessed.PersistFirstStatus.Required : BatchProcessed.PersistFirstStatus.NotRequired,
                 State = state,
                 ActivityMessages = (List<TaskMessage>)outboundMessages,
                 LocalMessages = localMessages,

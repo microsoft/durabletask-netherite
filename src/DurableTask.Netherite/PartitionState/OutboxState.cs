@@ -65,17 +65,17 @@ namespace DurableTask.Netherite
 
             if (!effects.IsReplaying)
             {
-                if (!this.Partition.Settings.PersistStepsFirst)
+                if (evt is BatchProcessed batchProcessedEvt 
+                    && batchProcessedEvt.PersistFirst == BatchProcessed.PersistFirstStatus.Done)
                 {
-                    // we must not send messages until this step has been persisted
-                    evt.OutboxBatch = batch;
-                    DurabilityListeners.Register(evt, this);
-                }
-                else
-                {
-                    // we can send the messages now
+                    // in this special case the event is actually already persisted so we can send right away
                     this.Send(batch);
+                    return;
                 }
+
+                // register for a durability notification, at which point we will send the batch
+                evt.OutboxBatch = batch;
+                DurabilityListeners.Register(evt, this);
             }
         }
 
@@ -184,7 +184,7 @@ namespace DurableTask.Netherite
                 outmessage.SubPosition = ++subPosition;
             }
 
-            if (effects.Partition.Settings.PackPartitionTaskMessages > 1)
+            if (evt.PackPartitionTaskMessages > 1)
             {
                 // pack multiple TaskMessages for the same destination into a single TaskMessagesReceived event
                 var sorted = new Dictionary<uint, TaskMessagesReceived>();
@@ -202,7 +202,7 @@ namespace DurableTask.Netherite
                     AddMessage(outmessage, message);
 
                     // send the message if we have reached the pack limit
-                    if (outmessage.NumberMessages >= effects.Partition.Settings.PackPartitionTaskMessages)
+                    if (outmessage.NumberMessages >= evt.PackPartitionTaskMessages)
                     {
                         batch.OutgoingMessages.Add(outmessage);
                         sorted.Remove(destination);

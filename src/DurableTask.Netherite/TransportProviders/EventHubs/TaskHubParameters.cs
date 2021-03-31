@@ -23,6 +23,9 @@ namespace DurableTask.Netherite.EventHubs
         public DateTime CreationTimestamp { get; set; }
 
         [DataMember]
+        public string StorageFormat { get; set; }
+
+        [DataMember]
         public string[] PartitionHubs { get; set; }
 
         [DataMember]
