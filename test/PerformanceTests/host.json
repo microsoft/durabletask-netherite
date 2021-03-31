@@ -4,31 +4,32 @@
     "logLevel": {
       "default": "Warning",
 
-      // No need to trace function information for all functions
-      "Function": "None",
-      "Host": "None",
+      // ------ NOTE: the log levels in this section affect some, but NOT ALL consumers
+      // - limits what gets displayed in the func.exe console (which is extremely costly)
+      // - limits what gets stored in application insights
+      // - does not limit what is collected by ETW
+      // - does not limit what is traced to console
+      // - does not limit what is shown in Live Metrics side panel
 
+      // ---- the triggers below can be enabled to get specific host tracing
+      "Host": "Information",
       //"Host.Aggregator": "Trace",
       //"Host.Results": "Error",
       //"Host.Triggers.DurableTask": "Information",
 
       // ---- the triggers below can be enabled to get information on specific functions
+      "Function": "Warning",
       //"Function.HelloCities": "Information",
       //"Function.HelloSequence": "Information",
-      //"Function.Sender": "Information",
-      //"Function.Receiver": "Information",
-      //"Function.Completion": "Information",
-      "Function.Mapper": "Warning",
-      "Function.Reducer": "Warning",
-      "Function.Summary": "Warning",
-      "Function.Wordcount": "Warning",
+      //"Function.Producer": "Warning",
+      //"Function.Consumer": "Warning",
+      //"Function.Completion": "Warning",
+      //"Function.Mapper": "Warning",
+      //"Function.Reducer": "Warning",
+      //"Function.Summary": "Warning",
+      //"Function.Wordcount": "Warning",
 
-      // ------ The log levels below affect some (but not all) consumers
-      // - limits what's displayed in the func.exe console
-      // - limits what gets stored in application insights
-      // - does not limit what is collected by ETW
-      // - does not limit what is traced to console
-      // - does not limit what is shown in Live Metrics side panel
+      // --- the levels below are used to control the Netherite tracing
       "DurableTask.Netherite": "Information",
       "DurableTask.Netherite.FasterStorage": "Warning",
       "DurableTask.Netherite.EventHubsTransport": "Warning",
@@ -85,16 +86,16 @@
         // this controls what log information is produced by the various components
         // it limits production of the events, and thus can be used to prevent overheads
         // even when some consumers (e.g. Application Insights) are configured to trace information at the lowest level
-        "LogLevelLimit": "Trace",
-        "StorageLogLevelLimit": "Trace",
-        "TransportLogLevelLimit": "Trace",
-        "EventLogLevelLimit": "Trace",
-        "WorkItemLogLevelLimit": "Trace",
+        "LogLevelLimit": "Debug",
+        "StorageLogLevelLimit": "Debug",
+        "TransportLogLevelLimit": "Debug",
+        "EventLogLevelLimit": "Debug",
+        "WorkItemLogLevelLimit": "Debug",
 
         // the following can be used to split and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context
         "TraceToConsole": false,
-        "TraceToBlob": true
+        "TraceToBlob": false
       }
     }
   }

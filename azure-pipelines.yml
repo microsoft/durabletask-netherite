@@ -35,8 +35,22 @@ steps:
       "%ProgramFiles(x86)%\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" start
 
 - task: DotNetCoreCLI@2
+  env:
+    AzureWebJobsStorage: 'UseDevelopmentStorage=true;'
+    EventHubsConnection: 'Memory'
   inputs:
-    command: 'test'
+    command: 'test' 
     projects: '**/DurableTask.Netherite*Tests.csproj'
     arguments: '--configuration $(buildConfiguration) --verbosity normal'
-    testRunTitle: 'Running DurableTask.Netherite.AzureFunctions.Tests'
+    testRunTitle: 'Netherite Unit Tests on DevStorage/Memory'
+
+- task: DotNetCoreCLI@2
+  env:
+    AzureWebJobsStorage: $(StorageConnectionString)
+    EventHubsConnection: $(TransportConnectionString)
+  inputs:
+    command: 'test' 
+    projects: '**/DurableTask.Netherite*Tests.csproj'
+    arguments: '--configuration $(buildConfiguration) --verbosity normal'
+    testRunTitle: 'Netherite Unit Tests on storageAccount/EventHubs'
+
