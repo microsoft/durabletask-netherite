@@ -5,11 +5,13 @@ namespace DurableTask.Netherite.Faster
 {
     using DurableTask.Core.Common;
     using FASTER.core;
+    using ImpromptuInterface;
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
     using Microsoft.Azure.Storage.RetryPolicies;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
+    using Newtonsoft.Json.Linq;
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
@@ -101,6 +103,44 @@ namespace DurableTask.Netherite.Faster
                 (numPartitions <= 16) ? 21 : // 2MB
                                         20, // 1MB         
         };
+
+        const int StorageFormatVersion = 1;
+
+        public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
+        {
+            return JsonConvert.SerializeObject(new
+                {
+                    UseAlternateObjectStore = settings.UseAlternateObjectStore,
+                    UsePSFQueries = settings.UsePSFQueries,
+                    FormatVersion = StorageFormatVersion,
+                }, 
+                Formatting.None);       
+        }
+
+        public static void CheckStorageFormat(string format, NetheriteOrchestrationServiceSettings settings)
+        {
+            try
+            {
+                JObject json = JsonConvert.DeserializeObject<JObject>(format);
+
+                if ((bool)json["UseAlternateObjectStore"] != settings.UseAlternateObjectStore)
+                {
+                    throw new InvalidOperationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
+                }
+                if ((bool)json["UsePSFQueries"] != settings.UsePSFQueries)
+                {
+                    throw new InvalidOperationException("The Netherite configuration setting 'UsePSFQueries' is incompatible with the existing taskhub.");
+                }
+                if ((int)json["FormatVersion"] != StorageFormatVersion)
+                {
+                    throw new InvalidOperationException("The current storage format version is incompatible with the existing taskhub.");
+                }
+            }
+            catch(Exception e)
+            {
+                throw new InvalidOperationException("The taskhub has an incompatible storage format", e);
+            }
+        }
 
         public void Dispose()
         {

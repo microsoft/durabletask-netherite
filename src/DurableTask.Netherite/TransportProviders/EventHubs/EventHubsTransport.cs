@@ -13,6 +13,7 @@ namespace DurableTask.Netherite.EventHubs
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
     using Newtonsoft.Json;
+    using DurableTask.Netherite.Faster;
 
     /// <summary>
     /// The EventHubs transport implementation.
@@ -107,6 +108,7 @@ namespace DurableTask.Netherite.EventHubs
                 TaskhubName = this.settings.HubName,
                 TaskhubGuid = Guid.NewGuid(),
                 CreationTimestamp = DateTime.UtcNow,
+                StorageFormat = BlobManager.GetStorageFormat(this.settings),
                 PartitionHubs = EventHubsTransport.PartitionHubs,
                 ClientHubs = EventHubsTransport.ClientHubs,
                 PartitionConsumerGroup = EventHubsTransport.PartitionConsumerGroup,
@@ -161,8 +163,11 @@ namespace DurableTask.Netherite.EventHubs
                 throw new InvalidOperationException($"The specified taskhub name does not match the task hub name in {this.taskhubParameters.Name}");
             }
 
-            this.host.NumberPartitions = (uint)this.parameters.StartPositions.Length;
+            // check that the storage format is supported
+            BlobManager.CheckStorageFormat(this.parameters.StorageFormat, this.settings);
 
+            this.host.NumberPartitions = (uint)this.parameters.StartPositions.Length;
+           
             this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs)
             {
                 Host = host,
