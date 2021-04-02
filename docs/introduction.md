@@ -11,14 +11,14 @@ As Netherite is intended to be a drop-in backend replacement, it does not modify
 To get started, you can either try out the sample, or take an existing DF app and switch it to the Netherite backend.
 
 **The hello sample.**
-For a quick start, take a look at [hello sample](#/hello-sample.md). We included scripts that make it easy to build, run, and deploy this application. Also, this sample is a great starting point for creating your own projects.
+For a quick start, take a look at [hello sample](hello-sample). We included scripts that make it easy to build, run, and deploy this application. Also, this sample is a great starting point for creating your own projects.
 
 **Configure an existing DF app to use Netherite.**
 If you have a .NET Durable Functions application already, and want to configure it to use Netherite as the backend, do the following:
 - Add the NuGet package `Microsoft.Azure.DurableTask.Netherite.AzureFunctions` to your functions project.
 - Create an EventHubs namespace. You can do this in the Azure portal, or using the Azure CLI.
 - Configure `EventHubsConnection` with the connection string for the Event Hubs namespace. You can do this using an environment variable, or with a function app configuration settings.
-- Modify the host.json to select Netherite as your provider. See [settings for Netherite](#/settings.md).
+- Modify the host.json to select Netherite as your provider. See [recommended host.json settings for Netherite](settings).
 
 ## Why a new engine?
 
@@ -34,7 +34,7 @@ The following picture illustrates the architecture, in a situation where five pa
 
 ![Netherite Architecture](images/partitions.png)
 
-Each partition is represented in storage using the FASTER database technology, which also provides basic indexing and querying. We discuss this in more detail in the section on [storage organization](#/storage-organization.md).
+Each partition is represented in storage using the FASTER database technology, which also provides basic indexing and querying. We discuss this in more detail in the section on [storage organization](storage-organization).
 
 Another advantage of this architecture is that we can store the current input queue position of a partition as part of the partition state. This is important in cases where we need to recover from a crash, or if we need to move a partition from one node to another. In those situation, the node that is restarting the partition can check the input position of the last processed message, and resume processing exactly where it left off. 
 
