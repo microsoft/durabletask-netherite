@@ -2,9 +2,10 @@
 
 ## Recommended Minimal Configuration
 
-We recommend to always tweak the default settings in the host.json file, because Netherite works a bit different than the other engines.
+To run with Netherite, the host.json file must set the storage provider type to "Netherite".
+There are also a few other settings that should be adjusted.
 
-A minimal host.json file would look like this:
+At a minimum, we recommend to include the following data in the host.json file:
 
 ```c#
 {
@@ -16,10 +17,13 @@ A minimal host.json file would look like this:
       "hubName": "myawesomeapp",  
 
       // we recommend to always use the following settings for Netherite      
-      "extendedSessionsEnabled": "true",   // important for cache locality
-      "UseGracefulShutdown": "true",       // important to avoid lengthy waits for lease expiration
+      "extendedSessionsEnabled": "true",   // good for cache locality
+      "UseGracefulShutdown": "true",       // avoids lengthy waits for lease expiration
 
       "storageProvider": {
+
+        // REQUIRED: specifies that you want to use Netherite as your storage provider
+        "type" : "Netherite",
 
         // the number of partitions to use
         "PartitionCount": "12",  
@@ -27,7 +31,6 @@ A minimal host.json file would look like this:
         // where to find the connection strings
         "StorageConnectionName": "AzureWebJobsStorage",
         "EventHubsConnectionName": "EventHubsConnection"
-
       }
     }
   }
@@ -90,8 +93,11 @@ In addition to the parameters shown earlier, there are many more that can be twe
      
       "storageProvider": { // the parameters in this section are specific to Netherite
 
+       // REQUIRED: specifies that you want to use Netherite as your storage provider
+        "type" : "Netherite",
+
         "StorageConnectionName": "AzureWebJobsStorage",   // where to find the connection string for the storage account
-        "EventHubsConnectionName": "EventHubsConnection"  // where to find the connection string for the eventhubs namespace
+        "EventHubsConnectionName": "EventHubsConnection",  // where to find the connection string for the eventhubs namespace
 
         // the following parameters control how often checkpoints are stored
         // more frequent checkpointing means quicker recovery after crashes or ungraceful shutdowns
@@ -107,11 +113,13 @@ In addition to the parameters shown earlier, there are many more that can be twe
         // this controls what log information is produced by the various components
         // it limits production of the events, and thus can be used to prevent overheads
         // even when some consumers (e.g. Application Insights) are configured to trace information at the lowest level
-        "LogLevelLimit": "Information",
-        "StorageLogLevelLimit": "Information",
-        "TransportLogLevelLimit": "Information",
-        "EventLogLevelLimit": "Information",
-        "WorkItemLogLevelLimit": "Information",
+        // we recommend leaving these on "Debug" which allows us to troubleshoot most issues.
+        // "Trace" is appropriate when investigating failures, but produces a lot more output.
+        "LogLevelLimit": "Debug",
+        "StorageLogLevelLimit": "Debug",
+        "TransportLogLevelLimit": "Debug",
+        "EventLogLevelLimit": "Debug",
+        "WorkItemLogLevelLimit": "Debug",
 
         // the following can be used to split and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context

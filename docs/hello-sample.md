@@ -117,32 +117,30 @@ function correctly, it is probably not what you want.
 
 ## Deploy it to Azure
 
-When running Netherite in the cloud, we use a *premium functions plan* with a fixed node count for now, until we implement autoscaling.  
+When running Netherite in the cloud, we use a *premium functions plan* for now, until we implement support for the consumption plan.  
 
 First, build the release binaries:
 ```shell
 dotnet build -c Release
 ```
 
-Then, (optionally) review the following lines in `deploy-to-premium.ps1`:
+Then, if you want, review or change the following parameters in `deploy-to-premium.ps1`:
 
 ```PowerShell
-# edit these parameters before running the script
-$numNodes=2
-$planSku="EP1"
+$Plan="EP1", 
+$MinNodes="1", 
+$MaxNodes="20", 
+$Configuration="Release"
 ```
 
-For demonstration purposes we chose 2 nodes, though 1 node would of course suffice.
 We chose the smallest node size (EP1); for heavier loads EP2 or EP3 may be more appropriate.
 
 Finally, run the `deploy-to-premium.ps1` script. This can take some time. As it executes, the script
 
 1. Creates a premium plan with the specified SKU
 2. Create a function app
-2. Configures the app and plan to use the specified number of nodes
+2. Configures the app
 3. Deploys the code to the app
-
-At the end, you should see 
 
 After executing this script successfully, near the bottom of the output, you should see a list of all three published functions:
 
@@ -166,7 +164,7 @@ Which produces the following output, as expected:
 ["Tokyo","Seattle","London"]
 ```
 
-If you need to update the application, you can rebuild it and redeploy it the same way. You can also change the number of nodes. This allows you to manually scale.
+If you need to update the application, you can rebuild it and redeploy it the same way. You can also change MinNodes or MaxNodes. This allows you to manually scale to a desired number.
 
 ## Delete Azure Resources
 
