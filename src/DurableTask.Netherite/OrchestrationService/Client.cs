@@ -144,7 +144,7 @@ namespace DurableTask.Netherite
         internal class PendingRequest : TransportAbstraction.IDurabilityOrExceptionListener
         {
             readonly long requestId;
-            readonly EventId eventId;
+            readonly EventId partitionEventId;
             readonly uint partitionId;
             readonly Client client;
             readonly (DateTime due, int id) timeoutKey;
@@ -158,11 +158,11 @@ namespace DurableTask.Netherite
 
             public string RequestId => $"{Client.GetShortId(this.client.ClientId)}-{this.requestId}"; // matches EventId
 
-            public PendingRequest(long requestId, EventId eventId, uint partitionId, Client client, DateTime due, int timeoutId)
+            public PendingRequest(long requestId, EventId partitionEventId, uint partitionId, Client client, DateTime due, int timeoutId)
             {
                 this.requestId = requestId;
                 this.partitionId = partitionId;
-                this.eventId = eventId;
+                this.partitionEventId = partitionEventId;
                 this.client = client;
                 this.timeoutKey = (due, timeoutId);
                 this.continuation = new TaskCompletionSource<ClientEvent>();
@@ -252,7 +252,7 @@ namespace DurableTask.Netherite
                 this.client.traceHelper.TraceTimerProgress($"firing ({this.timeoutKey.due:o},{this.timeoutKey.id})");
                 if (this.client.ResponseWaiters.TryRemove(this.requestId, out var pendingRequest))
                 {
-                    this.client.traceHelper.TraceRequestTimeout(pendingRequest.eventId, pendingRequest.partitionId);
+                    this.client.traceHelper.TraceRequestTimeout(pendingRequest.partitionEventId, pendingRequest.partitionId);
                     this.continuation.TrySetException(timeoutException);
                 }
             }

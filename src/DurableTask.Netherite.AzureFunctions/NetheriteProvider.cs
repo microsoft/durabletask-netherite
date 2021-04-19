@@ -43,6 +43,8 @@ namespace DurableTask.Netherite.AzureFunctions
 
         public override TimeSpan MaximumDelayTime { get; set; } = TimeSpan.MaxValue;
 
+        public override string EventSourceName => "DurableTask-Netherite";
+
         /// <inheritdoc/>
         public async override Task<string> RetrieveSerializedEntityState(EntityId entityId, JsonSerializerSettings serializerSettings)
         {

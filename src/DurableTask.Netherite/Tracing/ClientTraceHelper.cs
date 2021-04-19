@@ -72,22 +72,22 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TraceRequestTimeout(EventId eventId, uint partitionId)
+        public void TraceRequestTimeout(EventId partitionEventId, uint partitionId)
         {
             if (this.logLevelLimit <= LogLevel.Warning)
             {
                 if (this.logger.IsEnabled(LogLevel.Warning))
                 {
-                    this.logger.LogWarning("{client} Request {eventId} for partition {partitionId:D2} timed out", this.tracePrefix, eventId, partitionId);
+                    this.logger.LogWarning("{client} Request {eventId} for partition {partitionId:D2} timed out", this.tracePrefix, partitionEventId, partitionId);
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientRequestTimeout(this.account, this.taskHub, this.clientId, eventId.ToString(), (int) partitionId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientRequestTimeout(this.account, this.taskHub, this.clientId, partitionEventId.ToString(), (int) partitionId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }
 
-        public void TraceSend(Event @event)
+        public void TraceSend(PartitionEvent @event)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
@@ -97,12 +97,12 @@ namespace DurableTask.Netherite
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientEventSent(this.account, this.taskHub, this.clientId, @event.EventIdString, @event.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientSentEvent(this.account, this.taskHub, this.clientId, @event.EventIdString, @event.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }
 
-        public void TraceReceive(Event @event)
+        public void TraceReceive(ClientEvent @event)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
@@ -112,7 +112,7 @@ namespace DurableTask.Netherite
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientEventReceived(this.account, this.taskHub, this.clientId, @event.EventIdString, @event.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientReceivedEvent(this.account, this.taskHub, this.clientId, @event.EventIdString, @event.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }
