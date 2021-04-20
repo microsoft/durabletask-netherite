@@ -104,7 +104,10 @@ namespace DurableTask.Netherite.Faster
                                         20, // 1MB         
         };
 
-        const int StorageFormatVersion = 1;
+        static readonly int[] StorageFormatVersion = new int[] {
+            1, //initial version
+            2, //separate singletons
+        }; 
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
         {
@@ -112,7 +115,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     UseAlternateObjectStore = settings.UseAlternateObjectStore,
                     UsePSFQueries = settings.UsePSFQueries,
-                    FormatVersion = StorageFormatVersion,
+                    FormatVersion = StorageFormatVersion.Last(),
                 }, 
                 Formatting.None);       
         }
@@ -131,7 +134,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     throw new InvalidOperationException("The Netherite configuration setting 'UsePSFQueries' is incompatible with the existing taskhub.");
                 }
-                if ((int)json["FormatVersion"] != StorageFormatVersion)
+                if ((int)json["FormatVersion"] != StorageFormatVersion.Last())
                 {
                     throw new InvalidOperationException("The current storage format version is incompatible with the existing taskhub.");
                 }
@@ -656,6 +659,8 @@ namespace DurableTask.Netherite.Faster
 
         (string, string) GetObjectLogSnapshotBlobName(Guid token) => ($"cpr-checkpoints/{token}", "snapshot.obj.dat");
 
+        string GetSingletonsSnapshotBlobName(Guid token) => $"cpr-checkpoints/{token}/singletons.dat";
+
         #endregion
 
         #region ILogCommitManager
@@ -1012,6 +1017,66 @@ namespace DurableTask.Netherite.Faster
         }
 
         #endregion
+
+        internal async Task PersistSingletonsAsync(byte[] singletons, Guid guid)
+        {
+            if (this.UseLocalFilesForTestingAndDebugging)
+            {
+                var path = Path.Combine(this.LocalCheckpointDirectoryPath, this.GetSingletonsSnapshotBlobName(guid));
+                await File.WriteAllBytesAsync(path, singletons);
+            }
+            else
+            {
+                var singletonsBlob = this.blockBlobPartitionDirectory.GetBlockBlobReference(this.GetSingletonsSnapshotBlobName(guid));
+                await this.PerformWithRetriesAsync(
+                   BlobManager.AsynchronousStorageWriteMaxConcurrency,
+                   false,
+                   "CloudBlockBlob.UploadFromByteArrayAsync",
+                   "WriteSingletons",
+                   "",
+                   singletonsBlob.Name,
+                   1000 + singletons.Length / 5000,
+                   false,
+                   async (numAttempts) =>
+                   {
+                       await singletonsBlob.UploadFromByteArrayAsync(singletons, 0, singletons.Length);
+                       return singletons.Length;
+                   });
+            }
+        }
+
+        internal async Task<Stream> RecoverSingletonsAsync()
+        {
+            if (this.UseLocalFilesForTestingAndDebugging)
+            {
+                var path = Path.Combine(this.LocalCheckpointDirectoryPath, this.GetSingletonsSnapshotBlobName(this.CheckpointInfo.LogToken));
+                var stream = File.OpenRead(path);
+                return stream;
+            }
+            else
+            {
+                var singletonsBlob = this.blockBlobPartitionDirectory.GetBlockBlobReference(this.GetSingletonsSnapshotBlobName(this.CheckpointInfo.LogToken));
+                var stream = new MemoryStream();
+                await this.PerformWithRetriesAsync(
+                    BlobManager.AsynchronousStorageReadMaxConcurrency,
+                    true,
+                    "CloudBlockBlob.DownloadToStreamAsync",
+                    "ReadSingletons",
+                    "",
+                    singletonsBlob.Name,
+                    20000,
+                    true,
+                    async (numAttempts) =>
+                    {
+                        stream.Seek(0, SeekOrigin.Begin);
+                        await singletonsBlob.DownloadToStreamAsync(stream);
+                        return stream.Position;
+                    });
+
+                stream.Seek(0, SeekOrigin.Begin);
+                return stream;
+            }
+        }
 
         internal async Task FinalizeCheckpointCompletedAsync()
         {

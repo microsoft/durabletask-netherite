@@ -6,12 +6,14 @@ namespace DurableTask.Netherite.Faster
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.IO;
     using System.Linq;
     using System.Threading;
     using System.Threading.Channels;
     using System.Threading.Tasks;
     using DurableTask.Core;
     using DurableTask.Core.Common;
+    using DurableTask.Core.Tracing;
     using FASTER.core;
 
     class FasterKV : TrackedObjectStore
@@ -21,6 +23,9 @@ namespace DurableTask.Netherite.Faster
         readonly Partition partition;
         readonly BlobManager blobManager;
         readonly CancellationToken terminationToken;
+
+        TrackedObject[] singletons;
+        Task persistSingletonsTask;
 
         ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> mainSession;
 
@@ -46,8 +51,10 @@ namespace DurableTask.Netherite.Faster
                 new SerializerSettings<Key, Value>
                 {
                     keySerializer = () => new Key.Serializer(),
-                    valueSerializer = () => new Value.Serializer(this.StoreStats),
+                    valueSerializer = () => new Value.Serializer(this.StoreStats, partition.TraceHelper),
                 });
+
+            this.singletons = new TrackedObject[TrackedObjectKey.NumberSingletonTypes];
 
 #if FASTER_SUPPORTS_PSF
             if (partition.Settings.UsePSFQueries)
@@ -103,9 +110,23 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 await this.blobManager.FindCheckpointsAsync();
+
+                // recover singletons
+                this.blobManager.TraceHelper.FasterProgress($"Recovering Singletons");
+                using (var stream = await this.blobManager.RecoverSingletonsAsync())
+                {
+                    this.singletons = Serializer.DeserializeSingletons(stream);
+                }
+                foreach (var singleton in this.singletons)
+                {
+                    singleton.Partition = this.partition;
+                }
+
+                // recover Faster
                 this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
-                await this.fht.RecoverAsync(numPagesToPreload: 0);
+                await this.fht.RecoverAsync(numPagesToPreload: 0); 
                 this.mainSession = this.CreateASession();
+
                 return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition);
             }
             catch (Exception exception)
@@ -139,7 +160,16 @@ namespace DurableTask.Netherite.Faster
             {
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
-                return this.fht.TakeFullCheckpoint(out checkpointGuid);
+                if (this.fht.TakeFullCheckpoint(out checkpointGuid))
+                {
+                    byte[] serializedSingletons = Serializer.SerializeSingletons(this.singletons);
+                    this.persistSingletonsTask = this.blobManager.PersistSingletonsAsync(serializedSingletons, checkpointGuid);
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -155,6 +185,8 @@ namespace DurableTask.Netherite.Faster
                 // workaround for hanging in CompleteCheckpointAsync: use custom thread.
                 await RunOnDedicatedThreadAsync(() => this.fht.CompleteCheckpointAsync(this.terminationToken).AsTask());
                 //await this.fht.CompleteCheckpointAsync(this.terminationToken);
+
+                await this.persistSingletonsTask;
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -176,13 +208,13 @@ namespace DurableTask.Netherite.Faster
             return this.blobManager.FinalizeCheckpointCompletedAsync();
         }
 
-
         public override Guid? StartIndexCheckpoint()
         {
             try
             {
                 if (this.fht.TakeIndexCheckpoint(out var token))
                 {
+                    this.persistSingletonsTask = Task.CompletedTask;
                     return token;
                 }
                 else
@@ -208,6 +240,9 @@ namespace DurableTask.Netherite.Faster
                 {
                     // according to Badrish this ensures proper fencing w.r.t. session
                     this.mainSession.Refresh();
+
+                    byte[] serializedSingletons = Serializer.SerializeSingletons(this.singletons);
+                    this.persistSingletonsTask = this.blobManager.PersistSingletonsAsync(serializedSingletons, token);
 
                     return token;
                 }
@@ -415,6 +450,7 @@ namespace DurableTask.Netherite.Faster
 
                 void TryRead(Key key)
                 {
+                    this.partition.Assert(!key.Val.IsSingleton);
                     TrackedObject target = null;
                     var status = this.mainSession.Read(ref key, ref effectTracker, ref target, readEvent, 0);
                     switch (status)
@@ -449,9 +485,16 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                var result = await this.mainSession.ReadAsync(key, effectTracker, context:null, token: this.terminationToken).ConfigureAwait(false);
-                var (status, output) = result.Complete();
-                return output;
+                if (key.Val.IsSingleton)
+                {
+                    return this.singletons[(int)key.Val.ObjectType];
+                }
+                else
+                {
+                    var result = await this.mainSession.ReadAsync(key, effectTracker, context: null, token: this.terminationToken).ConfigureAwait(false);
+                    var (status, output) = result.Complete();
+                    return output;
+                }
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -463,11 +506,12 @@ namespace DurableTask.Netherite.Faster
         // read a tracked object on a query session
         async ValueTask<TrackedObject> ReadAsync(
             ClientSession<Key, Value, EffectTracker, TrackedObject, object, Functions> session,
-            Key key, 
+            Key key,
             EffectTracker effectTracker)
         {
             try
             {
+                this.partition.Assert(!key.Val.IsSingleton);
                 var result = await session.ReadAsync(key, effectTracker, context: null, token: this.terminationToken).ConfigureAwait(false);
                 var (status, output) = result.Complete();
                 return output;
@@ -484,12 +528,11 @@ namespace DurableTask.Netherite.Faster
         public override ValueTask<TrackedObject> CreateAsync(Key key)
         {
             try
-            {              
+            {
+                this.partition.Assert(key.Val.IsSingleton);
                 TrackedObject newObject = TrackedObjectKey.Factory(key);
                 newObject.Partition = this.partition;
-                Value newValue = newObject;
-                // Note: there is no UpsertAsync().
-                this.mainSession.Upsert(ref key, ref newValue);
+                this.singletons[(int)key.Val.ObjectType] = newObject;
                 return new ValueTask<TrackedObject>(newObject);
             }
             catch (Exception exception)
@@ -503,7 +546,14 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                (await this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken)).Complete();
+                if (k.Val.IsSingleton)
+                {
+                    tracker.ProcessEffectOn(this.singletons[(int)k.Val.ObjectType]);
+                }
+                else
+                {
+                    (await this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken)).Complete();
+                }
             }
             catch (Exception exception)
                when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -706,10 +756,12 @@ namespace DurableTask.Netherite.Faster
             public class Serializer : BinaryObjectSerializer<Value>
             {
                 readonly StoreStatistics storeStats;
+                readonly PartitionTraceHelper traceHelper;
 
-                public Serializer(StoreStatistics storeStats)
+                public Serializer(StoreStatistics storeStats, PartitionTraceHelper traceHelper)
                 {
                     this.storeStats = storeStats;
+                    this.traceHelper = traceHelper;
                 }
 
                 public override void Deserialize(out Value obj)
@@ -717,6 +769,7 @@ namespace DurableTask.Netherite.Faster
                     int count = this.reader.ReadInt32();
                     byte[] bytes = this.reader.ReadBytes(count);
                     var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                    //this.traceHelper.TraceProgress($"Deserialized TrackedObject {trackedObject.Key} size={bytes.Length}");
                     //if (trackedObject.Key.IsSingleton)
                     //{
                     //    this.storeStats.A++;
