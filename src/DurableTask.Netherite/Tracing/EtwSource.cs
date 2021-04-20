@@ -105,10 +105,10 @@ namespace DurableTask.Netherite
         }
 
         [Event(217, Level = EventLevel.Warning, Version = 1)]
-        public void ClientRequestTimeout(string Account, string TaskHub, Guid ClientId, string EventId, int PartitionId, string AppName, string ExtensionVersion)
+        public void ClientRequestTimeout(string Account, string TaskHub, Guid ClientId, string PartitionEventId, int PartitionId, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(217, Account, TaskHub, ClientId, EventId, PartitionId, AppName, ExtensionVersion);
+            this.WriteEvent(217, Account, TaskHub, ClientId, PartitionEventId, PartitionId, AppName, ExtensionVersion);
         }
 
         // ----- specific events relating to DurableTask concepts (TaskMessage, OrchestrationWorkItem, Instance)
@@ -170,61 +170,61 @@ namespace DurableTask.Netherite
         }
 
         [Event(228, Level = EventLevel.Verbose, Version = 1)]
-        public void InstanceStatusFetched(string Account, string TaskHub, int PartitionId, string InstanceId, string ExecutionId, string status, string EventId, double LatencyMs, string AppName, string ExtensionVersion)
+        public void InstanceStatusFetched(string Account, string TaskHub, int PartitionId, string InstanceId, string ExecutionId, string status, string PartitionEventId, double LatencyMs, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(228, Account, TaskHub, PartitionId, InstanceId, ExecutionId, status, EventId, LatencyMs, AppName, ExtensionVersion);
+            this.WriteEvent(228, Account, TaskHub, PartitionId, InstanceId, ExecutionId, status, PartitionEventId, LatencyMs, AppName, ExtensionVersion);
         }
 
         [Event(229, Level = EventLevel.Verbose, Version = 1)]
-        public void InstanceHistoryFetched(string Account, string TaskHub, int PartitionId, string InstanceId, string ExecutionId, int EventCount, int Episode, string EventId, double LatencyMs, string AppName, string ExtensionVersion)
+        public void InstanceHistoryFetched(string Account, string TaskHub, int PartitionId, string InstanceId, string ExecutionId, int EventCount, int Episode, string PartitionEventId, double LatencyMs, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(229, Account, TaskHub, PartitionId, InstanceId, ExecutionId, EventCount, Episode, EventId, LatencyMs, AppName, ExtensionVersion);
+            this.WriteEvent(229, Account, TaskHub, PartitionId, InstanceId, ExecutionId, EventCount, Episode, PartitionEventId, LatencyMs, AppName, ExtensionVersion);
         }
 
         // ----- general event processing and statistics
 
         [Event(240, Level = EventLevel.Informational, Version = 1)]
-        public void PartitionEventProcessed(string Account, string TaskHub, int PartitionId, long CommitLogPosition, string Category, string EventId, string EventInfo, long NextCommitLogPosition, long NextInputQueuePosition, double QueueLatencyMs, double FetchLatencyMs, double LatencyMs, bool IsReplaying, string AppName, string ExtensionVersion)
+        public void PartitionEventProcessed(string Account, string TaskHub, int PartitionId, long CommitLogPosition, string Category, string PartitionEventId, string EventInfo, long NextCommitLogPosition, long NextInputQueuePosition, double QueueLatencyMs, double FetchLatencyMs, double LatencyMs, bool IsReplaying, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(240, Account, TaskHub, PartitionId, CommitLogPosition, Category, EventId, EventInfo, NextCommitLogPosition, NextInputQueuePosition, QueueLatencyMs, FetchLatencyMs, LatencyMs, IsReplaying, AppName, ExtensionVersion);
+            this.WriteEvent(240, Account, TaskHub, PartitionId, CommitLogPosition, Category, PartitionEventId, EventInfo, NextCommitLogPosition, NextInputQueuePosition, QueueLatencyMs, FetchLatencyMs, LatencyMs, IsReplaying, AppName, ExtensionVersion);
         }
 
         [Event(241, Level = EventLevel.Verbose, Version = 1)]
-        public void PartitionEventDetail(string Account, string TaskHub, int PartitionId, long CommitLogPosition, string EventId, string Details, string AppName, string ExtensionVersion)
+        public void PartitionEventDetail(string Account, string TaskHub, int PartitionId, long CommitLogPosition, string PartitionEventId, string Details, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(241, Account, TaskHub, PartitionId, CommitLogPosition, EventId, Details, AppName, ExtensionVersion);
+            this.WriteEvent(241, Account, TaskHub, PartitionId, CommitLogPosition, PartitionEventId, Details, AppName, ExtensionVersion);
         }
 
         [Event(242, Level = EventLevel.Warning, Version = 1)]
-        public void PartitionEventWarning(string Account, string TaskHub, int PartitionId, long CommitLogPosition, string EventId, string Details, string AppName, string ExtensionVersion)
+        public void PartitionEventWarning(string Account, string TaskHub, int PartitionId, long CommitLogPosition, string PartitionEventId, string Details, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(242, Account, TaskHub, PartitionId, CommitLogPosition, EventId, Details, AppName, ExtensionVersion);
+            this.WriteEvent(242, Account, TaskHub, PartitionId, CommitLogPosition, PartitionEventId, Details, AppName, ExtensionVersion);
         }
 
         [Event(243, Level = EventLevel.Verbose, Version = 1)]
-        public void ClientEventReceived(string Account, string TaskHub, Guid ClientId, string EventId, string EventInfo, string AppName, string ExtensionVersion)
+        public void ClientReceivedEvent(string Account, string TaskHub, Guid ClientId, string PartitionEventId, string EventInfo, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(243, Account, TaskHub, ClientId, EventId, EventInfo, AppName, ExtensionVersion);
+            this.WriteEvent(243, Account, TaskHub, ClientId, PartitionEventId, EventInfo, AppName, ExtensionVersion);
         }
 
         [Event(244, Level = EventLevel.Verbose, Version = 1)]
-        public void ClientEventSent(string Account, string TaskHub, Guid ClientId, string EventId, string EventInfo, string AppName, string ExtensionVersion)
+        public void ClientSentEvent(string Account, string TaskHub, Guid ClientId, string PartitionEventId, string EventInfo, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(244, Account, TaskHub, ClientId, EventId, EventInfo, AppName, ExtensionVersion);
+            this.WriteEvent(244, Account, TaskHub, ClientId, PartitionEventId, EventInfo, AppName, ExtensionVersion);
         }
 
         [Event(245, Level = EventLevel.Warning, Version = 1)]
-        public void PartitionOffloadDecision(string Account, string TaskHub, int PartitionId, long CommitLogPosition, string EventId, int ReportedLocalLoad, int Pending, int Backlog, int Remotes, string ReportedRemoteLoad, string AppName, string ExtensionVersion)
+        public void PartitionOffloadDecision(string Account, string TaskHub, int PartitionId, long CommitLogPosition, string PartitionEventId, int ReportedLocalLoad, int Pending, int Backlog, int Remotes, string ReportedRemoteLoad, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(245, Account, TaskHub, PartitionId, CommitLogPosition, EventId, ReportedLocalLoad, Pending, Backlog, Remotes, ReportedRemoteLoad, AppName, ExtensionVersion);
+            this.WriteEvent(245, Account, TaskHub, PartitionId, CommitLogPosition, PartitionEventId, ReportedLocalLoad, Pending, Backlog, Remotes, ReportedRemoteLoad, AppName, ExtensionVersion);
         }
 
         [Event(246, Level = EventLevel.Informational, Version = 1)]
