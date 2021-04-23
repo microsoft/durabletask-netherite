@@ -1,4 +1,3 @@
-# Netherite Configuration Settings
 
 ## Recommended Minimal Configuration
 

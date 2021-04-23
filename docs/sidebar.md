@@ -11,10 +11,14 @@
   * [Build](build.md)
   * [Storage Organization](storage.md)
   * [Emulation Mode](emulation.md)
+  
+* Observability
+  * [Partition Table](ptable.md)
 
 * Performance
   * [Throughput](throughput.md)
-  
-* [Settings](settings.md)  
+
+* Configuration
+  * [Host.json](settings.md)  
 
 * [General Information](general.md)
