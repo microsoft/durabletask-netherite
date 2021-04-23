@@ -39,8 +39,6 @@ namespace DurableTask.Netherite
             }
         }
 
-        // how long before the scheduled time the ScalingMonitor should scale up from zero
-        static readonly TimeSpan WakeupInAdvance = TimeSpan.FromSeconds(20);
 
         public override void UpdateLoadInfo(PartitionLoadInfo info)
         {
@@ -48,7 +46,7 @@ namespace DurableTask.Netherite
 
             if (info.Timers > 0)
             {
-                info.Wakeup = this.PendingTimers.Select(kvp => kvp.Value.Item1).Min() - WakeupInAdvance;
+                info.Wakeup = this.PendingTimers.Select(kvp => kvp.Value.Item1).Min();
             }
             else
             {

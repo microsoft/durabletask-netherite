@@ -69,7 +69,7 @@ namespace DurableTask.Netherite.Scaling
                 return $"has {this.Outbox} unsent messages";
             }
 
-            if (this.Wakeup.HasValue && this.Wakeup.Value < DateTime.UtcNow + TimeSpan.FromSeconds(10))
+            if (this.Wakeup.HasValue && this.Wakeup.Value < DateTime.UtcNow + TimeSpan.FromSeconds(20))
             {
                 return $"has timer waking up at {this.Wakeup.Value}";
             }
