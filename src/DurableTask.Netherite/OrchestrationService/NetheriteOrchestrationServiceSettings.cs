@@ -136,7 +136,7 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Whether to use the Faster PSF support for handling queries.
         /// </summary>
-        public bool UsePSFQueries { get; set; } = true;
+        public bool UsePSFQueries { get; set; } = false;
 
         /// <summary>
         /// Whether to use the alternate object store implementation.
