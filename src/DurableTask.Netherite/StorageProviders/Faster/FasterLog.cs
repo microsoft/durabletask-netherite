@@ -90,5 +90,28 @@ namespace DurableTask.Netherite.Faster
         {
             this.log.TruncateUntil(beforeAddress);
         }
+
+        // This flushes the whole log but only commits depending
+        // on our definition of ILogCommitManager in BlobManager.
+        public async ValueTask CommitAndWaitUntil(long untilAddress)
+        {
+            // Issue the commit
+            this.log.Commit();
+            await this.WaitUntilCommitted(untilAddress).ConfigureAwait(false);
+        }
+
+        public async ValueTask WaitUntilCommitted(long untilAddress)
+        {
+            try
+            {
+                await this.log.WaitForCommitAsync(untilAddress, this.terminationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+                when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
+            {
+                throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
+            }
+        }
+
     }
 }

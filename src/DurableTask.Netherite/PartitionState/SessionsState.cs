@@ -258,27 +258,25 @@ namespace DurableTask.Netherite
         public void ConfirmDurable(Event evt)
         {
             var evtCopy = (BatchProcessed) ((BatchProcessed) evt).Clone();
-            evtCopy.PersistFirst = BatchProcessed.PersistFirstStatus.Done;
+            evtCopy.PersistenceStatus = BatchProcessed.BatchPersistenceStatus.Persisted;
             this.Partition.SubmitInternalEvent(evtCopy);
         }
 
         public void Process(BatchProcessed evt, EffectTracker effects)
         {
             // if speculation is disabled, 
-            if (evt.PersistFirst != BatchProcessed.PersistFirstStatus.NotRequired)
+            if (evt.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.NotPersisted)
             {
-                if (evt.PersistFirst == BatchProcessed.PersistFirstStatus.Required)
-                {
-                    // we do not process this event right away
-                    // but persist it first, and then submit it again, before processing it.
-                    this.StepsAwaitingPersistence.Add(evt.WorkItemId, evt);
-                    DurabilityListeners.Register(evt, this);
-                    return;
-                }
-                else
-                {
-                    this.StepsAwaitingPersistence.Remove(evt.WorkItemId);
-                }
+                // we do not process this event now
+                // but persist it first, and then submit it again, before processing it.
+                this.StepsAwaitingPersistence.Add(evt.WorkItemId, evt);
+                DurabilityListeners.Register(evt, this);
+                return;
+            }
+
+            if (evt.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.Persisted)
+            {
+                this.StepsAwaitingPersistence.Remove(evt.WorkItemId);
             }
 
             // updates the session and other state

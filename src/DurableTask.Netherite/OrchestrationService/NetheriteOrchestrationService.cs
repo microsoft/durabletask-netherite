@@ -661,6 +661,21 @@ namespace DurableTask.Netherite
             // if this orchestration is not done, and extended sessions are enabled, we keep the work item so we can reuse the execution cursor
             bool cacheWorkItemForReuse = partition.Settings.ExtendedSessionsEnabled && state.OrchestrationStatus == OrchestrationStatus.Running;
 
+            BatchProcessed.BatchPersistenceStatus initialStatus()
+            {
+                switch(partition.Settings.Speculation)
+                {
+                    case SpeculationOptions.None:
+                        return BatchProcessed.BatchPersistenceStatus.NotPersisted;
+                    case SpeculationOptions.Local:
+                        return BatchProcessed.BatchPersistenceStatus.LocallySpeculated;
+                    case SpeculationOptions.Global:
+                        return BatchProcessed.BatchPersistenceStatus.GloballySpeculated;
+                    default:
+                        throw new NotSupportedException("invalid setting: missing case in switch statement");
+                }
+            }
+
             BatchProcessed batchProcessedEvent = new BatchProcessed()
             {
                 PartitionId = partition.PartitionId,
@@ -671,7 +686,7 @@ namespace DurableTask.Netherite
                 NewEvents = (List<HistoryEvent>)newOrchestrationRuntimeState.NewEvents,
                 WorkItemForReuse = cacheWorkItemForReuse ? orchestrationWorkItem : null,
                 PackPartitionTaskMessages = partition.Settings.PackPartitionTaskMessages,
-                PersistFirst = partition.Settings.PersistStepsFirst ? BatchProcessed.PersistFirstStatus.Required : BatchProcessed.PersistFirstStatus.NotRequired,
+                PersistenceStatus = initialStatus(),
                 State = state,
                 ActivityMessages = (List<TaskMessage>)outboundMessages,
                 LocalMessages = localMessages,

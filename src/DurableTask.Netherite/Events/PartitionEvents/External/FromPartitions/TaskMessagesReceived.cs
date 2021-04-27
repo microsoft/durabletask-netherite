@@ -6,6 +6,7 @@ namespace DurableTask.Netherite
     using System.Collections.Generic;
     using System.Runtime.Serialization;
     using System.Text;
+    using System.Threading.Tasks;
     using DurableTask.Core;
 
     [DataContract]
@@ -23,6 +24,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public string WorkItemId { get; set; }
 
+        [DataMember]
+        public BatchProcessed.BatchPersistenceStatus PersistenceStatus { get; set; }
+
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionToPartitionEventId(this.WorkItemId, this.PartitionId);
 
@@ -31,6 +35,9 @@ namespace DurableTask.Netherite
 
         [IgnoreDataMember]
         public int NumberMessages => (this.TaskMessages?.Count ?? 0) + (this.DelayedTaskMessages?.Count ?? 0);
+
+        [IgnoreDataMember]
+        public TaskCompletionSource<object> ConfirmationPromise = null; // if non-null, we are waiting for confirmation
 
         protected override void ExtraTraceInformation(StringBuilder s)
         {

@@ -54,13 +54,16 @@ namespace DurableTask.Netherite
         /// <summary>Implement this member in derived classes to process a batch</summary>
         protected abstract Task Process(IList<T> batch);
 
-        public void Submit(T entry)
+        public void Submit(T entry, bool notify=true)
         {
             this.work.Enqueue(entry);
-            this.NotifyInternal();
+            if (notify)
+            {
+                this.NotifyInternal();
+            }
         }
 
-        public void SubmitBatch(IList<T> entries)
+        public void SubmitBatch(IEnumerable<T> entries)
         {
             foreach (var e in entries)
             {

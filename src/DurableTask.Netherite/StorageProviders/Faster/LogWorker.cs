@@ -11,6 +11,7 @@ namespace DurableTask.Netherite.Faster
     using System.Threading.Tasks;
     using System.Threading.Channels;
     using FASTER.core;
+    using System.Linq;
 
     class LogWorker : BatchWorker<PartitionUpdateEvent>
     {
@@ -51,39 +52,62 @@ namespace DurableTask.Netherite.Faster
 
         public long LastCommittedInputQueuePosition { get; private set; }
 
+        public ConfirmationPromises ConfirmationPromises { get; } = new ConfirmationPromises();
+
         class IntakeWorker : BatchWorker<PartitionEvent>
         {
             readonly LogWorker logWorker;
-            readonly List<PartitionUpdateEvent> updateEvents;
 
             public IntakeWorker(CancellationToken token, LogWorker logWorker, PartitionTraceHelper traceHelper) : base(nameof(IntakeWorker), true, int.MaxValue, token, traceHelper)
             {
                 this.logWorker = logWorker;
-                this.updateEvents = new List<PartitionUpdateEvent>();
             }
 
             protected override Task Process(IList<PartitionEvent> batch)
             {
                 if (batch.Count > 0 && !this.logWorker.isShuttingDown)
                 {
-                    // before processing any update events they need to be serialized
-                    // and assigned a commit log position
+                    bool notifyLogWorker = false;
+                    bool notifyStoreWorker = false;
+
                     foreach (var evt in batch)
                     {
-                        if (evt is PartitionUpdateEvent partitionUpdateEvent)
+                        if (evt is PersistenceConfirmationEvent persistenceConfirmationEvent)
                         {
-                            var bytes = Serializer.SerializeEvent(evt, first | last);
-                            this.logWorker.AddToFasterLog(bytes);
-                            partitionUpdateEvent.NextCommitLogPosition = this.logWorker.log.TailAddress;
-                            this.updateEvents.Add(partitionUpdateEvent);
+                            uint originPartition = persistenceConfirmationEvent.OriginPartition;
+                            long originPosition = persistenceConfirmationEvent.OriginPosition;
+                            this.logWorker.traceHelper.FasterProgress($"Received PersistenceConfirmation message: (partition: {originPartition}, position: {originPosition})");
+                            this.logWorker.ConfirmationPromises.ResolveConfirmationPromises(originPartition, originPosition);
                         }
+                        else
+                        {
+                            if (evt is PartitionUpdateEvent partitionUpdateEvent)
+                            {
+                                // if this is event is speculative, register a promise for the completion event
+                                if (partitionUpdateEvent is TaskMessagesReceived taskMessagesReceivedEvent 
+                                    && taskMessagesReceivedEvent.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.GloballySpeculated)
+                                {
+                                    this.logWorker.ConfirmationPromises.CreateConfirmationPromise(taskMessagesReceivedEvent);
+                                }
+
+                                var bytes = Serializer.SerializeEvent(evt, first | last);
+                                this.logWorker.AddToFasterLog(bytes);
+                                notifyLogWorker = true;
+
+                                // must set commit log position before processing the event in the storeworker
+                                partitionUpdateEvent.NextCommitLogPosition = this.logWorker.log.TailAddress;
+                            }
+
+                            this.logWorker.storeWorker.Submit(evt, false);
+                            notifyStoreWorker = true;
+                        }
+
+                        if (notifyStoreWorker)
+                            this.logWorker.storeWorker.Notify();
+
+                        if (notifyLogWorker)
+                            this.logWorker.Notify();
                     }
-
-                    // the store worker and the log worker can now process these events in parallel
-                    this.logWorker.storeWorker.SubmitBatch(batch);
-                    this.logWorker.SubmitBatch(this.updateEvents);
-
-                    this.updateEvents.Clear();
                 }
 
                 return Task.CompletedTask;
@@ -146,32 +170,38 @@ namespace DurableTask.Netherite.Faster
             {
                 if (batch.Count > 0)
                 {
+                    // Q: Could this be a problem that this here takes a long time possibly blocking
                     //  checkpoint the log
                     var stopwatch = new System.Diagnostics.Stopwatch();
                     stopwatch.Start();
                     long previous = this.log.CommittedUntilAddress;
 
-                    await this.log.CommitAsync().ConfigureAwait(false); // may commit more events than just the ones in the batch, but that is o.k.
-
-                    this.traceHelper.FasterLogPersisted(this.log.CommittedUntilAddress, batch.Count, (this.log.CommittedUntilAddress - previous), stopwatch.ElapsedMilliseconds);
-
-                    foreach (var evt in batch)
+                    // Iteratively
+                    // - Find the next event that has a dependency (by checking if their Task is set)
+                    // - The ones before it can be safely commited.
+                    // - For event that is commited we also inform its durability listener
+                    // - Wait until the waiting for dependence is complete.
+                    // - go back to step 1
+                    var lastEnqueuedCommitted = 0;
+                    for (var i = 0; i < batch.Count; i++)
                     {
-                        this.LastCommittedInputQueuePosition = Math.Max(this.LastCommittedInputQueuePosition, evt.NextInputQueuePosition);
-
-                        if (!(this.isShuttingDown || this.cancellationToken.IsCancellationRequested))
+                        var evt = batch[i];
+                        
+                        if (evt is TaskMessagesReceived taskMessagesReceivedEvent 
+                                && taskMessagesReceivedEvent.ConfirmationPromise != null)
                         {
-                            try
-                            {
-                                DurabilityListeners.ConfirmDurable(evt);
-                            }
-                            catch (Exception exception) when (!(exception is OutOfMemoryException))
-                            {
-                                // for robustness, swallow exceptions, but report them
-                                this.partition.ErrorHandler.HandleError("LogWorker.Process", $"Encountered exception while notifying persistence listeners for event {evt} id={evt.EventIdString}", exception, false, false);
-                            }
+                            // we must commit our log (and send associated confirmations) BEFORE waiting for
+                            // dependencies, otherwise we can get stuck in a circular wait-for pattern
+                            await this.CommitUntil(batch, lastEnqueuedCommitted, i);
+
+                            // Progress the last commited index
+                            lastEnqueuedCommitted = i;
+
+                            // Before continuing, wait for the dependencies of this update to be done, so that we can continue
+                            await taskMessagesReceivedEvent.ConfirmationPromise.Task;
                         }
                     }
+                    await this.CommitUntil(batch, lastEnqueuedCommitted, batch.Count);
                 }
             }
             catch (OperationCanceledException) when (this.cancellationToken.IsCancellationRequested)
@@ -290,6 +320,60 @@ namespace DurableTask.Netherite.Faster
                     {
                         partitionEvent.NextCommitLogPosition = iter.NextAddress;
                         yield return partitionEvent;
+                    }
+                }
+            }
+        }
+
+        async Task CheckpointLog(int count, long latestConsistentAddress)
+        {
+            var stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Start();
+            long previous = this.log.CommittedUntilAddress;
+
+            this.blobManager.BeginCommit(latestConsistentAddress);
+            await this.log.CommitAndWaitUntil(latestConsistentAddress);
+            this.blobManager.EndCommit();
+
+            this.traceHelper.FasterLogPersisted(this.log.CommittedUntilAddress, count, (this.log.CommittedUntilAddress - previous), stopwatch.ElapsedMilliseconds);
+        }
+
+
+        async Task CommitUntil(IList<PartitionUpdateEvent> batch, int from, int to)
+        {
+            var count = to - from;
+            if (count > 0)
+            {
+                var latestConsistentAddress = batch[to - 1].NextCommitLogPosition;
+
+                await this.CheckpointLog(count, latestConsistentAddress);
+
+                // Now that the log is commited, we can send persistence confirmation events for
+                // the commited events.
+                //
+                // TODO: (Optimization) Can we group and only send aggregate persistence confirmations?
+                //       This could relieve the pressure on sending/receiving from Eventhubs
+
+                for (var j = from; j < to; j++)
+                {
+                    var currEvt = batch[j];
+
+                    this.LastCommittedInputQueuePosition = Math.Max(this.LastCommittedInputQueuePosition, currEvt.NextInputQueuePosition);
+                   
+                    // Q: Is this the right place to check for that, or should we do it earlier?
+                    if (!(this.isShuttingDown || this.cancellationToken.IsCancellationRequested))
+                    {
+
+                        try
+                        {
+                            DurabilityListeners.ConfirmDurable(currEvt);
+                            // Possible optimization: Move persistence confirmation logic to the lower level and out of the application layer
+                        }
+                        catch (Exception exception) when (!(exception is OutOfMemoryException))
+                        {
+                            // for robustness, swallow exceptions, but report them
+                            this.partition.ErrorHandler.HandleError("LogWorker.Process", $"Encountered exception while notifying persistence listeners for event {currEvt} id={currEvt.EventIdString}", exception, false, false);
+                        }
                     }
                 }
             }

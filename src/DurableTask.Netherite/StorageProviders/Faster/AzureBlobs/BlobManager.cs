@@ -658,12 +658,54 @@ namespace DurableTask.Netherite.Faster
 
         #endregion
 
-        #region ILogCommitManager
+        #region Commit Log
+
+        public long LatestConsistentPosition;
+        long lastCommittedPosition;
+        byte[] lastLogCommitInfo;
+        readonly object logCommitLock = new object(); // TODO probably superfluous
+
+        public void BeginCommit(long latestConsistentPosition)
+        {
+            // we call this before committing to make sure we never commit beyond the last consistent position
+            lock (this.logCommitLock)
+            {
+                this.LatestConsistentPosition = latestConsistentPosition;
+            }
+        }
+
+        public void EndCommit()
+        {
+            // we call this after committing to make sure the latest committed position is reflected in the written commit record
+            lock (this.logCommitLock)
+            {
+                if (this.lastCommittedPosition < this.LatestConsistentPosition)
+                {
+                    var commitMetadata = FasterLogRecoveryInfo.ModifyCommitPosition(this.lastLogCommitInfo, this.LatestConsistentPosition);
+
+                    this.CommitInternal(this.LatestConsistentPosition, commitMetadata);
+                }
+            }
+        }
 
         void ILogCommitManager.Commit(long beginAddress, long untilAddress, byte[] commitMetadata)
         {
             this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.Commit Called beginAddress={beginAddress} untilAddress={untilAddress}");
 
+            lock (this.logCommitLock)
+            {
+                if (untilAddress > this.LatestConsistentPosition)
+                {
+                    untilAddress = this.LatestConsistentPosition;
+                    commitMetadata = FasterLogRecoveryInfo.ModifyCommitPosition(commitMetadata, this.LatestConsistentPosition);
+                }
+
+                this.CommitInternal(untilAddress, commitMetadata);
+            }
+        }
+
+        void CommitInternal(long untilAddress, byte[] commitMetadata)
+        { 
             AccessCondition acc = new AccessCondition() { LeaseId = this.leaseId };
 
             this.PerformWithRetries(
@@ -680,6 +722,8 @@ namespace DurableTask.Netherite.Faster
                     {
                         var blobRequestOptions = numAttempts > 2 ? BlobManager.BlobRequestOptionsDefault : BlobManager.BlobRequestOptionsAggressiveTimeout;
                         this.eventLogCommitBlob.UploadFromByteArray(commitMetadata, 0, commitMetadata.Length, acc, blobRequestOptions);
+                        this.lastLogCommitInfo = commitMetadata;
+                        this.lastCommittedPosition = untilAddress;
                         return (commitMetadata.Length, true);
                     }
                     catch (StorageException ex) when (BlobUtils.LeaseConflict(ex))
@@ -754,6 +798,7 @@ namespace DurableTask.Netherite.Faster
                });
 
             var bytes = stream.ToArray();
+            this.lastLogCommitInfo = bytes;
             this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.GetCommitMetadata Returned {bytes?.Length ?? null} bytes");
             return bytes.Length == 0 ? null : bytes;
         }

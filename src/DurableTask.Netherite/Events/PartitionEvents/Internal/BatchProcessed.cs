@@ -47,9 +47,9 @@ namespace DurableTask.Netherite
         public DateTime Timestamp { get; set; }
 
         [DataMember]
-        public PersistFirstStatus PersistFirst { get; set; }
+        public BatchPersistenceStatus PersistenceStatus { get; set; }
 
-        public enum PersistFirstStatus {  NotRequired, Required, Done };
+        public enum BatchPersistenceStatus {  NotPersisted, Persisted, LocallySpeculated, GloballySpeculated };
 
         [DataMember]
         public int PackPartitionTaskMessages { get; set; }
@@ -61,7 +61,7 @@ namespace DurableTask.Netherite
         public string WorkItemId => SessionsState.GetWorkItemId(this.PartitionId, this.SessionId, this.BatchStartPosition);
 
         [IgnoreDataMember]
-        public override EventId EventId => EventId.MakePartitionInternalEventId(this.PersistFirst == PersistFirstStatus.Done ? this.WorkItemId + "P" : this.WorkItemId);
+        public override EventId EventId => EventId.MakePartitionInternalEventId(this.PersistenceStatus == BatchPersistenceStatus.Persisted ? this.WorkItemId + "P" : this.WorkItemId);
 
         [IgnoreDataMember]
         public override IEnumerable<(TaskMessage, string)> TracedTaskMessages
