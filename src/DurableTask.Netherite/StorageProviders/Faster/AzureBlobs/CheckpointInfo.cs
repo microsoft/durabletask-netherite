@@ -21,13 +21,5 @@ namespace DurableTask.Netherite.Faster
 
         [JsonProperty]
         public long InputQueuePosition { get; set; }
-
-        internal void CopyFrom(CheckpointInfo other)
-        {
-            this.IndexToken = other.IndexToken;
-            this.LogToken = other.LogToken;
-            this.CommitLogPosition = other.CommitLogPosition;
-            this.InputQueuePosition = other.InputQueuePosition;
-        }
     }
 }

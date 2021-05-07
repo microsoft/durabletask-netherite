@@ -14,9 +14,8 @@ namespace DurableTask.Netherite.Faster
 
     class FasterStorage : IPartitionState
     {
-        // if used as a "azure storage connection string", causes Faster to use local file storage instead
-        public const string LocalFileStorageConnectionString = "UseLocalFileStorage";
         readonly CloudStorageAccount storageAccount;
+        readonly string localFileDirectory;
         readonly CloudStorageAccount pageBlobStorageAccount;
         readonly string taskHubName;
         readonly ILogger logger;
@@ -32,10 +31,14 @@ namespace DurableTask.Netherite.Faster
 
         internal FasterTraceHelper TraceHelper { get; private set; }
 
-        public FasterStorage(string connectionString, string premiumStorageConnectionString, string taskHubName, ILoggerFactory loggerFactory)
+        public FasterStorage(string connectionString, string premiumStorageConnectionString, string localFileDirectory, string taskHubName, ILoggerFactory loggerFactory)
         {
-            if (connectionString != LocalFileStorageConnectionString)
+            if (!string.IsNullOrEmpty(localFileDirectory))
             {
+                this.localFileDirectory = localFileDirectory;
+            }
+            else
+            { 
                 this.storageAccount = CloudStorageAccount.Parse(connectionString);
             }
             if (!string.IsNullOrEmpty(premiumStorageConnectionString))
@@ -50,10 +53,10 @@ namespace DurableTask.Netherite.Faster
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
         }
 
-        public static Task DeleteTaskhubStorageAsync(string connectionString, string taskHubName)
+        public static Task DeleteTaskhubStorageAsync(string connectionString, string localFileDirectory, string taskHubName)
         {
-            var storageAccount = (connectionString != LocalFileStorageConnectionString) ? CloudStorageAccount.Parse(connectionString) : null;
-            return BlobManager.DeleteTaskhubStorageAsync(storageAccount, taskHubName);
+            var storageAccount = string.IsNullOrEmpty(localFileDirectory) ? CloudStorageAccount.Parse(connectionString) : null;
+            return BlobManager.DeleteTaskhubStorageAsync(storageAccount, localFileDirectory, taskHubName);
         }
 
         public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, long firstInputQueuePosition)
@@ -70,6 +73,7 @@ namespace DurableTask.Netherite.Faster
             this.blobManager = new BlobManager(
                 this.storageAccount,
                 this.pageBlobStorageAccount,
+                this.localFileDirectory,
                 this.taskHubName,
                 this.logger,
                 this.partition.Settings.StorageLogLevelLimit,
