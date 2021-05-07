@@ -1,6 +1,10 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+#define USE_SECONDARY_INDEX
+
+#pragma warning disable IDE0008 // Use explicit type
+
 namespace DurableTask.Netherite.Faster
 {
     using System;
@@ -15,7 +19,7 @@ namespace DurableTask.Netherite.Faster
     class FasterStorage : IPartitionState
     {
         // if used as a "azure storage connection string", causes Faster to use local file storage instead
-        public const string LocalFileStorageConnectionString = "UseLocalFileStorage";
+        public const string LocalFileStorageConnectionString = "MemoryF";
         readonly CloudStorageAccount storageAccount;
         readonly CloudStorageAccount pageBlobStorageAccount;
         readonly string taskHubName;
@@ -61,8 +65,8 @@ namespace DurableTask.Netherite.Faster
             this.partition = partition;
             this.terminationToken = errorHandler.Token;
 
-#if FASTER_SUPPORTS_PSF
-            int psfCount = partition.Settings.UsePSFQueries ? FasterKV.PSFCount : 0;
+#if USE_SECONDARY_INDEX
+            int psfCount = partition.Settings.UseSecondaryIndexQueries ? FasterKV.IndexCount : 0;
 #else
             int psfCount = 0;
 #endif

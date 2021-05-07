@@ -1,10 +1,16 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+#define USE_SECONDARY_INDEX
+
+#pragma warning disable IDE0008 // Use explicit type
+#pragma warning disable IDE0011 // Add braces
+
 namespace DurableTask.Netherite.Faster
 {
     using DurableTask.Core.Common;
     using FASTER.core;
+    using FASTER.indexes.HashValueIndex;
     using ImpromptuInterface;
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
@@ -52,10 +58,10 @@ namespace DurableTask.Netherite.Faster
         public IDevice HybridLogDevice { get; private set; }
         public IDevice ObjectLogDevice { get; private set; }
 
-        IDevice[] PsfLogDevices;
-        internal CheckpointInfo[] PsfCheckpointInfos { get; }
-        int PsfGroupCount => this.PsfCheckpointInfos.Length;
-        const int InvalidPsfGroupOrdinal = -1;
+        IDevice[] IndexLogDevices;
+        internal CheckpointInfo[] IndexCheckpointInfos { get; }
+        int IndexCount => this.IndexCheckpointInfos.Length;
+        const int InvalidIndexOrdinal = -1;
 
         public string ContainerName { get; }
 
@@ -94,7 +100,7 @@ namespace DurableTask.Netherite.Faster
             SegmentSizeBits =
                 usePremiumStorage ? 35 // 32 GB
                                   : 32, // 4 GB
-            CopyReadsToTail = true,
+            CopyReadsToTail = CopyReadsToTail.FromReadOnly,
             MemorySizeBits =
                 (numPartitions <= 1) ? 25 : // 32MB
                 (numPartitions <= 2) ? 24 : // 16MB
@@ -111,7 +117,7 @@ namespace DurableTask.Netherite.Faster
             return JsonConvert.SerializeObject(new
                 {
                     UseAlternateObjectStore = settings.UseAlternateObjectStore,
-                    UsePSFQueries = settings.UsePSFQueries,
+                    UseSecondaryIndexQueries = settings.UseSecondaryIndexQueries,
                     FormatVersion = StorageFormatVersion,
                 }, 
                 Formatting.None);       
@@ -127,9 +133,9 @@ namespace DurableTask.Netherite.Faster
                 {
                     throw new InvalidOperationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
                 }
-                if ((bool)json["UsePSFQueries"] != settings.UsePSFQueries)
+                if ((bool)json["UseSecondaryIndexQueries"] != settings.UseSecondaryIndexQueries)
                 {
-                    throw new InvalidOperationException("The Netherite configuration setting 'UsePSFQueries' is incompatible with the existing taskhub.");
+                    throw new InvalidOperationException("The Netherite configuration setting 'UseSecondaryIndexQueries' is incompatible with the existing taskhub.");
                 }
                 if ((int)json["FormatVersion"] != StorageFormatVersion)
                 {
@@ -152,6 +158,8 @@ namespace DurableTask.Netherite.Faster
             //TODO figure out what is supposed to go here
         }
 
+        public void OnRecovery(Guid indexToken, Guid logToken) { /* TODO */ }
+
         public CheckpointSettings StoreCheckpointSettings => new CheckpointSettings
         {
             CheckpointManager = this.UseLocalFilesForTestingAndDebugging
@@ -160,27 +168,29 @@ namespace DurableTask.Netherite.Faster
             CheckPointType = CheckpointType.FoldOver
         };
 
-#if FASTER_SUPPORTS_PSF
-        internal PSFRegistrationSettings<TKey> CreatePSFRegistrationSettings<TKey>(uint numberPartitions, int groupOrdinal)
+#if USE_SECONDARY_INDEX
+        internal RegistrationSettings<PredicateKey> CreateSecondaryIndexRegistrationSettings<TKey>(uint numberPartitions, int indexOrdinal)
         {
             var storeLogSettings = this.StoreLogSettings(false, numberPartitions);
-            return new PSFRegistrationSettings<TKey>
+            return new RegistrationSettings<PredicateKey>
             {
-                HashTableSize = FasterKV.HashTableSize,
+                HashTableSize = HashTableSize,
+                KeyComparer = new PredicateKey.Comparer(),
+                NullIndicator = default,
                 LogSettings = new LogSettings()
                 {
-                    LogDevice = this.PsfLogDevices[groupOrdinal],
+                    LogDevice = this.IndexLogDevices[indexOrdinal],
                     PageSizeBits = storeLogSettings.PageSizeBits,
                     SegmentSizeBits = storeLogSettings.SegmentSizeBits,
                     MemorySizeBits = storeLogSettings.MemorySizeBits,
-                    CopyReadsToTail = false,
+                    CopyReadsToTail = CopyReadsToTail.None,
                     ReadCacheSettings = storeLogSettings.ReadCacheSettings
                 },
                 CheckpointSettings = new CheckpointSettings
                 {
                     CheckpointManager = this.UseLocalFilesForTestingAndDebugging
-                        ? new LocalFileCheckpointManager(this.PsfCheckpointInfos[groupOrdinal], this.LocalPsfCheckpointDirectoryPath(groupOrdinal), this.GetCheckpointCompletedBlobName())
-                        : (ICheckpointManager)new PsfBlobCheckpointManager(this, groupOrdinal),
+                        ? new LocalFileCheckpointManager(this.IndexCheckpointInfos[indexOrdinal], this.LocalIndexCheckpointDirectoryPath(indexOrdinal), this.GetCheckpointCompletedBlobName())
+                        : (ICheckpointManager)new SecondaryIndexBlobCheckpointManager(this, indexOrdinal),
                     CheckPointType = CheckpointType.FoldOver
                 }
             };
@@ -216,7 +226,7 @@ namespace DurableTask.Netherite.Faster
         public static TimeSpan GetDelayBetweenRetries(int numAttempts)
             => TimeSpan.FromSeconds(Math.Pow(2, (numAttempts - 1)));
 
-        // For tests only; TODO consider adding PSFs
+        // For tests only; TODO consider adding Indexes
         internal BlobManager(CloudStorageAccount storageAccount, CloudStorageAccount secondaryStorageAccount, string taskHubName, ILogger logger, Microsoft.Extensions.Logging.LogLevel logLevelLimit, uint partitionId, IPartitionErrorHandler errorHandler)
             : this(storageAccount, secondaryStorageAccount, taskHubName, logger, logLevelLimit, partitionId, errorHandler, 0)
         {
@@ -232,7 +242,7 @@ namespace DurableTask.Netherite.Faster
         /// <param name="logLevelLimit">A limit on log event level emitted</param>
         /// <param name="partitionId">The partition id</param>
         /// <param name="errorHandler">A handler for errors encountered in this partition</param>
-        /// <param name="psfGroupCount">Number of PSF groups to be created in FASTER</param>
+        /// <param name="indexCount">Number of secondary indexes to be created in FASTER</param>
         public BlobManager(
             CloudStorageAccount storageAccount,
             CloudStorageAccount secondaryStorageAccount,
@@ -240,7 +250,7 @@ namespace DurableTask.Netherite.Faster
             ILogger logger,
             Microsoft.Extensions.Logging.LogLevel logLevelLimit,
             uint partitionId, IPartitionErrorHandler errorHandler,
-            int psfGroupCount)
+            int indexCount)
         {
             this.cloudStorageAccount = storageAccount;
             this.secondaryStorageAccount = secondaryStorageAccount;
@@ -248,7 +258,7 @@ namespace DurableTask.Netherite.Faster
             this.ContainerName = GetContainerName(taskHubName);
             this.partitionId = partitionId;
             this.CheckpointInfo = new CheckpointInfo();
-            this.PsfCheckpointInfos = Enumerable.Range(0, psfGroupCount).Select(ii => new CheckpointInfo()).ToArray();
+            this.IndexCheckpointInfos = Enumerable.Range(0, indexCount).Select(ii => new CheckpointInfo()).ToArray();
 
             if (!this.UseLocalFilesForTestingAndDebugging)
             {
@@ -269,18 +279,18 @@ namespace DurableTask.Netherite.Faster
         string LocalDirectoryPath => $"{LocalFileDirectoryForTestingAndDebugging}\\{this.ContainerName}";
 
         string PartitionFolderName => $"p{this.partitionId:D2}";
-        string PsfGroupFolderName(int groupOrdinal) => $"psfgroup.{groupOrdinal:D3}";
+        string IndexGroupFolderName(int indexOrdinal) => $"index.{indexOrdinal:D3}";
 
         string LocalCheckpointDirectoryPath => $"{this.LocalDirectoryPath}\\chkpts{this.partitionId:D2}";
-        string LocalPsfCheckpointDirectoryPath(int groupOrdinal) => $"{this.LocalDirectoryPath}\\chkpts{this.partitionId:D2}\\psfgroup.{groupOrdinal:D3}";
+        string LocalIndexCheckpointDirectoryPath(int indexOrdinal) => $"{this.LocalDirectoryPath}\\chkpts{this.partitionId:D2}\\index.{indexOrdinal:D3}";
 
         const string EventLogBlobName = "commit-log";
         const string CommitBlobName = "commit-lease";
         const string HybridLogBlobName = "store";
         const string ObjectLogBlobName = "store.obj";
 
-        // PSFs do not have an object log
-        const string PsfHybridLogBlobName = "store.psf";
+        // Indexes do not have an object log
+        const string IndexHybridLogBlobName = "store.index";
 
         Task LeaseMaintenanceLoopTask = Task.CompletedTask;
         volatile Task NextLeaseRenewalTask = Task.CompletedTask;
@@ -296,8 +306,8 @@ namespace DurableTask.Netherite.Faster
                 this.EventLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{EventLogBlobName}");
                 this.HybridLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{HybridLogBlobName}");
                 this.ObjectLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{ObjectLogBlobName}");
-                this.PsfLogDevices = (from groupOrdinal in Enumerable.Range(0, this.PsfGroupCount)
-                                      let deviceName = $"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{this.PsfGroupFolderName(groupOrdinal)}\\{PsfHybridLogBlobName}"
+                this.IndexLogDevices = (from indexOrdinal in Enumerable.Range(0, this.IndexCount)
+                                      let deviceName = $"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{this.IndexGroupFolderName(indexOrdinal)}\\{IndexHybridLogBlobName}"
                                       select Devices.CreateLogDevice(deviceName)).ToArray();
 
                 // This does not acquire any blob ownership, but is needed for the lease maintenance loop which calls PartitionErrorHandler.TerminateNormally() when done.
@@ -319,9 +329,9 @@ namespace DurableTask.Netherite.Faster
                 var hybridLogDevice = createDevice(HybridLogBlobName);
                 var objectLogDevice = createDevice(ObjectLogBlobName);
 
-                var psfLogDevices = (from groupOrdinal in Enumerable.Range(0, this.PsfGroupCount)
-                                     let psfDirectory = this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(groupOrdinal))
-                                     select new AzureStorageDevice(PsfHybridLogBlobName, psfDirectory.GetDirectoryReference(PsfHybridLogBlobName), psfDirectory.GetDirectoryReference(PsfHybridLogBlobName), this, true)).ToArray();
+                var indexLogDevices = (from indexOrdinal in Enumerable.Range(0, this.IndexCount)
+                                     let indexDirectory = this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal))
+                                     select new AzureStorageDevice(IndexHybridLogBlobName, indexDirectory.GetDirectoryReference(IndexHybridLogBlobName), indexDirectory.GetDirectoryReference(IndexHybridLogBlobName), this, true)).ToArray();
 
                 await this.AcquireOwnership();
 
@@ -332,18 +342,18 @@ namespace DurableTask.Netherite.Faster
                     hybridLogDevice.StartAsync(),
                     objectLogDevice.StartAsync()
                 };
-                startTasks.AddRange(psfLogDevices.Select(psfLogDevice => psfLogDevice.StartAsync()));
+                startTasks.AddRange(indexLogDevices.Select(indexLogDevice => indexLogDevice.StartAsync()));
                 await Task.WhenAll(startTasks);
                 this.TraceHelper.FasterProgress("Started Faster Devices");
 
                 this.EventLogDevice = eventLogDevice;
                 this.HybridLogDevice = hybridLogDevice;
                 this.ObjectLogDevice = objectLogDevice;
-                this.PsfLogDevices = psfLogDevices;
+                this.IndexLogDevices = indexLogDevices;
             }
         }
 
-        internal void ClosePSFDevices() => Array.ForEach(this.PsfLogDevices, logDevice => logDevice.Dispose());
+        internal void CloseIndexDevices() => Array.ForEach(this.IndexLogDevices, logDevice => logDevice.Dispose());
 
         public void HandleStorageError(string where, string message, string blobName, Exception e, bool isFatal, bool isWarning)
         {
@@ -772,28 +782,34 @@ namespace DurableTask.Netherite.Faster
             // there is no need to create empty directories in a blob container
         }
 
-        #region Call-throughs to actual implementation; separated for PSFs
+        #region Call-throughs to actual implementation; separated for Secondary Indexes
 
         void ICheckpointManager.CommitIndexCheckpoint(Guid indexToken, byte[] commitMetadata)
-            => this.CommitIndexCheckpoint(indexToken, commitMetadata, InvalidPsfGroupOrdinal);
+            => this.CommitIndexCheckpoint(indexToken, commitMetadata, InvalidIndexOrdinal);
 
         void ICheckpointManager.CommitLogCheckpoint(Guid logToken, byte[] commitMetadata)
-            => this.CommitLogCheckpoint(logToken, commitMetadata, InvalidPsfGroupOrdinal);
+            => this.CommitLogCheckpoint(logToken, commitMetadata, InvalidIndexOrdinal);
+
+        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
+            => this.CommitLogIncrementalCheckpoint(logToken, version, commitMetadata, deltaLog, InvalidIndexOrdinal);
 
         byte[] ICheckpointManager.GetIndexCheckpointMetadata(Guid indexToken)
-            => this.GetIndexCheckpointMetadata(indexToken, InvalidPsfGroupOrdinal);
+            => this.GetIndexCheckpointMetadata(indexToken, InvalidIndexOrdinal);
 
-        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken)
-            => this.GetLogCheckpointMetadata(logToken, InvalidPsfGroupOrdinal);
+        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken, DeltaLog deltaLog)
+            => this.GetLogCheckpointMetadata(logToken, InvalidIndexOrdinal, deltaLog);
 
         IDevice ICheckpointManager.GetIndexDevice(Guid indexToken)
-            => this.GetIndexDevice(indexToken, InvalidPsfGroupOrdinal);
+            => this.GetIndexDevice(indexToken, InvalidIndexOrdinal);
 
         IDevice ICheckpointManager.GetSnapshotLogDevice(Guid token)
-            => this.GetSnapshotLogDevice(token, InvalidPsfGroupOrdinal);
+            => this.GetSnapshotLogDevice(token, InvalidIndexOrdinal);
 
         IDevice ICheckpointManager.GetSnapshotObjectLogDevice(Guid token)
-            => this.GetSnapshotObjectLogDevice(token, InvalidPsfGroupOrdinal);
+            => this.GetSnapshotObjectLogDevice(token, InvalidIndexOrdinal);
+
+        IDevice ICheckpointManager.GetDeltaLogDevice(Guid token) 
+            => this.GetDeltaLogDevice(token, InvalidIndexOrdinal);
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
@@ -812,26 +828,26 @@ namespace DurableTask.Netherite.Faster
         internal Task FindCheckpointsAsync()
         {
             var tasks = new List<Task>();
-            tasks.Add(FindCheckpoint(InvalidPsfGroupOrdinal));
-            for (int i = 0; i < this.PsfGroupCount; i++)
+            tasks.Add(FindCheckpoint(InvalidIndexOrdinal));
+            for (int i = 0; i < this.IndexCount; i++)
             {
                 tasks.Add(FindCheckpoint(i));
             }
             return Task.WhenAll(tasks);
 
-            async Task FindCheckpoint(int psfGroupOrdinal)
+            async Task FindCheckpoint(int indexOrdinal)
             {
-                var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
+                var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
                 CloudBlockBlob checkpointCompletedBlob = null;
                 try
                 {
-                    var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+                    var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
                     checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
                     await this.ConfirmLeaseIsGoodForAWhileAsync();
                     var jsonString = await checkpointCompletedBlob.DownloadTextAsync();
                     var checkpointInfo = JsonConvert.DeserializeObject<CheckpointInfo>(jsonString);
-                    if (isPsf)
-                        this.PsfCheckpointInfos[psfGroupOrdinal] = checkpointInfo;
+                    if (isIndex)
+                        this.IndexCheckpointInfos[indexOrdinal] = checkpointInfo;
                     else
                         this.CheckpointInfo = checkpointInfo;
                 }
@@ -845,19 +861,19 @@ namespace DurableTask.Netherite.Faster
 
         #endregion
 
-        #region Actual implementation; separated for PSFs
+        #region Actual implementation; separated for Secondary Indexes
 
-        (bool, string) IsPsfOrPrimary(int psfGroupOrdinal)
+        (bool, string) IsIndexOrPrimary(int indexOrdinal)
         {
-            var isPsf = psfGroupOrdinal != InvalidPsfGroupOrdinal;
-            return (isPsf, isPsf ? $"PSF Group {psfGroupOrdinal}" : "Primary FKV");
+            var isIndex = indexOrdinal != InvalidIndexOrdinal;
+            return (isIndex, isIndex ? $"Secondary Index {indexOrdinal}" : "Primary FKV");
         }
 
-        internal void CommitIndexCheckpoint(Guid indexToken, byte[] commitMetadata, int psfGroupOrdinal)
+        internal void CommitIndexCheckpoint(Guid indexToken, byte[] commitMetadata, int indexOrdinal)
         {
-            var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
+            var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitIndexCheckpoint Called on {tag}, indexToken={indexToken}");
-            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var metaFileBlob = partDir.GetBlockBlobReference(this.GetIndexCheckpointMetaBlobName(indexToken));
 
             this.PerformWithRetries(
@@ -880,15 +896,15 @@ namespace DurableTask.Netherite.Faster
                  }
              });
 
-            (isPsf ? this.PsfCheckpointInfos[psfGroupOrdinal] : this.CheckpointInfo).IndexToken = indexToken;
+            (isIndex ? this.IndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo).IndexToken = indexToken;
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitIndexCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
-        internal void CommitLogCheckpoint(Guid logToken, byte[] commitMetadata, int psfGroupOrdinal)
+        internal void CommitLogCheckpoint(Guid logToken, byte[] commitMetadata, int indexOrdinal)
         {
-            var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
+            var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Called on {tag}, logToken={logToken}");
-            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var metaFileBlob = partDir.GetBlockBlobReference(this.GetHybridLogCheckpointMetaBlobName(logToken));
 
             this.PerformWithRetries(
@@ -911,15 +927,18 @@ namespace DurableTask.Netherite.Faster
                     }
                 });
 
-            (isPsf ? this.PsfCheckpointInfos[psfGroupOrdinal] : this.CheckpointInfo).LogToken = logToken;
+            (isIndex ? this.IndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo).LogToken = logToken;
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
-        internal byte[] GetIndexCheckpointMetadata(Guid indexToken, int psfGroupOrdinal)
+        internal void CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog, int indexOrdinal)
+            => throw new NotImplementedException("TODO - CommitLogIncrementalCheckpoint");
+
+        internal byte[] GetIndexCheckpointMetadata(Guid indexToken, int indexOrdinal)
         {
-            var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
+            var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Called on {tag}, indexToken={indexToken}");
-            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var metaFileBlob = partDir.GetBlockBlobReference(this.GetIndexCheckpointMetaBlobName(indexToken));
             byte[] result = null;
 
@@ -943,11 +962,11 @@ namespace DurableTask.Netherite.Faster
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Returned {result?.Length ?? null} bytes from {tag}, target={metaFileBlob.Name}");
             return result;
         }
-        internal byte[] GetLogCheckpointMetadata(Guid logToken, int psfGroupOrdinal)
+        internal byte[] GetLogCheckpointMetadata(Guid logToken, int indexOrdinal, DeltaLog deltaLog)    // TODO DeltaLog
         {
-            var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
+            var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Called on {tag}, logToken={logToken}");
-            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var metaFileBlob = partDir.GetBlockBlobReference(this.GetHybridLogCheckpointMetaBlobName(logToken));
             byte[] result = null;
 
@@ -972,12 +991,12 @@ namespace DurableTask.Netherite.Faster
             return result;
         }
 
-        internal IDevice GetIndexDevice(Guid indexToken, int psfGroupOrdinal)
+        internal IDevice GetIndexDevice(Guid indexToken, int indexOrdinal)
         {
-            var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
+            var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexDevice Called on {tag}, indexToken={indexToken}");
             var (path, blobName) = this.GetPrimaryHashTableBlobName(indexToken);
-            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var blobDirectory = partDir.GetDirectoryReference(path);
             var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
             device.StartAsync().Wait();
@@ -985,12 +1004,12 @@ namespace DurableTask.Netherite.Faster
             return device;
         }
 
-        internal IDevice GetSnapshotLogDevice(Guid token, int psfGroupOrdinal)
+        internal IDevice GetSnapshotLogDevice(Guid token, int indexOrdinal)
         {
-            var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
+            var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotLogDevice Called on {tag}, token={token}");
             var (path, blobName) = this.GetLogSnapshotBlobName(token);
-            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var blobDirectory = partDir.GetDirectoryReference(path);
             var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
             device.StartAsync().Wait();
@@ -998,18 +1017,20 @@ namespace DurableTask.Netherite.Faster
             return device;
         }
 
-        internal IDevice GetSnapshotObjectLogDevice(Guid token, int psfGroupOrdinal)
+        internal IDevice GetSnapshotObjectLogDevice(Guid token, int indexOrdinal)
         {
-            var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
+            var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Called on {tag}, token={token}");
             var (path, blobName) = this.GetObjectLogSnapshotBlobName(token);
-            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var blobDirectory = partDir.GetDirectoryReference(path);
             var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
             device.StartAsync().Wait();
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Returned from {tag}, blobDirectory={blobDirectory} blobName={blobName}");
             return device;
         }
+
+        internal IDevice GetDeltaLogDevice(Guid token, int indexOrdinal) => throw new NotImplementedException("TODO - GetDeltaLogDevice");
 
         #endregion
 
@@ -1048,14 +1069,14 @@ namespace DurableTask.Netherite.Faster
                     await writeBlob(this.blockBlobPartitionDirectory, jsonText);
             }
 
-            // PSFs
-            for (var ii = 0; ii < this.PsfLogDevices.Length; ++ii)
+            // Secondary Indexes
+            for (var ii = 0; ii < this.IndexLogDevices.Length; ++ii)
             {
-                var jsonText = JsonConvert.SerializeObject(this.PsfCheckpointInfos[ii], Formatting.Indented);
+                var jsonText = JsonConvert.SerializeObject(this.IndexCheckpointInfos[ii], Formatting.Indented);
                 if (this.UseLocalFilesForTestingAndDebugging)
-                    writeLocal(this.LocalPsfCheckpointDirectoryPath(ii), jsonText);
+                    writeLocal(this.LocalIndexCheckpointDirectoryPath(ii), jsonText);
                 else
-                    await writeBlob(this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(ii)), jsonText);
+                    await writeBlob(this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(ii)), jsonText);
             }
         }
  

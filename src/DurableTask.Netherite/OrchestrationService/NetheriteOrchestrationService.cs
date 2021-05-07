@@ -1,6 +1,9 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+#pragma warning disable IDE0008 // Use explicit type
+#pragma warning disable IDE0011 // Add braces
+
 namespace DurableTask.Netherite
 {
     using DurableTask.Core;
@@ -529,7 +532,7 @@ namespace DurableTask.Netherite
         /// <param name="runtimeStatus">RuntimeStatus of orchestrations. You can specify several status.</param>
         /// <returns>Class containing number of storage requests sent, along with instances and rows deleted/purged</returns>
         public Task<int> PurgeInstanceHistoryAsync(DateTime createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus)
-            => this.CheckedClient.PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus);
+            => this.CheckedClient.PurgeInstanceHistoryAsync(createdTimeFrom == default ? null : (DateTime?)createdTimeFrom, createdTimeTo, runtimeStatus);
 
         /// <summary>
         /// Query orchestration instance states.

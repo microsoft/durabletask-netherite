@@ -1,6 +1,10 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+#define USE_SECONDARY_INDEX
+
+#pragma warning disable IDE0008 // Use explicit type
+
 namespace DurableTask.Netherite.Faster
 {
     using System;
@@ -13,6 +17,7 @@ namespace DurableTask.Netherite.Faster
     using DurableTask.Core;
     using DurableTask.Core.Common;
     using FASTER.core;
+    using FASTER.indexes.HashValueIndex;
 
     class FasterKV : TrackedObjectStore
     {
@@ -24,13 +29,15 @@ namespace DurableTask.Netherite.Faster
 
         ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> mainSession;
 
-#if FASTER_SUPPORTS_PSF
-        // We currently place all PSFs into a single group with a single TPSFKey type
-        internal const int PSFCount = 1;
+#if USE_SECONDARY_INDEX
+        readonly HashValueIndex<Key, Value, PredicateKey> index;
 
-        internal IPSF RuntimeStatusPsf;
-        internal IPSF CreatedTimePsf;
-        internal IPSF InstanceIdPrefixPsf;
+        // We currently place all PSFs into a single group with a single TPSFKey type
+        internal const int IndexCount = 1;
+
+        internal IPredicate RuntimeStatusPredicate;
+        internal IPredicate CreatedTimePredicate;
+        internal IPredicate InstanceIdPrefixPredicate;
 #endif
         public FasterKV(Partition partition, BlobManager blobManager)
         {
@@ -49,24 +56,25 @@ namespace DurableTask.Netherite.Faster
                     valueSerializer = () => new Value.Serializer(this.StoreStats),
                 });
 
-#if FASTER_SUPPORTS_PSF
-            if (partition.Settings.UsePSFQueries)
+#if USE_SECONDARY_INDEX
+            if (partition.Settings.UseSecondaryIndexQueries)
             {
                 int groupOrdinal = 0;
-                var psfs = fht.RegisterPSF(this.blobManager.CreatePSFRegistrationSettings<PSFKey>(partition.NumberPartitions(), groupOrdinal++),
-                                           (nameof(this.RuntimeStatusPsf), (k, v) => v.Val is InstanceState state
-                                                                                ? (PSFKey?)new PSFKey(state.OrchestrationState.OrchestrationStatus)
-                                                                                : null),
-                                           (nameof(this.CreatedTimePsf), (k, v) => v.Val is InstanceState state
-                                                                                ? (PSFKey?)new PSFKey(state.OrchestrationState.CreatedTime)
-                                                                                : null),
-                                           (nameof(this.InstanceIdPrefixPsf), (k, v) => v.Val is InstanceState state
-                                                                                ? (PSFKey?)new PSFKey(state.InstanceId)
-                                                                                : null));
+                this.index = new HashValueIndex<Key, Value, PredicateKey>("Netherite", this.fht,
+                                            this.blobManager.CreateSecondaryIndexRegistrationSettings<PredicateKey>(partition.NumberPartitions(), groupOrdinal++),
+                                            (nameof(this.RuntimeStatusPredicate), v => v.Val is InstanceState state
+                                                                                ? new PredicateKey(state.OrchestrationState.OrchestrationStatus)
+                                                                                : default),
+                                           (nameof(this.CreatedTimePredicate), v => v.Val is InstanceState state
+                                                                                ? new PredicateKey(state.OrchestrationState.CreatedTime)
+                                                                                : default),
+                                           (nameof(this.InstanceIdPrefixPredicate), v => v.Val is InstanceState state
+                                                                                ? new PredicateKey(state.InstanceId)
+                                                                                : default));
 
-                this.RuntimeStatusPsf = psfs[0];
-                this.CreatedTimePsf = psfs[1];
-                this.InstanceIdPrefixPsf = psfs[2];
+                this.RuntimeStatusPredicate = this.index.GetPredicate(nameof(this.RuntimeStatusPredicate));
+                this.CreatedTimePredicate = this.index.GetPredicate(nameof(this.CreatedTimePredicate));
+                this.InstanceIdPrefixPredicate = this.index.GetPredicate(nameof(this.InstanceIdPrefixPredicate));
             }
 #endif
             this.terminationToken = partition.ErrorHandler.Token;
@@ -79,7 +87,7 @@ namespace DurableTask.Netherite.Faster
                         this.fht.Dispose();
                         this.blobManager.HybridLogDevice.Dispose();
                         this.blobManager.ObjectLogDevice.Dispose();
-                        this.blobManager.ClosePSFDevices();
+                        this.blobManager.CloseIndexDevices();
                     }
                     catch(Exception e)
                     {
@@ -232,29 +240,24 @@ namespace DurableTask.Netherite.Faster
             {
                 var instanceQuery = queryEvent.InstanceQuery;
 
-#if FASTER_SUPPORTS_PSF
-                IAsyncEnumerable<OrchestrationState> queryPSFsAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, PartitionReadEvent, Functions> session)
+#if USE_SECONDARY_INDEX
+                async IAsyncEnumerable<OrchestrationState> queryPSFsAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
                 {
-                    // Issue the PSF query. Note that pending operations will be completed before this returns.
-                    var querySpec = new List<(IPSF, IEnumerable<PSFKey>)>();
-                    if (instanceQuery.HasRuntimeStatus)
-                        querySpec.Add((this.RuntimeStatusPsf, instanceQuery.RuntimeStatus.Select(s => new PSFKey(s))));
-                    if (instanceQuery.CreatedTimeFrom.HasValue || instanceQuery.CreatedTimeTo.HasValue)
+                    bool hasRuntimeStatus = instanceQuery.HasRuntimeStatus;
+                    bool matchesRuntimeStatus(OrchestrationState orcState) => !hasRuntimeStatus || Array.IndexOf(instanceQuery.RuntimeStatus, orcState.Status) >= 0;
+
+                    bool hasInstanceIdPrefix = !string.IsNullOrWhiteSpace(instanceQuery.InstanceIdPrefix);
+                    var instanceIdPrefix = hasInstanceIdPrefix ? PredicateKey.MakeInstanceIdPrefix(instanceQuery.InstanceIdPrefix) : string.Empty;
+                    bool matchesInstanceIdPrefix(OrchestrationState orcState) => !hasInstanceIdPrefix || Array.IndexOf(instanceQuery.RuntimeStatus, orcState.Status) >= 0;
+
+                    bool hasCreatedTimeRange = instanceQuery.CreatedTimeFrom.HasValue || instanceQuery.CreatedTimeTo.HasValue;
+                    var createdTimeTo = instanceQuery.CreatedTimeTo ?? DateTime.UtcNow;
+                    var createdTimeFrom = instanceQuery.CreatedTimeFrom ?? createdTimeTo.AddDays(-7);   // TODO Some default so we don't have to iterate from the first possible date
+                    bool matchesDateRange(OrchestrationState orcState) => !hasCreatedTimeRange || (orcState.CreatedTime >= createdTimeFrom && orcState.CreatedTime <= createdTimeTo);
+
+                    var querySettings = new QuerySettings
                     {
-                        IEnumerable<PSFKey> enumerateDateBinKeys()
-                        {
-                            var to = instanceQuery.CreatedTimeTo ?? DateTime.UtcNow;
-                            var from = instanceQuery.CreatedTimeFrom ?? to.AddDays(-7);   // TODO Some default so we don't have to iterate from the first possible date
-                            for (var dt = from; dt <= to; dt += PSFKey.DateBinInterval)
-                                yield return new PSFKey(dt);
-                        }
-                        querySpec.Add((this.CreatedTimePsf, enumerateDateBinKeys()));
-                    }
-                    if (!string.IsNullOrWhiteSpace(instanceQuery.InstanceIdPrefix))
-                        querySpec.Add((this.InstanceIdPrefixPsf, new[] { new PSFKey(instanceQuery.InstanceIdPrefix) }));
-                    var querySettings = new PSFQuerySettings
-                    {
-                        // This is a match-all-PSFs enumeration so do not continue after any PSF has hit EOS
+                        // This is a match-all-Predicates enumeration so do not continue after any PSF has hit EOS. Currently we only query the index on one Predicate, so this is not used.
                         OnStreamEnded = (unusedPsf, unusedIndex) => false
                     };
 
@@ -272,14 +275,56 @@ namespace DurableTask.Netherite.Faster
                         else
                         {
                             var state = ((InstanceState)((TrackedObject)v))?.OrchestrationState;
-                            var result = state?.ClearFieldsImmutably(instanceQuery.FetchInput, true);
-                            return result;
+                            return state?.ClearFieldsImmutably(instanceQuery.FetchInput, true);
                         }
                     }
 
-                    return session.QueryPSFAsync(querySpec, matches => matches.All(b => b), querySettings)
-                                  .Select(providerData => getOrchestrationState(ref providerData.GetValue()))
-                                  .Where(orchestrationState => orchestrationState != null);
+                    // These are arranged in the order of the expected most-to-least granular property: query the index for that, then post-process the others.
+                    if (hasInstanceIdPrefix)
+                    {
+                        await foreach (var queryRecord in session.QueryAsync(this.InstanceIdPrefixPredicate, new PredicateKey(instanceQuery.InstanceIdPrefix), querySettings))
+                        {
+                            var orcState = getOrchestrationState(ref queryRecord.ValueRef);
+                            if (matchesRuntimeStatus(orcState) && matchesDateRange(orcState))
+                            {
+                                yield return orcState;
+                            }
+                            queryRecord.Dispose();
+                        }
+                        yield break;
+                    }
+                    if (hasCreatedTimeRange)
+                    {
+                        for (var dt = createdTimeFrom; dt <= createdTimeTo; dt += PredicateKey.DateBinInterval)
+                        {
+                            await foreach (var queryRecord in session.QueryAsync(this.InstanceIdPrefixPredicate, new PredicateKey(dt), querySettings))
+                            {
+                                var orcState = getOrchestrationState(ref queryRecord.ValueRef);
+                                if (matchesRuntimeStatus(orcState) && matchesInstanceIdPrefix(orcState))
+                                {
+                                    yield return orcState;
+                                }
+                                queryRecord.Dispose();
+                            }
+                        }
+                        yield break;
+                    }
+                    if (hasRuntimeStatus)
+                    {
+                        foreach (var status in instanceQuery.RuntimeStatus)
+                        { 
+                            await foreach (var queryRecord in session.QueryAsync(this.InstanceIdPrefixPredicate, new PredicateKey(status), querySettings))
+                            {
+                                var orcState = getOrchestrationState(ref queryRecord.ValueRef);
+                                if (matchesInstanceIdPrefix(orcState) && matchesDateRange(orcState))
+                                {
+                                    yield return orcState;
+                                }
+                                queryRecord.Dispose();
+                            }
+                        }
+                        yield break;
+                    }
                 }
 #else
                 IAsyncEnumerable<OrchestrationState> queryPSFsAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
@@ -289,7 +334,7 @@ namespace DurableTask.Netherite.Faster
                 // while the query is progressing.
                 using (var session = this.CreateASession())
                 {
-                    var orchestrationStates = (this.partition.Settings.UsePSFQueries && instanceQuery.IsSet)
+                    var orchestrationStates = (this.partition.Settings.UseSecondaryIndexQueries && instanceQuery.IsSet)
                         ? queryPSFsAsync(session)
                         : this.ScanOrchestrationStates(effectTracker, queryEvent);
 
@@ -540,9 +585,10 @@ namespace DurableTask.Netherite.Faster
             void RunScan()
             {
                 using var _ = EventTraceContext.MakeContext(0, queryId);
+                using var session = this.CreateASession();
 
                 // get the unique set of keys appearing in the log and emit them
-                using var iter1 = this.fht.Iterate();
+                using var iter1 = session.Iterate();
 
                 Stopwatch stopwatch = new Stopwatch();
                 stopwatch.Start();
@@ -893,6 +939,17 @@ namespace DurableTask.Netherite.Faster
             public void RMWCompletionCallback(ref Key key, ref EffectTracker input, object ctx, Status status) { }
             public void UpsertCompletionCallback(ref Key key, ref Value value, object ctx) { }
             public void DeleteCompletionCallback(ref Key key, object ctx) { }
+
+            public bool SupportsLocking => false;   // TODO - implement locking?
+
+            public void Lock(ref RecordInfo recordInfo, ref Key key, ref Value value, LockType lockType, ref long lockContext)
+            {
+            }
+
+            public bool Unlock(ref RecordInfo recordInfo, ref Key key, ref Value value, LockType lockType, long lockContext)
+            {
+                return true;
+            }
         }
     }
 }
