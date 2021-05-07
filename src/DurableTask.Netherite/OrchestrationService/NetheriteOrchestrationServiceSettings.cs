@@ -139,6 +139,12 @@ namespace DurableTask.Netherite
         public bool UseSecondaryIndexQueries { get; set; } = false;
 
         /// <summary>
+        /// Set this to a local file path to make FASTER use local files instead of blobs. Currently,
+        /// this makes sense only for local testing and debugging.
+        /// </summary>
+        public string UseLocalDirectoryForPartitionStorage { get; set; } = null;
+
+        /// <summary>
         /// Whether to use the alternate object store implementation.
         /// </summary>
         public bool UseAlternateObjectStore { get; set; } = false;

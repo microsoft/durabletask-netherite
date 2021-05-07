@@ -32,7 +32,7 @@ namespace DurableTask.Netherite.Faster
 #if USE_SECONDARY_INDEX
         readonly HashValueIndex<Key, Value, PredicateKey> index;
 
-        // We currently place all PSFs into a single group with a single TPSFKey type
+        // We currently place all Predicates into a single HashValueIndex with the PredicateKey type
         internal const int IndexCount = 1;
 
         internal IPredicate RuntimeStatusPredicate;
@@ -59,9 +59,9 @@ namespace DurableTask.Netherite.Faster
 #if USE_SECONDARY_INDEX
             if (partition.Settings.UseSecondaryIndexQueries)
             {
-                int groupOrdinal = 0;
+                int indexOrdinal = 0;
                 this.index = new HashValueIndex<Key, Value, PredicateKey>("Netherite", this.fht,
-                                            this.blobManager.CreateSecondaryIndexRegistrationSettings<PredicateKey>(partition.NumberPartitions(), groupOrdinal++),
+                                            this.blobManager.CreateSecondaryIndexRegistrationSettings<PredicateKey>(partition.NumberPartitions(), indexOrdinal++),
                                             (nameof(this.RuntimeStatusPredicate), v => v.Val is InstanceState state
                                                                                 ? new PredicateKey(state.OrchestrationState.OrchestrationStatus)
                                                                                 : default),
@@ -241,7 +241,7 @@ namespace DurableTask.Netherite.Faster
                 var instanceQuery = queryEvent.InstanceQuery;
 
 #if USE_SECONDARY_INDEX
-                async IAsyncEnumerable<OrchestrationState> queryPSFsAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
+                async IAsyncEnumerable<OrchestrationState> queryIndexAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
                 {
                     bool hasRuntimeStatus = instanceQuery.HasRuntimeStatus;
                     bool matchesRuntimeStatus(OrchestrationState orcState) => !hasRuntimeStatus || Array.IndexOf(instanceQuery.RuntimeStatus, orcState.Status) >= 0;
@@ -257,8 +257,8 @@ namespace DurableTask.Netherite.Faster
 
                     var querySettings = new QuerySettings
                     {
-                        // This is a match-all-Predicates enumeration so do not continue after any PSF has hit EOS. Currently we only query the index on one Predicate, so this is not used.
-                        OnStreamEnded = (unusedPsf, unusedIndex) => false
+                        // This is a match-all-Predicates enumeration so do not continue after any Predicate has hit EOS. Currently we only query the index on a single Predicate, so this is not used.
+                        OnStreamEnded = (unusedPredicate, unusedIndex) => false
                     };
 
                     OrchestrationState getOrchestrationState(ref Value v)
@@ -327,7 +327,7 @@ namespace DurableTask.Netherite.Faster
                     }
                 }
 #else
-                IAsyncEnumerable<OrchestrationState> queryPSFsAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
+                IAsyncEnumerable<OrchestrationState> queryIndexAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
                     => this.ScanOrchestrationStates(effectTracker, queryEvent);
 #endif
                 // create an individual session for this query so the main session can be used
@@ -335,7 +335,7 @@ namespace DurableTask.Netherite.Faster
                 using (var session = this.CreateASession())
                 {
                     var orchestrationStates = (this.partition.Settings.UseSecondaryIndexQueries && instanceQuery.IsSet)
-                        ? queryPSFsAsync(session)
+                        ? queryIndexAsync(session)
                         : this.ScanOrchestrationStates(effectTracker, queryEvent);
 
                     await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates);

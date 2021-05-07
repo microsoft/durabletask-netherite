@@ -31,6 +31,8 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             this.typeLocator = new TestFunctionTypeLocator();
             this.settingsResolver = new TestSettingsResolver();
 
+            this.settingsResolver.AddSetting("Storage", Environment.GetEnvironmentVariable(Netherite.Tests.TestConstants.StorageConnectionName));
+
             this.functionsHost = new HostBuilder()
                 .ConfigureLogging(
                     loggingBuilder =>
@@ -38,7 +40,14 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
                         loggingBuilder.AddProvider(this.logProvider);
                         loggingBuilder.SetMinimumLevel(LogLevel.Information);
                     })
-                .ConfigureWebJobs(webJobsBuilder => webJobsBuilder.AddDurableTask())
+                .ConfigureWebJobs(
+                    webJobsBuilder =>
+                    {
+                        webJobsBuilder.AddDurableTask(options =>
+                        {
+                            options.StorageProvider["type"] = NetheriteProviderFactory.ProviderName;
+                        });
+                    })
                 .ConfigureServices(
                     services =>
                     {

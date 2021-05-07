@@ -65,37 +65,18 @@ namespace DurableTask.Netherite.Faster
         IDevice ICheckpointManager.GetDeltaLogDevice(Guid token)
             => this.localCheckpointManager.GetDeltaLogDevice(token);
 
-        bool GetLatestCheckpoint(out Guid indexToken, out Guid logToken)
-        {
-            if (!File.Exists(this.checkpointCompletedFilename))
-            {
-                indexToken = default;
-                logToken = default;
-                return false;
-            }
-
-            var jsonString = File.ReadAllText(this.checkpointCompletedFilename);
-            this.checkpointInfo.CopyFrom(JsonConvert.DeserializeObject<CheckpointInfo>(jsonString));
-
-            indexToken = this.checkpointInfo.IndexToken;
-            logToken = this.checkpointInfo.LogToken;
-            return indexToken != default && logToken != default;
-        }
+        internal string GetLatestCheckpointJson() => File.ReadAllText(this.checkpointCompletedFilename); 
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
-            if (this.GetLatestCheckpoint(out Guid indexToken, out Guid _))
-            {
-                yield return indexToken;
-            }
+            var indexToken = this.checkpointInfo.IndexToken;
+            yield return indexToken;
         }
 
         IEnumerable<Guid> ICheckpointManager.GetLogCheckpointTokens()
         {
-            if (this.GetLatestCheckpoint(out Guid _, out Guid logToken))
-            {
-                yield return logToken;
-            }
+            var logToken = this.checkpointInfo.LogToken;
+            yield return logToken;
         }
 
         void ICheckpointManager.PurgeAll()

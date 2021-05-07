@@ -143,7 +143,7 @@ namespace DurableTask.Netherite
         public bool TryGetScalingMonitor(out ScalingMonitor monitor)
         {
             if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster
-                || this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
+                && this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
                 monitor = new ScalingMonitor(
                     this.Settings.ResolvedStorageConnectionString, 
@@ -172,7 +172,7 @@ namespace DurableTask.Netherite
                     return new MemoryStorage(this.Logger);
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.PremiumStorageConnectionName, this.Settings.HubName, this.LoggerFactory);
+                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.PremiumStorageConnectionName, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName, this.LoggerFactory);
 
                 default:
                     throw new NotImplementedException("no such storage choice");
@@ -191,7 +191,7 @@ namespace DurableTask.Netherite
                     break;
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(this.Settings.ResolvedStorageConnectionString, this.Settings.HubName).ConfigureAwait(false);
+                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(this.Settings.ResolvedStorageConnectionString, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName).ConfigureAwait(false);
                     break;
 
                 default:

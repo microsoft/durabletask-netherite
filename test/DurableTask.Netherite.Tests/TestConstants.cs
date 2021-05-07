@@ -31,24 +31,25 @@ namespace DurableTask.Netherite.Tests
             {
                 StorageConnectionName = StorageConnectionName,
                 EventHubsConnectionName = EventHubsConnectionName,
-
-                ResolvedStorageConnectionString = "MemoryF",
-                ResolvedTransportConnectionString = "MemoryF",
-                PartitionCount = 1,
-
                 HubName = TaskHubName,
                 TransportLogLevelLimit = LogLevel.Trace,
                 StorageLogLevelLimit = LogLevel.Trace,
                 LogLevelLimit = LogLevel.Trace,
                 EventLogLevelLimit = LogLevel.Trace,
                 WorkItemLogLevelLimit = LogLevel.Trace,
-                UseSecondaryIndexQueries = true,
+                PartitionCount = 12,
                 TakeStateCheckpointWhenStoppingPartition = true,  // set to false for testing recovery from log
                 UseAlternateObjectStore = false,                  // set to true to bypass FasterKV; default is false
                 MaxTimeMsBetweenCheckpoints = 1000000000,         // set this low for testing frequent checkpointing
                 //MaxNumberBytesBetweenCheckpoints = 10000000, // set this low for testing frequent checkpointing
                 //MaxNumberEventsBetweenCheckpoints = 10, // set this low for testing frequent checkpointing
             };
+
+            // uncomment the following for testing FASTER using local files only
+            //settings.UseSecondaryIndexQueries = true,
+            //settings.ResolvedTransportConnectionString = "MemoryF";
+            //settings.ResolvedStorageConnectionString = "";
+            //settings.UseLocalDirectoryForPartitionStorage = $"{Environment.GetEnvironmentVariable("temp")}\\FasterTestStorage";
 
             settings.Validate((name) => Environment.GetEnvironmentVariable(name));
 

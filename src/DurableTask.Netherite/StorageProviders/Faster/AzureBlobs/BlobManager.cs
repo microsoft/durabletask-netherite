@@ -47,12 +47,10 @@ namespace DurableTask.Netherite.Faster
         readonly TimeSpan LeaseRenewal = TimeSpan.FromSeconds(30); // how often we renew the lease
         readonly TimeSpan LeaseSafetyBuffer = TimeSpan.FromSeconds(10); // how much time we want left on the lease before issuing a protected access
 
-        internal CheckpointInfo CheckpointInfo { get; private set; }
+        internal CheckpointInfo CheckpointInfo { get; }
 
         internal FasterTraceHelper TraceHelper { get; private set; }
         internal FasterTraceHelper StorageTracer => this.TraceHelper.IsTracingAtMostDetailedLevel ? this.TraceHelper : null;
-
-        internal bool UseLocalFilesForTestingAndDebugging { get; private set; }
 
         public IDevice EventLogDevice { get; private set; }
         public IDevice HybridLogDevice { get; private set; }
@@ -81,7 +79,7 @@ namespace DurableTask.Netherite.Faster
         public FasterLogSettings EventLogSettings(bool usePremiumStorage) => new FasterLogSettings
         {
             LogDevice = this.EventLogDevice,
-            LogCommitManager = this.UseLocalFilesForTestingAndDebugging
+            LogCommitManager = this.UseLocalFiles
                 ? new LocalLogCommitManager($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{CommitBlobName}")
                 : (ILogCommitManager)this,
             PageSizeBits = 21, // 2MB
@@ -162,9 +160,7 @@ namespace DurableTask.Netherite.Faster
 
         public CheckpointSettings StoreCheckpointSettings => new CheckpointSettings
         {
-            CheckpointManager = this.UseLocalFilesForTestingAndDebugging
-                ? new LocalFileCheckpointManager(this.CheckpointInfo, this.LocalCheckpointDirectoryPath, this.GetCheckpointCompletedBlobName())
-                : (ICheckpointManager)this,
+            CheckpointManager = this.UseLocalFiles ? this.LocalCheckpointManager : this,
             CheckPointType = CheckpointType.FoldOver
         };
 
@@ -188,7 +184,7 @@ namespace DurableTask.Netherite.Faster
                 },
                 CheckpointSettings = new CheckpointSettings
                 {
-                    CheckpointManager = this.UseLocalFilesForTestingAndDebugging
+                    CheckpointManager = this.UseLocalFiles
                         ? new LocalFileCheckpointManager(this.IndexCheckpointInfos[indexOrdinal], this.LocalIndexCheckpointDirectoryPath(indexOrdinal), this.GetCheckpointCompletedBlobName())
                         : (ICheckpointManager)new SecondaryIndexBlobCheckpointManager(this, indexOrdinal),
                     CheckPointType = CheckpointType.FoldOver
@@ -227,8 +223,8 @@ namespace DurableTask.Netherite.Faster
             => TimeSpan.FromSeconds(Math.Pow(2, (numAttempts - 1)));
 
         // For tests only; TODO consider adding Indexes
-        internal BlobManager(CloudStorageAccount storageAccount, CloudStorageAccount secondaryStorageAccount, string taskHubName, ILogger logger, Microsoft.Extensions.Logging.LogLevel logLevelLimit, uint partitionId, IPartitionErrorHandler errorHandler)
-            : this(storageAccount, secondaryStorageAccount, taskHubName, logger, logLevelLimit, partitionId, errorHandler, 0)
+        internal BlobManager(CloudStorageAccount storageAccount, CloudStorageAccount secondaryStorageAccount, string localFileDirectory, string taskHubName, ILogger logger, Microsoft.Extensions.Logging.LogLevel logLevelLimit, uint partitionId, IPartitionErrorHandler errorHandler)
+            : this(storageAccount, secondaryStorageAccount, localFileDirectory, taskHubName, logger, logLevelLimit, partitionId, errorHandler, 0)
         {
         }
 
@@ -237,6 +233,7 @@ namespace DurableTask.Netherite.Faster
         /// </summary>
         /// <param name="storageAccount">The cloud storage account, or null if using local file paths</param>
         /// <param name="secondaryStorageAccount">Optionally, a secondary cloud storage accounts</param>
+        /// <param name="localFilePath">The local file path, or null if using cloud storage</param>
         /// <param name="taskHubName">The name of the taskhub</param>
         /// <param name="logger">A logger for logging</param>
         /// <param name="logLevelLimit">A limit on log event level emitted</param>
@@ -246,6 +243,7 @@ namespace DurableTask.Netherite.Faster
         public BlobManager(
             CloudStorageAccount storageAccount,
             CloudStorageAccount secondaryStorageAccount,
+            string localFilePath,
             string taskHubName,
             ILogger logger,
             Microsoft.Extensions.Logging.LogLevel logLevelLimit,
@@ -254,33 +252,41 @@ namespace DurableTask.Netherite.Faster
         {
             this.cloudStorageAccount = storageAccount;
             this.secondaryStorageAccount = secondaryStorageAccount;
-            this.UseLocalFilesForTestingAndDebugging = (storageAccount == null);
+            this.UseLocalFiles = (localFilePath != null);
+            this.LocalFileDirectoryForTestingAndDebugging = localFilePath;
             this.ContainerName = GetContainerName(taskHubName);
             this.partitionId = partitionId;
             this.CheckpointInfo = new CheckpointInfo();
             this.IndexCheckpointInfos = Enumerable.Range(0, indexCount).Select(ii => new CheckpointInfo()).ToArray();
 
-            if (!this.UseLocalFilesForTestingAndDebugging)
+            if (!this.UseLocalFiles)
             {
                 CloudBlobClient serviceClient = this.cloudStorageAccount.CreateCloudBlobClient();
                 this.blockBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
                 serviceClient = this.secondaryStorageAccount.CreateCloudBlobClient();
                 this.pageBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
             }
+            else
+            {
+                this.LocalCheckpointManager = new LocalFileCheckpointManager(
+                    this.CheckpointInfo,
+                    this.LocalCheckpointDirectoryPath, 
+                    this.GetCheckpointCompletedBlobName());
+            }
 
-            this.TraceHelper = new FasterTraceHelper(logger, logLevelLimit, this.partitionId, this.UseLocalFilesForTestingAndDebugging ? "none" : this.cloudStorageAccount.Credentials.AccountName, taskHubName);
+            this.TraceHelper = new FasterTraceHelper(logger, logLevelLimit, this.partitionId, this.UseLocalFiles ? "none" : this.cloudStorageAccount.Credentials.AccountName, taskHubName);
             this.PartitionErrorHandler = errorHandler;
             this.shutDownOrTermination = CancellationTokenSource.CreateLinkedTokenSource(errorHandler.Token);
         }
 
-        // For testing and debugging with local files
-        internal static string LocalFileDirectoryForTestingAndDebugging { get; set; } = $"{Environment.GetEnvironmentVariable("temp")}\\FasterTestStorage";
-
-        string LocalDirectoryPath => $"{LocalFileDirectoryForTestingAndDebugging}\\{this.ContainerName}";
-
         string PartitionFolderName => $"p{this.partitionId:D2}";
-        string IndexGroupFolderName(int indexOrdinal) => $"index.{indexOrdinal:D3}";
+        string IndexFolderName(int indexOrdinal) => $"index.{indexOrdinal:D3}";
 
+        // For testing and debugging with local files
+        bool UseLocalFiles { get; }
+        LocalFileCheckpointManager LocalCheckpointManager { get; }
+        string LocalFileDirectoryForTestingAndDebugging { get; }
+        string LocalDirectoryPath => $"{this.LocalFileDirectoryForTestingAndDebugging}\\{this.ContainerName}";
         string LocalCheckpointDirectoryPath => $"{this.LocalDirectoryPath}\\chkpts{this.partitionId:D2}";
         string LocalIndexCheckpointDirectoryPath(int indexOrdinal) => $"{this.LocalDirectoryPath}\\chkpts{this.partitionId:D2}\\index.{indexOrdinal:D3}";
 
@@ -299,7 +305,7 @@ namespace DurableTask.Netherite.Faster
 
         public async Task StartAsync()
         {
-            if (this.UseLocalFilesForTestingAndDebugging)
+            if (this.UseLocalFiles)
             {
                 Directory.CreateDirectory($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}");
 
@@ -307,7 +313,7 @@ namespace DurableTask.Netherite.Faster
                 this.HybridLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{HybridLogBlobName}");
                 this.ObjectLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{ObjectLogBlobName}");
                 this.IndexLogDevices = (from indexOrdinal in Enumerable.Range(0, this.IndexCount)
-                                      let deviceName = $"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{this.IndexGroupFolderName(indexOrdinal)}\\{IndexHybridLogBlobName}"
+                                      let deviceName = $"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{this.IndexFolderName(indexOrdinal)}\\{IndexHybridLogBlobName}"
                                       select Devices.CreateLogDevice(deviceName)).ToArray();
 
                 // This does not acquire any blob ownership, but is needed for the lease maintenance loop which calls PartitionErrorHandler.TerminateNormally() when done.
@@ -330,7 +336,7 @@ namespace DurableTask.Netherite.Faster
                 var objectLogDevice = createDevice(ObjectLogBlobName);
 
                 var indexLogDevices = (from indexOrdinal in Enumerable.Range(0, this.IndexCount)
-                                     let indexDirectory = this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal))
+                                     let indexDirectory = this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal))
                                      select new AzureStorageDevice(IndexHybridLogBlobName, indexDirectory.GetDirectoryReference(IndexHybridLogBlobName), indexDirectory.GetDirectoryReference(IndexHybridLogBlobName), this, true)).ToArray();
 
                 await this.AcquireOwnership();
@@ -375,13 +381,13 @@ namespace DurableTask.Netherite.Faster
             await this.LeaseMaintenanceLoopTask; // wait for loop to terminate cleanly
         }
 
-        public static async Task DeleteTaskhubStorageAsync(CloudStorageAccount account, string taskHubName)
+        public static async Task DeleteTaskhubStorageAsync(CloudStorageAccount account, string localFileDirectoryPath, string taskHubName)
         {
             var containerName = GetContainerName(taskHubName);
 
-            if (account is null)
+            if (!string.IsNullOrEmpty(localFileDirectoryPath))
             {
-                DirectoryInfo di = new DirectoryInfo($"{LocalFileDirectoryForTestingAndDebugging}\\{containerName}");
+                DirectoryInfo di = new DirectoryInfo($"{localFileDirectoryPath}\\{containerName}");
                 if (di.Exists)
                 {
                     di.Delete(true);
@@ -441,7 +447,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     newLeaseTimer.Restart();
 
-                    if (!this.UseLocalFilesForTestingAndDebugging)
+                    if (!this.UseLocalFiles)
                     {
                         this.leaseId = await this.eventLogCommitBlob.AcquireLeaseAsync(
                             this.LeaseDuration,
@@ -538,7 +544,7 @@ namespace DurableTask.Netherite.Faster
                 var nextLeaseTimer = new System.Diagnostics.Stopwatch();
                 nextLeaseTimer.Start();
 
-                if (!this.UseLocalFilesForTestingAndDebugging)
+                if (!this.UseLocalFiles)
                 {
                     this.TraceHelper.LeaseProgress($"Renewing lease at {this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds}s");
                     await this.eventLogCommitBlob.RenewLeaseAsync(acc, this.PartitionErrorHandler.Token)
@@ -615,7 +621,7 @@ namespace DurableTask.Netherite.Faster
             }
             else
             {
-                if (!this.UseLocalFilesForTestingAndDebugging)
+                if (!this.UseLocalFiles)
                 {
                     try
                     {
@@ -841,15 +847,21 @@ namespace DurableTask.Netherite.Faster
                 CloudBlockBlob checkpointCompletedBlob = null;
                 try
                 {
-                    var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
-                    checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
-                    await this.ConfirmLeaseIsGoodForAWhileAsync();
-                    var jsonString = await checkpointCompletedBlob.DownloadTextAsync();
-                    var checkpointInfo = JsonConvert.DeserializeObject<CheckpointInfo>(jsonString);
-                    if (isIndex)
-                        this.IndexCheckpointInfos[indexOrdinal] = checkpointInfo;
+                    string jsonString;
+                    if (this.UseLocalFiles)
+                    {
+                        jsonString = this.LocalCheckpointManager.GetLatestCheckpointJson();
+                    }
                     else
-                        this.CheckpointInfo = checkpointInfo;
+                    {
+                        var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
+                        checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
+                        await this.ConfirmLeaseIsGoodForAWhileAsync();
+                        jsonString = await checkpointCompletedBlob.DownloadTextAsync();
+                    }
+
+                    // read the fields from the json to update the checkpoint info
+                    JsonConvert.PopulateObject(jsonString, isIndex ? this.IndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo);
                 }
                 catch (Exception e)
                 {
@@ -873,7 +885,7 @@ namespace DurableTask.Netherite.Faster
         {
             var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitIndexCheckpoint Called on {tag}, indexToken={indexToken}");
-            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var metaFileBlob = partDir.GetBlockBlobReference(this.GetIndexCheckpointMetaBlobName(indexToken));
 
             this.PerformWithRetries(
@@ -904,7 +916,7 @@ namespace DurableTask.Netherite.Faster
         {
             var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Called on {tag}, logToken={logToken}");
-            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var metaFileBlob = partDir.GetBlockBlobReference(this.GetHybridLogCheckpointMetaBlobName(logToken));
 
             this.PerformWithRetries(
@@ -938,7 +950,7 @@ namespace DurableTask.Netherite.Faster
         {
             var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Called on {tag}, indexToken={indexToken}");
-            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var metaFileBlob = partDir.GetBlockBlobReference(this.GetIndexCheckpointMetaBlobName(indexToken));
             byte[] result = null;
 
@@ -966,7 +978,7 @@ namespace DurableTask.Netherite.Faster
         {
             var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Called on {tag}, logToken={logToken}");
-            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var metaFileBlob = partDir.GetBlockBlobReference(this.GetHybridLogCheckpointMetaBlobName(logToken));
             byte[] result = null;
 
@@ -996,7 +1008,7 @@ namespace DurableTask.Netherite.Faster
             var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexDevice Called on {tag}, indexToken={indexToken}");
             var (path, blobName) = this.GetPrimaryHashTableBlobName(indexToken);
-            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var blobDirectory = partDir.GetDirectoryReference(path);
             var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
             device.StartAsync().Wait();
@@ -1009,7 +1021,7 @@ namespace DurableTask.Netherite.Faster
             var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotLogDevice Called on {tag}, token={token}");
             var (path, blobName) = this.GetLogSnapshotBlobName(token);
-            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var blobDirectory = partDir.GetDirectoryReference(path);
             var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
             device.StartAsync().Wait();
@@ -1022,7 +1034,7 @@ namespace DurableTask.Netherite.Faster
             var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Called on {tag}, token={token}");
             var (path, blobName) = this.GetObjectLogSnapshotBlobName(token);
-            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
+            var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
             var blobDirectory = partDir.GetDirectoryReference(path);
             var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
             device.StartAsync().Wait();
@@ -1063,7 +1075,7 @@ namespace DurableTask.Netherite.Faster
             // Primary FKV
             {
                 var jsonText = JsonConvert.SerializeObject(this.CheckpointInfo, Formatting.Indented);
-                if (this.UseLocalFilesForTestingAndDebugging)
+                if (this.UseLocalFiles)
                     writeLocal(this.LocalCheckpointDirectoryPath, jsonText);
                 else
                     await writeBlob(this.blockBlobPartitionDirectory, jsonText);
@@ -1073,10 +1085,10 @@ namespace DurableTask.Netherite.Faster
             for (var ii = 0; ii < this.IndexLogDevices.Length; ++ii)
             {
                 var jsonText = JsonConvert.SerializeObject(this.IndexCheckpointInfos[ii], Formatting.Indented);
-                if (this.UseLocalFilesForTestingAndDebugging)
+                if (this.UseLocalFiles)
                     writeLocal(this.LocalIndexCheckpointDirectoryPath(ii), jsonText);
                 else
-                    await writeBlob(this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexGroupFolderName(ii)), jsonText);
+                    await writeBlob(this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(ii)), jsonText);
             }
         }
  
