@@ -8,4 +8,4 @@ $Env:AzureWebJobsStorage = (az storage account show-connection-string --name $st
 $Env:EventHubsConnection = (az eventhubs namespace authorization-rule keys list --resource-group $groupName --namespace-name $namespaceName --name RootManageSharedAccessKey | ConvertFrom-Json).primaryConnectionString
 
 # open visual studio
-devenv ..\..\DurableTask.Netherite.sln
+devenv ..\..\DurableTask.Netherite.sln /noscale

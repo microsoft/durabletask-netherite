@@ -15,12 +15,14 @@
       "Host": "Information",
       //"Host.Aggregator": "Trace",
       //"Host.Results": "Error",
-      //"Host.Triggers.DurableTask": "Information",
+      "Host.Triggers.DurableTask": "Warning",
 
       // ---- the triggers below can be enabled to get information on specific functions
       "Function": "Warning",
       //"Function.HelloCities": "Information",
       //"Function.HelloSequence": "Information",
+      //"Function.PartitionReceiverEntity": "Information",
+      //"Function.ReceiverEntity": "Information",
       //"Function.Producer": "Warning",
       //"Function.Consumer": "Warning",
       //"Function.Completion": "Warning",

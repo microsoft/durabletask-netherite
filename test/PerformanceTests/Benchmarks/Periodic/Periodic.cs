@@ -52,9 +52,11 @@ namespace PerformanceTests
 
                 if (!context.IsReplaying)
                 {
-                    log.LogWarning($"{context.InstanceId}: timer for iteration {i} fired at {(DateTime.UtcNow - fireAt).TotalMilliseconds:F2}ms relative to deadline");
+                    log.LogWarning($"{context.InstanceId}: timer for iteration {i} fired at {(UtcNowWithNoWarning() - fireAt).TotalMilliseconds:F2}ms relative to deadline");
                 }
             };
         }
+
+        static readonly Func<DateTime> UtcNowWithNoWarning = () => DateTime.UtcNow;      
     }
 }

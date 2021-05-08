@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace EventConsumer
+namespace PerformanceTests.EventHubs
 {
     using System;
     using System.Collections.Generic;
