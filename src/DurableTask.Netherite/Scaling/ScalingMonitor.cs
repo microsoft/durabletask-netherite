@@ -7,6 +7,7 @@ namespace DurableTask.Netherite.Scaling
     using System.Collections;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Runtime.Serialization;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
@@ -24,9 +25,7 @@ namespace DurableTask.Netherite.Scaling
         readonly string taskHubName;
         readonly TransportConnectionString.TransportChoices configuredTransport;
 
-        readonly AzureLoadMonitorTable table;
-
-        Metrics? CachedMetrics;
+        readonly ILoadMonitorService loadMonitor;
 
         /// <summary>
         /// The name of the taskhub.
@@ -60,33 +59,45 @@ namespace DurableTask.Netherite.Scaling
 
             TransportConnectionString.Parse(eventHubsConnectionString, out _, out this.configuredTransport);
 
-            this.table = new AzureLoadMonitorTable(storageConnectionString, partitionLoadTableName, taskHubName);
+            if (!string.IsNullOrEmpty(partitionLoadTableName))
+            {
+                this.loadMonitor = new AzureTableLoadMonitor(storageConnectionString, partitionLoadTableName, taskHubName);
+            }
+            else
+            {
+                this.loadMonitor = new AzureBlobLoadMonitor(storageConnectionString, taskHubName);
+            }
         }
 
         /// <summary>
         /// The metrics that are collected prior to making a scaling decision
         /// </summary>
+        [DataContract]
         public struct Metrics
         {
             /// <summary>
             ///  the most recent load information published for each partition
             /// </summary>
+            [DataMember]
             public Dictionary<uint, PartitionLoadInfo> LoadInformation { get; set; }
 
             /// <summary>
             /// A reason why the taskhub is not idle, or null if it is idle
             /// </summary>
+            [DataMember]
             public string Busy { get; set; }
 
             /// <summary>
             /// Whether the taskhub is idle
             /// </summary>
+            [IgnoreDataMember]
             public bool TaskHubIsIdle => string.IsNullOrEmpty(this.Busy);
 
             /// <summary>
             /// The time at which the metrics were collected
             /// </summary>
-            public DateTime Timestamp;
+            [DataMember]
+            public DateTime Timestamp { get; set; }
         }
 
         /// <summary>
@@ -96,21 +107,15 @@ namespace DurableTask.Netherite.Scaling
         public async Task<Metrics> CollectMetrics()
         {
             DateTime now = DateTime.UtcNow;
-
-            if (this.CachedMetrics.HasValue && now - this.CachedMetrics.Value.Timestamp < TimeSpan.FromSeconds(1.5))
-            {
-                return this.CachedMetrics.Value;
-            }
-
-            var loadInformation = await this.table.QueryAsync(CancellationToken.None).ConfigureAwait(false);
+            var loadInformation = await this.loadMonitor.QueryAsync(CancellationToken.None).ConfigureAwait(false);
             var busy = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
 
-            return (this.CachedMetrics = new Metrics()
-            { 
+            return new Metrics()
+            {
                 LoadInformation = loadInformation,
                 Busy = busy,
                 Timestamp = now,
-            }).Value;
+            };
         }
 
         /// <summary>
