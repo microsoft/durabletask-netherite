@@ -28,3 +28,7 @@ The meaning of the columns is:
 
 ## Changing the table name
 The name of the partition table can be controlled by specifying the `LoadInformationAzureTableName` parameter in host.json.
+
+## Using blobs instead of a table
+If you set the `LoadInformationAzureTableName` parameter to an empty string in host.json, the load information is published to blobs instead of a table. For each partition, a separate blob `loadinfo.json` containing the load information is stored inside the directory for the partition.
+
