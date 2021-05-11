@@ -7,7 +7,6 @@ namespace ScalingTests
     using System.Threading.Tasks;
     using DurableTask.Netherite;
     using DurableTask.Netherite.Scaling;
-    using Dynamitey;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
 
@@ -19,7 +18,6 @@ namespace ScalingTests
             {
                 HubName = "perftests",
                 PartitionManagement = PartitionManagementOptions.ClientOnly,
-
                 LogLevelLimit = LogLevel.Trace,
                 EventLogLevelLimit = LogLevel.Trace,
                 StorageLogLevelLimit = LogLevel.Trace,
