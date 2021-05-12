@@ -55,7 +55,8 @@ namespace DurableTask.Netherite
         public int PartitionCount { get; set; } = 12;
 
         /// <summary>
-        /// The name to use for the Azure table with the load information
+        /// Optionally, a name for an Azure Table to use for publishing load information. If set to null or empty,
+        /// then Azure blobs are used instead.
         /// </summary>
         public string LoadInformationAzureTableName { get; set; } = "DurableTaskPartitions";
 

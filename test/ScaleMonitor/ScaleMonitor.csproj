@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\test\DurableTask.Netherite.Tests\DurableTask.Netherite.Tests.csproj" />
+    <ProjectReference Include="..\DurableTask.Netherite.Tests\DurableTask.Netherite.Tests.csproj" />
   </ItemGroup>
 
 </Project>
