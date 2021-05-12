@@ -29,7 +29,7 @@ namespace PerformanceTests
     ///     curl https://.../await -d 1000                      waits for the 1000 instances to complete
     ///     curl https://.../count -d 1000                      check the status of the 1000 instances and reports the (last completed - first started) time range
     ///     curl https://.../purge -d 1000                      purges the 1000 instances
-    ///     curl https://.../query                              waits for the 1000 instances to complete
+    ///     curl https://.../query                              issues a query to check the status of all orchestrations
     ///     
     /// </summary>
     public static class ManyOrchestrations
@@ -40,26 +40,26 @@ namespace PerformanceTests
             [DurableClient] IDurableClient client,
             ILogger log)
         {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            int firstdot = requestBody.IndexOf('.');
-            int seconddot = requestBody.LastIndexOf('.');
-            string orchestrationName = requestBody.Substring(0, firstdot);
-            int numberOrchestrations;
-            int? portionSize;
-
-            if (firstdot == seconddot)
-            {
-                numberOrchestrations = int.Parse(requestBody.Substring(firstdot + 1));
-                portionSize = null;
-            }
-            else
-            {
-                numberOrchestrations = int.Parse(requestBody.Substring(firstdot + 1, seconddot - (firstdot + 1)));
-                portionSize = int.Parse(requestBody.Substring(seconddot + 1));
-            }
-         
             try
             {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                int firstdot = requestBody.IndexOf('.');
+                int seconddot = requestBody.LastIndexOf('.');
+                string orchestrationName = requestBody.Substring(0, firstdot);
+                int numberOrchestrations;
+                int? portionSize;
+
+                if (firstdot == seconddot)
+                {
+                    numberOrchestrations = int.Parse(requestBody.Substring(firstdot + 1));
+                    portionSize = null;
+                }
+                else
+                {
+                    numberOrchestrations = int.Parse(requestBody.Substring(firstdot + 1, seconddot - (firstdot + 1)));
+                    portionSize = int.Parse(requestBody.Substring(seconddot + 1));
+                }
+
                 if (!portionSize.HasValue)
                 {
                     log.LogWarning($"Starting {numberOrchestrations} instances of {orchestrationName} from within HttpTrigger...");

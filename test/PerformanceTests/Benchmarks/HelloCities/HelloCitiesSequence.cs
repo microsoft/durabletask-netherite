@@ -54,9 +54,9 @@ namespace PerformanceTests
         {
             var result = new List<string>
             {
-                await context.CallActivityAsync<string>(nameof(SayHello), "Tokyo"),
-                await context.CallActivityAsync<string>(nameof(SayHello), "Seattle"),
-                await context.CallActivityAsync<string>(nameof(SayHello), "London")
+                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Tokyo"),
+                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Seattle"),
+                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "London")
             };
 
             return result;
@@ -67,17 +67,14 @@ namespace PerformanceTests
         {
             var outputs = new List<string>
             {
-                await context.CallActivityAsync<string>(nameof(SayHello), "Tokyo"),
-                await context.CallActivityAsync<string>(nameof(SayHello), "Seattle"),
-                await context.CallActivityAsync<string>(nameof(SayHello), "London"),
-                await context.CallActivityAsync<string>(nameof(SayHello), "Amsterdam"),
-                await context.CallActivityAsync<string>(nameof(SayHello), "Mumbai")
+                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Tokyo"),
+                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Seattle"),
+                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "London"),
+                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Amsterdam"),
+                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Mumbai")
             };
 
             return outputs;
         }
-
-        [FunctionName(nameof(SayHello))]
-        public static string SayHello([ActivityTrigger] string name) => $"Hello {name}!";
     }
 }
