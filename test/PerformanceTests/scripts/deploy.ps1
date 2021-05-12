@@ -6,8 +6,8 @@ param (
 	$Configuration="Release"
 	)
 
-# read the settings that are common to all scripts
-. ./settings.ps1
+# read the settings and initialize the azure resources
+. ./scripts/init.ps1
 
 Write-Host Building $Configuration Configuration...
 dotnet build -c $Configuration

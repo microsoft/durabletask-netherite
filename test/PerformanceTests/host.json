@@ -2,14 +2,12 @@
   "version": "2.0",
   "logging": {
     "logLevel": {
-      "default": "Warning",
-
       // ------ NOTE: the log levels in this section affect some, but NOT ALL consumers
-      // - limits what gets displayed in the func.exe console (which is extremely costly)
-      // - limits what gets stored in application insights
+      // - limits what gets displayed in the func.exe console when running locally
+      // - limits what gets stored in application insights. This can incur cost.
       // - does not limit what is collected by ETW
       // - does not limit what is traced to console
-      // - does not limit what is shown in Live Metrics side panel
+      // - does not limit what is shown in the Live Metrics side panel in the portal
 
       // ---- the triggers below can be enabled to get specific host tracing
       "Host": "Information",
@@ -17,17 +15,19 @@
       //"Host.Results": "Error",
       //"Host.Triggers.DurableTask": "Information",
 
-      // ---- the triggers below can be enabled to get information on specific functions
-      "Function": "Warning",
+      // ---- function information is used to support various analytics about functions useage in the portal. 
+      // ---- needs to be "Information" for monitoring function invocations in the portal. 
+      // ---- use "Warning" when running perf tests locally to avoid excessive tracing in the console.
+      "Function": "Information",
       //"Function.HelloCities": "Information",
       //"Function.HelloSequence": "Information",
-      //"Function.Producer": "Warning",
-      //"Function.Consumer": "Warning",
-      //"Function.Completion": "Warning",
-      //"Function.Mapper": "Warning",
-      //"Function.Reducer": "Warning",
-      //"Function.Summary": "Warning",
-      //"Function.Wordcount": "Warning",
+      //"Function.Producer": "Information",
+      //"Function.Consumer": "Information",
+      //"Function.Completion": "Information",
+      //"Function.Mapper": "Information",
+      //"Function.Reducer": "Information",
+      //"Function.Summary": "Information",
+      //"Function.Wordcount": "Information",
 
       // --- the levels below are used to control the Netherite tracing
       "DurableTask.Netherite": "Information",
@@ -50,8 +50,7 @@
 
       "hubName": "perftests",
 
-      "extendedSessionsEnabled": "true", // important for cache locality
-      "UseGracefulShutdown": true, // important to avoid lengthy waits for lease expiration
+      "UseGracefulShutdown": true, // helps to avoid lengthy waits for lease expiration
 
       "maxConcurrentActivityFunctions": "100",
       "maxConcurrentOrchestratorFunctions": "100",
@@ -63,12 +62,16 @@
         "StorageConnectionName": "AzureWebJobsStorage",
         "EventHubsConnectionName": "EventHubsConnection",
 
+
         "TakeStateCheckpointWhenStoppingPartition": "true",
         "MaxNumberBytesBetweenCheckpoints": "20000000",
         "MaxNumberEventsBetweenCheckpoints": "10000",
         "MaxTimeMsBetweenCheckpoints": "60000",
 
         "PartitionCount": 12,
+
+        // set this to false to force replay on each orchestration step
+        "CacheOrchestrationCursors": true,
 
         // set this to true to use the PSF support in Faster
         "UsePSFQueries": "false",
@@ -88,6 +91,7 @@
         // this controls what log information is produced by the various components
         // it limits production of the events, and thus can be used to prevent overheads
         // even when some consumers (e.g. Application Insights) are configured to trace information at the lowest level
+        // "Debug" is a reasonable setting to allows troubleshooting without impacting perf too much.
         "LogLevelLimit": "Debug",
         "StorageLogLevelLimit": "Debug",
         "TransportLogLevelLimit": "Debug",
