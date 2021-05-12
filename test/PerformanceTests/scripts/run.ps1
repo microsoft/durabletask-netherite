@@ -3,8 +3,8 @@ param (
 	$Configuration="Release"
 	)
 
-# read the settings that are common to all scripts
-. ./settings.ps1
+# initialize the settings and create Azure resources if necessary
+. ./scripts/init.ps1
 
 # enter the directory with the binaries
 if (-not (Test-Path -Path ./bin/$Configuration/netcoreapp3.1/bin)) {

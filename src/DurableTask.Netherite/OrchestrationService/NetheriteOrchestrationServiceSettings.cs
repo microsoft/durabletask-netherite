@@ -92,9 +92,8 @@ namespace DurableTask.Netherite
 
         /// <summary>
         /// Gets or sets a flag indicating whether to enable caching of execution cursors to avoid replay.
-        /// Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
         /// </summary>
-        public bool ExtendedSessionsEnabled { get; set; } = true;
+        public bool CacheOrchestrationCursors { get; set; } = true;
 
         /// <summary>
         /// Whether we should carry over unexecuted raised events to the next iteration of an orchestration on ContinueAsNew.

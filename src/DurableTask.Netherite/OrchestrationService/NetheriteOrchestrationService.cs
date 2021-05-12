@@ -668,7 +668,7 @@ namespace DurableTask.Netherite
             }  
 
             // if this orchestration is not done, and extended sessions are enabled, we keep the work item so we can reuse the execution cursor
-            bool cacheWorkItemForReuse = partition.Settings.ExtendedSessionsEnabled && state.OrchestrationStatus == OrchestrationStatus.Running;
+            bool cacheWorkItemForReuse = partition.Settings.CacheOrchestrationCursors && state.OrchestrationStatus == OrchestrationStatus.Running;
 
             BatchProcessed batchProcessedEvent = new BatchProcessed()
             {
