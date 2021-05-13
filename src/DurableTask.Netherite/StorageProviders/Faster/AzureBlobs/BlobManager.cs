@@ -186,7 +186,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     CheckpointManager = this.UseLocalFiles
                         ? new LocalFileCheckpointManager(this.IndexCheckpointInfos[indexOrdinal], this.LocalIndexCheckpointDirectoryPath(indexOrdinal), this.GetCheckpointCompletedBlobName())
-                        : (ICheckpointManager)new SecondaryIndexBlobCheckpointManager(this, indexOrdinal),
+                        : new SecondaryIndexBlobCheckpointManager(this, indexOrdinal),
                     CheckPointType = CheckpointType.FoldOver
                 }
             };
@@ -288,7 +288,7 @@ namespace DurableTask.Netherite.Faster
         string LocalFileDirectoryForTestingAndDebugging { get; }
         string LocalDirectoryPath => $"{this.LocalFileDirectoryForTestingAndDebugging}\\{this.ContainerName}";
         string LocalCheckpointDirectoryPath => $"{this.LocalDirectoryPath}\\chkpts{this.partitionId:D2}";
-        string LocalIndexCheckpointDirectoryPath(int indexOrdinal) => $"{this.LocalDirectoryPath}\\chkpts{this.partitionId:D2}\\index.{indexOrdinal:D3}";
+        string LocalIndexCheckpointDirectoryPath(int indexOrdinal) => $"{this.LocalCheckpointDirectoryPath}\\index.{indexOrdinal:D3}";
 
         const string EventLogBlobName = "commit-log";
         const string CommitBlobName = "commit-lease";
@@ -312,9 +312,14 @@ namespace DurableTask.Netherite.Faster
                 this.EventLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{EventLogBlobName}");
                 this.HybridLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{HybridLogBlobName}");
                 this.ObjectLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{ObjectLogBlobName}");
+
+                for (var ii = 0; ii < this.IndexCount; ++ii)
+                {
+                    Directory.CreateDirectory(this.LocalIndexCheckpointDirectoryPath(ii));
+                }
                 this.IndexLogDevices = (from indexOrdinal in Enumerable.Range(0, this.IndexCount)
-                                      let deviceName = $"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{this.IndexFolderName(indexOrdinal)}\\{IndexHybridLogBlobName}"
-                                      select Devices.CreateLogDevice(deviceName)).ToArray();
+                                        let deviceName = $"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{this.IndexFolderName(indexOrdinal)}\\{IndexHybridLogBlobName}"
+                                        select Devices.CreateLogDevice(deviceName)).ToArray();
 
                 // This does not acquire any blob ownership, but is needed for the lease maintenance loop which calls PartitionErrorHandler.TerminateNormally() when done.
                 await this.AcquireOwnership();

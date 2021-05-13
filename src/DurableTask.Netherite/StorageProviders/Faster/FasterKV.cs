@@ -243,18 +243,6 @@ namespace DurableTask.Netherite.Faster
 #if USE_SECONDARY_INDEX
                 async IAsyncEnumerable<OrchestrationState> queryIndexAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
                 {
-                    bool hasRuntimeStatus = instanceQuery.HasRuntimeStatus;
-                    bool matchesRuntimeStatus(OrchestrationState orcState) => !hasRuntimeStatus || Array.IndexOf(instanceQuery.RuntimeStatus, orcState.Status) >= 0;
-
-                    bool hasInstanceIdPrefix = !string.IsNullOrWhiteSpace(instanceQuery.InstanceIdPrefix);
-                    var instanceIdPrefix = hasInstanceIdPrefix ? PredicateKey.MakeInstanceIdPrefix(instanceQuery.InstanceIdPrefix) : string.Empty;
-                    bool matchesInstanceIdPrefix(OrchestrationState orcState) => !hasInstanceIdPrefix || Array.IndexOf(instanceQuery.RuntimeStatus, orcState.Status) >= 0;
-
-                    bool hasCreatedTimeRange = instanceQuery.CreatedTimeFrom.HasValue || instanceQuery.CreatedTimeTo.HasValue;
-                    var createdTimeTo = instanceQuery.CreatedTimeTo ?? DateTime.UtcNow;
-                    var createdTimeFrom = instanceQuery.CreatedTimeFrom ?? createdTimeTo.AddDays(-7);   // TODO Some default so we don't have to iterate from the first possible date
-                    bool matchesDateRange(OrchestrationState orcState) => !hasCreatedTimeRange || (orcState.CreatedTime >= createdTimeFrom && orcState.CreatedTime <= createdTimeTo);
-
                     var querySettings = new QuerySettings
                     {
                         // This is a match-all-Predicates enumeration so do not continue after any Predicate has hit EOS. Currently we only query the index on a single Predicate, so this is not used.
@@ -279,51 +267,47 @@ namespace DurableTask.Netherite.Faster
                         }
                     }
 
-                    // These are arranged in the order of the expected most-to-least granular property: query the index for that, then post-process the others.
-                    if (hasInstanceIdPrefix)
+                    async IAsyncEnumerable<OrchestrationState> queryPredicate(IPredicate predicate, PredicateKey queryKey)
                     {
-                        await foreach (var queryRecord in session.QueryAsync(this.InstanceIdPrefixPredicate, new PredicateKey(instanceQuery.InstanceIdPrefix), querySettings))
+                        await foreach (var queryRecord in session.QueryAsync(predicate, queryKey, querySettings).ConfigureAwait(false))
                         {
-                            var orcState = getOrchestrationState(ref queryRecord.ValueRef);
-                            if (matchesRuntimeStatus(orcState) && matchesDateRange(orcState))
+                            if (instanceQuery.Matches(getOrchestrationState(ref queryRecord.ValueRef)))
                             {
-                                yield return orcState;
+                                yield return getOrchestrationState(ref queryRecord.ValueRef);
                             }
                             queryRecord.Dispose();
                         }
-                        yield break;
                     }
-                    if (hasCreatedTimeRange)
+
+                    // These are arranged in the order of the expected most-to-least granular property: query the index for that, then post-process the others.
+                    if (!string.IsNullOrWhiteSpace(instanceQuery.InstanceIdPrefix))
                     {
+                        await foreach (var orcState in queryPredicate(this.InstanceIdPrefixPredicate, new PredicateKey(instanceQuery.InstanceIdPrefix)).ConfigureAwait(false))
+                        {
+                            yield return orcState;
+                        }
+                    }
+                    else if (instanceQuery.CreatedTimeFrom.HasValue || instanceQuery.CreatedTimeTo.HasValue)
+                    {
+                        var createdTimeTo = instanceQuery.CreatedTimeTo ?? DateTime.UtcNow;
+                        var createdTimeFrom = instanceQuery.CreatedTimeFrom ?? createdTimeTo.AddDays(-7);   // TODO Some default so we don't have to iterate from the first possible date
                         for (var dt = createdTimeFrom; dt <= createdTimeTo; dt += PredicateKey.DateBinInterval)
                         {
-                            await foreach (var queryRecord in session.QueryAsync(this.InstanceIdPrefixPredicate, new PredicateKey(dt), querySettings))
+                            await foreach (var orcState in queryPredicate(this.CreatedTimePredicate, new PredicateKey(dt)).ConfigureAwait(false))
                             {
-                                var orcState = getOrchestrationState(ref queryRecord.ValueRef);
-                                if (matchesRuntimeStatus(orcState) && matchesInstanceIdPrefix(orcState))
-                                {
-                                    yield return orcState;
-                                }
-                                queryRecord.Dispose();
+                                yield return orcState;
                             }
                         }
-                        yield break;
                     }
-                    if (hasRuntimeStatus)
+                    else if (instanceQuery.HasRuntimeStatus)
                     {
                         foreach (var status in instanceQuery.RuntimeStatus)
                         { 
-                            await foreach (var queryRecord in session.QueryAsync(this.InstanceIdPrefixPredicate, new PredicateKey(status), querySettings))
+                            await foreach (var orcState in queryPredicate(this.RuntimeStatusPredicate, new PredicateKey(status)).ConfigureAwait(false))
                             {
-                                var orcState = getOrchestrationState(ref queryRecord.ValueRef);
-                                if (matchesInstanceIdPrefix(orcState) && matchesDateRange(orcState))
-                                {
-                                    yield return orcState;
-                                }
-                                queryRecord.Dispose();
+                                yield return orcState;
                             }
-                        }
-                        yield break;
+                         }
                     }
                 }
 #else
@@ -526,16 +510,19 @@ namespace DurableTask.Netherite.Faster
 
 
         // create a tracked object on the main session (only one of these is executing at a time)
-        public override ValueTask<TrackedObject> CreateAsync(Key key)
+        public async override ValueTask<TrackedObject> CreateAsync(Key key)
         {
             try
             {              
                 TrackedObject newObject = TrackedObjectKey.Factory(key);
                 newObject.Partition = this.partition;
                 Value newValue = newObject;
-                // Note: there is no UpsertAsync().
-                this.mainSession.Upsert(ref key, ref newValue);
-                return new ValueTask<TrackedObject>(newObject);
+                var asyncResult = await this.mainSession.UpsertAsync(ref key, ref newValue).ConfigureAwait(false);
+                while (asyncResult.Status == Status.PENDING)
+                {
+                    asyncResult = await asyncResult.CompleteAsync().ConfigureAwait(false);
+                }
+                return newObject;
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
