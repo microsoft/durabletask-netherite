@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace PerformanceTests
+namespace PerformanceTests.HelloCities
 {
     using System;
     using System.IO;
@@ -21,16 +21,16 @@ namespace PerformanceTests
     /// <summary>
     /// A simple microbenchmark orchestration that some trivial activities in a sequence.
     /// </summary>
-    public static class HelloCitiesSequence
+    public static class HttpTriggers
     {
         [FunctionName(nameof(HelloCities))]
-        public static async Task<IActionResult> HelloCities(
+        public static async Task<IActionResult> HelloCities3(
            [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequest req,
            [DurableClient] IDurableClient client,
            ILogger log)
         {
             // start the orchestration
-            string orchestrationInstanceId = await client.StartNewAsync(nameof(HelloSequence));
+            string orchestrationInstanceId = await client.StartNewAsync(nameof(HelloSequence.HelloSequence3));
 
             // wait for it to complete and return the result
             return await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(200));
@@ -43,38 +43,10 @@ namespace PerformanceTests
            ILogger log)
         {
             // start the orchestration
-            string orchestrationInstanceId = await client.StartNewAsync(nameof(HelloSequence5));
+            string orchestrationInstanceId = await client.StartNewAsync(nameof(HelloSequence.HelloSequence5));
 
             // wait for it to complete and return the result
             return await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(200));
-        }
-
-        [FunctionName(nameof(HelloSequence))]
-        public static async Task<List<string>> HelloSequence([OrchestrationTrigger] IDurableOrchestrationContext context)
-        {
-            var result = new List<string>
-            {
-                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Tokyo"),
-                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Seattle"),
-                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "London")
-            };
-
-            return result;
-        }
-
-        [FunctionName(nameof(HelloSequence5))]
-        public static async Task<List<string>> HelloSequence5([OrchestrationTrigger] IDurableOrchestrationContext context)
-        {
-            var outputs = new List<string>
-            {
-                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Tokyo"),
-                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Seattle"),
-                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "London"),
-                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Amsterdam"),
-                await context.CallActivityAsync<string>(nameof(Activities.SayHello), "Mumbai")
-            };
-
-            return outputs;
         }
     }
 }

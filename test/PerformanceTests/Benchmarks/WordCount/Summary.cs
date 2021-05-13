@@ -7,13 +7,10 @@ namespace PerformanceTests.WordCount
     using System.Collections.Generic;
     using System.Data;
     using System.Linq;
-    using System.Security.Cryptography;
-    using System.Security.Cryptography.X509Certificates;
     using System.Threading.Tasks;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Extensions.Logging;
-    using Microsoft.Identity.Client;
 
     public static class Summary
     {

@@ -18,7 +18,7 @@ namespace PerformanceTests.WordCount
     /// <summary>
     /// Defines the REST operations for the word count test.
     /// </summary>
-    public static class WordCount
+    public static class HttpTriggers
     {
         [FunctionName("Wordcount")]
         public static async Task<IActionResult> Run(
