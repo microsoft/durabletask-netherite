@@ -26,10 +26,11 @@ namespace PerformanceTests
     /// Example invocations:
     ///     curl https://.../start -d HelloSequence.1000        launch 1000 HelloSequence instances, from the http trigger
     ///     curl https://.../start -d HelloSequence.10000.200   launch 10000 HelloSequence instances, in portions of 200, from launcher entities
+    ///     curl https://.../start -d XYZ.10000.200/abc         launch 10000 XYZ instances, in portions of 200, with inputs abc
     ///     curl https://.../await -d 1000                      waits for the 1000 instances to complete
     ///     curl https://.../count -d 1000                      check the status of the 1000 instances and reports the (last completed - first started) time range
     ///     curl https://.../purge -d 1000                      purges the 1000 instances
-    ///     curl https://.../query                              waits for the 1000 instances to complete
+    ///     curl https://.../query                              issues a query to check the status of all orchestrations
     ///     
     /// </summary>
     public static class ManyOrchestrations
@@ -40,26 +41,43 @@ namespace PerformanceTests
             [DurableClient] IDurableClient client,
             ILogger log)
         {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            int firstdot = requestBody.IndexOf('.');
-            int seconddot = requestBody.LastIndexOf('.');
-            string orchestrationName = requestBody.Substring(0, firstdot);
-            int numberOrchestrations;
-            int? portionSize;
-
-            if (firstdot == seconddot)
-            {
-                numberOrchestrations = int.Parse(requestBody.Substring(firstdot + 1));
-                portionSize = null;
-            }
-            else
-            {
-                numberOrchestrations = int.Parse(requestBody.Substring(firstdot + 1, seconddot - (firstdot + 1)));
-                portionSize = int.Parse(requestBody.Substring(seconddot + 1));
-            }
-         
             try
             {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                string parameters;
+                string input;
+
+                // extract parameters and input from the request
+                int slash = requestBody.IndexOf('/');
+                if (slash != -1)
+                {
+                    parameters = requestBody.Substring(0, slash);
+                    input = requestBody.Substring(slash + 1);
+                }
+                else
+                {
+                    parameters = requestBody;
+                    input = null;
+                }
+
+                // extract parameters
+                int firstdot = parameters.IndexOf('.');
+                int seconddot = parameters.LastIndexOf('.');
+                string orchestrationName = parameters.Substring(0, firstdot);
+                int numberOrchestrations;
+                int? portionSize;
+
+                if (firstdot == seconddot)
+                {
+                    numberOrchestrations = int.Parse(parameters.Substring(firstdot + 1));
+                    portionSize = null;
+                }
+                else
+                {
+                    numberOrchestrations = int.Parse(parameters.Substring(firstdot + 1, seconddot - (firstdot + 1)));
+                    portionSize = int.Parse(parameters.Substring(seconddot + 1));
+                }
+
                 if (!portionSize.HasValue)
                 {
                     log.LogWarning($"Starting {numberOrchestrations} instances of {orchestrationName} from within HttpTrigger...");
@@ -72,7 +90,7 @@ namespace PerformanceTests
                     {
                         var orchestrationInstanceId = InstanceId(iteration);
                         log.LogInformation($"starting {orchestrationInstanceId}");
-                        return client.StartNewAsync(orchestrationName, orchestrationInstanceId);
+                        return client.StartNewAsync(orchestrationName, orchestrationInstanceId, input);
                     });
 
                     double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
@@ -130,7 +148,7 @@ namespace PerformanceTests
 
                 int completed = 0;
 
-                // start all the orchestrations
+                // wait for all the orchestrations
                 await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
                 {
                     var orchestrationInstanceId = InstanceId(iteration);

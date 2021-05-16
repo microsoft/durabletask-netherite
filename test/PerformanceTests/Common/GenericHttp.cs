@@ -17,7 +17,7 @@ namespace PerformanceTests
     using Newtonsoft.Json.Linq;
 
     /// <summary>
-    /// A generic HttpTrigger wrapper that can be used to launch an orchestration.
+    /// A generic HttpTrigger wrapper that can be used to launch a single orchestration and wait for its completion.
     /// It returns the result of the orchestration, the time it started, and the duration.
     /// </summary>
     public static class GenericHttp

@@ -14,7 +14,7 @@ namespace PerformanceTests.ProducerConsumer
     using Newtonsoft.Json;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 
-    public static class HttpSurface
+    public static class HttpTriggers
     {
         [FunctionName("ProducerConsumer")]
         public static async Task<IActionResult> ProducerConsumer(

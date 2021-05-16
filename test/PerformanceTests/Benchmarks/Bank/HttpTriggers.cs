@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace PerformanceTests
+namespace PerformanceTests.Bank
 {
     using System;
     using System.IO;
@@ -20,52 +20,10 @@ namespace PerformanceTests
     /// A microbenchmark using durable entities for bank accounts, and an orchestration with a critical section for transferring
     /// currency between two accounts.
     /// </summary>
-    public static class Bank
+    public static class HttpTriggers
     {
-        public interface IAccount
-        {
-            Task Add(int amount);
-            Task Reset();
-            Task<int> Get();
-            void Delete();
-        }
-
-        [JsonObject(MemberSerialization.OptIn)]
-        public class Account : IAccount
-        {
-            [JsonProperty("value")]
-            public int Value { get; set; }
-
-            public Task Add(int amount)
-            {
-                this.Value += amount;
-                return Task.CompletedTask;
-            }
-
-            public Task Reset()
-            {
-                this.Value = 0;
-                return Task.CompletedTask;
-            }
-
-            public Task<int> Get()
-            {
-                return Task.FromResult(this.Value);
-            }
-
-            public void Delete()
-            {
-                Entity.Current.DeleteState();
-            }
-
-
-        }
-
-        [FunctionName(nameof(Account))]
-        public static Task Dispatch([EntityTrigger] IDurableEntityContext context) => context.DispatchAsync<Account>();
-
         [FunctionName(nameof(Bank))]
-        public static async Task<IActionResult> Run(
+        public static async Task<IActionResult> Bank(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "bank")] HttpRequest req,
             [DurableClient] IDurableClient client,
             ILogger log)
@@ -170,52 +128,6 @@ namespace PerformanceTests
                         testname,
                         error = e.ToString(),
                     });
-            }
-        }
-
-
-        [FunctionName(nameof(BankTransaction))]
-        public static async Task<bool> BankTransaction([OrchestrationTrigger] IDurableOrchestrationContext context)
-        {
-            var iterationLength = context.GetInput<Tuple<int, int>>();
-            var targetAccountPair = iterationLength.Item1;
-            var length = iterationLength.Item2;
-
-            var sourceAccountId = $"src{targetAccountPair}-!{(targetAccountPair + 1) % 32:D2}";
-            var sourceEntity = new EntityId(nameof(Account), sourceAccountId);
-
-            var destinationAccountId = $"dst{targetAccountPair}-!{(targetAccountPair + 2) % 32:D2}";
-            var destinationEntity = new EntityId(nameof(Account), destinationAccountId);
-
-            // Add an amount to the first account
-            var transferAmount = 1000;
-
-            IAccount sourceProxy =
-                context.CreateEntityProxy<IAccount>(sourceEntity);
-            IAccount destinationProxy =
-                context.CreateEntityProxy<IAccount>(destinationEntity);
-
-            // we want the balance check to always succeeed to reduce noise
-            bool forceSuccess = true;
-
-            // Create a critical section to avoid race conditions.
-            // No operations can be performed on either the source or
-            // destination accounts until the locks are released.
-            using (await context.LockAsync(sourceEntity, destinationEntity))
-            {
-                int sourceBalance = await sourceProxy.Get();
-
-                if (sourceBalance > transferAmount || forceSuccess)
-                {
-                    await sourceProxy.Add(-transferAmount);
-                    await destinationProxy.Add(transferAmount);
-
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }    
             }
         }
     }
