@@ -7,13 +7,18 @@ namespace PerformanceTests.WordCount
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Net;
+    using System.Threading;
     using System.Threading.Tasks;
+    using DurableTask.Netherite.Faster;
+    using Microsoft.Azure.Storage;
+    using Microsoft.Azure.Storage.Blob;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Extensions.Logging;
 
     public static class Mapper
     {
+
         public enum Ops
         {
             Init,
@@ -27,7 +32,7 @@ namespace PerformanceTests.WordCount
         }
 
         [FunctionName(nameof(Mapper))]
-        public static Task HandleOperation(
+        public static async Task HandleOperation(
             [EntityTrigger] IDurableEntityContext context, ILogger log)
         {
             char[] separators = { ' ', '\n', '<', '>', '=', '\"', '\'', '/', '\\', '(', ')', '\t', '{', '}', '[', ']', ',', '.', ':', ';' };
@@ -54,11 +59,23 @@ namespace PerformanceTests.WordCount
                         log.LogInformation($"{context.EntityId}: Start processing.");
                         Stopwatch s = new Stopwatch();
                         s.Start();
-                        string documentUrl = context.GetInput<string>();
-                        string doc = (new WebClient()).DownloadString(documentUrl);
+
+                        // setup connection to blob storage
+                        string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+                        CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
+                        CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
+                        string containerName = BlobManager.GetContainerName("perftests");
+
+                        // download the book from blob storage
+                        string book = context.GetInput<string>();
+                        CloudBlobContainer blobContainer = serviceClient.GetContainerReference(containerName);
+                        CloudBlockBlob blob = blobContainer.GetBlockBlobReference(book);
+                        string doc = await blob.DownloadTextAsync();
+
                         string[] words = doc.Split(separators, StringSplitOptions.RemoveEmptyEntries);
                         foreach (var word in words)
                         {
+                            log.LogWarning($"Current word is {word}");
                             int hash = word.GetHashCode();
                             if (hash < 0)
                             {
@@ -68,7 +85,7 @@ namespace PerformanceTests.WordCount
                             context.SignalEntity(Reducer.GetEntityId(reducerNumber), nameof(Reducer.Ops.Inc), word);
                         }
                         s.Stop();
-                        log.LogWarning($"{context.EntityId}: Downloaded and processed {words.Length} words in {s.Elapsed.TotalSeconds:F3}s from {documentUrl}");
+                        log.LogWarning($"{context.EntityId}: Downloaded and processed {words.Length} words in {s.Elapsed.TotalSeconds:F3}s from {book}");
                         break;
                     }
 
@@ -81,7 +98,7 @@ namespace PerformanceTests.WordCount
                     break;
 
             }
-            return Task.CompletedTask;
+           
         }
     }
 }
