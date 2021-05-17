@@ -11,6 +11,8 @@ namespace PerformanceTests.CollisionSearch
     using Microsoft.Azure.WebJobs.Extensions.Http;
     using Microsoft.AspNetCore.Http;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
+    using System.Net.Http;
+    using Newtonsoft.Json.Linq;
 
     public static class HttpTriggers
     {
@@ -20,7 +22,8 @@ namespace PerformanceTests.CollisionSearch
         /// </summary>
         [FunctionName(nameof(CollisionSearch))]
         public static async Task<IActionResult> Run(
-           [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "CollisionSearch")] HttpRequest req,
+           [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "CollisionSearch/{algorithm}")] HttpRequest req,
+           string algorithm,
            [DurableClient] IDurableClient client)
         {
             try
@@ -37,10 +40,38 @@ namespace PerformanceTests.CollisionSearch
                 };
 
                 // start the orchestration
-                string orchestrationInstanceId = await client.StartNewAsync(nameof(CollisionSearch.SearchOrchestration), null, parameters);
+                string orchestrationName;
+
+                switch (algorithm)
+                {
+                    case "divide-and-conquer":
+                        orchestrationName = nameof(CollisionSearch.DivideAndConquerSearch);
+                        break;
+
+                    default:
+                        throw new ArgumentException("unknown algorithm");
+                }
+
+                string orchestrationInstanceId = await client.StartNewAsync(orchestrationName, null, parameters);
 
                 // wait for it to complete and return the result
-                return await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(200));
+                var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(200));
+
+                if (response is ObjectResult objectResult
+                    && objectResult.Value is HttpResponseMessage responseMessage
+                    && responseMessage.StatusCode == System.Net.HttpStatusCode.OK
+                    && responseMessage.Content is StringContent stringContent)
+                {
+                    var state = await client.GetStatusAsync(orchestrationInstanceId, false, false, false);
+                    var result = (JArray) JToken.Parse(await stringContent.ReadAsStringAsync());
+                    var collisionsFound = result.Count;
+                    var durationSeconds = (state.LastUpdatedTime - state.CreatedTime).TotalSeconds;
+                    var billionsSearched = billions;
+                    var throughput = billionsSearched / durationSeconds;
+                    response = new OkObjectResult(new { collisionsFound, durationSeconds, billionsSearched, throughput });                
+                }
+
+                return response;
             }
             catch (Exception e)
             {
