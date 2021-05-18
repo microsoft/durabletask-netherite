@@ -12,8 +12,11 @@ namespace PerformanceTests.WordCount
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
+    using Microsoft.Azure.Storage;
     using System.Collections.Generic;
     using System.Text;
+    using Microsoft.Azure.Storage.Blob;
+    using DurableTask.Netherite.Faster;
     using System.Net.Http;
 
     /// <summary>
@@ -27,6 +30,7 @@ namespace PerformanceTests.WordCount
            [DurableClient] IDurableClient client,
            ILogger log)
         {
+            log.LogWarning($"request is {req}");
             var queryParameters = req.Query;
 
             // get mapper and reducer count from shape parameter
@@ -37,6 +41,18 @@ namespace PerformanceTests.WordCount
             // get list of URLs from request body
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             string[] urls = requestBody.Split();
+
+            // setup connection to the blob storage
+            string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+            // TODO: Add connection string as an argument
+            CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
+            CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
+            string containerName = BlobManager.GetContainerName("perftests");
+            CloudBlobContainer blobContainer = serviceClient.GetContainerReference(containerName);
+            CloudBlobDirectory blobDirectory = blobContainer.GetDirectoryReference($"Gutenberg");
+
+            // get the list of files(books) from blob storage
+            IEnumerable<IListBlobItem> books = blobDirectory.ListBlobs();
 
             if (!(counts.Length == 2 && int.TryParse(counts[0], out mapperCount) && int.TryParse(counts[1], out reducerCount)))
             {
@@ -60,14 +76,11 @@ namespace PerformanceTests.WordCount
 
             int urlCount = 0;
 
-            foreach (var url in urls)
+            foreach (var book in books)
             {
-                var trimmedUrl = url.Trim();
-                if (Uri.IsWellFormedUriString(trimmedUrl, UriKind.Absolute))
-                {
-                    int mapper = urlCount++ % mapperCount;
-                    var _ = client.SignalEntityAsync(Mapper.GetEntityId(mapper), nameof(Mapper.Ops.Item), url);
-                }
+                int mapper = urlCount++ % mapperCount;
+                var _ = client.SignalEntityAsync(Mapper.GetEntityId(mapper), nameof(Mapper.Ops.Item), ((CloudBlockBlob)book).Name);
+                break;
             }
 
             for (int i = 0; i < mapperCount; i++)
