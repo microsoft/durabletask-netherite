@@ -13,24 +13,12 @@ namespace PerformanceTests.CollisionSearch
     using System.Linq;
 
     /// <summary>
-    /// A simple microbenchmark orchestration that searches for hash collisions.
+    /// An orchestration that searches for hash collisions using a recursive divide-and-conquer algorithm.
     /// </summary>
-    public static class CollisionSearch
-    {
-        public struct IntervalSearchParameters
-        {
-            // the hash code for which we want to find a collision
-            public int Target { get; set; }
-            // The start of the interval
-            public long Start { get; set; }
-            // The size of the interval
-            public long Count { get; set; }
-        }
-
-        const int MaxIntervalSize = 10000000;
-
-        [FunctionName(nameof(SearchOrchestration))]
-        public static async Task<List<long>> SearchOrchestration([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger logger)
+    public static class DivideAndConquerSearch
+    {     
+        [FunctionName(nameof(DivideAndConquerSearch))]
+        public static async Task<List<long>> Run([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger logger)
         {
             // get the input
             var input = context.GetInput<IntervalSearchParameters>();
@@ -39,7 +27,7 @@ namespace PerformanceTests.CollisionSearch
             logger.LogInformation($"{context.InstanceId} Start searching interval [{input.Start},{input.Start + input.Count})");
 
             // We search the interval using a recursive divide-and-conquer.
-            if (input.Count <= MaxIntervalSize)
+            if (input.Count <= SearchActivity.MaxIntervalSize)
             {
                 // the interval is small enough to handle in a single activity
                 results = await context.CallActivityAsync<List<long>>(nameof(SearchActivity), input);
@@ -51,7 +39,7 @@ namespace PerformanceTests.CollisionSearch
                 var subOrchestratorTasks = new Task<List<long>>[10];
                 for (int i = 0; i < 10; i++)
                 {
-                    subOrchestratorTasks[i] = context.CallSubOrchestratorAsync<List<long>>(nameof(SearchOrchestration), new IntervalSearchParameters()
+                    subOrchestratorTasks[i] = context.CallSubOrchestratorAsync<List<long>>(nameof(DivideAndConquerSearch), new IntervalSearchParameters()
                     {
                         Target = input.Target,
                         Start = input.Start + i * portionSize,
@@ -67,21 +55,6 @@ namespace PerformanceTests.CollisionSearch
 
             logger.LogInformation($"{context.InstanceId} Found {results.Count} collisions in interval [{input.Start},{input.Start + input.Count})");
             return results;
-        }
-
-        [FunctionName(nameof(SearchActivity))]
-        public static Task<List<long>> SearchActivity([ActivityTrigger] IDurableActivityContext context)
-        {
-            var input = context.GetInput<IntervalSearchParameters>();
-
-            var results = new List<long>();
-            for (var i = input.Start; i < input.Start + input.Count; i++)
-            {
-                if (i.GetHashCode() == input.Target)
-                    results.Add(i);
-            }
-
-            return Task.FromResult(results);
         }
     }
 }

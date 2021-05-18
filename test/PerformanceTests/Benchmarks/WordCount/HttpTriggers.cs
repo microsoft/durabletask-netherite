@@ -17,6 +17,7 @@ namespace PerformanceTests.WordCount
     using System.Text;
     using Microsoft.Azure.Storage.Blob;
     using DurableTask.Netherite.Faster;
+    using System.Net.Http;
 
     /// <summary>
     /// Defines the REST operations for the word count test.
@@ -62,25 +63,14 @@ namespace PerformanceTests.WordCount
             // ----- PHASE 1 ----------
             // initialize all three types of entities prior to running the mapreduce
 
-            var initializationSignals = new List<Task>();
-
-            // initialize all the mapper entities
-            for (int i = 0; i < mapperCount; i++)
+            var initializationOrchestrationInstanceId = await client.StartNewAsync(nameof(InitializeEntities), null, (mapperCount, reducerCount));
+            var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, initializationOrchestrationInstanceId, TimeSpan.FromMinutes(3));
+            if (! (response is ObjectResult objectResult
+                    && objectResult.Value is HttpResponseMessage responseMessage
+                    && responseMessage.StatusCode == System.Net.HttpStatusCode.OK))
             {
-                initializationSignals.Add(client.SignalEntityAsync(Mapper.GetEntityId(i), nameof(Mapper.Ops.Init), reducerCount.ToString()));
+                return (ActionResult)new OkObjectResult($"Initialization orchestration timed out.\n");
             }
-
-            // initialize all the reducer entities
-            for (int i = 0; i < reducerCount; i++)
-            {
-                initializationSignals.Add(client.SignalEntityAsync(Reducer.GetEntityId(i), nameof(Reducer.Ops.Init), mapperCount.ToString()));
-            }
-
-            // initialize the summary entity
-            initializationSignals.Add(client.SignalEntityAsync(Summary.GetEntityId(), nameof(Summary.Ops.Init), reducerCount.ToString()));
-            
-            // we want to have the initialization completed before we start the test
-            await Task.WhenAll(initializationSignals);
 
             // ----- PHASE 2 ----------
             // send work to the mappers
