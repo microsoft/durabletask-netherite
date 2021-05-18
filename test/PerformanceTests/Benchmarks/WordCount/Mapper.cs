@@ -63,8 +63,8 @@ namespace PerformanceTests.WordCount
                         log.LogWarning($"mapper is running");
 
                         // setup connection to the blob storage
-                        // string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
-                        string connectionString = "DefaultEndpointsProtocol=https;AccountName=gutenbergcorpus;AccountKey=UkcWHw7akFbV9Y4AJdPLoS1l6XyOExhKFGDv7JGqY6LtyKnHcainf5ACB8H/nHVrB2hh4DvP6nGrizTrHvP1ww==;EndpointSuffix=core.windows.net";
+                        string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+                        
                         CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
                         CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
 
