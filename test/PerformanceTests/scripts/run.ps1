@@ -1,10 +1,11 @@
 #!/usr/bin/pwsh
 param (
+    $Settings="./settings.ps1",
 	$Configuration="Release"
-	)
+)
 
-# initialize the settings and create Azure resources if necessary
-. ./scripts/init.ps1
+# read the settings and initialize the azure resources
+. ./scripts/init.ps1 -Settings $Settings
 
 # build the code
 Write-Host Building $Configuration Configuration...

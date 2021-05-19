@@ -17,9 +17,9 @@ namespace PerformanceTests.Bank
         [FunctionName(nameof(BankTransaction))]
         public static async Task<bool> Run([OrchestrationTrigger] IDurableOrchestrationContext context)
         {
-            var iterationLength = context.GetInput<Tuple<int, int>>();
-            var targetAccountPair = iterationLength.Item1;
-            var length = iterationLength.Item2;
+            var targetAccountPair = context.GetInput<int>();
+
+            // source and destination are always unique to this 'target' number, and are always placed on different partitions
 
             var sourceAccountId = $"src{targetAccountPair}-!{(targetAccountPair + 1) % 32:D2}";
             var sourceEntity = new EntityId(nameof(Account), sourceAccountId);
