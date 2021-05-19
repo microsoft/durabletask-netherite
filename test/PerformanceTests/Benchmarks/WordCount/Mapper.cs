@@ -60,22 +60,23 @@ namespace PerformanceTests.WordCount
                         Stopwatch s = new Stopwatch();
                         s.Start();
 
-                        // setup connection to blob storage
+                        log.LogWarning($"mapper is running");
+
+                        // setup connection to the blob storage
                         string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+                        
                         CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
                         CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
-                        string containerName = BlobManager.GetContainerName("perftests");
 
                         // download the book from blob storage
                         string book = context.GetInput<string>();
-                        CloudBlobContainer blobContainer = serviceClient.GetContainerReference(containerName);
+                        CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
                         CloudBlockBlob blob = blobContainer.GetBlockBlobReference(book);
                         string doc = await blob.DownloadTextAsync();
 
                         string[] words = doc.Split(separators, StringSplitOptions.RemoveEmptyEntries);
                         foreach (var word in words)
                         {
-                            log.LogWarning($"Current word is {word}");
                             int hash = word.GetHashCode();
                             if (hash < 0)
                             {

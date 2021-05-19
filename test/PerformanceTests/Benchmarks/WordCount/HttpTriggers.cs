@@ -38,18 +38,18 @@ namespace PerformanceTests.WordCount
             string[] counts = shape.Split('x');
             int mapperCount, reducerCount;
 
-            // get list of URLs from request body
+            // Get the number of books to process
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            string[] urls = requestBody.Split();
+            int maxBooks = int.Parse(requestBody);
 
             // setup connection to the blob storage
             string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
             // TODO: Add connection string as an argument
             CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
             CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
-            string containerName = BlobManager.GetContainerName("perftests");
-            CloudBlobContainer blobContainer = serviceClient.GetContainerReference(containerName);
-            CloudBlobDirectory blobDirectory = blobContainer.GetDirectoryReference($"Gutenberg");
+            CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
+            CloudBlobDirectory blobDirectory = blobContainer.GetDirectoryReference($"Gutenberg/txt");
+            // CloudBlobDirectory blobDirectory = blobContainer.GetDirectoryReference($"Gutenberg-small");
 
             // get the list of files(books) from blob storage
             IEnumerable<IListBlobItem> books = blobDirectory.ListBlobs();
@@ -74,13 +74,19 @@ namespace PerformanceTests.WordCount
             // ----- PHASE 2 ----------
             // send work to the mappers
 
-            int urlCount = 0;
+            int bookCount = 0;
 
             foreach (var book in books)
             {
-                int mapper = urlCount++ % mapperCount;
+                log.LogWarning($"The book name is {((CloudBlockBlob)book).Name}");
+                int mapper = bookCount++ % mapperCount;
                 var _ = client.SignalEntityAsync(Mapper.GetEntityId(mapper), nameof(Mapper.Ops.Item), ((CloudBlockBlob)book).Name);
-                break;
+                
+                if (bookCount == maxBooks)
+                {
+                    log.LogWarning($"Processed {bookCount}, exiting");
+                    break;
+                }
             }
 
             for (int i = 0; i < mapperCount; i++)
@@ -116,11 +122,12 @@ namespace PerformanceTests.WordCount
             else
             {
                 var sb = new StringBuilder();
-                sb.AppendLine($"----- {urlCount} urls with {entryCount} words processed in {executionTime:F2}s, top 20 as follows -----");
+                sb.AppendLine($"----- {bookCount} books with {entryCount} words processed in {executionTime:F2}s, top 20 as follows -----");
                 foreach ((int count, string word) in topWords)
                 {
                     sb.AppendLine($"{count,10} {word}");
                 }
+                sb.AppendLine($"----- Throughput is {entryCount/executionTime:F2} -----");
                 return (ActionResult)new OkObjectResult(sb.ToString());
             }
         }
