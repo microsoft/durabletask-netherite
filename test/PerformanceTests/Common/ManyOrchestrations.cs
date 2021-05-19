@@ -78,7 +78,7 @@ namespace PerformanceTests
                     portionSize = int.Parse(parameters.Substring(seconddot + 1));
                 }
 
-                if (!portionSize.HasValue)
+                if (!portionSize.HasValue || portionSize.Value == 0)
                 {
                     log.LogWarning($"Starting {numberOrchestrations} instances of {orchestrationName} from within HttpTrigger...");
 
@@ -90,7 +90,7 @@ namespace PerformanceTests
                     {
                         var orchestrationInstanceId = InstanceId(iteration);
                         log.LogInformation($"starting {orchestrationInstanceId}");
-                        return client.StartNewAsync(orchestrationName, orchestrationInstanceId, input);
+                        return client.StartNewAsync(orchestrationName, orchestrationInstanceId, input ?? iteration.ToString());
                     });
 
                     double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
