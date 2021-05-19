@@ -86,6 +86,13 @@ namespace PerformanceTests.WordCount
 
                 case Ops.MapperEnd:
                     ++state.countOfCompletedMappers;
+                    log.LogWarning($"1 mapper finished, {state.countOfCompletedMappers} mappers finished in total");
+
+                    if (state.countOfCompletedMappers > state.mapperCount)
+                    {
+                        log.LogWarning($"Number of completed mappers({state.countOfCompletedMappers}) is greater than mapper count({state.mapperCount})!");
+                    }
+
                     if (state.countOfCompletedMappers >= state.mapperCount)
                     {
                         context.SignalEntity(Summary.GetEntityId(), nameof(Summary.Ops.Report), new Summary.Report()

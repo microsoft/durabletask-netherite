@@ -16,7 +16,7 @@ namespace PerformanceTests.WordCount
         [FunctionName(nameof(InitializeEntities))]
         public static async Task Run(
             [OrchestrationTrigger] IDurableOrchestrationContext context,
-            ILogger logger)
+            ILogger log)
         {
             var (mapperCount, reducerCount) = context.GetInput<(int, int)>();
 

@@ -44,12 +44,12 @@ namespace PerformanceTests.WordCount
 
             // setup connection to the blob storage
             string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+            
             // TODO: Add connection string as an argument
             CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
             CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
             CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
             CloudBlobDirectory blobDirectory = blobContainer.GetDirectoryReference($"Gutenberg/txt");
-            // CloudBlobDirectory blobDirectory = blobContainer.GetDirectoryReference($"Gutenberg-small");
 
             // get the list of files(books) from blob storage
             IEnumerable<IListBlobItem> books = blobDirectory.ListBlobs();
@@ -84,14 +84,9 @@ namespace PerformanceTests.WordCount
                 
                 if (bookCount == maxBooks)
                 {
-                    log.LogWarning($"Processed {bookCount}, exiting");
+                    log.LogWarning($"Processed {bookCount} books, exiting");
                     break;
                 }
-            }
-
-            for (int i = 0; i < mapperCount; i++)
-            {
-                var _ = client.SignalEntityAsync(Mapper.GetEntityId(i), nameof(Mapper.Ops.End));
             }
 
             // ----- PHASE 3 ----------
@@ -103,7 +98,7 @@ namespace PerformanceTests.WordCount
             double executionTime = 0;
             do
             {
-                await Task.Delay(500);
+                await Task.Delay(10000);
                 var summaryState = await client.ReadEntityStateAsync<Summary.SummaryState>(Summary.GetEntityId());
                 if (summaryState.EntityExists && summaryState.EntityState.waitCount == 0)
                 {

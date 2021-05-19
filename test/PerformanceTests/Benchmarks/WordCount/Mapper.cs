@@ -60,11 +60,9 @@ namespace PerformanceTests.WordCount
                         Stopwatch s = new Stopwatch();
                         s.Start();
 
-                        log.LogWarning($"mapper is running");
-
                         // setup connection to the blob storage
                         string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
-                        
+                       
                         CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
                         CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
 
@@ -87,17 +85,14 @@ namespace PerformanceTests.WordCount
                         }
                         s.Stop();
                         log.LogWarning($"{context.EntityId}: Downloaded and processed {words.Length} words in {s.Elapsed.TotalSeconds:F3}s from {book}");
+                        
+                        log.LogWarning($"{context.EntityId}: Sending end signal to reducers.");
+                        for (int i = 0; i < reducerCount; i++)
+                        {
+                            context.SignalEntity(Reducer.GetEntityId(i), nameof(Reducer.Ops.MapperEnd));
+                        }
                         break;
                     }
-
-                case Ops.End:
-                    log.LogInformation($"{context.EntityId}: Forwarding end signal.");
-                    for (int i = 0; i < reducerCount; i++)
-                    {
-                        context.SignalEntity(Reducer.GetEntityId(i), nameof(Reducer.Ops.MapperEnd));
-                    }
-                    break;
-
             }
            
         }
