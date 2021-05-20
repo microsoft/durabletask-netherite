@@ -20,17 +20,12 @@
       "Function": "Warning", // use this setting when running perf tests
 
       // --- the levels below are used to control the Netherite tracing.
-      "DurableTask.Netherite": "Information",
+      "DurableTask.Netherite": "Warning",
       "DurableTask.Netherite.FasterStorage": "Warning",
       "DurableTask.Netherite.EventHubsTransport": "Warning",
       "DurableTask.Netherite.Events": "Warning",
       "DurableTask.Netherite.WorkItems": "Warning"
     },
-    "applicationInsights": {
-      "sampling": {
-        "isEnabled": false
-      }
-    }
   },
   "extensions": {
     "http": {
@@ -47,8 +42,7 @@
 
       "storageProvider": {
 
-        // "type": "Netherite",
-        "type": "AzureStorage",
+        "type": "Netherite",
 
         "StorageConnectionName": "AzureWebJobsStorage",
         "EventHubsConnectionName": "EventHubsConnection",
@@ -71,7 +65,7 @@
         "UseAlternateObjectStore": "false",
 
         // set this "None", "Local", or "Global"
-        "Speculation": "Local",
+        "Speculation": "Global",
 
         // set this to "Scripted" to control the scenario with a partition script
         "PartitionManagement": "EventProcessorHost",
@@ -79,16 +73,16 @@
         // The log level limits below control the production of log events by the various components.
         // it limits production, not just consumption, of the events, so it can be used to prevent overheads.
         // "Debug" is a reasonable setting, as it allows troubleshooting without impacting perf too much.
-        "LogLevelLimit": "Debug",
-        "StorageLogLevelLimit": "Debug",
-        "TransportLogLevelLimit": "Debug",
-        "EventLogLevelLimit": "Debug",
-        "WorkItemLogLevelLimit": "Debug",
+        "LogLevelLimit": "Information",
+        "StorageLogLevelLimit": "Information",
+        "TransportLogLevelLimit": "Information",
+        "EventLogLevelLimit": "Information",
+        "WorkItemLogLevelLimit": "Information",
 
         // the following can be used to collectd and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context
         "TraceToConsole": false,
-        "TraceToBlob": true
+        "TraceToBlob": false
       }
     }
   }
