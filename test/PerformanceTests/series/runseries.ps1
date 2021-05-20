@@ -15,7 +15,7 @@ param (
 	$HubName="perftests",
 	$ResultsFile="./results.csv",
 	$DeployCode=$true,
-	$DeleteAfterTests=$true
+	$DeleteAfterTests=$false
 	)
 
 # deploy to a premium plan
