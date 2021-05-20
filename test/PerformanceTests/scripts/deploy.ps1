@@ -1,19 +1,26 @@
 #!/usr/bin/pwsh
 param (
+    $Settings="./settings.ps1",
 	$Plan="EP2", 
 	$MinNodes="1", 
 	$MaxNodes="20", 
-	$Configuration="Release"
-	)
+	$Configuration="Release",
+	$HostConfigurationFile="./host.json",
+	$HubName="perftests",
+	$DeployCode=$true
+)
 
-# read the settings that are common to all scripts
-. ./settings.ps1
+# read the settings and initialize the azure resources
+. ./scripts/init.ps1 -Settings $Settings
 
-Write-Host Building $Configuration Configuration...
-dotnet build -c $Configuration
-
-# enter the directory with the binaries
-Push-Location -Path bin/$Configuration/netcoreapp3.1  
+if ($DeployCode)
+{
+    Write-Host Building $Configuration Configuration...
+    dotnet build -c $Configuration
+	$hostconf = (Get-Content $HostConfigurationFile | ConvertFrom-Json -Depth 32)
+	$hostconf.extensions.durableTask.hubName = $HubName
+	$hostconf | ConvertTo-Json -depth 32 | set-content "./bin/$Configuration/netcoreapp3.1/host.json"
+}
 
 # look up the eventhubs namespace connection string
 $eventHubsConnectionString = (az eventhubs namespace authorization-rule keys list --resource-group $groupName --namespace-name $namespaceName --name RootManageSharedAccessKey | ConvertFrom-Json).primaryConnectionString
@@ -31,7 +38,7 @@ else
 	Write-Host "Function app already exists."
 }
 
-Write-Host "Configuring Scale=$MinNodes-$MaxNodes"
+Write-Host "Configuring Function App Scale=$MinNodes-$MaxNodes"
 az functionapp plan update -g $groupName -n $functionAppName --max-burst $MaxNodes --number-of-workers $MinNodes --min-instances $MinNodes 
 az resource update -n $functionAppName/config/web -g $groupName --set properties.minimumElasticInstanceCount=$MinNodes --resource-type Microsoft.Web/sites
 if ($MinNode -eq $MaxNodes)
@@ -43,7 +50,14 @@ else
 	az resource update -n $functionAppName/config/web -g $groupName --set properties.functionsRuntimeScaleMonitoringEnabled=1 --resource-type Microsoft.Web/sites
 }
 
-Write-Host "Publishing Code to Function App..."
-func azure functionapp publish $functionAppName
+if ($DeployCode)
+{
+	# enter the directory with the binaries
+	Push-Location -Path bin/$Configuration/netcoreapp3.1  
 
-Pop-Location
+	Write-Host "Publishing Code to Function App..."
+	func azure functionapp publish $functionAppName
+
+	#restore the original directory
+	Pop-Location
+}

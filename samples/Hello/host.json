@@ -3,7 +3,6 @@
   "extensions": {
     "durableTask": {
       "hubName": "hello",
-      "extendedSessionsEnabled": "true",
       "UseGracefulShutdown": true,
       "storageProvider": {
         "type":"Netherite",

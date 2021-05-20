@@ -34,7 +34,8 @@ namespace DurableTask.Netherite.AzureFunctions
 
         internal static BlobLogger BlobLogger { get; set; }
 
-        public string Name => "Netherite";
+        public const string ProviderName = "Netherite";
+        public string Name => ProviderName;
 
         // Called by the Azure Functions runtime dependency injection infrastructure
         public NetheriteProviderFactory(

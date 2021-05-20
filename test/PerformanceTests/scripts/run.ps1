@@ -1,17 +1,18 @@
 #!/usr/bin/pwsh
 param (
+    $Settings="./settings.ps1",
 	$Configuration="Release"
-	)
+)
 
-# read the settings that are common to all scripts
-. ./settings.ps1
+# read the settings and initialize the azure resources
+. ./scripts/init.ps1 -Settings $Settings
 
-# enter the directory with the binaries
-if (-not (Test-Path -Path ./bin/$Configuration/netcoreapp3.1/bin)) {
-    throw "No $Configuration binaries found. Must `dotnet build -c $Configuration` first."
-} else {
-	Push-Location -Path bin/$Configuration/netcoreapp3.1  
-}
+# build the code
+Write-Host Building $Configuration Configuration...
+dotnet build -c $Configuration
+
+# enter the directory with the binaries 
+Push-Location -Path bin/$Configuration/netcoreapp3.1  
 
 # look up the two connection strings and assign them to the respective environment variables
 $Env:AzureWebJobsStorage = (az storage account show-connection-string --name $storageName --resource-group $groupName | ConvertFrom-Json).connectionString

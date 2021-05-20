@@ -38,12 +38,18 @@ namespace DurableTask.Netherite.Tests
                 LogLevelLimit = LogLevel.Trace,
                 EventLogLevelLimit = LogLevel.Trace,
                 WorkItemLogLevelLimit = LogLevel.Trace,
-                TakeStateCheckpointWhenStoppingPartition = false,  // set to false for testing recovery from log
+                PartitionCount = 12,
+                TakeStateCheckpointWhenStoppingPartition = true,  // set to false for testing recovery from log
                 UseAlternateObjectStore = false,                  // set to true to bypass FasterKV; default is false
                 MaxTimeMsBetweenCheckpoints = 1000000000,         // set this low for testing frequent checkpointing
                 //MaxNumberBytesBetweenCheckpoints = 10000000, // set this low for testing frequent checkpointing
                 //MaxNumberEventsBetweenCheckpoints = 10, // set this low for testing frequent checkpointing
             };
+
+            // uncomment the following for testing FASTER using local files only
+            //settings.ResolvedTransportConnectionString = "MemoryF";
+            //settings.ResolvedStorageConnectionString = "";
+            //settings.UseLocalDirectoryForPartitionStorage = $"{Environment.GetEnvironmentVariable("temp")}\\FasterTestStorage";
 
             settings.Validate((name) => Environment.GetEnvironmentVariable(name));
 
@@ -59,6 +65,6 @@ namespace DurableTask.Netherite.Tests
             => new TestOrchestrationHost(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
 
-        public static bool DeleteStorageBeforeRunningTests => false; // set to false for testing log-based recovery
+        public static bool DeleteStorageBeforeRunningTests => true; // set to false for testing log-based recovery
     }
 }

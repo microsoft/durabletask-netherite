@@ -117,7 +117,16 @@ namespace DurableTask.Netherite
             this.workItemTraceHelper = new WorkItemTraceHelper(loggerFactory, settings.WorkItemLogLevelLimit, this.StorageAccountName, this.Settings.HubName);
 
             if (this.configuredTransport != TransportConnectionString.TransportChoices.Memory)
-                this.LoadMonitorService = new AzureLoadMonitorTable(settings.ResolvedStorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
+            {
+                if (!string.IsNullOrEmpty(settings.LoadInformationAzureTableName))
+                {
+                    this.LoadMonitorService = new AzureTableLoadMonitor(settings.ResolvedStorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
+                }
+                else
+                {
+                    this.LoadMonitorService = new AzureBlobLoadMonitor(settings.ResolvedStorageConnectionString, settings.HubName);
+                }
+            }
 
             this.workItemStopwatch.Start();
 
@@ -140,7 +149,7 @@ namespace DurableTask.Netherite
         public bool TryGetScalingMonitor(out ScalingMonitor monitor)
         {
             if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster
-                || this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
+                && this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
                 monitor = new ScalingMonitor(
                     this.Settings.ResolvedStorageConnectionString, 
@@ -169,7 +178,7 @@ namespace DurableTask.Netherite
                     return new MemoryStorage(this.Logger);
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.PremiumStorageConnectionName, this.Settings.HubName, this.LoggerFactory);
+                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.PremiumStorageConnectionName, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName, this.LoggerFactory);
 
                 default:
                     throw new NotImplementedException("no such storage choice");
@@ -188,7 +197,7 @@ namespace DurableTask.Netherite
                     break;
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(this.Settings.ResolvedStorageConnectionString, this.Settings.HubName).ConfigureAwait(false);
+                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(this.Settings.ResolvedStorageConnectionString, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName).ConfigureAwait(false);
                     break;
 
                 default:
@@ -659,7 +668,7 @@ namespace DurableTask.Netherite
             }  
 
             // if this orchestration is not done, and extended sessions are enabled, we keep the work item so we can reuse the execution cursor
-            bool cacheWorkItemForReuse = partition.Settings.ExtendedSessionsEnabled && state.OrchestrationStatus == OrchestrationStatus.Running;
+            bool cacheWorkItemForReuse = partition.Settings.CacheOrchestrationCursors && state.OrchestrationStatus == OrchestrationStatus.Running;
 
             BatchProcessed.BatchPersistenceStatus initialStatus()
             {
