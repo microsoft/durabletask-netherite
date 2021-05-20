@@ -60,8 +60,8 @@ namespace PerformanceTests.WordCount
                         Stopwatch s = new Stopwatch();
                         s.Start();
 
-                        // setup connection to the blob storage (change it to the Gutenberg storage connection string)
-                        string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+                        // setup connection to the blob storage
+                        string connectionString = "Add-Guternberg-storage-connection-string-here";
                         CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
                         CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
 
