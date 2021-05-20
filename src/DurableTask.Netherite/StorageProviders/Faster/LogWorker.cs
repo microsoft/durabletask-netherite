@@ -92,6 +92,7 @@ namespace DurableTask.Netherite.Faster
 
                                 var bytes = Serializer.SerializeEvent(evt, first | last);
                                 this.logWorker.AddToFasterLog(bytes);
+                                this.logWorker.Submit(partitionUpdateEvent, notify: false);
                                 notifyLogWorker = true;
 
                                 // must set commit log position before processing the event in the storeworker
@@ -101,13 +102,15 @@ namespace DurableTask.Netherite.Faster
                             this.logWorker.storeWorker.Submit(evt, false);
                             notifyStoreWorker = true;
                         }
-
-                        if (notifyStoreWorker)
-                            this.logWorker.storeWorker.Notify();
-
-                        if (notifyLogWorker)
-                            this.logWorker.Notify();
                     }
+
+                    // if we submitted anything to log worker, notify it now
+                    if (notifyLogWorker)
+                        this.logWorker.Notify();
+
+                    // if we submitted anything to the store worker, notify it now
+                    if (notifyStoreWorker)
+                        this.logWorker.storeWorker.Notify();
                 }
 
                 return Task.CompletedTask;
