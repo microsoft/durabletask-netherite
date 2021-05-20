@@ -2,9 +2,9 @@
 param (
 	$Tag="default",
 	$ResultsFile="./results.csv",
-    $RunEP1=$false,
+    $RunEP1=$true,
 	$RunEP2=$true,
-	$RunEP3=$false,
+	$RunEP3=$true,
 	$tu=4
 )
 
@@ -60,16 +60,24 @@ if ($RunEP2)
 if ($RunEP3)
 {
 	./series/runseries -Tag azst-12    -HubName A31 -Plan EP3 -NumNodes 1 -WaitForDeploy 15 -Orchestration HelloSequence5 -NumOrchestrations 1000 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits 1
- 	./series/runseries -Tag neth-12-ls -HubName N31 -Plan EP3 -NumNodes 1 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 1000 -PortionSize 0 -DelayAfterRun 20 -ResultsFile $ResultsFile -ThroughputUnits $tu
+ 	./series/runseries -Tag neth-12-ls -HubName L31 -Plan EP3 -NumNodes 1 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 1000 -PortionSize 0 -DelayAfterRun 20 -ResultsFile $ResultsFile -ThroughputUnits $tu
+ 	./series/runseries -Tag neth-12-ns -HubName N31 -Plan EP3 -NumNodes 1 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 1000 -PortionSize 0 -DelayAfterRun 20 -ResultsFile $ResultsFile -ThroughputUnits $tu
+ 	./series/runseries -Tag neth-12-gs -HubName G31 -Plan EP3 -NumNodes 1 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 1000 -PortionSize 0 -DelayAfterRun 20 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 	./series/runseries -Tag azst-12    -HubName A32 -Plan EP3 -NumNodes 4 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 5000 -PortionSize 200 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runseries -Tag neth-12-ls -HubName N32 -Plan EP3 -NumNodes 4 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 50 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runseries -Tag neth-12-ls -HubName L32 -Plan EP3 -NumNodes 4 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 50 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runseries -Tag neth-12-ns -HubName N32 -Plan EP3 -NumNodes 4 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 50 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runseries -Tag neth-12-gs -HubName G32 -Plan EP3 -NumNodes 4 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 50 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 	./series/runseries -Tag azst-12    -HubName A33 -Plan EP3 -NumNodes 8 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 5000 -PortionSize 200 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runseries -Tag neth-12-ls -HubName N33 -Plan EP3 -NumNodes 8 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 40 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runseries -Tag neth-12-ls -HubName L33 -Plan EP3 -NumNodes 8 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 40 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runseries -Tag neth-12-ns -HubName N33 -Plan EP3 -NumNodes 8 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 40 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runseries -Tag neth-12-gs -HubName G33 -Plan EP3 -NumNodes 8 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 40 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 	./series/runseries -Tag azst-12    -HubName A34 -Plan EP3 -NumNodes 12 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 5000 -PortionSize 200 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runseries -Tag neth-12-ls -HubName N34 -Plan EP3 -NumNodes 12 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 30 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
+	./series/runseries -Tag neth-12-ls -HubName L34 -Plan EP3 -NumNodes 12 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 30 -ResultsFile $ResultsFile -ThroughputUnits $tu 
+	./series/runseries -Tag neth-12-ns -HubName N34 -Plan EP3 -NumNodes 12 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 30 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runseries -Tag neth-12-gs -HubName G34 -Plan EP3 -NumNodes 12 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 30 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
 }
 
 
