@@ -270,7 +270,11 @@ namespace DurableTask.Netherite
                 // we do not process this event now
                 // but persist it first, and then submit it again, before processing it.
                 this.StepsAwaitingPersistence.Add(evt.WorkItemId, evt);
-                DurabilityListeners.Register(evt, this);
+
+                if (!effects.IsReplaying)
+                {
+                    DurabilityListeners.Register(evt, this);
+                }
                 return;
             }
 
