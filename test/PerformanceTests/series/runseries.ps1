@@ -52,7 +52,7 @@ for($i = 0; $i -lt $NumReps; $i++)
 	Write-Host "Checking results..."
 	$result = (curl.exe https://$functionAppName.azurewebsites.net/count -d $NumOrchestrations | ConvertFrom-Json)
 	Write-Host "RESULT=$result"
-	Add-Content -path $ResultsFile -value "$Plan,$NumNodes,$Orchestration.$NumOrchestrations.$PortionSize,$ThroughputUnits,$Tag,$starttime,$($result.completed),$($result.elapsedSeconds)"
+	Add-Content -path $ResultsFile -value "$Plan,$NumNodes,$Tag,$Orchestration.$NumOrchestrations.$PortionSize,$ThroughputUnits,$starttime,$i,$($result.completed),$($result.elapsedSeconds)"
 
 	Write-Host "Deleting $NumOrchestrations instances..."
 	curl.exe https://$functionAppName.azurewebsites.net/purge -d $NumOrchestrations
