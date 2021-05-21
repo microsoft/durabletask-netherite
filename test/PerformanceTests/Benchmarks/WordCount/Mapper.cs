@@ -61,8 +61,7 @@ namespace PerformanceTests.WordCount
                         s.Start();
 
                         // setup connection to the blob storage
-                        string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
-                       
+                        string connectionString = "Add-Guternberg-storage-connection-string-here";
                         CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
                         CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
 

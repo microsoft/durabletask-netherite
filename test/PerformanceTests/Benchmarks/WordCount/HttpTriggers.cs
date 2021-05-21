@@ -42,10 +42,8 @@ namespace PerformanceTests.WordCount
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             int maxBooks = int.Parse(requestBody);
 
-            // setup connection to the blob storage
-            string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
-            
-            // TODO: Add connection string as an argument
+            // setup connection to the blob storage 
+            string connectionString = "Add-Guternberg-storage-connection-string-here";
             CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
             CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
             CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");

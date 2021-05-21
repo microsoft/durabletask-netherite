@@ -86,7 +86,7 @@ namespace PerformanceTests.WordCount
 
                 case Ops.MapperEnd:
                     ++state.countOfCompletedMappers;
-                    log.LogWarning($"1 mapper finished, {state.countOfCompletedMappers} mappers finished in total");
+                    // log.LogWarning($"1 mapper finished, {state.countOfCompletedMappers} mappers finished in total");
 
                     if (state.countOfCompletedMappers > state.mapperCount)
                     {
