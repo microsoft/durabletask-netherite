@@ -15,8 +15,14 @@ param (
 	$HubName="perftests",
 	$ResultsFile="./results.csv",
 	$DeployCode=$true,
-	$DeleteAfterTests=$false
+	$DeleteAfterTests=$false,
+	$PrintColumnNames=$false
 	)
+
+if ($PrintColumnNames)
+{
+    Add-Content -path $ResultsFile -value "plan,nodes,tag,test,tu,starttime,iteration,size,duration"
+}
 
 # deploy to a premium plan
 . ./scripts/deploy.ps1 -Settings $Settings -Plan $Plan -MinNodes $NumNodes -MaxNodes $NumNodes -Configuration $Configuration -HostConfigurationFile "./series/host.$tag.json" -HubName $HubName -DeployCode $DeployCode
