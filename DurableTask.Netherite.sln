@@ -33,7 +33,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EventProducer", "test\Event
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EventConsumer", "test\EventConsumer\EventConsumer.csproj", "{1D16A6FD-944C-49A1-8727-6236861F437A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScalingTests", "ScalingTests\ScalingTests.csproj", "{2F4D331C-62E4-47E8-852E-163166944DF8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ScaleMonitor", "test\ScaleMonitor\ScaleMonitor.csproj", "{2F4D331C-62E4-47E8-852E-163166944DF8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

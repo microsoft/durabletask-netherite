@@ -301,7 +301,7 @@ namespace DurableTask.Netherite.Faster
         Task LeaseMaintenanceLoopTask = Task.CompletedTask;
         volatile Task NextLeaseRenewalTask = Task.CompletedTask;
 
-        static string GetContainerName(string taskHubName) => taskHubName.ToLowerInvariant() + "-storage";
+        public static string GetContainerName(string taskHubName) => taskHubName.ToLowerInvariant() + "-storage";
 
         public async Task StartAsync()
         {

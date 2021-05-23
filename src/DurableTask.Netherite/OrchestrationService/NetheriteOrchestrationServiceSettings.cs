@@ -55,7 +55,8 @@ namespace DurableTask.Netherite
         public int PartitionCount { get; set; } = 12;
 
         /// <summary>
-        /// The name to use for the Azure table with the load information
+        /// Optionally, a name for an Azure Table to use for publishing load information. If set to null or empty,
+        /// then Azure blobs are used instead.
         /// </summary>
         public string LoadInformationAzureTableName { get; set; } = "DurableTaskPartitions";
 
@@ -91,9 +92,8 @@ namespace DurableTask.Netherite
 
         /// <summary>
         /// Gets or sets a flag indicating whether to enable caching of execution cursors to avoid replay.
-        /// Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
         /// </summary>
-        public bool ExtendedSessionsEnabled { get; set; } = true;
+        public bool CacheOrchestrationCursors { get; set; } = true;
 
         /// <summary>
         /// Whether we should carry over unexecuted raised events to the next iteration of an orchestration on ContinueAsNew.
