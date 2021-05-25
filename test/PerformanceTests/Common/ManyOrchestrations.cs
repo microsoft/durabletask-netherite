@@ -111,7 +111,7 @@ namespace PerformanceTests
                     {
                         int portion = Math.Min(portionSize.Value, (numberOrchestrations - pos));
                         var entityId = new EntityId(nameof(LauncherEntity), $"launcher{launcher / 100:D6}!{launcher % 100:D2}");
-                        tasks.Add(client.SignalEntityAsync(entityId, nameof(LauncherEntity.Launch), (orchestrationName, portion, pos)));
+                        tasks.Add(client.SignalEntityAsync(entityId, nameof(LauncherEntity.Launch), (orchestrationName, portion, pos, input)));
                         pos += portion;
                         launcher++;
                     }
