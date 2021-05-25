@@ -32,7 +32,7 @@ namespace DurableTask.Netherite.Tests
                 StorageConnectionName = StorageConnectionName,
                 EventHubsConnectionName = EventHubsConnectionName,
                 HubName = TaskHubName,
-                Speculation = SpeculationOptions.Local,
+                Persistence = PersistenceOptions.LocallyPipelined,
                 TransportLogLevelLimit = LogLevel.Trace,
                 StorageLogLevelLimit = LogLevel.Trace,
                 LogLevelLimit = LogLevel.Trace,

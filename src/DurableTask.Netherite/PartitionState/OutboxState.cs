@@ -57,7 +57,7 @@ namespace DurableTask.Netherite
             var commitPosition = evt.NextCommitLogPosition;
 
             // Update the ready to send timestamp to check the delay caused 
-            // by non-speculation
+            // by conservative persistence
             evt.ReadyToSendTimestamp = this.Partition.CurrentTimeMs;
 
             this.Outbox[commitPosition] = batch;
@@ -68,7 +68,7 @@ namespace DurableTask.Netherite
             {
                 if (evt is BatchProcessed batchProcessedEvt)
                 {
-                    if (batchProcessedEvt.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.GloballySpeculated)
+                    if (batchProcessedEvt.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.GloballyPipelined)
                     {
                         // in this case the event is sent before it is persisted, and we send a confirmation later
                         batch.EventRequiringPersistence = evt;
@@ -83,7 +83,7 @@ namespace DurableTask.Netherite
                     }
                     else
                     {
-                        this.Partition.Assert(batchProcessedEvt.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.LocallySpeculated);
+                        this.Partition.Assert(batchProcessedEvt.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.LocallyPipelined);
                     }
                 }
                 
@@ -140,7 +140,7 @@ namespace DurableTask.Netherite
             {
                 if (evt == this.EventRequiringPersistence)
                 {
-                    this.Partition.Assert(this.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.GloballySpeculated);
+                    this.Partition.Assert(this.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.GloballyPipelined);
                     this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"LogWorker has confirmed durability of event {evt} id={evt.EventIdString}");
                     this.EventRequiringPersistence = null;
                     this.SendPersistenceConfirmation();
@@ -164,7 +164,7 @@ namespace DurableTask.Netherite
 
             public void SendPersistenceConfirmation()
             {
-                if (this.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.GloballySpeculated)
+                if (this.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.GloballyPipelined)
                 {
                     var destinationPartitionIds = this.OutgoingMessages.Select(m => m.PartitionId).Distinct();
                     foreach (var destinationPartitionId in destinationPartitionIds)

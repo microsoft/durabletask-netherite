@@ -64,8 +64,8 @@
         // set this to true to bypass Faster and instead use Azure blobs for the object store. Not for production use.
         "UseAlternateObjectStore": "false",
 
-        // set this "None", "Local", or "Global"
-        "Speculation": "Local",
+        // set this "Conservative", "LocallyPipelined", or "GloballyPipelined"
+        "Persistence": "LocallyPipelined",
 
         // set this to "Scripted" to control the scenario with a partition script
         "PartitionManagement": "EventProcessorHost",

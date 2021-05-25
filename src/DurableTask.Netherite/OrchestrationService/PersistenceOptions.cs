@@ -8,23 +8,23 @@ namespace DurableTask.Netherite
     using System.Text;
 
     /// <summary>
-    /// Settings for how to handle speculation.
+    /// Settings for how to handle persistence.
     /// </summary>
-    public enum SpeculationOptions
+    public enum PersistenceOptions
     {
         /// <summary>
         /// Persist all intermediate results first before starting work-items that depend on them.
         /// </summary>
-        None,
+        Conservative,
 
         /// <summary>
         /// Allow work items to start locally, even if they depend on not-yet-persisted intermediate results.
         /// </summary>
-        Local,
+        LocallyPipelined,
 
         /// <summary>
         /// Allow work items to start remotely, even if they depend on not-yet-persisted intermediate results.
         /// </summary>
-        Global,
+        GloballyPipelined,
     }
 }

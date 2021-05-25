@@ -49,7 +49,7 @@ namespace DurableTask.Netherite
         [DataMember]
         public BatchPersistenceStatus PersistenceStatus { get; set; }
 
-        public enum BatchPersistenceStatus {  NotPersisted, Persisted, LocallySpeculated, GloballySpeculated };
+        public enum BatchPersistenceStatus {  NotPersisted, Persisted, LocallyPipelined, GloballyPipelined };
 
         [DataMember]
         public int PackPartitionTaskMessages { get; set; }

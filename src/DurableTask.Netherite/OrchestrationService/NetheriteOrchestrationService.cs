@@ -672,14 +672,14 @@ namespace DurableTask.Netherite
 
             BatchProcessed.BatchPersistenceStatus initialStatus()
             {
-                switch(partition.Settings.Speculation)
+                switch(partition.Settings.Persistence)
                 {
-                    case SpeculationOptions.None:
+                    case PersistenceOptions.Conservative:
                         return BatchProcessed.BatchPersistenceStatus.NotPersisted;
-                    case SpeculationOptions.Local:
-                        return BatchProcessed.BatchPersistenceStatus.LocallySpeculated;
-                    case SpeculationOptions.Global:
-                        return BatchProcessed.BatchPersistenceStatus.GloballySpeculated;
+                    case PersistenceOptions.LocallyPipelined:
+                        return BatchProcessed.BatchPersistenceStatus.LocallyPipelined;
+                    case PersistenceOptions.GloballyPipelined:
+                        return BatchProcessed.BatchPersistenceStatus.GloballyPipelined;
                     default:
                         throw new NotSupportedException("invalid setting: missing case in switch statement");
                 }

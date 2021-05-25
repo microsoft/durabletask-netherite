@@ -85,7 +85,7 @@ namespace DurableTask.Netherite.Faster
                             {
                                 // if this is event is speculative, register a promise for the completion event
                                 if (partitionUpdateEvent is TaskMessagesReceived taskMessagesReceivedEvent 
-                                    && taskMessagesReceivedEvent.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.GloballySpeculated)
+                                    && taskMessagesReceivedEvent.PersistenceStatus == BatchProcessed.BatchPersistenceStatus.GloballyPipelined)
                                 {
                                     this.logWorker.ConfirmationPromises.CreateConfirmationPromise(taskMessagesReceivedEvent);
                                 }
