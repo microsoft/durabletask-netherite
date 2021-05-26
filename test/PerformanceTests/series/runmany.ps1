@@ -1,4 +1,7 @@
 #!/usr/bin/pwsh
+#
+# script for running an experiment consisting of many orchestrations multiple times, in a deployment
+#
 param (
     $Settings="./settings.ps1",
 	$Plan="EP2", 

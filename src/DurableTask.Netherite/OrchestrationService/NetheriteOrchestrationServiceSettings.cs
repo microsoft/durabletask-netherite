@@ -150,6 +150,11 @@ namespace DurableTask.Netherite
         public bool UseAlternateObjectStore { get; set; } = false;
 
         /// <summary>
+        /// Whether to distribute activities to remote partitions if the local partition is backlogged.
+        /// </summary>
+        public bool DistributeActivities { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets the persistence option.
         /// </summary>
         [JsonConverter(typeof(StringEnumConverter))]

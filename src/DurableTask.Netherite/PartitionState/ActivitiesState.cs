@@ -116,11 +116,14 @@ namespace DurableTask.Netherite
 
         void ScheduleNextOffloadDecision(TimeSpan delay)
         {
-            this.Partition.PendingTimers.Schedule(DateTime.UtcNow + delay, new OffloadDecision()
+            if (this.Partition.Settings.DistributeActivities)
             {
-                PartitionId = this.Partition.PartitionId,
-                Timestamp = DateTime.UtcNow + delay,
-            });
+                this.Partition.PendingTimers.Schedule(DateTime.UtcNow + delay, new OffloadDecision()
+                {
+                    PartitionId = this.Partition.PartitionId,
+                    Timestamp = DateTime.UtcNow + delay,
+                });
+            }
         }
 
         public bool TryGetNextActivity(out ActivityInfo activityInfo)
@@ -292,7 +295,7 @@ namespace DurableTask.Netherite
 
                 // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
                 offloadDecisionEvent.DestinationPartitionId = target;
-                offloadDecisionEvent.OffloadedActivities = new List<(TaskMessage,string)>();
+                offloadDecisionEvent.OffloadedActivities = new List<(TaskMessage, string)>();
 
                 for (int i = 0; i < maxBatchsize; i++)
                 {
@@ -314,10 +317,10 @@ namespace DurableTask.Netherite
                 if (!effects.IsReplaying)
                 {
                     this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
-                }
 
-                // try again relatively soon
-                this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(200));
+                    // try again relatively soon
+                    this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(200));
+                }
             }
             else
             {
@@ -326,10 +329,10 @@ namespace DurableTask.Netherite
                 if (!effects.IsReplaying)
                 {
                     this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
-                }
 
-                // there are no eligible recipients... try again in a while
-                this.ScheduleNextOffloadDecision(TimeSpan.FromSeconds(10));
+                    // there are no eligible recipients... try again in a while
+                    this.ScheduleNextOffloadDecision(TimeSpan.FromSeconds(10));
+                }
             }
         }
 
