@@ -65,10 +65,10 @@ namespace PerformanceTests.CollisionSearch
                     var state = await client.GetStatusAsync(orchestrationInstanceId, false, false, false);
                     var result = (JArray) JToken.Parse(await stringContent.ReadAsStringAsync());
                     var collisionsFound = result.Count;
-                    var durationSeconds = (state.LastUpdatedTime - state.CreatedTime).TotalSeconds;
-                    var billionsSearched = billions;
-                    var throughput = billionsSearched / durationSeconds;
-                    response = new OkObjectResult(new { collisionsFound, durationSeconds, billionsSearched, throughput });                
+                    var elapsedSeconds = (state.LastUpdatedTime - state.CreatedTime).TotalSeconds;
+                    var size = billions;
+                    var throughput = size / elapsedSeconds;
+                    response = new OkObjectResult(new { collisionsFound, elapsedSeconds, size, throughput });                
                 }
 
                 return response;

@@ -16,7 +16,9 @@ namespace PerformanceTests.CollisionSearch
     /// An orchestration that searches for hash collisions using a recursive divide-and-conquer algorithm.
     /// </summary>
     public static class DivideAndConquerSearch
-    {     
+    {
+        const int arity = 10;
+
         [FunctionName(nameof(DivideAndConquerSearch))]
         public static async Task<List<long>> Run([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger logger)
         {
@@ -34,17 +36,20 @@ namespace PerformanceTests.CollisionSearch
             }
             else
             {
-                // we break the interval into 10 portions and call them in parallel
-                long portionSize = input.Count / 10;
-                var subOrchestratorTasks = new Task<List<long>>[10];
-                for (int i = 0; i < 10; i++)
+                // we break the interval into portions and call them in parallel
+                long portionSize = input.Count / arity;
+                var subOrchestratorTasks = new Task<List<long>>[arity];
+                for (int i = 0; i < arity; i++)
                 {
-                    subOrchestratorTasks[i] = context.CallSubOrchestratorAsync<List<long>>(nameof(DivideAndConquerSearch), new IntervalSearchParameters()
-                    {
-                        Target = input.Target,
-                        Start = input.Start + i * portionSize,
-                        Count = (i < 9) ? portionSize : (input.Count - (9 * portionSize)),
-                    });
+                    subOrchestratorTasks[i] = context.CallSubOrchestratorAsync<List<long>>(
+                        nameof(DivideAndConquerSearch),
+                        // $"{context.InstanceId}!{i:D2}",
+                        new IntervalSearchParameters()
+                        {
+                            Target = input.Target,
+                            Start = input.Start + i * portionSize,
+                            Count = (i < (arity-1)) ? portionSize : (input.Count - ((arity - 1) * portionSize)),
+                        });
                 }
 
                 await Task.WhenAll(subOrchestratorTasks);

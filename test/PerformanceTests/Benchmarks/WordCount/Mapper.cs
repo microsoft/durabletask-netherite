@@ -61,7 +61,7 @@ namespace PerformanceTests.WordCount
                         s.Start();
 
                         // setup connection to the blob storage
-                        string connectionString = "Add-Guternberg-storage-connection-string-here";
+                        string connectionString = Environment.GetEnvironmentVariable("CorpusConnection");
                         CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
                         CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
 

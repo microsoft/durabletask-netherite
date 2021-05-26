@@ -43,7 +43,7 @@ namespace PerformanceTests.WordCount
             int maxBooks = int.Parse(requestBody);
 
             // setup connection to the blob storage 
-            string connectionString = "Add-Guternberg-storage-connection-string-here";
+            string connectionString = Environment.GetEnvironmentVariable("CorpusConnection");
             CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
             CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
             CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
@@ -91,18 +91,20 @@ namespace PerformanceTests.WordCount
             // wait for summary entity to contain the final result
 
             var startWaitingAt = DateTime.UtcNow;
-            int entryCount = 0;
+            int size = 0;
             List<(int, string)> topWords = null;
-            double executionTime = 0;
+            double elapsedSeconds = 0;
+            double throughput = 0;
             do
             {
                 await Task.Delay(10000);
                 var summaryState = await client.ReadEntityStateAsync<Summary.SummaryState>(Summary.GetEntityId());
                 if (summaryState.EntityExists && summaryState.EntityState.waitCount == 0)
                 {
-                    entryCount = summaryState.EntityState.entryCount;
+                    size = summaryState.EntityState.entryCount;
                     topWords = summaryState.EntityState.topWords;
-                    executionTime = summaryState.EntityState.executionTimeInSeconds;
+                    elapsedSeconds = summaryState.EntityState.executionTimeInSeconds;
+                    throughput = size / elapsedSeconds;
                     break;
                 }
             }
@@ -114,14 +116,13 @@ namespace PerformanceTests.WordCount
             }
             else
             {
-                var sb = new StringBuilder();
-                sb.AppendLine($"----- {bookCount} books with {entryCount} words processed in {executionTime:F2}s, top 20 as follows -----");
-                foreach ((int count, string word) in topWords)
-                {
-                    sb.AppendLine($"{count,10} {word}");
-                }
-                sb.AppendLine($"----- Throughput is {entryCount/executionTime:F2} -----");
-                return (ActionResult)new OkObjectResult(sb.ToString());
+                return (ActionResult)new OkObjectResult(new {
+                    bookCount,
+                    size,
+                    elapsedSeconds,
+                    throughput,
+                    topWords
+                });              
             }
         }
     }
