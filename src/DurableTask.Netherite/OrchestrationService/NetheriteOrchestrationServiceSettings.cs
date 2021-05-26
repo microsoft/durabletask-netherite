@@ -150,7 +150,12 @@ namespace DurableTask.Netherite
         public bool UseAlternateObjectStore { get; set; } = false;
 
         /// <summary>
-        /// Forces steps to pe persisted before applying their effects, thus disabling all speculation.
+        /// Whether to distribute activities to remote partitions if the local partition is backlogged.
+        /// </summary>
+        public bool DistributeActivities { get; set; } = true;
+
+        /// <summary>
+        /// Forces steps to pe persisted before applying their effects, disabling all pipelining.
         /// </summary>
         public bool PersistStepsFirst { get; set; } = false;
 
