@@ -145,7 +145,7 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                var taskhubFormat = JsonConvert.DeserializeObject<StorageFormatSettings>(format);
+                var taskhubFormat = JsonConvert.DeserializeObject<StorageFormatSettings>(format, serializerSettings);
 
                 if (taskhubFormat.UseAlternateObjectStore != settings.UseAlternateObjectStore)
                 {
