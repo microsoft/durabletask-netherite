@@ -101,37 +101,63 @@ namespace DurableTask.Netherite.Faster
                 (numPartitions <= 16) ? 21 : // 2MB
                                         20, // 1MB         
         };
-
+        
+        // increment this after changes of the storage representation that break compatibility
         const int StorageFormatVersion = 1;
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
         {
-            return JsonConvert.SerializeObject(new
+            return JsonConvert.SerializeObject(new StorageFormatSettings()
                 {
                     UseAlternateObjectStore = settings.UseAlternateObjectStore,
                     UsePSFQueries = settings.UsePSFQueries,
                     FormatVersion = StorageFormatVersion,
                 }, 
-                Formatting.None);       
+                serializerSettings);       
         }
+
+        [JsonObject]
+        class StorageFormatSettings
+        {
+            // this must stay the same
+            [JsonProperty("FormatVersion")]
+            public int FormatVersion { get; set; }
+
+            // the following can be changed between versions
+
+            [JsonProperty("UseAlternateObjectStore", DefaultValueHandling=DefaultValueHandling.Ignore)]
+            public bool? UseAlternateObjectStore { get; set; }
+
+            [JsonProperty("UsePSFQueries", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public bool? UsePSFQueries { get; set; }
+        }
+
+        static readonly JsonSerializerSettings serializerSettings = new JsonSerializerSettings()
+        { 
+            TypeNameHandling = TypeNameHandling.None,
+            MissingMemberHandling = MissingMemberHandling.Ignore,
+            CheckAdditionalContent = false,
+            Formatting = Formatting.None,
+        };
+
 
         public static void CheckStorageFormat(string format, NetheriteOrchestrationServiceSettings settings)
         {
             try
             {
-                JObject json = JsonConvert.DeserializeObject<JObject>(format);
+                var taskhubFormat = JsonConvert.DeserializeObject<StorageFormatSettings>(format);
 
-                if ((bool)json["UseAlternateObjectStore"] != settings.UseAlternateObjectStore)
+                if (taskhubFormat.UseAlternateObjectStore != settings.UseAlternateObjectStore)
                 {
                     throw new InvalidOperationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
                 }
-                if ((bool)json["UsePSFQueries"] != settings.UsePSFQueries)
+                if (taskhubFormat.UsePSFQueries != settings.UsePSFQueries)
                 {
                     throw new InvalidOperationException("The Netherite configuration setting 'UsePSFQueries' is incompatible with the existing taskhub.");
                 }
-                if ((int)json["FormatVersion"] != StorageFormatVersion)
+                if (taskhubFormat.FormatVersion != StorageFormatVersion)
                 {
-                    throw new InvalidOperationException("The current storage format version is incompatible with the existing taskhub.");
+                    throw new InvalidOperationException($"The current storage format version (={StorageFormatVersion}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
                 }
             }
             catch(Exception e)
