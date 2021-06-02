@@ -31,7 +31,7 @@ namespace DurableTask.Netherite.Faster
 
         internal FasterTraceHelper TraceHelper { get; private set; }
 
-        public FasterStorage(string connectionString, string premiumStorageConnectionString, string localFileDirectory, string taskHubName, ILoggerFactory loggerFactory)
+        public FasterStorage(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, ILoggerFactory loggerFactory)
         {
             if (!string.IsNullOrEmpty(localFileDirectory))
             {
@@ -41,9 +41,9 @@ namespace DurableTask.Netherite.Faster
             { 
                 this.storageAccount = CloudStorageAccount.Parse(connectionString);
             }
-            if (!string.IsNullOrEmpty(premiumStorageConnectionString))
+            if (pageBlobConnectionString != connectionString && !string.IsNullOrEmpty(pageBlobConnectionString))
             {
-                this.pageBlobStorageAccount = CloudStorageAccount.Parse(premiumStorageConnectionString);
+                this.pageBlobStorageAccount = CloudStorageAccount.Parse(pageBlobConnectionString);
             }
             else
             {

@@ -28,7 +28,7 @@ namespace DurableTask.Netherite.Faster
         readonly uint partitionId;
         readonly CancellationTokenSource shutDownOrTermination;
         readonly CloudStorageAccount cloudStorageAccount;
-        readonly CloudStorageAccount secondaryStorageAccount;
+        readonly CloudStorageAccount pageBlobAccount;
 
         readonly CloudBlobContainer blockBlobContainer;
         readonly CloudBlobContainer pageBlobContainer;
@@ -70,7 +70,7 @@ namespace DurableTask.Netherite.Faster
         internal const long HashTableSize = 1L << 14; // 16 k buckets, 1 GB
         //internal const long HashTableSize = 1L << 14; // 8 M buckets, 512 GB
 
-        public FasterLogSettings EventLogSettings(bool usePremiumStorage) => new FasterLogSettings
+        public FasterLogSettings EventLogSettings(bool useSeparatePageBlobStorage) => new FasterLogSettings
         {
             LogDevice = this.EventLogDevice,
             LogCommitManager = this.UseLocalFiles
@@ -78,20 +78,20 @@ namespace DurableTask.Netherite.Faster
                 : (ILogCommitManager)this,
             PageSizeBits = 21, // 2MB
             SegmentSizeBits =
-                usePremiumStorage ? 35  // 32 GB
-                                  : 30, // 1 GB
+                useSeparatePageBlobStorage ? 35  // 32 GB
+                                           : 30, // 1 GB
             MemorySizeBits = 22, // 2MB
         };
 
-        public LogSettings StoreLogSettings(bool usePremiumStorage, uint numPartitions) => new LogSettings
+        public LogSettings StoreLogSettings(bool useSeparatePageBlobStorage, uint numPartitions) => new LogSettings
         {
             LogDevice = this.HybridLogDevice,
             ObjectLogDevice = this.ObjectLogDevice,
             PageSizeBits = 17, // 128kB
             MutableFraction = 0.9,
             SegmentSizeBits =
-                usePremiumStorage ? 35 // 32 GB
-                                  : 32, // 4 GB
+                useSeparatePageBlobStorage ? 35 // 32 GB
+                                           : 32, // 4 GB
             CopyReadsToTail = true,
             MemorySizeBits =
                 (numPartitions <= 1) ? 25 : // 32MB
@@ -213,8 +213,8 @@ namespace DurableTask.Netherite.Faster
             => TimeSpan.FromSeconds(Math.Pow(2, (numAttempts - 1)));
 
         // For tests only; TODO consider adding PSFs
-        internal BlobManager(CloudStorageAccount storageAccount, CloudStorageAccount secondaryStorageAccount, string localFileDirectory, string taskHubName, ILogger logger, Microsoft.Extensions.Logging.LogLevel logLevelLimit, uint partitionId, IPartitionErrorHandler errorHandler)
-            : this(storageAccount, secondaryStorageAccount, localFileDirectory, taskHubName, logger, logLevelLimit, partitionId, errorHandler, 0)
+        internal BlobManager(CloudStorageAccount storageAccount, CloudStorageAccount pageBlobAccount, string localFileDirectory, string taskHubName, ILogger logger, Microsoft.Extensions.Logging.LogLevel logLevelLimit, uint partitionId, IPartitionErrorHandler errorHandler)
+            : this(storageAccount, pageBlobAccount, localFileDirectory, taskHubName, logger, logLevelLimit, partitionId, errorHandler, 0)
         {
         }
 
@@ -222,7 +222,7 @@ namespace DurableTask.Netherite.Faster
         /// Create a blob manager.
         /// </summary>
         /// <param name="storageAccount">The cloud storage account, or null if using local file paths</param>
-        /// <param name="secondaryStorageAccount">Optionally, a secondary cloud storage accounts</param>
+        /// <param name="pageBlobAccount">The storage account to use for page blobs</param>
         /// <param name="localFilePath">The local file path, or null if using cloud storage</param>
         /// <param name="taskHubName">The name of the taskhub</param>
         /// <param name="logger">A logger for logging</param>
@@ -232,7 +232,7 @@ namespace DurableTask.Netherite.Faster
         /// <param name="psfGroupCount">Number of PSF groups to be created in FASTER</param>
         public BlobManager(
             CloudStorageAccount storageAccount,
-            CloudStorageAccount secondaryStorageAccount,
+            CloudStorageAccount pageBlobAccount,
             string localFilePath,
             string taskHubName,
             ILogger logger,
@@ -241,7 +241,7 @@ namespace DurableTask.Netherite.Faster
             int psfGroupCount)
         {
             this.cloudStorageAccount = storageAccount;
-            this.secondaryStorageAccount = secondaryStorageAccount;
+            this.pageBlobAccount = pageBlobAccount;
             this.UseLocalFiles = (localFilePath != null);
             this.LocalFileDirectoryForTestingAndDebugging = localFilePath;
             this.ContainerName = GetContainerName(taskHubName);
@@ -253,8 +253,16 @@ namespace DurableTask.Netherite.Faster
             {
                 CloudBlobClient serviceClient = this.cloudStorageAccount.CreateCloudBlobClient();
                 this.blockBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
-                serviceClient = this.secondaryStorageAccount.CreateCloudBlobClient();
-                this.pageBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
+
+                if (pageBlobAccount == storageAccount)
+                {
+                    this.pageBlobContainer = this.BlockBlobContainer;
+                }
+                else
+                {
+                    serviceClient = this.pageBlobAccount.CreateCloudBlobClient();
+                    this.pageBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
+                }
             }
             else
             {
@@ -312,9 +320,17 @@ namespace DurableTask.Netherite.Faster
             else
             {
                 await this.blockBlobContainer.CreateIfNotExistsAsync();
-                await this.pageBlobContainer.CreateIfNotExistsAsync();
-                this.pageBlobPartitionDirectory = this.pageBlobContainer.GetDirectoryReference(this.PartitionFolderName);
                 this.blockBlobPartitionDirectory = this.blockBlobContainer.GetDirectoryReference(this.PartitionFolderName);
+
+                if (this.pageBlobContainer == this.blockBlobContainer)
+                {
+                    this.pageBlobPartitionDirectory = this.blockBlobPartitionDirectory;
+                }
+                else
+                {
+                    await this.pageBlobContainer.CreateIfNotExistsAsync();
+                    this.pageBlobPartitionDirectory = this.pageBlobContainer.GetDirectoryReference(this.PartitionFolderName);
+                }
 
                 this.eventLogCommitBlob = this.blockBlobPartitionDirectory.GetBlockBlobReference(CommitBlobName);
 
@@ -371,7 +387,7 @@ namespace DurableTask.Netherite.Faster
             await this.LeaseMaintenanceLoopTask; // wait for loop to terminate cleanly
         }
 
-        public static async Task DeleteTaskhubStorageAsync(CloudStorageAccount account, string localFileDirectoryPath, string taskHubName)
+        public static async Task DeleteTaskhubStorageAsync(CloudStorageAccount account, CloudStorageAccount pageBlobAccount, string localFileDirectoryPath, string taskHubName)
         {
             var containerName = GetContainerName(taskHubName);
 
@@ -385,21 +401,31 @@ namespace DurableTask.Netherite.Faster
             }
             else
             {
-                CloudBlobClient serviceClient = account.CreateCloudBlobClient();
-                var blobContainer = serviceClient.GetContainerReference(containerName);
-
-                if (await blobContainer.ExistsAsync())
+                async Task DeleteContainerContents(CloudStorageAccount account)
                 {
-                    // do a complete deletion of all contents of this directory
-                    var tasks = blobContainer.ListBlobs(null, true)
-                                             .Where(blob => blob.GetType() == typeof(CloudBlob) || blob.GetType().BaseType == typeof(CloudBlob))
-                                             .Select(blob => BlobUtils.ForceDeleteAsync((CloudBlob)blob))
-                                             .ToArray();
-                    await Task.WhenAll(tasks);
+                    CloudBlobClient serviceClient = account.CreateCloudBlobClient();
+                    var blobContainer = serviceClient.GetContainerReference(containerName);
+
+                    if (await blobContainer.ExistsAsync())
+                    {
+                        // do a complete deletion of all contents of this directory
+                        var tasks = blobContainer.ListBlobs(null, true)
+                                                 .Where(blob => blob.GetType() == typeof(CloudBlob) || blob.GetType().BaseType == typeof(CloudBlob))
+                                                 .Select(blob => BlobUtils.ForceDeleteAsync((CloudBlob)blob))
+                                                 .ToArray();
+                        await Task.WhenAll(tasks);
+                    }
+
+                    // We are not deleting the container itself because it creates problems when trying to recreate
+                    // the same container soon afterwards so we leave an empty container behind. Oh well.
                 }
 
-                // We are not deleting the container itself because it creates problems when trying to recreate
-                // the same container soon afterwards so we leave an empty container behind. Oh well.
+                await DeleteContainerContents(account);
+
+                if (pageBlobAccount != account)
+                {
+                    await DeleteContainerContents(pageBlobAccount);
+                }          
             }
         }
 
