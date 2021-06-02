@@ -48,6 +48,10 @@ namespace PerformanceTests.CollisionSearch
                         orchestrationName = nameof(CollisionSearch.DivideAndConquerSearch);
                         break;
 
+                    case "flat-parallel":
+                        orchestrationName = nameof(CollisionSearch.FlatParallelSearch);
+                        break;
+
                     default:
                         throw new ArgumentException("unknown algorithm");
                 }
