@@ -7,6 +7,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Linq;
+    using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Netherite.AzureFunctions.Tests.Logging;
     using Microsoft.Azure.WebJobs;
@@ -106,6 +107,18 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             DurableOrchestrationStatus status = await client.WaitForCompletionAsync(instanceId, timeout);
             Assert.NotNull(status);
             return status;
+        }
+
+        protected async Task<OrchestrationStatusQueryResult> GetInstancesAsync(OrchestrationStatusQueryCondition condition)
+        {
+            IDurableClient client = await this.GetDurableClientAsync();
+            return await client.ListInstancesAsync(condition, CancellationToken.None);
+        }
+
+        protected async Task<PurgeHistoryResult> PurgeAllAsync()
+        {
+            IDurableClient client = await this.GetDurableClientAsync();
+            return await client.PurgeInstanceHistoryAsync(default, default, null);
         }
 
         async Task<IDurableClient> GetDurableClientAsync()
