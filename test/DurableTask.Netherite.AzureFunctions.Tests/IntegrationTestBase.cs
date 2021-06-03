@@ -46,6 +46,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
                         webJobsBuilder.AddDurableTask(options =>
                         {
                             options.StorageProvider["type"] = NetheriteProviderFactory.ProviderName;
+                            options.HubName = $"testhub{Guid.NewGuid():N}";
                         });
                     })
                 .ConfigureServices(
