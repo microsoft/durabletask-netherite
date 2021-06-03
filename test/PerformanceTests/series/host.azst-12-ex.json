@@ -1,0 +1,47 @@
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      // ------ NOTE: 
+      // The log levels in this section 
+      // - determine what is displayed in the console when running func.exe locally
+      // - determine what is stored and billed by Application Insights
+      // But they do not fully control the logging:
+      // - have no effect on what is collected by internal analytics
+      // - have no effect on what is traced to the console when running in a container
+      // - have no effect on what is shown in the Live Metrics side panel in the portal
+
+      // ---- Per-invocation framework-generated logging
+      //"Host.Triggers.DurableTask": "Information", // use this setting if you need analytics in the portal
+      "Host.Triggers.DurableTask": "Warning", // use this setting otherwise
+
+      // ---- Per-invocation application-generated logging
+      //"Function": "Information", // use this setting for small-scale debugging only
+      "Function": "Warning", // use this setting when running perf tests  
+    },
+  },
+  "extensions": {
+    "http": {
+      "routePrefix": ""
+    },
+    "durableTask": {
+
+      "hubName": "perftests",
+
+      "extendedSessionsEnabled": true,
+      "extendedSessionIdleTimeoutInSeconds": 30,
+
+      "UseGracefulShutdown": true, 
+
+      "maxConcurrentActivityFunctions": "100",
+      "maxConcurrentOrchestratorFunctions": "100",
+
+      "storageProvider": {
+        "type": "AzureStorage",
+        "StorageConnectionName": "AzureWebJobsStorage",       
+        "PartitionCount": 12
+      }
+    }
+  }
+}
+    
