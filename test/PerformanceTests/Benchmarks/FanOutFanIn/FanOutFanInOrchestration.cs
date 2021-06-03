@@ -24,7 +24,7 @@ namespace PerformanceTests.FanOutFanIn
     public static class FanOutFanInOrchestration
     {
         [FunctionName(nameof(FanOutFanInOrchestration))]
-        public static Task Run([OrchestrationTrigger] IDurableOrchestrationContext context)
+        public static async Task<string> Run([OrchestrationTrigger] IDurableOrchestrationContext context)
         {
             int count = context.GetInput<int>();
             Task[] tasks = new Task[count];
@@ -32,7 +32,9 @@ namespace PerformanceTests.FanOutFanIn
             {
                 tasks[i] = context.CallActivityAsync<string>("SayHello", i.ToString("00000"));
             }
-            return Task.WhenAll(tasks);
+            await Task.WhenAll(tasks);
+
+            return $"{count} tasks completed.";
         }
     }
 }

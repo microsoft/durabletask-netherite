@@ -11,6 +11,7 @@ param (
 	$WaitForDeploy=50,
 	$NumReps=6,
 	$Orchestration="HelloSequence5",
+	$Data="",
 	$NumOrchestrations=10000,
 	$PortionSize=200,
 	$DelayAfterRun=25,
@@ -45,11 +46,11 @@ for($i = 0; $i -lt $NumReps; $i++)
 
 	if ($StarterEntities -eq 0)
 	{
-		$arg = $Orchestration + "." + $NumOrchestrations
+		$arg = $Orchestration + "." + $NumOrchestrations + $Data
 	}
 	else
 	{
-		$arg = $Orchestration + "." +$NumOrchestrations + "." + $PortionSize
+		$arg = $Orchestration + "." +$NumOrchestrations + "." + $PortionSize + $Data
 	}
 
 	Write-Host "Starting $arg orchestrations..."
