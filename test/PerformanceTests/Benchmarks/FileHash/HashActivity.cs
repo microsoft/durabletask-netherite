@@ -35,13 +35,10 @@ namespace PerformanceTests.FileHash
             // Hash the book content 1000 times
             int wordCount = 0;
             string[] words = doc.Split(separators, StringSplitOptions.RemoveEmptyEntries);
-            foreach (int i in Enumerable.Range(0, 1000))
+            foreach (string word in words)
             {
-                foreach (string word in words)
-                {
-                    int _ = word.GetHashCode();
-                    wordCount++;
-                }
+                int _ = word.GetHashCode();
+                wordCount++;
             }
 
             // return the number of words hashed
