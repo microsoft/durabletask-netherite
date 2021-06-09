@@ -21,13 +21,19 @@ namespace DurableTask.Netherite.Faster
 
         public abstract ValueTask ReadyToCompletePendingAsync();
 
-        public abstract bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, out Guid checkpointGuid);
+        public abstract ValueTask<Guid?> TakeFullCheckpointAsync(long commitLogPosition, long inputQueuePosition);
 
-        public abstract Guid? StartIndexCheckpoint();
+        public abstract Guid? StartPrimaryIndexCheckpoint();
 
-        public abstract Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition);
+        public abstract Guid? StartPrimaryStoreCheckpoint(long commitLogPosition, long inputQueuePosition);
 
-        public abstract ValueTask CompleteCheckpointAsync();
+        public abstract ValueTask CompletePrimaryCheckpointAsync();
+
+        public abstract Guid? StartSecondaryIndexIndexCheckpoint();
+
+        public abstract Guid? StartSecondaryIndexStoreCheckpoint();
+
+        public abstract ValueTask CompleteSecondaryIndexCheckpointAsync();
 
         public abstract Task FinalizeCheckpointCompletedAsync(Guid guid);
 

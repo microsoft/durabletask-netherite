@@ -50,7 +50,7 @@ namespace DurableTask.Netherite.Tests
             settings.ResolvedTransportConnectionString = "MemoryF";
             settings.ResolvedStorageConnectionString = "";
             settings.UseLocalDirectoryForPartitionStorage = $"{Environment.GetEnvironmentVariable("temp")}\\FasterTestStorage";
-            settings.PartitionCount = 1;
+            // settings.PartitionCount = 1;
 
             settings.Validate((name) => Environment.GetEnvironmentVariable(name));
 

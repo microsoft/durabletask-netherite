@@ -28,8 +28,10 @@ namespace DurableTask.Netherite.Faster
 
         // periodic index and store checkpointing
         CheckpointTrigger pendingCheckpointTrigger;
-        Task pendingIndexCheckpoint;
-        Task<(long, long)> pendingStoreCheckpoint;
+        Task pendingPrimaryIndexCheckpointTask;
+        Task<(long, long)> pendingPrimaryStoreCheckpointTask;
+        Task pendingSecondaryIndexIndexCheckpointTask;
+        Task pendingSecondaryIndexStoreCheckpointTask;
         long lastCheckpointedInputQueuePosition;
         long lastCheckpointedCommitLogPosition;
         long numberEventsSinceLastCheckpoint;
@@ -109,19 +111,20 @@ namespace DurableTask.Netherite.Faster
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
 
-            if (this.store.TakeFullCheckpoint(this.CommitLogPosition, this.InputQueuePosition, out var checkpointGuid))
+            var checkpointGuid = await this.store.TakeFullCheckpointAsync(this.CommitLogPosition, this.InputQueuePosition);
+            if (checkpointGuid.HasValue)
             {
-                this.traceHelper.FasterCheckpointStarted(checkpointGuid, reason, this.store.StoreStats.Get(), this.CommitLogPosition, this.InputQueuePosition);
+                this.traceHelper.FasterCheckpointStarted(checkpointGuid.Value, reason, this.store.StoreStats.Get(), this.CommitLogPosition, this.InputQueuePosition);
 
                 // do the faster full checkpoint and then finalize it
-                await this.store.CompleteCheckpointAsync().ConfigureAwait(false);
-                await this.store.FinalizeCheckpointCompletedAsync(checkpointGuid).ConfigureAwait(false);
+                await this.store.CompletePrimaryCheckpointAsync().ConfigureAwait(false);
+                await this.store.FinalizeCheckpointCompletedAsync(checkpointGuid.Value).ConfigureAwait(false);
 
                 this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
                 this.lastCheckpointedInputQueuePosition = this.InputQueuePosition;
                 this.numberEventsSinceLastCheckpoint = 0;
 
-                this.traceHelper.FasterCheckpointPersisted(checkpointGuid, reason, this.CommitLogPosition, this.InputQueuePosition, stopwatch.ElapsedMilliseconds);
+                this.traceHelper.FasterCheckpointPersisted(checkpointGuid.Value, reason, this.CommitLogPosition, this.InputQueuePosition, stopwatch.ElapsedMilliseconds);
             }
             else
             {
@@ -140,13 +143,21 @@ namespace DurableTask.Netherite.Faster
             await this.WaitForCompletionAsync().ConfigureAwait(false);
 
             // wait for any in-flight checkpoints. It is unlikely but not impossible.
-            if (this.pendingIndexCheckpoint != null)
+            if (this.pendingSecondaryIndexIndexCheckpointTask != null)
             {
-                await this.pendingIndexCheckpoint.ConfigureAwait(false);
+                await this.pendingSecondaryIndexIndexCheckpointTask.ConfigureAwait(false);
             }
-            if (this.pendingStoreCheckpoint != null)
+            if (this.pendingSecondaryIndexStoreCheckpointTask != null)
             {
-                await this.pendingStoreCheckpoint.ConfigureAwait(false);
+                await this.pendingSecondaryIndexStoreCheckpointTask.ConfigureAwait(false);
+            }
+            if (this.pendingPrimaryIndexCheckpointTask != null)
+            {
+                await this.pendingPrimaryIndexCheckpointTask.ConfigureAwait(false);
+            }
+            if (this.pendingPrimaryStoreCheckpointTask != null)
+            {
+                await this.pendingPrimaryStoreCheckpointTask.ConfigureAwait(false);
             }
 
             this.traceHelper.FasterProgress("Stopped StoreWorker");
@@ -306,39 +317,72 @@ namespace DurableTask.Netherite.Faster
                     return;
                 }
 
-                // handle progression of checkpointing state machine (none -> index pending -> store pending -> none)
-                if (this.pendingStoreCheckpoint != null)
+                // Handle progression of checkpointing state machine:
+                //  - none
+                //  - secondaryIndex index pending
+                //  - secondaryIndex store pending
+                //  - primary index pending
+                //  - primary store pending
+                //  - none
+                // The index must complete before the log (store), and the secondary index(es) must complete before the primary FasterKV.
+                if (this.pendingSecondaryIndexIndexCheckpointTask != null)
                 {
-                    if (this.pendingStoreCheckpoint.IsCompleted == true)
+                    if (this.pendingSecondaryIndexIndexCheckpointTask.IsCompleted == true)
                     {
-                        (this.lastCheckpointedCommitLogPosition, this.lastCheckpointedInputQueuePosition)
-                            = await this.pendingStoreCheckpoint.ConfigureAwait(false); // observe exceptions here
-                        this.pendingStoreCheckpoint = null;
-                        this.pendingCheckpointTrigger = CheckpointTrigger.None;
-                        this.ScheduleNextCheckpointTime();
-                    }
-                }
-                else if (this.pendingIndexCheckpoint != null)
-                {
-                    if (this.pendingIndexCheckpoint.IsCompleted == true)
-                    {
-                        await this.pendingIndexCheckpoint.ConfigureAwait(false); // observe exceptions here
-                        this.pendingIndexCheckpoint = null;
-                        var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition);
+                        await this.pendingSecondaryIndexIndexCheckpointTask.ConfigureAwait(false); // observe exceptions here
+                        this.pendingSecondaryIndexIndexCheckpointTask = null;
+                        var token = this.store.StartSecondaryIndexStoreCheckpoint();
                         if (token.HasValue)
                         {
-                            this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value);
+                            this.pendingSecondaryIndexStoreCheckpointTask = this.WaitForSecondaryIndexCheckpointAsync(false, token.Value);
+                        }
+                    }
+                }
+                else if (this.pendingSecondaryIndexStoreCheckpointTask != null)
+                {
+                    if (this.pendingSecondaryIndexStoreCheckpointTask.IsCompleted == true)
+                    {
+                        await this.pendingSecondaryIndexStoreCheckpointTask.ConfigureAwait(false); // observe exceptions here
+                        this.pendingSecondaryIndexStoreCheckpointTask = null;
+                        var token = this.store.StartPrimaryIndexCheckpoint();
+                        if (token.HasValue)
+                        {
+                            this.pendingPrimaryIndexCheckpointTask = this.WaitForPrimaryCheckpointAsync(false, token.Value);
+                        }
+                    }
+                }
+                else if (this.pendingPrimaryIndexCheckpointTask != null)
+                {
+                    if (this.pendingPrimaryIndexCheckpointTask.IsCompleted == true)
+                    {
+                        await this.pendingPrimaryIndexCheckpointTask.ConfigureAwait(false); // observe exceptions here
+                        this.pendingPrimaryIndexCheckpointTask = null;
+                        var token = this.store.StartPrimaryStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition);
+                        if (token.HasValue)
+                        {
+                            this.pendingPrimaryStoreCheckpointTask = this.WaitForPrimaryCheckpointAsync(false, token.Value);
                             this.numberEventsSinceLastCheckpoint = 0;
                         }
                     }
                 }
+                else if (this.pendingPrimaryStoreCheckpointTask != null)
+                {
+                    if (this.pendingPrimaryStoreCheckpointTask.IsCompleted == true)
+                    {
+                        (this.lastCheckpointedCommitLogPosition, this.lastCheckpointedInputQueuePosition)
+                            = await this.pendingPrimaryStoreCheckpointTask.ConfigureAwait(false); // observe exceptions here
+                        this.pendingPrimaryStoreCheckpointTask = null;
+                        this.pendingCheckpointTrigger = CheckpointTrigger.None;
+                        this.ScheduleNextCheckpointTime();
+                    }
+                }
                 else if (this.CheckpointDue(out var trigger))
                 {
-                    var token = this.store.StartIndexCheckpoint();
+                    var token = this.store.StartPrimaryIndexCheckpoint();
                     if (token.HasValue)
                     {
                         this.pendingCheckpointTrigger = trigger;
-                        this.pendingIndexCheckpoint = this.WaitForCheckpointAsync(true, token.Value);
+                        this.pendingPrimaryIndexCheckpointTask = this.WaitForPrimaryCheckpointAsync(true, token.Value);
                     }
                 }
                 
@@ -377,7 +421,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public async Task<(long,long)> WaitForCheckpointAsync(bool isIndexCheckpoint, Guid checkpointToken)
+        async Task<(long,long)> WaitForPrimaryCheckpointAsync(bool isIndexCheckpoint, Guid checkpointToken)
         {
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
@@ -386,9 +430,10 @@ namespace DurableTask.Netherite.Faster
             string description = $"{(isIndexCheckpoint ? "index" : "store")} checkpoint triggered by {this.pendingCheckpointTrigger}";
             this.traceHelper.FasterCheckpointStarted(checkpointToken, description, this.store.StoreStats.Get(), commitLogPosition, inputQueuePosition);
 
-            // first do the faster checkpoint
-            await this.store.CompleteCheckpointAsync().ConfigureAwait(false);
+            // first complete the faster checkpoint
+            await this.store.CompletePrimaryCheckpointAsync().ConfigureAwait(false);
 
+            // post-process if it is a log (store) checkpoint
             if (!isIndexCheckpoint)
             {
                 // wait for the commit log so it is never behind the checkpoint
@@ -405,6 +450,18 @@ namespace DurableTask.Netherite.Faster
 
             this.Notify();
             return (commitLogPosition, inputQueuePosition);
+        }
+
+        async Task WaitForSecondaryIndexCheckpointAsync(bool isIndexCheckpoint, Guid checkpointToken)
+        {
+            var stopwatch = new System.Diagnostics.Stopwatch();
+            stopwatch.Start();
+            string description = $"{(isIndexCheckpoint ? "index" : "store")} secondary checkpoint triggered by {this.pendingCheckpointTrigger}";
+            this.traceHelper.FasterCheckpointStarted(checkpointToken, description, this.store.StoreStats.Get(), -1, -1);
+
+            await this.store.CompleteSecondaryIndexCheckpointAsync().ConfigureAwait(false);
+
+            this.traceHelper.FasterCheckpointPersisted(checkpointToken, description, -1, -1, stopwatch.ElapsedMilliseconds);
         }
 
         public async Task ReplayCommitLog(LogWorker logWorker)

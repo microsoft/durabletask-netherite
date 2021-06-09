@@ -73,8 +73,8 @@
         // set this to false to force replay on each orchestration step
         "CacheOrchestrationCursors": true,
 
-        // set this to true to use the PSF support in Faster
-        "UsePSFQueries": "false",
+        // set this to true to use the SecondaryIndex support in Faster
+        "UseSecondaryIndexQueries": "true",
 
         // set this to true to bypass Faster and instead use Azure blobs for the object store
         "UseAlternateObjectStore": "false",

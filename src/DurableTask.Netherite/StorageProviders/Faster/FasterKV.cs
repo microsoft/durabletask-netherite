@@ -30,10 +30,10 @@ namespace DurableTask.Netherite.Faster
         ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> mainSession;
 
 #if USE_SECONDARY_INDEX
-        readonly HashValueIndex<Key, Value, PredicateKey> index;
+        readonly HashValueIndex<Key, Value, PredicateKey> secondaryIndex;
 
         // We currently place all Predicates into a single HashValueIndex with the PredicateKey type
-        internal const int IndexCount = 1;
+        internal const int SecondaryIndexCount = 1;
 
         internal IPredicate RuntimeStatusPredicate;
         internal IPredicate CreatedTimePredicate;
@@ -60,7 +60,7 @@ namespace DurableTask.Netherite.Faster
             if (partition.Settings.UseSecondaryIndexQueries)
             {
                 int indexOrdinal = 0;
-                this.index = new HashValueIndex<Key, Value, PredicateKey>("Netherite", this.fht,
+                this.secondaryIndex = new HashValueIndex<Key, Value, PredicateKey>("Netherite", this.fht,
                                             this.blobManager.CreateSecondaryIndexRegistrationSettings<PredicateKey>(partition.NumberPartitions(), indexOrdinal++),
                                             (nameof(this.RuntimeStatusPredicate), v => v.Val is InstanceState state
                                                                                 ? new PredicateKey(state.OrchestrationState.OrchestrationStatus)
@@ -72,9 +72,9 @@ namespace DurableTask.Netherite.Faster
                                                                                 ? new PredicateKey(state.InstanceId)
                                                                                 : default));
 
-                this.RuntimeStatusPredicate = this.index.GetPredicate(nameof(this.RuntimeStatusPredicate));
-                this.CreatedTimePredicate = this.index.GetPredicate(nameof(this.CreatedTimePredicate));
-                this.InstanceIdPrefixPredicate = this.index.GetPredicate(nameof(this.InstanceIdPrefixPredicate));
+                this.RuntimeStatusPredicate = this.secondaryIndex.GetPredicate(nameof(this.RuntimeStatusPredicate));
+                this.CreatedTimePredicate = this.secondaryIndex.GetPredicate(nameof(this.CreatedTimePredicate));
+                this.InstanceIdPrefixPredicate = this.secondaryIndex.GetPredicate(nameof(this.InstanceIdPrefixPredicate));
             }
 #endif
             this.terminationToken = partition.ErrorHandler.Token;
@@ -83,11 +83,13 @@ namespace DurableTask.Netherite.Faster
                 () => {
                     try
                     {
+                        // TODO: Does terminationToken need to call FasterStorage.CancelAndShutdown before releasing fht?
                         this.mainSession?.Dispose();
+                        this.secondaryIndex.Dispose();
                         this.fht.Dispose();
                         this.blobManager.HybridLogDevice.Dispose();
                         this.blobManager.ObjectLogDevice.Dispose();
-                        this.blobManager.CloseIndexDevices();
+                        this.blobManager.CloseSecondaryIndexDevices();
                     }
                     catch(Exception e)
                     {
@@ -141,13 +143,16 @@ namespace DurableTask.Netherite.Faster
             return this.mainSession.ReadyToCompletePendingAsync(this.terminationToken);
         }
 
-        public override bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, out Guid checkpointGuid)
+        public async override ValueTask<Guid?> TakeFullCheckpointAsync(long commitLogPosition, long inputQueuePosition)
         {
             try
             {
+                // First do the secondary index(es).
+                await this.secondaryIndex.TakeFullCheckpointAsync(CheckpointType.FoldOver);
+
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
-                return this.fht.TakeFullCheckpoint(out checkpointGuid);
+                return this.fht.TakeFullCheckpoint(out var checkpointGuid) ? checkpointGuid : null;
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -156,11 +161,46 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override async ValueTask CompleteCheckpointAsync()
+        public override Guid? StartPrimaryIndexCheckpoint()
         {
             try
             {
-                // workaround for hanging in CompleteCheckpointAsync: use custom thread.
+                return this.fht.TakeIndexCheckpoint(out var token) ? token : null;
+            }
+            catch (Exception exception)
+                when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
+            {
+                throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
+            }
+        }
+
+        public override Guid? StartPrimaryStoreCheckpoint(long commitLogPosition, long inputQueuePosition)
+        {
+            try
+            {
+                this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
+                this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
+
+                if (this.fht.TakeHybridLogCheckpoint(out var token))
+                {
+                    // according to Badrish this ensures proper fencing w.r.t. session
+                    this.mainSession.Refresh();
+                    return token;
+                }
+                return null;
+            }
+            catch (Exception exception)
+                when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
+            {
+                throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
+            }
+        }
+
+        public override async ValueTask CompletePrimaryCheckpointAsync()
+        {
+            try
+            {
+                // workaround for hanging in CompleteCheckpointAsync: use custom thread. // TODO: is this still an issue?
                 await RunOnDedicatedThreadAsync(() => this.fht.CompleteCheckpointAsync(this.terminationToken).AsTask());
                 //await this.fht.CompleteCheckpointAsync(this.terminationToken);
             }
@@ -179,24 +219,17 @@ namespace DurableTask.Netherite.Faster
             await await tasktask;
         }
 
-        public override Task FinalizeCheckpointCompletedAsync(Guid guid)
+        public override Task FinalizeCheckpointCompletedAsync(Guid checkpointToken)
         {
+            // checkpointToken is not used in this subclass of TrackedObjectStore
             return this.blobManager.FinalizeCheckpointCompletedAsync();
         }
 
-
-        public override Guid? StartIndexCheckpoint()
+        public override Guid? StartSecondaryIndexIndexCheckpoint()
         {
             try
             {
-                if (this.fht.TakeIndexCheckpoint(out var token))
-                {
-                    return token;
-                }
-                else
-                {
-                    return null;
-                }
+                return this.secondaryIndex.TakeIndexCheckpoint(out var token) ? token : null;
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -205,26 +238,32 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition)
+        public override Guid? StartSecondaryIndexStoreCheckpoint()
         {
             try
             {
-                this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
-                this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
-
-                if (this.fht.TakeHybridLogCheckpoint(out var token))
+                if (this.secondaryIndex.TakeHybridLogCheckpoint(out var token))
                 {
                     // according to Badrish this ensures proper fencing w.r.t. session
-                    this.mainSession.Refresh();
-
+                    // this.mainSession.Refresh();  // TODO: revisit this for secondaryIndex
                     return token;
                 }
-                else
-                {
-                    return null;
-                }
+                return null;
+            }
+            catch (Exception exception)
+                when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
+            {
+                throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
+            }
+        }
 
-                throw new InvalidOperationException("Faster refused store checkpoint");
+        public override async ValueTask CompleteSecondaryIndexCheckpointAsync()
+        {
+            try
+            {
+                // workaround for hanging in CompleteCheckpointAsync: use custom thread. // TODO: is this still an issue?
+                await RunOnDedicatedThreadAsync(() => this.secondaryIndex.CompleteCheckpointAsync(this.terminationToken).AsTask());
+                //await this.secondaryIndex.CompleteCheckpointAsync(this.terminationToken);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))

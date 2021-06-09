@@ -171,7 +171,7 @@ namespace PerformanceTests
 
                 var queryCondition = new OrchestrationStatusQueryCondition()
                 {
-                    InstanceIdPrefix = "Orch",
+                    InstanceIdPrefix = OrchInstanceIdPrefix,
                 };
 
                 int completed = 0;
@@ -262,7 +262,7 @@ namespace PerformanceTests
             {
                 var queryCondition = new OrchestrationStatusQueryCondition()
                 {
-                    InstanceIdPrefix = "Orch",
+                    InstanceIdPrefix = OrchInstanceIdPrefix,
                 };
 
                 int completed = 0;
@@ -372,15 +372,17 @@ namespace PerformanceTests
         // we can use this to run on a subset of the available partitions
         static readonly int? restrictedPlacement = null;
 
+        const string OrchInstanceIdPrefix = "Orch___";  // For SecondaryIndex the prefix length is 7
+
         public static string InstanceId(int index)
         {
             if (restrictedPlacement == null)
             {
-                return $"Orch{index:X5}";
+                return $"{OrchInstanceIdPrefix}{index:X5}";
             }
             else
             {
-                return $"Orch{index:X5}!{(index % restrictedPlacement):D2}";
+                return $"{OrchInstanceIdPrefix}{index:X5}!{(index % restrictedPlacement):D2}";
             }
         }
     }

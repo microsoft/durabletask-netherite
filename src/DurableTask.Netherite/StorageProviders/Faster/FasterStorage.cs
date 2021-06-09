@@ -69,7 +69,7 @@ namespace DurableTask.Netherite.Faster
             this.terminationToken = errorHandler.Token;
 
 #if USE_SECONDARY_INDEX
-            int psfCount = partition.Settings.UseSecondaryIndexQueries ? FasterKV.IndexCount : 0;
+            int psfCount = partition.Settings.UseSecondaryIndexQueries ? FasterKV.SecondaryIndexCount : 0;
 #else
             int psfCount = 0;
 #endif

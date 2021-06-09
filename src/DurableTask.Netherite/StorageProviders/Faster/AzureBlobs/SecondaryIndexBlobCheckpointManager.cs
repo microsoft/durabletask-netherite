@@ -12,10 +12,10 @@ namespace DurableTask.Netherite.Faster
         readonly BlobManager blobManager;
         readonly int indexOrdinal;
 
-        internal SecondaryIndexBlobCheckpointManager(BlobManager blobMan, int groupOrd)
+        internal SecondaryIndexBlobCheckpointManager(BlobManager blobMan, int indexOrd)
         {
             this.blobManager = blobMan;
-            this.indexOrdinal = groupOrd;
+            this.indexOrdinal = indexOrd;
         }
 
         void ICheckpointManager.InitializeIndexCheckpoint(Guid indexToken)
@@ -56,13 +56,13 @@ namespace DurableTask.Netherite.Faster
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
-            var indexToken = this.blobManager.IndexCheckpointInfos[this.indexOrdinal].IndexToken;
+            var indexToken = this.blobManager.SecondaryIndexCheckpointInfos[this.indexOrdinal].IndexToken;
             yield return indexToken;
         }
 
         IEnumerable<Guid> ICheckpointManager.GetLogCheckpointTokens()
         {
-            var logToken = this.blobManager.IndexCheckpointInfos[this.indexOrdinal].LogToken;
+            var logToken = this.blobManager.SecondaryIndexCheckpointInfos[this.indexOrdinal].LogToken;
             yield return logToken;
         }
 

@@ -11,7 +11,6 @@ namespace DurableTask.Netherite.Faster
     using DurableTask.Core.Common;
     using FASTER.core;
     using FASTER.indexes.HashValueIndex;
-    using ImpromptuInterface;
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
     using Microsoft.Azure.Storage.RetryPolicies;
@@ -20,7 +19,6 @@ namespace DurableTask.Netherite.Faster
     using Newtonsoft.Json.Linq;
     using System;
     using System.Collections.Generic;
-    using System.Diagnostics;
     using System.IO;
     using System.Linq;
     using System.Threading;
@@ -56,10 +54,12 @@ namespace DurableTask.Netherite.Faster
         public IDevice HybridLogDevice { get; private set; }
         public IDevice ObjectLogDevice { get; private set; }
 
-        IDevice[] IndexLogDevices;
-        internal CheckpointInfo[] IndexCheckpointInfos { get; }
-        int IndexCount => this.IndexCheckpointInfos.Length;
-        const int InvalidIndexOrdinal = -1;
+        // Note: We currently have only one index; here, we have set up to use multiple, but other places in the code refer to "fasterKV.secondaryIndex" 
+        // and would need to be updated to loop through multiple indexes.
+        IDevice[] SecondaryIndexLogDevices;
+        internal CheckpointInfo[] SecondaryIndexCheckpointInfos { get; }
+        int SecondaryIndexCount => this.SecondaryIndexCheckpointInfos.Length;
+        const int InvalidSecondaryIndexOrdinal = -1;
 
         public string ContainerName { get; }
 
@@ -131,9 +131,10 @@ namespace DurableTask.Netherite.Faster
                 {
                     throw new InvalidOperationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
                 }
-                if ((bool)json["UseSecondaryIndexQueries"] != settings.UseSecondaryIndexQueries)
+                if ((bool)json["UseSecondaryIndexQueries"] && !settings.UseSecondaryIndexQueries)
                 {
-                    throw new InvalidOperationException("The Netherite configuration setting 'UseSecondaryIndexQueries' is incompatible with the existing taskhub.");
+                    // We can go from no secondary indexing to adding secondary indexing; in this case, we just replay all records. TODO: Do we write back settings to the taskhub, to update this?
+                    throw new InvalidOperationException("The Netherite configuration setting 'UseSecondaryIndexQueries' is incompatible with the existing taskhub; cannot turn off secondary indexing.");
                 }
                 if ((int)json["FormatVersion"] != StorageFormatVersion)
                 {
@@ -175,7 +176,7 @@ namespace DurableTask.Netherite.Faster
                 NullIndicator = default,
                 LogSettings = new LogSettings()
                 {
-                    LogDevice = this.IndexLogDevices[indexOrdinal],
+                    LogDevice = this.SecondaryIndexLogDevices[indexOrdinal],
                     PageSizeBits = storeLogSettings.PageSizeBits,
                     SegmentSizeBits = storeLogSettings.SegmentSizeBits,
                     MemorySizeBits = storeLogSettings.MemorySizeBits,
@@ -185,7 +186,7 @@ namespace DurableTask.Netherite.Faster
                 CheckpointSettings = new CheckpointSettings
                 {
                     CheckpointManager = this.UseLocalFiles
-                        ? new LocalFileCheckpointManager(this.IndexCheckpointInfos[indexOrdinal], this.LocalIndexCheckpointDirectoryPath(indexOrdinal), this.GetCheckpointCompletedBlobName())
+                        ? new LocalFileCheckpointManager(this.SecondaryIndexCheckpointInfos[indexOrdinal], this.LocalIndexCheckpointDirectoryPath(indexOrdinal), this.GetCheckpointCompletedBlobName())
                         : new SecondaryIndexBlobCheckpointManager(this, indexOrdinal),
                     CheckPointType = CheckpointType.FoldOver
                 }
@@ -257,7 +258,7 @@ namespace DurableTask.Netherite.Faster
             this.ContainerName = GetContainerName(taskHubName);
             this.partitionId = partitionId;
             this.CheckpointInfo = new CheckpointInfo();
-            this.IndexCheckpointInfos = Enumerable.Range(0, indexCount).Select(ii => new CheckpointInfo()).ToArray();
+            this.SecondaryIndexCheckpointInfos = Enumerable.Range(0, indexCount).Select(ii => new CheckpointInfo()).ToArray();
 
             if (!this.UseLocalFiles)
             {
@@ -313,11 +314,11 @@ namespace DurableTask.Netherite.Faster
                 this.HybridLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{HybridLogBlobName}");
                 this.ObjectLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{ObjectLogBlobName}");
 
-                for (var ii = 0; ii < this.IndexCount; ++ii)
+                for (var ii = 0; ii < this.SecondaryIndexCount; ++ii)
                 {
                     Directory.CreateDirectory(this.LocalIndexCheckpointDirectoryPath(ii));
                 }
-                this.IndexLogDevices = (from indexOrdinal in Enumerable.Range(0, this.IndexCount)
+                this.SecondaryIndexLogDevices = (from indexOrdinal in Enumerable.Range(0, this.SecondaryIndexCount)
                                         let deviceName = $"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{this.IndexFolderName(indexOrdinal)}\\{IndexHybridLogBlobName}"
                                         select Devices.CreateLogDevice(deviceName)).ToArray();
 
@@ -340,7 +341,7 @@ namespace DurableTask.Netherite.Faster
                 var hybridLogDevice = createDevice(HybridLogBlobName);
                 var objectLogDevice = createDevice(ObjectLogBlobName);
 
-                var indexLogDevices = (from indexOrdinal in Enumerable.Range(0, this.IndexCount)
+                var indexLogDevices = (from indexOrdinal in Enumerable.Range(0, this.SecondaryIndexCount)
                                      let indexDirectory = this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal))
                                      select new AzureStorageDevice(IndexHybridLogBlobName, indexDirectory.GetDirectoryReference(IndexHybridLogBlobName), indexDirectory.GetDirectoryReference(IndexHybridLogBlobName), this, true)).ToArray();
 
@@ -360,11 +361,11 @@ namespace DurableTask.Netherite.Faster
                 this.EventLogDevice = eventLogDevice;
                 this.HybridLogDevice = hybridLogDevice;
                 this.ObjectLogDevice = objectLogDevice;
-                this.IndexLogDevices = indexLogDevices;
+                this.SecondaryIndexLogDevices = indexLogDevices;
             }
         }
 
-        internal void CloseIndexDevices() => Array.ForEach(this.IndexLogDevices, logDevice => logDevice.Dispose());
+        internal void CloseSecondaryIndexDevices() => Array.ForEach(this.SecondaryIndexLogDevices, logDevice => logDevice.Dispose());
 
         public void HandleStorageError(string where, string message, string blobName, Exception e, bool isFatal, bool isWarning)
         {
@@ -796,31 +797,31 @@ namespace DurableTask.Netherite.Faster
         #region Call-throughs to actual implementation; separated for Secondary Indexes
 
         void ICheckpointManager.CommitIndexCheckpoint(Guid indexToken, byte[] commitMetadata)
-            => this.CommitIndexCheckpoint(indexToken, commitMetadata, InvalidIndexOrdinal);
+            => this.CommitIndexCheckpoint(indexToken, commitMetadata, InvalidSecondaryIndexOrdinal);
 
         void ICheckpointManager.CommitLogCheckpoint(Guid logToken, byte[] commitMetadata)
-            => this.CommitLogCheckpoint(logToken, commitMetadata, InvalidIndexOrdinal);
+            => this.CommitLogCheckpoint(logToken, commitMetadata, InvalidSecondaryIndexOrdinal);
 
         void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
-            => this.CommitLogIncrementalCheckpoint(logToken, version, commitMetadata, deltaLog, InvalidIndexOrdinal);
+            => this.CommitLogIncrementalCheckpoint(logToken, version, commitMetadata, deltaLog, InvalidSecondaryIndexOrdinal);
 
         byte[] ICheckpointManager.GetIndexCheckpointMetadata(Guid indexToken)
-            => this.GetIndexCheckpointMetadata(indexToken, InvalidIndexOrdinal);
+            => this.GetIndexCheckpointMetadata(indexToken, InvalidSecondaryIndexOrdinal);
 
         byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken, DeltaLog deltaLog)
-            => this.GetLogCheckpointMetadata(logToken, InvalidIndexOrdinal, deltaLog);
+            => this.GetLogCheckpointMetadata(logToken, InvalidSecondaryIndexOrdinal, deltaLog);
 
         IDevice ICheckpointManager.GetIndexDevice(Guid indexToken)
-            => this.GetIndexDevice(indexToken, InvalidIndexOrdinal);
+            => this.GetIndexDevice(indexToken, InvalidSecondaryIndexOrdinal);
 
         IDevice ICheckpointManager.GetSnapshotLogDevice(Guid token)
-            => this.GetSnapshotLogDevice(token, InvalidIndexOrdinal);
+            => this.GetSnapshotLogDevice(token, InvalidSecondaryIndexOrdinal);
 
         IDevice ICheckpointManager.GetSnapshotObjectLogDevice(Guid token)
-            => this.GetSnapshotObjectLogDevice(token, InvalidIndexOrdinal);
+            => this.GetSnapshotObjectLogDevice(token, InvalidSecondaryIndexOrdinal);
 
         IDevice ICheckpointManager.GetDeltaLogDevice(Guid token) 
-            => this.GetDeltaLogDevice(token, InvalidIndexOrdinal);
+            => this.GetDeltaLogDevice(token, InvalidSecondaryIndexOrdinal);
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
@@ -839,8 +840,8 @@ namespace DurableTask.Netherite.Faster
         internal Task FindCheckpointsAsync()
         {
             var tasks = new List<Task>();
-            tasks.Add(FindCheckpoint(InvalidIndexOrdinal));
-            for (int i = 0; i < this.IndexCount; i++)
+            tasks.Add(FindCheckpoint(InvalidSecondaryIndexOrdinal));
+            for (int i = 0; i < this.SecondaryIndexCount; i++)
             {
                 tasks.Add(FindCheckpoint(i));
             }
@@ -866,7 +867,7 @@ namespace DurableTask.Netherite.Faster
                     }
 
                     // read the fields from the json to update the checkpoint info
-                    JsonConvert.PopulateObject(jsonString, isIndex ? this.IndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo);
+                    JsonConvert.PopulateObject(jsonString, isIndex ? this.SecondaryIndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo);
                 }
                 catch (Exception e)
                 {
@@ -882,7 +883,7 @@ namespace DurableTask.Netherite.Faster
 
         (bool, string) IsIndexOrPrimary(int indexOrdinal)
         {
-            var isIndex = indexOrdinal != InvalidIndexOrdinal;
+            var isIndex = indexOrdinal != InvalidSecondaryIndexOrdinal;
             return (isIndex, isIndex ? $"Secondary Index {indexOrdinal}" : "Primary FKV");
         }
 
@@ -913,7 +914,7 @@ namespace DurableTask.Netherite.Faster
                  }
              });
 
-            (isIndex ? this.IndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo).IndexToken = indexToken;
+            (isIndex ? this.SecondaryIndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo).IndexToken = indexToken;
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitIndexCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
@@ -944,7 +945,7 @@ namespace DurableTask.Netherite.Faster
                     }
                 });
 
-            (isIndex ? this.IndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo).LogToken = logToken;
+            (isIndex ? this.SecondaryIndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo).LogToken = logToken;
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
@@ -1047,7 +1048,7 @@ namespace DurableTask.Netherite.Faster
             return device;
         }
 
-        internal IDevice GetDeltaLogDevice(Guid token, int indexOrdinal) => throw new NotImplementedException("TODO - GetDeltaLogDevice");
+        internal IDevice GetDeltaLogDevice(Guid token, int indexOrdinal) => default;    // TODO
 
         #endregion
 
@@ -1087,9 +1088,9 @@ namespace DurableTask.Netherite.Faster
             }
 
             // Secondary Indexes
-            for (var ii = 0; ii < this.IndexLogDevices.Length; ++ii)
+            for (var ii = 0; ii < this.SecondaryIndexLogDevices.Length; ++ii)
             {
-                var jsonText = JsonConvert.SerializeObject(this.IndexCheckpointInfos[ii], Formatting.Indented);
+                var jsonText = JsonConvert.SerializeObject(this.SecondaryIndexCheckpointInfos[ii], Formatting.Indented);
                 if (this.UseLocalFiles)
                     writeLocal(this.LocalIndexCheckpointDirectoryPath(ii), jsonText);
                 else

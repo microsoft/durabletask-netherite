@@ -144,32 +144,33 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, out Guid checkpointGuid)
+        public override ValueTask<Guid?> TakeFullCheckpointAsync(long commitLogPosition, long inputQueuePosition)
         {
-            checkpointGuid = Guid.NewGuid();
-            this.StartStoreCheckpoint(commitLogPosition, inputQueuePosition, checkpointGuid);
-            return true;
+            // TODO: SecondaryIndex support in TakeFullCheckpointAsync
+            var checkpointGuid = Guid.NewGuid();
+            this.StartPrimaryStoreCheckpoint(commitLogPosition, inputQueuePosition, checkpointGuid);
+            return new ValueTask<Guid?>(checkpointGuid);
         }
 
-        public async override ValueTask CompleteCheckpointAsync()
+        public async override ValueTask CompletePrimaryCheckpointAsync()
         {
             await this.checkpointTask.ConfigureAwait(false);
         }
 
-        public override Guid? StartIndexCheckpoint()
+        public override Guid? StartPrimaryIndexCheckpoint()
         {
             this.checkpointTask = Task.CompletedTask; // this implementation does not contain an index (yet).
             return default;
         }
 
-        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition)
+        public override Guid? StartPrimaryStoreCheckpoint(long commitLogPosition, long inputQueuePosition)
         {
-            var guid = Guid.NewGuid();
-            this.StartStoreCheckpoint(commitLogPosition, inputQueuePosition, guid);
-            return guid;
+            var checkpointToken = Guid.NewGuid();
+            this.StartPrimaryStoreCheckpoint(commitLogPosition, inputQueuePosition, checkpointToken);
+            return checkpointToken;
         }
 
-        internal void StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, Guid guid)
+        void StartPrimaryStoreCheckpoint(long commitLogPosition, long inputQueuePosition, Guid checkpointToken)
         {
             // update the positions
             var dedupState = this.cache[TrackedObjectKey.Dedup];
@@ -197,15 +198,30 @@ namespace DurableTask.Netherite.Faster
             }
             this.modified.Clear();
 
-            this.checkpointTask = Task.Run(() => this.WriteCheckpointAsync(toWrite, guid));
+            this.checkpointTask = Task.Run(() => this.WriteCheckpointAsync(toWrite, checkpointToken));
         }
 
-        async Task WriteCheckpointAsync(List<ToWrite> toWrite, Guid guid)
+        public override ValueTask CompleteSecondaryIndexCheckpointAsync()
+        {
+            return new ValueTask(); // TODO
+        }
+
+        public override Guid? StartSecondaryIndexIndexCheckpoint()
+        {
+            return default; // TODO
+        }
+
+        public override Guid? StartSecondaryIndexStoreCheckpoint()
+        {
+            return default; // TODO
+        }
+
+        async Task WriteCheckpointAsync(List<ToWrite> toWrite, Guid checkpointToken)
         {
             // the intention file instructs subsequent recoveries to ignore updates should we fail in the middle
-            await this.WriteCheckpointIntention(guid).ConfigureAwait(false);
+            await this.WriteCheckpointIntention(checkpointToken).ConfigureAwait(false);
 
-            var guidbytes = guid.ToByteArray();
+            var guidbytes = checkpointToken.ToByteArray();
             var tasks = new List<Task>();
             foreach (var entry in toWrite)
             {
@@ -215,10 +231,10 @@ namespace DurableTask.Netherite.Faster
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
-        public override Task FinalizeCheckpointCompletedAsync(Guid guid)
+        public override Task FinalizeCheckpointCompletedAsync(Guid checkpointToken)
         {
             // we have finished the checkpoint; it is committed by removing the intention file
-            return this.RemoveCheckpointIntention(guid);
+            return this.RemoveCheckpointIntention(checkpointToken);
         }
 
         // perform a query
@@ -528,11 +544,11 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        async Task WriteCheckpointIntention(Guid guid)
+        async Task WriteCheckpointIntention(Guid checkpointToken)
         {
             try
             {
-                var blob = this.blobManager.BlockBlobContainer.GetBlockBlobReference($"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{guid}");
+                var blob = this.blobManager.BlockBlobContainer.GetBlockBlobReference($"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{checkpointToken}");
                 await this.blobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
                 await blob.UploadTextAsync("", this.blobManager.PartitionErrorHandler.Token);
             }
@@ -547,11 +563,11 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        async Task RemoveCheckpointIntention(Guid guid)
+        async Task RemoveCheckpointIntention(Guid checkpointToken)
         {
             try
             {
-                var blob = this.blobManager.BlockBlobContainer.GetBlockBlobReference($"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{guid}");
+                var blob = this.blobManager.BlockBlobContainer.GetBlockBlobReference($"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{checkpointToken}");
                 await this.blobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
                 await blob.DeleteAsync(this.blobManager.PartitionErrorHandler.Token);
             }
