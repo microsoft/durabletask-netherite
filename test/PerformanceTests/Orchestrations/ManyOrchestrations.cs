@@ -15,10 +15,9 @@ namespace PerformanceTests
     using System.Collections.Generic;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using System.Linq;
-    using System.Collections.Concurrent;
+    using System.Diagnostics;
     using System.Threading;
     using System.Net.Http;
-    using DurableTask.Core.Stats;
 
     /// <summary>
     /// Http triggers for starting, awaiting, counting, or purging large numbers of orchestration instances
@@ -167,17 +166,12 @@ namespace PerformanceTests
             {
                 string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
                 int numberOrchestrations = int.Parse(requestBody);
-                DateTime deadline = DateTime.UtcNow + TimeSpan.FromMinutes(5);
-
-                var queryCondition = new OrchestrationStatusQueryCondition()
-                {
-                    InstanceIdPrefix = OrchInstanceIdPrefix,
-                };
 
                 int completed = 0;
                 int pending = 0;
                 int running = 0;
                 int other = 0;
+                int notfound = 0;
 
                 long earliestStart = long.MaxValue;
                 long latestUpdate = 0;
@@ -185,8 +179,7 @@ namespace PerformanceTests
 
                 object lockForUpdate = new object();
 
-                var stopwatch = new System.Diagnostics.Stopwatch();
-                stopwatch.Start();
+                var stopwatch = Stopwatch.StartNew();
 
                 var tasks = new List<Task<bool>>();
 
@@ -200,7 +193,7 @@ namespace PerformanceTests
                     {
                         if (status == null)
                         {
-                            other++;
+                            notfound++;
                         }
                         else
                         {
@@ -228,12 +221,11 @@ namespace PerformanceTests
                     }
                 });
 
-                double elapsedSeconds = 0;
-
-                if (gotTimeRange)
-                {
-                    elapsedSeconds = (new DateTime(latestUpdate) - new DateTime(earliestStart)).TotalSeconds;
-                }
+                stopwatch.Stop();
+                double recordRangeSec = gotTimeRange
+                    ? (new DateTime(latestUpdate) - new DateTime(earliestStart)).TotalSeconds
+                    : 0;
+                double querySec = stopwatch.ElapsedMilliseconds / 1000.0;
 
                 var resultObject = new
                 { 
@@ -241,7 +233,9 @@ namespace PerformanceTests
                     running,
                     pending,
                     other,
-                    elapsedSeconds,
+                    notfound,
+                    recordRangeSec,
+                    querySec
                 };
 
                 return new OkObjectResult($"{JsonConvert.SerializeObject(resultObject)}\n");
@@ -254,15 +248,18 @@ namespace PerformanceTests
        
         [FunctionName(nameof(Query))]
         public static async Task<IActionResult> Query(
-          [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequest req,
+          [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "query")] HttpRequest req,
           [DurableClient] IDurableClient client,
           ILogger log)
         {
             try
             {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                string instanceIdPrefix = requestBody;  // TODO: parsable format for CreationTimeTo/From and RuntimeStatus (I=...;F=...;T=...;S=...)
+
                 var queryCondition = new OrchestrationStatusQueryCondition()
                 {
-                    InstanceIdPrefix = OrchInstanceIdPrefix,
+                    InstanceIdPrefix = instanceIdPrefix.Length > 0 ? instanceIdPrefix : OrchInstanceIdPrefix,
                 };
 
                 int completed = 0;
@@ -272,6 +269,10 @@ namespace PerformanceTests
 
                 long earliestStart = long.MaxValue;
                 long latestUpdate = 0;
+
+                log.LogWarning($"Checking the status of orchestration instances starting with Id prefix {queryCondition.InstanceIdPrefix}...");
+
+                var stopwatch = Stopwatch.StartNew();
 
                 do
                 {
@@ -303,12 +304,11 @@ namespace PerformanceTests
 
                 } while (queryCondition.ContinuationToken != null);
 
-                double elapsedSeconds = 0;
-
-                if (completed + pending + running + other > 0)
-                {
-                    elapsedSeconds = (new DateTime(latestUpdate) - new DateTime(earliestStart)).TotalSeconds;
-                }
+                stopwatch.Stop();
+                double recordRangeSec = (completed + pending + running + other > 0)
+                    ? (new DateTime(latestUpdate) - new DateTime(earliestStart)).TotalSeconds
+                    : 0;
+                double querySec = stopwatch.ElapsedMilliseconds / 1000.0;
 
                 var resultObject = new
                 { 
@@ -316,7 +316,8 @@ namespace PerformanceTests
                     running,
                     pending,
                     other,
-                    elapsedSeconds,
+                    recordRangeSec,
+                    querySec
                 };
 
                 return new OkObjectResult($"{JsonConvert.SerializeObject(resultObject)}\n");
@@ -372,7 +373,7 @@ namespace PerformanceTests
         // we can use this to run on a subset of the available partitions
         static readonly int? restrictedPlacement = null;
 
-        const string OrchInstanceIdPrefix = "Orch___";  // For SecondaryIndex the prefix length is 7
+        const string OrchInstanceIdPrefix = "Orch";
 
         public static string InstanceId(int index)
         {

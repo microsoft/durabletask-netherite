@@ -13,9 +13,10 @@ namespace DurableTask.Netherite.Faster
     {
         internal static TimeSpan DateBinInterval = TimeSpan.FromMinutes(1);
         internal static DateTime BaseDate = new(2020, 1, 1);
-        internal const int InstanceIdPrefixLen = 7;
+        internal const int InstanceIdPrefixLen7 = 7;
+        internal const int InstanceIdPrefixLen4 = 4;
 
-        enum PredicateColumn { Default = 0, RuntimeStatus = 101, CreatedTime, InstanceIdPrefix }
+        enum PredicateColumn { Default = 0, RuntimeStatus = 101, CreatedTime, InstanceIdPrefix7, InstanceIdPrefix4 }
 
         // Enums are not blittable
         readonly int column;
@@ -36,13 +37,13 @@ namespace DurableTask.Netherite.Faster
             this.value = (int)Math.Floor(ts.TotalMinutes);
         }
 
-        internal PredicateKey(string instanceId, int prefixLength = InstanceIdPrefixLen)    // TODO change this to pass a list of prefixFunc<string, string> and make a Predicate for each? E.g. parse "@{entityName.ToLowerInvariant()}@" or "@"
+        internal PredicateKey(string instanceId, int prefixLength)    // TODO change this to pass a list of prefixFunc<string, string> and make a Predicate for each? E.g. parse "@{entityName.ToLowerInvariant()}@" or "@"
         {
-            this.column = (int)PredicateColumn.InstanceIdPrefix;
+            this.column = prefixLength == InstanceIdPrefixLen7 ? (int)PredicateColumn.InstanceIdPrefix7 : (int)PredicateColumn.InstanceIdPrefix4;
             this.value = GetInvariantHashCode(MakeInstanceIdPrefix(instanceId, prefixLength));
         }
 
-        internal static string MakeInstanceIdPrefix(string instanceId, int prefixLength = InstanceIdPrefixLen) 
+        static string MakeInstanceIdPrefix(string instanceId, int prefixLength) 
             => instanceId.Length > prefixLength
                 ? instanceId.Substring(0, Math.Min(instanceId.Length, prefixLength))
                 : instanceId;
@@ -76,7 +77,7 @@ namespace DurableTask.Netherite.Faster
             {
                 PredicateColumn.RuntimeStatus => $"{(PredicateColumn)this.column} = {this.Status}",
                 PredicateColumn.CreatedTime => $"{(PredicateColumn)this.column} = {BaseDate + TimeSpan.FromMinutes(this.value):s}",
-                PredicateColumn.InstanceIdPrefix => $"{(PredicateColumn)this.column} = {this.value}",
+                PredicateColumn.InstanceIdPrefix7 or PredicateColumn.InstanceIdPrefix4 => $"{(PredicateColumn)this.column} = {this.value}",
                 _ => "<Unknown PredicateColumn value>"
             };
 

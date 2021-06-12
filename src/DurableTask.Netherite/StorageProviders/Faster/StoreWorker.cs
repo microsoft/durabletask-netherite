@@ -146,18 +146,22 @@ namespace DurableTask.Netherite.Faster
             if (this.pendingSecondaryIndexIndexCheckpointTask != null)
             {
                 await this.pendingSecondaryIndexIndexCheckpointTask.ConfigureAwait(false);
+                this.pendingSecondaryIndexIndexCheckpointTask = default;
             }
             if (this.pendingSecondaryIndexStoreCheckpointTask != null)
             {
                 await this.pendingSecondaryIndexStoreCheckpointTask.ConfigureAwait(false);
+                this.pendingSecondaryIndexStoreCheckpointTask = default;
             }
             if (this.pendingPrimaryIndexCheckpointTask != null)
             {
                 await this.pendingPrimaryIndexCheckpointTask.ConfigureAwait(false);
+                this.pendingPrimaryIndexCheckpointTask = default;
             }
             if (this.pendingPrimaryStoreCheckpointTask != null)
             {
                 await this.pendingPrimaryStoreCheckpointTask.ConfigureAwait(false);
+                this.pendingPrimaryStoreCheckpointTask = default;
             }
 
             this.traceHelper.FasterProgress("Stopped StoreWorker");
@@ -378,11 +382,11 @@ namespace DurableTask.Netherite.Faster
                 }
                 else if (this.CheckpointDue(out var trigger))
                 {
-                    var token = this.store.StartPrimaryIndexCheckpoint();
+                    var token = this.store.StartSecondaryIndexIndexCheckpoint();
                     if (token.HasValue)
                     {
                         this.pendingCheckpointTrigger = trigger;
-                        this.pendingPrimaryIndexCheckpointTask = this.WaitForPrimaryCheckpointAsync(true, token.Value);
+                        this.pendingSecondaryIndexIndexCheckpointTask = this.WaitForSecondaryIndexCheckpointAsync(true, token.Value);
                     }
                 }
                 

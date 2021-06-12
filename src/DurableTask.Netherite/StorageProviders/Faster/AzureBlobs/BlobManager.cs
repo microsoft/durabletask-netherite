@@ -1,8 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#define USE_SECONDARY_INDEX
-
 #pragma warning disable IDE0008 // Use explicit type
 #pragma warning disable IDE0011 // Add braces
 
@@ -165,7 +163,6 @@ namespace DurableTask.Netherite.Faster
             CheckPointType = CheckpointType.FoldOver
         };
 
-#if USE_SECONDARY_INDEX
         internal RegistrationSettings<PredicateKey> CreateSecondaryIndexRegistrationSettings<TKey>(uint numberPartitions, int indexOrdinal)
         {
             var storeLogSettings = this.StoreLogSettings(false, numberPartitions);
@@ -192,7 +189,6 @@ namespace DurableTask.Netherite.Faster
                 }
             };
         }
-#endif
 
         public const int MaxRetries = 10;
 

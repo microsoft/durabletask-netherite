@@ -1,8 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#define USE_SECONDARY_INDEX
-
 #pragma warning disable IDE0008 // Use explicit type
 
 namespace DurableTask.Netherite.Faster
@@ -68,11 +66,7 @@ namespace DurableTask.Netherite.Faster
             this.partition = partition;
             this.terminationToken = errorHandler.Token;
 
-#if USE_SECONDARY_INDEX
             int psfCount = partition.Settings.UseSecondaryIndexQueries ? FasterKV.SecondaryIndexCount : 0;
-#else
-            int psfCount = 0;
-#endif
 
             this.blobManager = new BlobManager(
                 this.storageAccount,

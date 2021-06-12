@@ -1,8 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#define USE_SECONDARY_INDEX
-
 #pragma warning disable IDE0008 // Use explicit type
 
 namespace DurableTask.Netherite.Faster
@@ -29,7 +27,6 @@ namespace DurableTask.Netherite.Faster
 
         ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> mainSession;
 
-#if USE_SECONDARY_INDEX
         readonly HashValueIndex<Key, Value, PredicateKey> secondaryIndex;
 
         // We currently place all Predicates into a single HashValueIndex with the PredicateKey type
@@ -37,8 +34,9 @@ namespace DurableTask.Netherite.Faster
 
         internal IPredicate RuntimeStatusPredicate;
         internal IPredicate CreatedTimePredicate;
-        internal IPredicate InstanceIdPrefixPredicate;
-#endif
+        internal IPredicate InstanceIdPrefixPredicate7;
+        internal IPredicate InstanceIdPrefixPredicate4;
+
         public FasterKV(Partition partition, BlobManager blobManager)
         {
             this.partition = partition;
@@ -56,7 +54,6 @@ namespace DurableTask.Netherite.Faster
                     valueSerializer = () => new Value.Serializer(this.StoreStats),
                 });
 
-#if USE_SECONDARY_INDEX
             if (partition.Settings.UseSecondaryIndexQueries)
             {
                 int indexOrdinal = 0;
@@ -65,18 +62,23 @@ namespace DurableTask.Netherite.Faster
                                             (nameof(this.RuntimeStatusPredicate), v => v.Val is InstanceState state
                                                                                 ? new PredicateKey(state.OrchestrationState.OrchestrationStatus)
                                                                                 : default),
-                                           (nameof(this.CreatedTimePredicate), v => v.Val is InstanceState state
+                                            (nameof(this.CreatedTimePredicate), v => v.Val is InstanceState state
                                                                                 ? new PredicateKey(state.OrchestrationState.CreatedTime)
                                                                                 : default),
-                                           (nameof(this.InstanceIdPrefixPredicate), v => v.Val is InstanceState state
-                                                                                ? new PredicateKey(state.InstanceId)
-                                                                                : default));
+                                            (nameof(this.InstanceIdPrefixPredicate7), v => v.Val is InstanceState state
+                                                                                ? new PredicateKey(state.InstanceId, PredicateKey.InstanceIdPrefixLen7)
+                                                                                : default),
+                                            (nameof(this.InstanceIdPrefixPredicate4), v => v.Val is InstanceState state
+                                                                                 ? new PredicateKey(state.InstanceId, PredicateKey.InstanceIdPrefixLen4)
+                                                                                 : default));
+                this.fht.SecondaryIndexBroker.AddIndex(this.secondaryIndex);
 
                 this.RuntimeStatusPredicate = this.secondaryIndex.GetPredicate(nameof(this.RuntimeStatusPredicate));
                 this.CreatedTimePredicate = this.secondaryIndex.GetPredicate(nameof(this.CreatedTimePredicate));
-                this.InstanceIdPrefixPredicate = this.secondaryIndex.GetPredicate(nameof(this.InstanceIdPrefixPredicate));
+                this.InstanceIdPrefixPredicate7 = this.secondaryIndex.GetPredicate(nameof(this.InstanceIdPrefixPredicate7));
+                this.InstanceIdPrefixPredicate4 = this.secondaryIndex.GetPredicate(nameof(this.InstanceIdPrefixPredicate4));
             }
-#endif
+
             this.terminationToken = partition.ErrorHandler.Token;
 
             var _ = this.terminationToken.Register(
@@ -279,7 +281,6 @@ namespace DurableTask.Netherite.Faster
             {
                 var instanceQuery = queryEvent.InstanceQuery;
 
-#if USE_SECONDARY_INDEX
                 async IAsyncEnumerable<OrchestrationState> queryIndexAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
                 {
                     var querySettings = new QuerySettings
@@ -319,9 +320,12 @@ namespace DurableTask.Netherite.Faster
                     }
 
                     // These are arranged in the order of the expected most-to-least granular property: query the index for that, then post-process the others.
-                    if (!string.IsNullOrWhiteSpace(instanceQuery.InstanceIdPrefix))
+                    if (!string.IsNullOrWhiteSpace(instanceQuery.InstanceIdPrefix) && instanceQuery.InstanceIdPrefix.Length >= PredicateKey.InstanceIdPrefixLen4)
                     {
-                        await foreach (var orcState in queryPredicate(this.InstanceIdPrefixPredicate, new PredicateKey(instanceQuery.InstanceIdPrefix)).ConfigureAwait(false))
+                        var is7 = instanceQuery.InstanceIdPrefix.Length >= PredicateKey.InstanceIdPrefixLen7;
+                        var predicate = is7 ? this.InstanceIdPrefixPredicate7 : this.InstanceIdPrefixPredicate4;
+                        var prefixLen = is7 ? PredicateKey.InstanceIdPrefixLen7 : PredicateKey.InstanceIdPrefixLen4;
+                        await foreach (var orcState in queryPredicate(predicate, new PredicateKey(instanceQuery.InstanceIdPrefix, prefixLen)).ConfigureAwait(false))
                         {
                             yield return orcState;
                         }
@@ -348,11 +352,15 @@ namespace DurableTask.Netherite.Faster
                             }
                          }
                     }
+                    else
+                    {
+                        await foreach (var orcState in this.ScanOrchestrationStates(effectTracker, queryEvent).ConfigureAwait(false))
+                        {
+                            yield return orcState;
+                        }
+                    }
                 }
-#else
-                IAsyncEnumerable<OrchestrationState> queryIndexAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
-                    => this.ScanOrchestrationStates(effectTracker, queryEvent);
-#endif
+
                 // create an individual session for this query so the main session can be used
                 // while the query is progressing.
                 using (var session = this.CreateASession())
