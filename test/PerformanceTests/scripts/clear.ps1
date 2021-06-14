@@ -1,7 +1,10 @@
 #!/usr/bin/pwsh
+param (
+    $Settings="./settings.ps1"
+)
 
 # read the settings that are common to all scripts
-. ./settings.ps1
+. $Settings
 
 Write-Host "Clearing storage account..."
 $connectionString = (az storage account show-connection-string --name $storageName --resource-group $groupName | ConvertFrom-Json).connectionString
