@@ -22,7 +22,7 @@ namespace PerformanceTests.FileHash
             char[] separators = { ' ', '\n', '<', '>', '=', '\"', '\'', '/', '\\', '(', ')', '\t', '{', '}', '[', ']', ',', '.', ':', ';' };
 
             // setup connection to the blob storage
-            string connectionString = "string";
+            string connectionString = Environment.GetEnvironmentVariable("CorpusConnection");
             CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
             CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
 

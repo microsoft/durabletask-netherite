@@ -12,6 +12,8 @@ namespace PerformanceTests.FileHash
     using Microsoft.AspNetCore.Http;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Extensions.Logging;
+    using System.Net.Http;
+    using Newtonsoft.Json.Linq;
 
     public static class HttpTriggers
     {
@@ -38,14 +40,22 @@ namespace PerformanceTests.FileHash
                 string orchestrationInstanceId = await client.StartNewAsync(nameof(FileOrchestration), null, numFiles);
 
                 // wait for it to complete and return the result
-                var result = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(400));
-                double elapsedSeconds = (DateTime.UtcNow - startTime).TotalSeconds;
+                var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(400));
 
-                return (ActionResult)new OkObjectResult(new
+                if (response is ObjectResult objectResult
+                    && objectResult.Value is HttpResponseMessage responseMessage
+                    && responseMessage.StatusCode == System.Net.HttpStatusCode.OK
+                    && responseMessage.Content is StringContent stringContent)
                 {
-                    result,
-                    elapsedSeconds,
-                });
+                    var state = await client.GetStatusAsync(orchestrationInstanceId, false, false, false);
+                    var wordsHashed = (int)JToken.Parse(await stringContent.ReadAsStringAsync());
+                    var elapsedSeconds = (state.LastUpdatedTime - state.CreatedTime).TotalSeconds;
+                    var size = (double) wordsHashed / 1000000; // millions of words
+                    var throughput = size / elapsedSeconds;
+                    response = new OkObjectResult(new { numFiles, wordsHashed, elapsedSeconds, size, throughput });
+                }
+
+                return response;
             }
             catch (Exception e)
             {
