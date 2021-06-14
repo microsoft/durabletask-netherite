@@ -1,6 +1,7 @@
 #!/usr/bin/pwsh
 param (
-    $Settings="./settings.ps1"
+    $Settings="./settings.ps1",
+    $Configuration="Release"
 )
 
 # read the settings that are common to all scripts
@@ -11,5 +12,11 @@ $Env:AzureWebJobsStorage = (az storage account show-connection-string --name $st
 $Env:EventHubsConnection = (az eventhubs namespace authorization-rule keys list --resource-group $groupName --namespace-name $namespaceName --name RootManageSharedAccessKey | ConvertFrom-Json).primaryConnectionString
 $Env:CorpusConnection = (az storage account show-connection-string --name gutenbergcorpus --resource-group corpus | ConvertFrom-Json).connectionString
 
-# open visual studio
-devenv ..\..\DurableTask.Netherite.sln /noscale
+# enter the directory with the binaries 
+Push-Location -Path bin/$Configuration/netcoreapp3.1  
+
+# start an interactive windows cmd shell in the deployment directory
+cmd
+
+# when exiting the shell, restore the old directory
+Pop-Location
