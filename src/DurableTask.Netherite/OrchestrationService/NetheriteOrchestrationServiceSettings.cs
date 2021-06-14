@@ -91,6 +91,12 @@ namespace DurableTask.Netherite
         public PartitionManagementOptions PartitionManagement { get; set; } = PartitionManagementOptions.EventProcessorHost;
 
         /// <summary>
+        /// Gets or sets the activity scheduler option
+        /// </summary>
+        [JsonConverter(typeof(StringEnumConverter))]
+        public ActivitySchedulerOptions ActivityScheduler { get; set; } = ActivitySchedulerOptions.PeriodicOffload;
+
+        /// <summary>
         /// Gets or sets a flag indicating whether to enable caching of execution cursors to avoid replay.
         /// </summary>
         public bool CacheOrchestrationCursors { get; set; } = true;
@@ -150,7 +156,7 @@ namespace DurableTask.Netherite
         public bool UseAlternateObjectStore { get; set; } = false;
 
         /// <summary>
-        /// Forces steps to pe persisted before applying their effects, thus disabling all speculation.
+        /// Forces steps to pe persisted before applying their effects, disabling all pipelining.
         /// </summary>
         public bool PersistStepsFirst { get; set; } = false;
 
