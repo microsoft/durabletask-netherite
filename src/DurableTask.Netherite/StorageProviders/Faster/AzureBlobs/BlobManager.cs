@@ -159,7 +159,7 @@ namespace DurableTask.Netherite.Faster
 
         public CheckpointSettings StoreCheckpointSettings => new CheckpointSettings
         {
-            CheckpointManager = this.UseLocalFiles ? this.LocalCheckpointManager : this,
+            CheckpointManager = this.UseLocalFiles ? (ICheckpointManager)this.LocalCheckpointManager : (ICheckpointManager)this,
             CheckPointType = CheckpointType.FoldOver
         };
 
