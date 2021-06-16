@@ -16,14 +16,18 @@ namespace DurableTask.Netherite.EventHubs
         readonly string connectionString;
         readonly string[] partitionHubs;
         readonly string[] clientHubs;
+        readonly string loadMonitorHub;
 
         List<EventHubClient> partitionClients;
         List<EventHubClient> clientClients;
+        EventHubClient loadMonitorClient;
+
         readonly List<(EventHubClient client, string id)> partitionPartitions = new List<(EventHubClient client, string id)>();
         readonly List<(EventHubClient client, string id)> clientPartitions = new List<(EventHubClient client, string id)>();
-
+        
         public ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>> _partitionSenders = new ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>>();
         public ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>> _clientSenders = new ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>>();
+        public ConcurrentDictionary<int, EventHubsSender<LoadMonitorEvent>> _loadMonitorSenders = new ConcurrentDictionary<int, EventHubsSender<LoadMonitorEvent>>();
 
         public TransportAbstraction.IHost Host { get; set; }
         public EventHubsTraceHelper TraceHelper { get; set; }
@@ -33,16 +37,18 @@ namespace DurableTask.Netherite.EventHubs
         public EventHubsConnections(
             string connectionString, 
             string[] partitionHubs,
-            string[] clientHubs)
+            string[] clientHubs,
+            string loadMonitorHub)
         {
             this.connectionString = connectionString;
             this.partitionHubs = partitionHubs;
             this.clientHubs = clientHubs;
-        }
+            this.loadMonitorHub = loadMonitorHub;
+       }
 
         public async Task StartAsync(int numberPartitions)
         {
-            await Task.WhenAll(this.GetPartitionInformationAsync(), this.GetClientInformationAsync());
+            await Task.WhenAll(this.GetPartitionInformationAsync(), this.GetClientInformationAsync(), this.GetLoadMonitorInformationAsync());
 
             if (numberPartitions != this.partitionPartitions.Count)
             {
@@ -52,10 +58,31 @@ namespace DurableTask.Netherite.EventHubs
 
         public async Task StopAsync()
         {
-            var closePartitionClients = this.partitionClients.Select(c => c.CloseAsync()).ToList();
-            var closeClientClients = this.partitionClients.Select(c => c.CloseAsync()).ToList();
-            await Task.WhenAll(closePartitionClients);
-            await Task.WhenAll(closeClientClients);
+            IEnumerable<EventHubClient> Clients()
+            {
+                if (this.partitionClients != null)
+                {
+                    foreach (var client in this.partitionClients)
+                    {
+                        yield return client;
+                    }
+                }
+
+                if (this.clientClients != null)
+                {
+                    foreach (var client in this.clientClients)
+                    {
+                        yield return client;
+                    }
+                }
+
+                if (this.loadMonitorHub != null)
+                {
+                    yield return this.loadMonitorClient;
+                }
+            }
+
+            await Task.WhenAll(Clients().Select(client => client.CloseAsync()).ToList());
         }
 
         async Task GetPartitionInformationAsync()
@@ -117,9 +144,20 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
+        Task GetLoadMonitorInformationAsync()
+        {
+            // create loadmonitor client
+            var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
+            {
+                EntityPath = loadMonitorHub,
+            };
+            this.loadMonitorClient = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+            return Task.CompletedTask;
+        }
+
         public static async Task<long[]> GetQueuePositionsAsync(string connectionString, string[] partitionHubs)
         {
-            var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0]);
+            var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0], null);
             await connections.GetPartitionInformationAsync();
 
             var numberPartitions = connections.partitionPartitions.Count;
@@ -162,6 +200,14 @@ namespace DurableTask.Netherite.EventHubs
             return clientReceiver;
         }
 
+        public PartitionReceiver CreateLoadMonitorReceiver(string consumerGroupName)
+        {
+            var loadMonitorReceiver = this.loadMonitorClient.CreateReceiver(consumerGroupName, "0", EventPosition.FromEnqueuedTime(DateTime.UtcNow - TimeSpan.FromSeconds(10)));
+            this.TraceHelper.LogDebug("Created LoadMonitor PartitionReceiver {receiver} from {clientId}", loadMonitorReceiver.ClientId, this.loadMonitorClient.ClientId);
+            return loadMonitorReceiver;
+        }
+
+
         public EventHubsSender<PartitionUpdateEvent> GetPartitionSender(int partitionId, byte[] taskHubGuid)
         {
             return this._partitionSenders.GetOrAdd(partitionId, (key) => {
@@ -193,5 +239,20 @@ namespace DurableTask.Netherite.EventHubs
                 return sender;
             });
         }
-     }
+
+        public EventHubsSender<LoadMonitorEvent> GetLoadMonitorSender(byte[] taskHubGuid)
+        {
+            return this._loadMonitorSenders.GetOrAdd(0, (key) =>
+            {
+                var loadMonitorSender = this.loadMonitorClient.CreatePartitionSender("0");
+                var sender = new EventHubsSender<LoadMonitorEvent>(
+                    this.Host,
+                    taskHubGuid,
+                    loadMonitorSender,
+                    this.TraceHelper);
+                this.TraceHelper.LogDebug("Created LoadMonitorSender {sender} from {clientId}", loadMonitorSender.ClientId, this.loadMonitorClient.ClientId);
+                return sender;
+            });
+        }
+    }
 }

@@ -234,6 +234,13 @@ namespace DurableTask.Netherite
             this.BatchSender.Submit(updateEvent);
         }
 
+        public void Send(LoadMonitorEvent loadMonitorEvent)
+        {
+            this.EventDetailTracer?.TraceEventProcessingDetail($"Sending load monitor event {loadMonitorEvent} id={loadMonitorEvent.EventId}");
+
+            this.BatchSender.Submit(loadMonitorEvent);
+        }
+
         public void SubmitInternalEvent(PartitionUpdateEvent updateEvent)
         {
             // for better analytics experience, trace DTFx TaskMessages that are "sent" 

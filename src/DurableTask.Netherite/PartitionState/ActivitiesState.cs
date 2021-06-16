@@ -37,6 +37,12 @@ namespace DurableTask.Netherite
         [DataMember]
         public long SequenceNumber { get; set; }
 
+        [DataMember]
+        public TimeSpan? LoadMonitorInterval { get; set; }
+
+        [IgnoreDataMember]
+        DateTime? LastLoadInformationSent { get; set; }
+
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Activities);
 
@@ -106,6 +112,22 @@ namespace DurableTask.Netherite
                 {
                     info.MarkHighLatency();
                 }
+            }
+        }
+
+        // called frequently, directly from the StoreWorker. Must not modify any [DataMember] fields.
+        public void CollectLoadMonitorInformation()
+        {
+            if (!this.LastLoadInformationSent.HasValue  // always send info if we have not sent one since loading this partition
+                || (this.LoadMonitorInterval.HasValue && ((DateTime.UtcNow - this.LastLoadInformationSent.Value) > this.LoadMonitorInterval.Value)))
+            {
+                this.Partition.Send(new LoadInformationReceived() { 
+                    RequestId = Guid.NewGuid(),
+                    PartitionId = this.Partition.PartitionId,
+                    BacklogSize = this.LocalBacklog.Count + this.QueuedRemotes.Count,
+                });
+
+                this.LastLoadInformationSent = DateTime.UtcNow;
             }
         }
 
@@ -268,6 +290,17 @@ namespace DurableTask.Netherite
         {
             // records the reported queue size
             this.ReportedRemoteLoads[evt.OriginPartition] = evt.ActivitiesQueueSize;
+        }
+
+        public void Process(OffloadCommandReceived evt, EffectTracker effects)
+        {
+            // we can use this for tracing while we develop and debug the code
+            this.Partition.EventTraceHelper.TraceEventProcessingWarning("Processing OffloadCommandReceived");
+        }
+
+        public void Process(ProbingControlReceived evt, EffectTracker effects)
+        {
+            this.LoadMonitorInterval = evt.LoadMonitorInterval;
         }
 
         public void Process(OffloadDecision offloadDecisionEvent, EffectTracker effects)

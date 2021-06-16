@@ -377,6 +377,11 @@ namespace DurableTask.Netherite
             return partition;
         }
 
+        TransportAbstraction.ILoadMonitor TransportAbstraction.IHost.AddLoadMonitor(Guid taskHubGuid, TransportAbstraction.ISender batchSender)
+        {
+            return new LoadMonitor(this, taskHubGuid, batchSender);
+        }
+
         IStorageProvider TransportAbstraction.IHost.StorageProvider => this;
 
         IPartitionErrorHandler TransportAbstraction.IHost.CreateErrorHandler(uint partitionId)

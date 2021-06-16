@@ -391,5 +391,27 @@ namespace DurableTask.Netherite
             SetCurrentThreadActivityId(serviceInstanceId);
             this.WriteEvent(274, Account, TaskHub, EventHubsNamespace, Details, AppName, ExtensionVersion);
         }
+
+        // ----- LoadMonitor
+        [Event(275, Level = EventLevel.Informational, Version = 1)]
+        public void LoadMonitorProgress(string Account, string TaskHub, string Details, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(213, Account, TaskHub, Details, AppName, ExtensionVersion);
+        }
+
+        [Event(276, Level = EventLevel.Warning, Version = 1)]
+        public void LoadMonitorWarning(string Account, string TaskHub, string Details, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(214, Account, TaskHub, Details, AppName, ExtensionVersion);
+        }
+
+        [Event(277, Level = EventLevel.Error, Version = 1)]
+        public void LoadMonitorError(string Account, string TaskHub, string Message, string Details, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(215, Account, TaskHub, Message, Details, AppName, ExtensionVersion);
+        }
     }
 }

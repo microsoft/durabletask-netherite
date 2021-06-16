@@ -23,6 +23,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly TaskhubParameters parameters;
         readonly EventHubsTraceHelper traceHelper;
         readonly NetheriteOrchestrationServiceSettings settings;
+        readonly EventHubsTransport eventHubsTransport;
         readonly PartitionContext partitionContext;
         readonly string eventHubName;
         readonly string eventHubPartition;
@@ -33,6 +34,9 @@ namespace DurableTask.Netherite.EventHubs
         CancellationTokenSource eventProcessorShutdown;
         // we set this task once shutdown has been initiated
         Task shutdownTask = null;
+
+        // we always colocate the load monitor with partition 0
+        TransportAbstraction.ILoadMonitor loadMonitor;
 
         // we occasionally checkpoint received packets with eventhubs. It is not required for correctness
         // as we filter duplicates anyway, but it will help startup time.
@@ -71,6 +75,7 @@ namespace DurableTask.Netherite.EventHubs
             PartitionContext partitionContext,
             NetheriteOrchestrationServiceSettings settings,
             EventHubsTraceHelper logger,
+            EventHubsTransport eventHubsTransport,
             CancellationToken shutdownToken)
         {
             this.host = host;
@@ -79,6 +84,7 @@ namespace DurableTask.Netherite.EventHubs
             this.pendingDelivery = new ConcurrentQueue<(PartitionEvent evt, string offset, long seqno)>();
             this.partitionContext = partitionContext;
             this.settings = settings;
+            this.eventHubsTransport = eventHubsTransport;
             this.eventHubName = this.partitionContext.EventHubPath;
             this.eventHubPartition = this.partitionContext.PartitionId;
             this.taskHubGuid = parameters.TaskhubGuid.ToByteArray();
@@ -95,6 +101,12 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is opening", this.eventHubName, this.eventHubPartition);
             this.eventProcessorShutdown = new CancellationTokenSource();
             this.deliveryLock = new AsyncLock();
+
+            if (this.partitionId == 0)
+            {
+                this.loadMonitor = this.host.AddLoadMonitor(this.parameters.TaskhubGuid, this.sender);
+                Task.Run(() => this.eventHubsTransport.LoadMonitorEventLoop(this.loadMonitor, this.eventProcessorShutdown.Token));
+            }
 
             // we kick off the start-and-retry mechanism for the partition, but don't wait for it to be fully started.
             // instead, we save the task and wait for it when we need it

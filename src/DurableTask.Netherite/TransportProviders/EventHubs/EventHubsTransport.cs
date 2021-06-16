@@ -62,8 +62,10 @@ namespace DurableTask.Netherite.EventHubs
         // these are hardcoded now but we may turn them into settings
         public static string[] PartitionHubs = { "partitions" };
         public static string[] ClientHubs = { "clients0", "clients1", "clients2", "clients3" };
+        public static string  LoadMonitorHub = "loadmonitor";
         public static string PartitionConsumerGroup = "$Default";
         public static string ClientConsumerGroup = "$Default";
+        public static string LoadMonitorConsumerGroup = "$Default";
 
         static string GetContainerName(string taskHubName) => taskHubName.ToLowerInvariant() + "-storage";
 
@@ -94,6 +96,7 @@ namespace DurableTask.Netherite.EventHubs
             // ensure the task hubs exist, creating them if necessary
             var tasks = new List<Task>();
             tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, PartitionHubs[0], this.settings.PartitionCount));
+            tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, LoadMonitorHub, 1));
             foreach (string taskhub in ClientHubs)
             {
                 tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 32));
@@ -168,7 +171,7 @@ namespace DurableTask.Netherite.EventHubs
 
             this.host.NumberPartitions = (uint)this.parameters.StartPositions.Length;
            
-            this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs)
+            this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs, LoadMonitorHub)
             {
                 Host = host,
                 TraceHelper = this.traceHelper,
@@ -283,7 +286,7 @@ namespace DurableTask.Netherite.EventHubs
 
         IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
         {
-            var processor = new EventHubsProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper, this.shutdownSource.Token);
+            var processor = new EventHubsProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper, this, this.shutdownSource.Token);
             return processor;
         }
 
@@ -303,8 +306,13 @@ namespace DurableTask.Netherite.EventHubs
                     partitionSender.Submit(partitionEvent);
                     break;
 
+                case LoadMonitorEvent loadMonitorEvent:
+                    var loadMonitorSender = this.connections.GetLoadMonitorSender(this.taskhubGuid);
+                    loadMonitorSender.Submit(loadMonitorEvent);
+                    break;
+
                 default:
-                    throw new InvalidCastException("could not cast to neither PartitionReadEvent nor PartitionUpdateEvent");
+                    throw new InvalidCastException($"unknown type of event: {evt.GetType().FullName}");
             }
         }
 
@@ -348,6 +356,52 @@ namespace DurableTask.Netherite.EventHubs
                         foreach (var evt in receivedEvents)
                         {
                             this.client.Process(evt);
+                        }
+                        receivedEvents.Clear();
+                    }
+                }
+            }
+        }
+
+        internal async Task LoadMonitorEventLoop(TransportAbstraction.ILoadMonitor loadMonitor, CancellationToken cancellationToken)
+        {
+            var loadMonitorReceiver = this.connections.CreateLoadMonitorReceiver(EventHubsTransport.LoadMonitorConsumerGroup);
+            var receivedEvents = new List<LoadMonitorEvent>();
+
+            byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                IEnumerable<EventData> eventData = await loadMonitorReceiver.ReceiveAsync(1000, TimeSpan.FromMinutes(1)).ConfigureAwait(false);
+
+                if (eventData != null)
+                {
+                    foreach (var ed in eventData)
+                    {
+                        LoadMonitorEvent loadMonitorEvent = null;
+
+                        try
+                        {
+                            Packet.Deserialize(ed.Body, out loadMonitorEvent, taskHubGuid);
+
+                            if (loadMonitorEvent != null)
+                            {
+                                receivedEvents.Add(loadMonitorEvent);
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            this.traceHelper.LogError("EventProcessor for LoadMonitor could not deserialize packet #{seqno} ({size} bytes)", ed.SystemProperties.SequenceNumber, ed.Body.Count);
+                            throw;
+                        }
+                        this.traceHelper.LogDebug("EventProcessor for LoadMonitor received packet #{seqno} ({size} bytes)", ed.SystemProperties.SequenceNumber, ed.Body.Count);
+                    }
+
+                    if (receivedEvents.Count > 0 && !cancellationToken.IsCancellationRequested)
+                    {
+                        foreach (var evt in receivedEvents)
+                        {
+                            loadMonitor.Process(evt);
                         }
                         receivedEvents.Clear();
                     }

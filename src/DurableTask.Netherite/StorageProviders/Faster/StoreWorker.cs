@@ -347,6 +347,9 @@ namespace DurableTask.Netherite.Faster
                     await this.PublishPartitionLoad().ConfigureAwait(false);
                 }
 
+                var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker).ConfigureAwait(false)) as ActivitiesState;
+                activitiesState.CollectLoadMonitorInformation();
+
                 if (this.lastCheckpointedCommitLogPosition == this.CommitLogPosition 
                     && this.lastCheckpointedInputQueuePosition == this.InputQueuePosition
                     && this.LogWorker.LastCommittedInputQueuePosition <= this.InputQueuePosition)
