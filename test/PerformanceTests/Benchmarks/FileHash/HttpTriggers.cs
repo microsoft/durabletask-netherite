@@ -48,7 +48,7 @@ namespace PerformanceTests.FileHash
                     && responseMessage.Content is StringContent stringContent)
                 {
                     var state = await client.GetStatusAsync(orchestrationInstanceId, false, false, false);
-                    var wordsHashed = (int)JToken.Parse(await stringContent.ReadAsStringAsync());
+                    var wordsHashed = (long)JToken.Parse(await stringContent.ReadAsStringAsync());
                     var elapsedSeconds = (state.LastUpdatedTime - state.CreatedTime).TotalSeconds;
                     var size = (double) wordsHashed / 1000000; // millions of words
                     var throughput = size / elapsedSeconds;
