@@ -51,7 +51,9 @@ namespace DurableTask.Netherite
         public override void OnFirstInitialization()
         {
             this.Pending = new Dictionary<long, (TaskMessage, string)>();
+            // Backlog queue for local tasks
             this.LocalBacklog = new Queue<ActivityInfo>();
+            // Queue for remote tasks
             this.QueuedRemotes = new Queue<ActivityInfo>();
             this.ReportedRemoteLoads = new int[this.Partition.NumberPartitions()];
             uint numberPartitions = this.Partition.NumberPartitions();
@@ -67,13 +69,16 @@ namespace DurableTask.Netherite
         const int ABSOLUTE_LOAD_LIMIT_FOR_REMOTES = 1000;
         const double RELATIVE_LOAD_LIMIT_FOR_REMOTES = .8;
         const double PORTION_SUBJECT_TO_OFFLOAD = .5;
-        const int OFFLOAD_MAX_BATCH_SIZE = 100;
+        // xz: I feel like the max offload should be larger than the maxConcurrentActivities. e.g. 2*max
+        const int OFFLOAD_MAX_BATCH_SIZE = 200;
         const int OFFLOAD_MIN_BATCH_SIZE = 10;
 
-        const int MAX_WORKITEM_LOAD = 10;
+        // xz: not sure what this line means
+        const int MAX_WORKITEM_LOAD = 100;
 
         // minimum time for an activity to be waiting before it is offloaded to a remote partition
-        static readonly TimeSpan WaitTimeThresholdForOffload = TimeSpan.FromSeconds(15);
+        // xz: 15s is rather long.. 
+        static readonly TimeSpan WaitTimeThresholdForOffload = TimeSpan.FromSeconds(10);
 
         public override void OnRecoveryCompleted()
         {
@@ -201,6 +206,7 @@ namespace DurableTask.Netherite
                     {
                         this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.LocalBacklog.Count}");
 
+                        // xz: maybe schedule the offload when the backlog is greater than a threshold? so we can start search for offload decision immediately
                         if (this.LocalBacklog.Count == 1)
                         {
                             this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
@@ -306,13 +312,12 @@ namespace DurableTask.Netherite
         public void Process(OffloadDecision offloadDecisionEvent, EffectTracker effects)
         {
             // check for offload conditions and if satisfied, send batch to remote
-
             if (this.LocalBacklog.Count == 0)
             {
                 return;
             }
 
-            // find how many offload candidates we have
+            // find how many offload candidate tasks we have
             int numberOffloadCandidates = this.CountOffloadCandidates(offloadDecisionEvent.Timestamp);
 
             if (numberOffloadCandidates < OFFLOAD_MIN_BATCH_SIZE)
@@ -320,7 +325,7 @@ namespace DurableTask.Netherite
                 return; // no offloading if we cannot offload enough
             }
 
-            if (this.FindOffloadTarget(numberOffloadCandidates, out uint target, out int maxBatchsize))
+            if (this.FindOffloadTarget(offloadDecisionEvent.Timestamp, numberOffloadCandidates, out uint target, out int maxBatchsize))
             {
                 // don't pick this same target again until we get a response telling us the current queue size
                 var targetLoad = this.ReportedRemoteLoads[target];
@@ -384,7 +389,40 @@ namespace DurableTask.Netherite
             return numberOffloadCandidates;
         }
 
-        bool FindOffloadTarget(double portionSubjectToOffload, out uint target, out int batchsize)
+        bool FindOffloadTarget(DateTime timeStamp, double portionSubjectToOffload, out uint target, out int batchsize)
+        {
+            Random rand = new Random((int)timeStamp.Ticks);
+            switch (this.Partition.Settings.ActivityScheduler)
+            {
+                case ActivitySchedulerOptions.PeriodicOffloadThreshold:
+                    return this.FindOffloadTargetThreshold(portionSubjectToOffload, out target, out batchsize);
+
+                case ActivitySchedulerOptions.PeriodicOffloadRandom:
+                    return this.FindOffloadTargetRandom(rand, portionSubjectToOffload, out target, out batchsize);
+                
+                default:
+                    return this.FindOffloadTargetRandom(rand, portionSubjectToOffload, out target, out batchsize);
+            }
+
+        }
+
+        bool FindOffloadTargetRandom(Random rand, double portionSubjectToOffload, out uint target, out int batchsize)
+        {
+            uint numberPartitions = this.Partition.NumberPartitions();
+            target = this.Partition.PartitionId;
+
+            // pick a random partition to offload tasks
+            while (target == this.Partition.PartitionId)
+            {
+                target = (uint)rand.Next(0, (int)numberPartitions);
+            }
+
+            batchsize = Math.Min(OFFLOAD_MAX_BATCH_SIZE, Math.Max(OFFLOAD_MIN_BATCH_SIZE, (int)Math.Ceiling(portionSubjectToOffload)));
+            return true;
+        }
+
+
+        bool FindOffloadTargetThreshold(double portionSubjectToOffload, out uint target, out int batchsize)
         {
             uint numberPartitions = this.Partition.NumberPartitions();
             uint? firstNotContacted = null;
