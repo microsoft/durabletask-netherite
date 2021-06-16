@@ -18,8 +18,15 @@ namespace DurableTask.Netherite
         Local,
 
         /// <summary>
-        /// Activities are scheduled locally if possible, but backlog is offloaded periodically.
+        /// Activities are scheduled locally if possible, but backlog is offloaded periodically. 
+        /// The target partition is chosen at random.
         /// </summary>
-        PeriodicOffload,
+        PeriodicOffloadRandom,
+
+        /// <summary>
+        /// Activities are scheduled locally if possible, but backlog is offloaded periodically.
+        /// The target partition is chosen based on probes.
+        /// </summary>
+        PeriodicOffloadThreshold,
     }
 }

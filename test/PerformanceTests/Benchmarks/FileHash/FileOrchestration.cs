@@ -19,7 +19,7 @@ namespace PerformanceTests.FileHash
     {
 
         [FunctionName(nameof(FileOrchestration))]
-        public static async Task<int> Run([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
+        public static async Task<long> Run([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
         {
             // get the input
             int numFiles = context.GetInput<int>();
@@ -32,21 +32,20 @@ namespace PerformanceTests.FileHash
             foreach (var book in books)
             {
                 Task<int> wordCount = context.CallActivityAsync<int>(nameof(HashActivity), book);
-                log.LogWarning($"Processing {book}");
+                //log.LogWarning($"Processing {book}");
 
                 results.Add(wordCount);
                 fileCount++;
 
                 if (fileCount == numFiles)
                 {
-                    log.LogWarning($"Processed {fileCount} files, exiting");
+                    log.LogWarning($"Sent request to process {fileCount} files, exiting");
                     break;
                 }
             }
 
-            // This might overflow
             await Task.WhenAll(results);
-            int sum = results.Sum(t => t.Result);
+            long sum = results.Sum(t => t.Result);
             return sum;
         }
     }
