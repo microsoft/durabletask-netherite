@@ -52,10 +52,26 @@ namespace DurableTask.Netherite.EventHubs
 
         public async Task StopAsync()
         {
-            var closePartitionClients = this.partitionClients.Select(c => c.CloseAsync()).ToList();
-            var closeClientClients = this.partitionClients.Select(c => c.CloseAsync()).ToList();
-            await Task.WhenAll(closePartitionClients);
-            await Task.WhenAll(closeClientClients);
+            IEnumerable<EventHubClient> Clients()
+            {
+                if (this.partitionClients != null)
+                {
+                    foreach (var client in this.partitionClients)
+                    {
+                        yield return client;
+                    }
+                }
+
+                if (this.clientClients != null)
+                {
+                    foreach (var client in this.clientClients)
+                    {
+                        yield return client;
+                    }
+                }
+            }
+
+            await Task.WhenAll(Clients().Select(client => client.CloseAsync()).ToList());
         }
 
         async Task GetPartitionInformationAsync()
