@@ -170,7 +170,6 @@ namespace DurableTask.Netherite.Faster
             {
                 HashTableSize = HashTableSize,
                 KeyComparer = new PredicateKey.Comparer(),
-                NullIndicator = default,
                 LogSettings = new LogSettings()
                 {
                     LogDevice = this.SecondaryIndexLogDevices[indexOrdinal],
