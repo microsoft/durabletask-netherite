@@ -258,9 +258,10 @@ namespace DurableTask.Netherite
 
             this.Pending.Remove(evt.ActivityId);
 
+            this.EstimatedLocalWorkItemLoad = evt.ReportedLoad;
+
             if (evt.OriginPartitionId == effects.Partition.PartitionId)
             {
-                this.EstimatedLocalWorkItemLoad = evt.ReportedLoad;
                 // the response can be delivered to a session on this partition
                 effects.Add(TrackedObjectKey.Sessions);
             }
