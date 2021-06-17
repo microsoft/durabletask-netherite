@@ -172,7 +172,7 @@ namespace DurableTask.Netherite
                     (long commitLogPosition, string eventId) = EventTraceContext.Current;
 
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
-                    this.logger.LogWarning("Partition{partition:D2}{prefix} Offload decision reportedLocalLoad={reportedLocalLoad} pending={pending} backlog={backlog} remotes={remotes} reportedRemotes={reportedRemotes}",
+                    this.logger.LogWarning("Part{partition:D2}{prefix} Offload decision reportedLocalLoad={reportedLocalLoad} pending={pending} backlog={backlog} remotes={remotes} reportedRemotes={reportedRemotes}",
                         this.partitionId, prefix, reportedLocalLoad, pending, backlog, remotes, reportedRemotes);
 
                     this.etw?.PartitionOffloadDecision(this.account, this.taskHub, this.partitionId, commitLogPosition, eventId, reportedLocalLoad, pending, backlog, remotes, reportedRemotes, TraceUtils.AppName, TraceUtils.ExtensionVersion);
