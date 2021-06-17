@@ -11,9 +11,9 @@ namespace PerformanceTests.Sequence
     using Microsoft.Azure.WebJobs.Extensions.Http;
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
-    using Newtonsoft.Json;
+    using Microsoft.Azure.Storage.Blob;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Microsoft.WindowsAzure.Storage.Queue;
+    using Newtonsoft.Json;
 
     /// <summary>
     /// An orchestration that runs the sequence using blob triggers.
@@ -38,7 +38,7 @@ namespace PerformanceTests.Sequence
         [FunctionName(nameof(SequenceTaskStart))]
         public static async Task SequenceTaskStart(
             [ActivityTrigger] IDurableActivityContext context,
-            [Blob("tasks/step/0")] Microsoft.WindowsAzure.Storage.Blob.CloudBlobDirectory directory,
+            [Blob("tasks/step/0")] CloudBlobDirectory directory,
             ILogger logger)
         {
             Sequence.Input input = context.GetInput<Sequence.Input>();
@@ -52,7 +52,7 @@ namespace PerformanceTests.Sequence
         [FunctionName(nameof(BlobSequenceTask1))]
         public static async Task BlobSequenceTask1(
            [BlobTrigger("tasks/step/{iteration}/{instanceId}")] Stream inputStream,
-           [Blob("tasks/step")] Microsoft.WindowsAzure.Storage.Blob.CloudBlobDirectory directory,
+           [Blob("tasks/step")] CloudBlobDirectory directory,
            [DurableClient] IDurableClient client,
            string instanceId,
            ILogger logger)
