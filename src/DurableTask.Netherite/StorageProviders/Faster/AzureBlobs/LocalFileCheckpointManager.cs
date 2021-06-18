@@ -14,10 +14,12 @@ namespace DurableTask.Netherite.Faster
         readonly CheckpointInfo checkpointInfo;
         readonly LocalCheckpointManager localCheckpointManager;
         readonly string checkpointCompletedFilename;
+        readonly bool isIndex;
 
-        internal LocalFileCheckpointManager(CheckpointInfo ci, string checkpointDir, string checkpointCompletedBlobName)
+        internal LocalFileCheckpointManager(CheckpointInfo ci, bool isIndex, string checkpointDir, string checkpointCompletedBlobName)
         {
             this.checkpointInfo = ci;
+            this.isIndex = isIndex;
             this.localCheckpointManager = new LocalCheckpointManager(checkpointDir);
             this.checkpointCompletedFilename = Path.Combine(checkpointDir, checkpointCompletedBlobName);
         }
@@ -31,20 +33,44 @@ namespace DurableTask.Netherite.Faster
         void ICheckpointManager.CommitIndexCheckpoint(Guid indexToken, byte[] commitMetadata)
         {
             this.localCheckpointManager.CommitIndexCheckpoint(indexToken, commitMetadata);
-            this.checkpointInfo.IndexToken = indexToken;
+
+            if (this.isIndex)
+            {
+                this.checkpointInfo.SecondaryIndexIndexToken = indexToken;
+            }
+            else
+            {
+                this.checkpointInfo.IndexToken = indexToken;
+            }
         }
 
         void ICheckpointManager.CommitLogCheckpoint(Guid logToken, byte[] commitMetadata)
         {
             this.localCheckpointManager.CommitLogCheckpoint(logToken, commitMetadata);
-            this.checkpointInfo.LogToken = logToken;
+
+            if (this.isIndex)
+            {
+                this.checkpointInfo.SecondaryIndexLogToken = logToken;
+            }
+            else
+            {
+                this.checkpointInfo.LogToken = logToken;
+            }
         }
 
         void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
         {
             // TODO: verify implementation of CommitLogIncrementalCheckpoint
             this.localCheckpointManager.CommitLogIncrementalCheckpoint(logToken, version, commitMetadata, deltaLog);
-            this.checkpointInfo.LogToken = logToken;
+
+            if (this.isIndex)
+            {
+                this.checkpointInfo.SecondaryIndexLogToken = logToken;
+            }
+            else
+            {
+                this.checkpointInfo.LogToken = logToken;
+            }
         }
 
         byte[] ICheckpointManager.GetIndexCheckpointMetadata(Guid indexToken)
@@ -69,14 +95,26 @@ namespace DurableTask.Netherite.Faster
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
-            var indexToken = this.checkpointInfo.IndexToken;
-            yield return indexToken;
+            if (!this.isIndex)
+            {
+                yield return this.checkpointInfo.IndexToken;
+            }
+            else if (this.checkpointInfo.SecondaryIndexIndexToken.HasValue)
+            {
+                yield return this.checkpointInfo.SecondaryIndexIndexToken.Value;
+            }
         }
 
         IEnumerable<Guid> ICheckpointManager.GetLogCheckpointTokens()
         {
-            var logToken = this.checkpointInfo.LogToken;
-            yield return logToken;
+            if (!this.isIndex)
+            {
+                yield return this.checkpointInfo.LogToken;
+            }
+            else if (this.checkpointInfo.SecondaryIndexLogToken.HasValue)
+            {
+                yield return this.checkpointInfo.SecondaryIndexLogToken.Value;
+            }
         }
 
         void ICheckpointManager.PurgeAll()

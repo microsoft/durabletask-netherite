@@ -55,8 +55,7 @@ namespace DurableTask.Netherite.Faster
         // Note: We currently have only one index; here, we have set up to use multiple, but other places in the code refer to "fasterKV.secondaryIndex" 
         // and would need to be updated to loop through multiple indexes.
         IDevice[] SecondaryIndexLogDevices;
-        internal CheckpointInfo[] SecondaryIndexCheckpointInfos { get; }
-        int SecondaryIndexCount => this.SecondaryIndexCheckpointInfos.Length;
+        int SecondaryIndexCount => 1;
         const int InvalidSecondaryIndexOrdinal = -1;
 
         public string ContainerName { get; }
@@ -113,7 +112,6 @@ namespace DurableTask.Netherite.Faster
             return JsonConvert.SerializeObject(new
                 {
                     UseAlternateObjectStore = settings.UseAlternateObjectStore,
-                    UseSecondaryIndexQueries = settings.UseSecondaryIndexQueries,
                     FormatVersion = StorageFormatVersion,
                 }, 
                 Formatting.None);       
@@ -128,11 +126,6 @@ namespace DurableTask.Netherite.Faster
                 if ((bool)json["UseAlternateObjectStore"] != settings.UseAlternateObjectStore)
                 {
                     throw new InvalidOperationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
-                }
-                if ((bool)json["UseSecondaryIndexQueries"] && !settings.UseSecondaryIndexQueries)
-                {
-                    // We can go from no secondary indexing to adding secondary indexing; in this case, we just replay all records. TODO: Do we write back settings to the taskhub, to update this?
-                    throw new InvalidOperationException("The Netherite configuration setting 'UseSecondaryIndexQueries' is incompatible with the existing taskhub; cannot turn off secondary indexing.");
                 }
                 if ((int)json["FormatVersion"] != StorageFormatVersion)
                 {
@@ -182,7 +175,7 @@ namespace DurableTask.Netherite.Faster
                 CheckpointSettings = new CheckpointSettings
                 {
                     CheckpointManager = this.UseLocalFiles
-                        ? new LocalFileCheckpointManager(this.SecondaryIndexCheckpointInfos[indexOrdinal], this.LocalIndexCheckpointDirectoryPath(indexOrdinal), this.GetCheckpointCompletedBlobName())
+                        ? new LocalFileCheckpointManager(this.CheckpointInfo, true, this.LocalIndexCheckpointDirectoryPath(indexOrdinal), this.GetCheckpointCompletedBlobName())
                         : new SecondaryIndexBlobCheckpointManager(this, indexOrdinal),
                     CheckPointType = CheckpointType.FoldOver
                 }
@@ -218,12 +211,6 @@ namespace DurableTask.Netherite.Faster
         public static TimeSpan GetDelayBetweenRetries(int numAttempts)
             => TimeSpan.FromSeconds(Math.Pow(2, (numAttempts - 1)));
 
-        // For tests only; TODO consider adding Indexes
-        internal BlobManager(CloudStorageAccount storageAccount, CloudStorageAccount secondaryStorageAccount, string localFileDirectory, string taskHubName, ILogger logger, Microsoft.Extensions.Logging.LogLevel logLevelLimit, uint partitionId, IPartitionErrorHandler errorHandler)
-            : this(storageAccount, secondaryStorageAccount, localFileDirectory, taskHubName, logger, logLevelLimit, partitionId, errorHandler, 0)
-        {
-        }
-
         /// <summary>
         /// Create a blob manager.
         /// </summary>
@@ -235,7 +222,6 @@ namespace DurableTask.Netherite.Faster
         /// <param name="logLevelLimit">A limit on log event level emitted</param>
         /// <param name="partitionId">The partition id</param>
         /// <param name="errorHandler">A handler for errors encountered in this partition</param>
-        /// <param name="indexCount">Number of secondary indexes to be created in FASTER</param>
         public BlobManager(
             CloudStorageAccount storageAccount,
             CloudStorageAccount secondaryStorageAccount,
@@ -243,8 +229,7 @@ namespace DurableTask.Netherite.Faster
             string taskHubName,
             ILogger logger,
             Microsoft.Extensions.Logging.LogLevel logLevelLimit,
-            uint partitionId, IPartitionErrorHandler errorHandler,
-            int indexCount)
+            uint partitionId, IPartitionErrorHandler errorHandler)
         {
             this.cloudStorageAccount = storageAccount;
             this.secondaryStorageAccount = secondaryStorageAccount;
@@ -253,7 +238,6 @@ namespace DurableTask.Netherite.Faster
             this.ContainerName = GetContainerName(taskHubName);
             this.partitionId = partitionId;
             this.CheckpointInfo = new CheckpointInfo();
-            this.SecondaryIndexCheckpointInfos = Enumerable.Range(0, indexCount).Select(ii => new CheckpointInfo()).ToArray();
 
             if (!this.UseLocalFiles)
             {
@@ -266,6 +250,7 @@ namespace DurableTask.Netherite.Faster
             {
                 this.LocalCheckpointManager = new LocalFileCheckpointManager(
                     this.CheckpointInfo,
+                    false,
                     this.LocalCheckpointDirectoryPath, 
                     this.GetCheckpointCompletedBlobName());
             }
@@ -832,43 +817,31 @@ namespace DurableTask.Netherite.Faster
             yield return logToken;
         }
 
-        internal Task FindCheckpointsAsync()
+        internal async Task FindCheckpointsAsync()
         {
-            var tasks = new List<Task>();
-            tasks.Add(FindCheckpoint(InvalidSecondaryIndexOrdinal));
-            for (int i = 0; i < this.SecondaryIndexCount; i++)
+            CloudBlockBlob checkpointCompletedBlob = null;
+            try
             {
-                tasks.Add(FindCheckpoint(i));
+                string jsonString;
+                if (this.UseLocalFiles)
+                {
+                    jsonString = this.LocalCheckpointManager.GetLatestCheckpointJson();
+                }
+                else
+                {
+                    var partDir = this.blockBlobPartitionDirectory;
+                    checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
+                    await this.ConfirmLeaseIsGoodForAWhileAsync();
+                    jsonString = await checkpointCompletedBlob.DownloadTextAsync();
+                }
+
+                // read the fields from the json to update the checkpoint info
+                JsonConvert.PopulateObject(jsonString, this.CheckpointInfo);
             }
-            return Task.WhenAll(tasks);
-
-            async Task FindCheckpoint(int indexOrdinal)
+            catch (Exception e)
             {
-                var (isIndex, tag) = this.IsIndexOrPrimary(indexOrdinal);
-                CloudBlockBlob checkpointCompletedBlob = null;
-                try
-                {
-                    string jsonString;
-                    if (this.UseLocalFiles)
-                    {
-                        jsonString = this.LocalCheckpointManager.GetLatestCheckpointJson();
-                    }
-                    else
-                    {
-                        var partDir = isIndex ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(indexOrdinal)) : this.blockBlobPartitionDirectory;
-                        checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
-                        await this.ConfirmLeaseIsGoodForAWhileAsync();
-                        jsonString = await checkpointCompletedBlob.DownloadTextAsync();
-                    }
-
-                    // read the fields from the json to update the checkpoint info
-                    JsonConvert.PopulateObject(jsonString, isIndex ? this.SecondaryIndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo);
-                }
-                catch (Exception e)
-                {
-                    this.HandleStorageError(nameof(FindCheckpoint), "could not determine latest checkpoint", checkpointCompletedBlob?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
-                    throw;
-                }
+                this.HandleStorageError(nameof(FindCheckpointsAsync), "could not determine latest checkpoint", checkpointCompletedBlob?.Name, e, true, this.PartitionErrorHandler.IsTerminated);
+                throw;
             }
         }
 
@@ -909,7 +882,15 @@ namespace DurableTask.Netherite.Faster
                  }
              });
 
-            (isIndex ? this.SecondaryIndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo).IndexToken = indexToken;
+            if (isIndex)
+            {
+                this.CheckpointInfo.SecondaryIndexIndexToken = indexToken;
+            }
+            else
+            {
+                this.CheckpointInfo.IndexToken = indexToken;
+            }
+
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitIndexCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
@@ -940,7 +921,15 @@ namespace DurableTask.Netherite.Faster
                     }
                 });
 
-            (isIndex ? this.SecondaryIndexCheckpointInfos[indexOrdinal] : this.CheckpointInfo).LogToken = logToken;
+            if (isIndex)
+            {
+                this.CheckpointInfo.SecondaryIndexLogToken = logToken;
+            }
+            else
+            {
+                this.CheckpointInfo.LogToken = logToken;
+            }
+            
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
@@ -1049,7 +1038,8 @@ namespace DurableTask.Netherite.Faster
 
         internal async Task FinalizeCheckpointCompletedAsync()
         {
-            // write the final file that has all the checkpoint info
+            // write the final file that has all the checkpoint info for log, index, secondary index log, and secondary index index
+
             void writeLocal(string path, string text)
                 => File.WriteAllText(Path.Combine(path, this.GetCheckpointCompletedBlobName()), text);
 
@@ -1066,31 +1056,18 @@ namespace DurableTask.Netherite.Faster
                     checkpointCompletedBlob.Name,
                     1000,
                     true,
-                    async (numAttempts) => 
-                    { 
+                    async (numAttempts) =>
+                    {
                         await checkpointCompletedBlob.UploadTextAsync(text);
                         return text.Length;
                     });
             }
 
-            // Primary FKV
-            {
-                var jsonText = JsonConvert.SerializeObject(this.CheckpointInfo, Formatting.Indented);
-                if (this.UseLocalFiles)
-                    writeLocal(this.LocalCheckpointDirectoryPath, jsonText);
-                else
-                    await writeBlob(this.blockBlobPartitionDirectory, jsonText);
-            }
-
-            // Secondary Indexes
-            for (var ii = 0; ii < this.SecondaryIndexLogDevices.Length; ++ii)
-            {
-                var jsonText = JsonConvert.SerializeObject(this.SecondaryIndexCheckpointInfos[ii], Formatting.Indented);
-                if (this.UseLocalFiles)
-                    writeLocal(this.LocalIndexCheckpointDirectoryPath(ii), jsonText);
-                else
-                    await writeBlob(this.blockBlobPartitionDirectory.GetDirectoryReference(this.IndexFolderName(ii)), jsonText);
-            }
+            var jsonText = JsonConvert.SerializeObject(this.CheckpointInfo, Formatting.Indented);
+            if (this.UseLocalFiles)
+                writeLocal(this.LocalCheckpointDirectoryPath, jsonText);
+            else
+                await writeBlob(this.blockBlobPartitionDirectory, jsonText);
         }
  
         #endregion

@@ -66,8 +66,6 @@ namespace DurableTask.Netherite.Faster
             this.partition = partition;
             this.terminationToken = errorHandler.Token;
 
-            int psfCount = partition.Settings.UseSecondaryIndexQueries ? FasterKV.SecondaryIndexCount : 0;
-
             this.blobManager = new BlobManager(
                 this.storageAccount,
                 this.pageBlobStorageAccount,
@@ -76,8 +74,7 @@ namespace DurableTask.Netherite.Faster
                 this.logger,
                 this.partition.Settings.StorageLogLevelLimit,
                 partition.PartitionId,
-                errorHandler,
-                psfCount);
+                errorHandler);
 
             this.TraceHelper = this.blobManager.TraceHelper;
 

@@ -85,9 +85,11 @@ namespace DurableTask.Netherite.Faster
                 () => {
                     try
                     {
-                        // TODO: Does terminationToken need to call FasterStorage.CancelAndShutdown before releasing fht?
                         this.mainSession?.Dispose();
-                        this.secondaryIndex.Dispose();
+                        if (this.secondaryIndex != null)
+                        {
+                            this.secondaryIndex.Dispose();
+                        }
                         this.fht.Dispose();
                         this.blobManager.HybridLogDevice.Dispose();
                         this.blobManager.ObjectLogDevice.Dispose();
@@ -150,7 +152,10 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 // First do the secondary index(es).
-                await this.secondaryIndex.TakeFullCheckpointAsync(CheckpointType.FoldOver);
+                if (this.secondaryIndex != null)
+                {
+                    await this.secondaryIndex.TakeFullCheckpointAsync(CheckpointType.FoldOver);
+                }
 
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;

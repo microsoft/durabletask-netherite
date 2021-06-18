@@ -16,6 +16,12 @@ namespace DurableTask.Netherite.Faster
         [JsonProperty]
         public Guid LogToken { get; set; }
 
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.IgnoreAndPopulate)]
+        public Guid? SecondaryIndexIndexToken { get; set; }
+
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.IgnoreAndPopulate)]
+        public Guid? SecondaryIndexLogToken { get; set; }
+
         [JsonProperty]
         public long CommitLogPosition { get; set; }
 
