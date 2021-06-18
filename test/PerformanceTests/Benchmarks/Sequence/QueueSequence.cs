@@ -10,7 +10,7 @@ namespace PerformanceTests.Sequence
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Microsoft.WindowsAzure.Storage.Queue;
+    using Microsoft.Azure.Storage.Queue;
 
     /// <summary>
     /// An orchestration that runs the sequence using queue triggers.
