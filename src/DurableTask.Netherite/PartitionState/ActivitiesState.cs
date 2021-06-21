@@ -203,7 +203,7 @@ namespace DurableTask.Netherite
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.LocalBacklog.Count}")
+                        this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.LocalBacklog.Count}");
                         if (this.LocalBacklog.Count == 1)
                         {
                             this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
