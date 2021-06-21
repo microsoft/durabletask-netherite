@@ -28,5 +28,10 @@ namespace DurableTask.Netherite
         /// The target partition is chosen based on probes.
         /// </summary>
         PeriodicOffloadThreshold,
+
+        /// <summary>
+        /// Activities in the local backlog are immediately evenly offloaded to other partitions
+        /// </summary>
+        Aggressive,
     }
 }

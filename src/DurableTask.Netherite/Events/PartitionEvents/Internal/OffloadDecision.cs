@@ -15,10 +15,7 @@ namespace DurableTask.Netherite
         public DateTime Timestamp { get; set; }
 
         [IgnoreDataMember]
-        public uint DestinationPartitionId { get; set; }
-
-        [IgnoreDataMember]
-        public List<(TaskMessage,string)> OffloadedActivities { get; set; }
+        public Dictionary<uint, List<(TaskMessage,string)>> OffloadedActivities { get; set; }
 
         public static string GetWorkItemId(uint partition, DateTime timestamp) => $"{partition:D2}F{timestamp:o}";
 

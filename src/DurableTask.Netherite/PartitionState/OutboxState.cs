@@ -230,12 +230,17 @@ namespace DurableTask.Netherite
         public void Process(OffloadDecision evt, EffectTracker effects)
         {
             var batch = new Batch();
-            batch.OutgoingMessages.Add(new ActivityOffloadReceived()
+
+            foreach(var kvp in evt.OffloadedActivities)
             {
-                PartitionId = evt.DestinationPartitionId,
-                OffloadedActivities = evt.OffloadedActivities,
-                Timestamp = evt.Timestamp,
-            });
+                batch.OutgoingMessages.Add(new ActivityOffloadReceived()
+                {
+                    PartitionId=kvp.Key,
+                    OffloadedActivities = kvp.Value,
+                    Timestamp = evt.Timestamp,
+                });
+            }
+
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
     }

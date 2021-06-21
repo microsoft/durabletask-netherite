@@ -70,15 +70,14 @@ namespace DurableTask.Netherite
         const double RELATIVE_LOAD_LIMIT_FOR_REMOTES = .8;
         const double PORTION_SUBJECT_TO_OFFLOAD = .5;
         // xz: I feel like the max offload should be larger than the maxConcurrentActivities. e.g. 2*max
-        const int OFFLOAD_MAX_BATCH_SIZE = 200;
+        const int OFFLOAD_MAX_BATCH_SIZE = 20;
         const int OFFLOAD_MIN_BATCH_SIZE = 10;
 
         // xz: not sure what this line means
         const int MAX_WORKITEM_LOAD = 100;
 
         // minimum time for an activity to be waiting before it is offloaded to a remote partition
-        // xz: 15s is rather long.. 
-        static readonly TimeSpan WaitTimeThresholdForOffload = TimeSpan.FromSeconds(10);
+        static readonly TimeSpan WaitTimeThresholdForOffload = TimeSpan.FromMilliseconds(0);
 
         public override void OnRecoveryCompleted()
         {
@@ -204,9 +203,7 @@ namespace DurableTask.Netherite
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.LocalBacklog.Count}");
-
-                        // xz: maybe schedule the offload when the backlog is greater than a threshold? so we can start search for offload decision immediately
+                        this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.LocalBacklog.Count}")
                         if (this.LocalBacklog.Count == 1)
                         {
                             this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
@@ -302,7 +299,7 @@ namespace DurableTask.Netherite
         public void Process(OffloadCommandReceived evt, EffectTracker effects)
         {
             // we can use this for tracing while we develop and debug the code
-            this.Partition.EventTraceHelper.TraceEventProcessingWarning("Processing OffloadCommandReceived");
+            this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processing OffloadCommandReceived, NumActivitiesToSend={evt.NumActivitiesToSend}");
         }
 
         public void Process(ProbingControlReceived evt, EffectTracker effects)
@@ -318,59 +315,109 @@ namespace DurableTask.Netherite
                 return;
             }
 
-            // find how many offload candidate tasks we have
-            int numberOffloadCandidates = this.CountOffloadCandidates(offloadDecisionEvent.Timestamp);
-
-            if (numberOffloadCandidates < OFFLOAD_MIN_BATCH_SIZE)
+            if (this.Partition.Settings.ActivityScheduler == ActivitySchedulerOptions.Aggressive)
             {
-                return; // no offloading if we cannot offload enough
-            }
-
-            if (this.FindOffloadTarget(offloadDecisionEvent.Timestamp, numberOffloadCandidates, out uint target, out int maxBatchsize))
-            {
-                // don't pick this same target again until we get a response telling us the current queue size
-                var targetLoad = this.ReportedRemoteLoads[target];
-                this.ReportedRemoteLoads[target] = RESPONSE_PENDING;
-
+                uint numberPartitions = this.Partition.NumberPartitions();
+                int numberOffloadPerPart = (int)(this.LocalBacklog.Count / (this.Partition.NumberPartitions() - 1));
                 // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
-                offloadDecisionEvent.DestinationPartitionId = target;
-                offloadDecisionEvent.OffloadedActivities = new List<(TaskMessage, string)>();
+                offloadDecisionEvent.OffloadedActivities = new Dictionary<uint, List<(TaskMessage, string)>>();
 
-                for (int i = 0; i < maxBatchsize; i++)
+                foreach (uint target in Enumerable.Range(0, (int)numberPartitions))
                 {
-                    var info = this.LocalBacklog.Dequeue();
-                    offloadDecisionEvent.OffloadedActivities.Add((info.Message, info.WorkItemId));
-
-                    if (this.LocalBacklog.Count == 0 || offloadDecisionEvent.Timestamp - this.LocalBacklog.Peek().IssueTime < WaitTimeThresholdForOffload)
+                    if (target == this.Partition.PartitionId)
                     {
-                        break;
+                        continue;
                     }
+
+                    var ActivitiesToOffload = new List<(TaskMessage, string)>();
+                    for (int i = 0; i < numberOffloadPerPart; i++)
+                    {
+                        var info = this.LocalBacklog.Dequeue();
+                        ActivitiesToOffload.Add((info.Message, info.WorkItemId));
+
+                        if (this.LocalBacklog.Count == 0)
+                        {
+                            break;
+                        }
+                    }
+
+                    offloadDecisionEvent.OffloadedActivities.Add(target, ActivitiesToOffload);
                 }
+
 
                 // process this on OutboxState so the events get sent
                 effects.Add(TrackedObjectKey.Outbox);
 
-                var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x, int i) =>
-                    (i == target) ? $"{targetLoad}+{offloadDecisionEvent.OffloadedActivities.Count}" : (x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString()))));
-
-                if (!effects.IsReplaying)
+                // this may not be the most concise way to format the message. 
+                var offloadCountPerPartition = new List<int>(new int[numberPartitions]);
+                offloadCountPerPartition[(int)this.Partition.PartitionId] = -1;
+                foreach(var kvp in offloadDecisionEvent.OffloadedActivities)
                 {
-                    this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
-
-                    // try again relatively soon
-                    this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(200));
+                    offloadCountPerPartition[(int)kvp.Key] = kvp.Value.Count;
                 }
-            }
+
+                var reportedRemotes = string.Join(",", offloadCountPerPartition.Select((int x) => x.ToString()));
+
+                this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, -1, reportedRemotes);
+            } 
             else
             {
-                var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x) => x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString())));
+                // find how many offload candidate tasks we have
+                int numberOffloadCandidates = this.CountOffloadCandidates(offloadDecisionEvent.Timestamp);
 
-                if (!effects.IsReplaying)
+                if (numberOffloadCandidates < OFFLOAD_MIN_BATCH_SIZE)
                 {
-                    this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
+                    return; // no offloading if we cannot offload enough
+                }
 
-                    // there are no eligible recipients... try again in a while
-                    this.ScheduleNextOffloadDecision(TimeSpan.FromSeconds(10));
+                if (this.FindOffloadTarget(offloadDecisionEvent.Timestamp, numberOffloadCandidates, out uint target, out int maxBatchsize))
+                {
+                    // don't pick this same target again until we get a response telling us the current queue size
+                    var targetLoad = this.ReportedRemoteLoads[target];
+                    this.ReportedRemoteLoads[target] = RESPONSE_PENDING;
+
+                    // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
+                    offloadDecisionEvent.OffloadedActivities = new Dictionary<uint, List<(TaskMessage, string)>>();
+                    var ActivitiesToOffload = new List<(TaskMessage, string)>();
+
+                    for (int i = 0; i < maxBatchsize; i++)
+                    {
+                        var info = this.LocalBacklog.Dequeue();
+                        ActivitiesToOffload.Add((info.Message, info.WorkItemId));
+
+                        if (this.LocalBacklog.Count == 0 || offloadDecisionEvent.Timestamp - this.LocalBacklog.Peek().IssueTime < WaitTimeThresholdForOffload)
+                        {
+                            break;
+                        }
+                    }
+
+                    offloadDecisionEvent.OffloadedActivities.Add(target, ActivitiesToOffload);
+
+                    // process this on OutboxState so the events get sent
+                    effects.Add(TrackedObjectKey.Outbox);
+
+                    var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x, int i) =>
+                        (i == target) ? $"{targetLoad}+{offloadDecisionEvent.OffloadedActivities.Count}" : (x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString()))));
+
+                    if (!effects.IsReplaying)
+                    {
+                        this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
+
+                        // try again relatively soon
+                        this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(50));
+                    }
+                }
+                else
+                {
+                    var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x) => x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString())));
+
+                    if (!effects.IsReplaying)
+                    {
+                        this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
+
+                        // there are no eligible recipients... try again in a while
+                        this.ScheduleNextOffloadDecision(TimeSpan.FromSeconds(10));
+                    }
                 }
             }
         }
