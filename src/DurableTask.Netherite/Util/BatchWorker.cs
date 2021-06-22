@@ -143,7 +143,7 @@ namespace DurableTask.Netherite
             {
                 int? nextBatch = this.GetNextBatch();
 
-                if (previousBatch.HasValue)
+                if (previousBatch.HasValue && previousBatch.Value > 0)
                 {
                     this.traceHelper?.BatchWorkerProgress(this.Name, previousBatch.Value, this.stopwatch.Elapsed.TotalMilliseconds, nextBatch);
                 }
