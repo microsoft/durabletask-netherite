@@ -203,7 +203,11 @@ namespace DurableTask.Netherite
                     break;
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(this.Settings.ResolvedStorageConnectionString, this.Settings.ResolvedPageBlobStorageConnectionString, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName).ConfigureAwait(false);
+                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(
+                        this.Settings.ResolvedStorageConnectionString, 
+                        this.Settings.ResolvedPageBlobStorageConnectionString, 
+                        this.Settings.UseLocalDirectoryForPartitionStorage, 
+                        this.Settings.HubName).ConfigureAwait(false);
                     break;
 
                 default:

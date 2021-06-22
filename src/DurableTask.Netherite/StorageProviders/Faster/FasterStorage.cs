@@ -55,8 +55,8 @@ namespace DurableTask.Netherite.Faster
 
         public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName)
         {
-            var storageAccount = string.IsNullOrEmpty(localFileDirectory) ? CloudStorageAccount.Parse(connectionString) : null;
-            var pageBlobAccount = string.IsNullOrEmpty(localFileDirectory) ? CloudStorageAccount.Parse(pageBlobConnectionString) : null;
+            var storageAccount = string.IsNullOrEmpty(connectionString) ? null : CloudStorageAccount.Parse(connectionString);
+            var pageBlobAccount = string.IsNullOrEmpty(pageBlobConnectionString) ? storageAccount : CloudStorageAccount.Parse(pageBlobConnectionString);
             return BlobManager.DeleteTaskhubStorageAsync(storageAccount, pageBlobAccount, localFileDirectory, taskHubName);
         }
 
