@@ -53,10 +53,11 @@ namespace DurableTask.Netherite.Faster
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
         }
 
-        public static Task DeleteTaskhubStorageAsync(string connectionString, string localFileDirectory, string taskHubName)
+        public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName)
         {
             var storageAccount = string.IsNullOrEmpty(localFileDirectory) ? CloudStorageAccount.Parse(connectionString) : null;
-            return BlobManager.DeleteTaskhubStorageAsync(storageAccount, localFileDirectory, taskHubName);
+            var pageBlobAccount = string.IsNullOrEmpty(localFileDirectory) ? CloudStorageAccount.Parse(pageBlobConnectionString) : null;
+            return BlobManager.DeleteTaskhubStorageAsync(storageAccount, pageBlobAccount, localFileDirectory, taskHubName);
         }
 
         public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, long firstInputQueuePosition)
