@@ -5,6 +5,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Threading.Tasks;
     using DurableTask.Netherite.Tests;
     using Microsoft.Azure.WebJobs;
@@ -40,6 +41,15 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.Sequence));
             Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
             Assert.Equal(10, (int)status.Output);
+        }
+
+        [Fact]
+        public async Task CanPurgeAndListInstances()
+        {
+            await this.PurgeAllAsync();
+            OrchestrationStatusQueryResult result = await this.GetInstancesAsync(new OrchestrationStatusQueryCondition());  
+            Assert.Null(result.ContinuationToken);
+            Assert.Empty(result.DurableOrchestrationState); 
         }
 
         [Fact]

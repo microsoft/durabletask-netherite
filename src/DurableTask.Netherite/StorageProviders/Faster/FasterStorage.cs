@@ -64,11 +64,7 @@ namespace DurableTask.Netherite.Faster
             this.partition = partition;
             this.terminationToken = errorHandler.Token;
 
-#if FASTER_SUPPORTS_PSF
-            int psfCount = partition.Settings.UsePSFQueries ? FasterKV.PSFCount : 0;
-#else
             int psfCount = 0;
-#endif
 
             this.blobManager = new BlobManager(
                 this.storageAccount,
