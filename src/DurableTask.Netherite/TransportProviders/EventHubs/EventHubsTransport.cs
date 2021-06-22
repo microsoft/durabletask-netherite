@@ -100,8 +100,9 @@ namespace DurableTask.Netherite.EventHubs
             }
             await Task.WhenAll(tasks);
 
-            // determine the start positions
-            long[] startPositions = await EventHubsConnections.GetQueuePositionsAsync(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHubs);
+            // determine the start positions and the creation timestamps
+            (long[] startPositions, DateTime[] creationTimestamps, string namespaceEndpoint)
+                = await EventHubsConnections.GetPartitionInfo(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHubs);
 
             var taskHubParameters = new TaskhubParameters()
             {
@@ -113,6 +114,8 @@ namespace DurableTask.Netherite.EventHubs
                 ClientHubs = EventHubsTransport.ClientHubs,
                 PartitionConsumerGroup = EventHubsTransport.PartitionConsumerGroup,
                 ClientConsumerGroup = EventHubsTransport.ClientConsumerGroup,
+                EventHubsEndpoint = namespaceEndpoint,
+                EventHubsCreationTimestamps = creationTimestamps,
                 StartPositions = startPositions
             };
 
@@ -174,7 +177,7 @@ namespace DurableTask.Netherite.EventHubs
                 TraceHelper = this.traceHelper,
             };
 
-            await this.connections.StartAsync(this.parameters.StartPositions.Length);
+            await this.connections.StartAsync(this.parameters);
 
             this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
 
