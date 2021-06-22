@@ -140,11 +140,6 @@ namespace DurableTask.Netherite
         public long MaxTimeMsBetweenCheckpoints { get; set; } = 60 * 1000;
 
         /// <summary>
-        /// Whether to use the Faster PSF support for handling queries.
-        /// </summary>
-        public bool UsePSFQueries { get; set; } = false;
-
-        /// <summary>
         /// Set this to a local file path to make FASTER use local files instead of blobs. Currently,
         /// this makes sense only for local testing and debugging.
         /// </summary>

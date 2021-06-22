@@ -110,7 +110,6 @@ namespace DurableTask.Netherite.Faster
             return JsonConvert.SerializeObject(new StorageFormatSettings()
                 {
                     UseAlternateObjectStore = settings.UseAlternateObjectStore,
-                    UsePSFQueries = settings.UsePSFQueries,
                     FormatVersion = StorageFormatVersion,
                 }, 
                 serializerSettings);       
@@ -120,6 +119,7 @@ namespace DurableTask.Netherite.Faster
         class StorageFormatSettings
         {
             // this must stay the same
+
             [JsonProperty("FormatVersion")]
             public int FormatVersion { get; set; }
 
@@ -127,9 +127,6 @@ namespace DurableTask.Netherite.Faster
 
             [JsonProperty("UseAlternateObjectStore", DefaultValueHandling=DefaultValueHandling.Ignore)]
             public bool? UseAlternateObjectStore { get; set; }
-
-            [JsonProperty("UsePSFQueries", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool? UsePSFQueries { get; set; }
         }
 
         static readonly JsonSerializerSettings serializerSettings = new JsonSerializerSettings()
@@ -140,7 +137,6 @@ namespace DurableTask.Netherite.Faster
             Formatting = Formatting.None,
         };
 
-
         public static void CheckStorageFormat(string format, NetheriteOrchestrationServiceSettings settings)
         {
             try
@@ -150,10 +146,6 @@ namespace DurableTask.Netherite.Faster
                 if (taskhubFormat.UseAlternateObjectStore != settings.UseAlternateObjectStore)
                 {
                     throw new InvalidOperationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
-                }
-                if (taskhubFormat.UsePSFQueries != settings.UsePSFQueries)
-                {
-                    throw new InvalidOperationException("The Netherite configuration setting 'UsePSFQueries' is incompatible with the existing taskhub.");
                 }
                 if (taskhubFormat.FormatVersion != StorageFormatVersion)
                 {
@@ -181,33 +173,6 @@ namespace DurableTask.Netherite.Faster
             CheckpointManager = this.UseLocalFiles ? (ICheckpointManager)this.LocalCheckpointManager : (ICheckpointManager)this,
             CheckPointType = CheckpointType.FoldOver
         };
-
-#if FASTER_SUPPORTS_PSF
-        internal PSFRegistrationSettings<TKey> CreatePSFRegistrationSettings<TKey>(uint numberPartitions, int groupOrdinal)
-        {
-            var storeLogSettings = this.StoreLogSettings(false, numberPartitions);
-            return new PSFRegistrationSettings<TKey>
-            {
-                HashTableSize = FasterKV.HashTableSize,
-                LogSettings = new LogSettings()
-                {
-                    LogDevice = this.PsfLogDevices[groupOrdinal],
-                    PageSizeBits = storeLogSettings.PageSizeBits,
-                    SegmentSizeBits = storeLogSettings.SegmentSizeBits,
-                    MemorySizeBits = storeLogSettings.MemorySizeBits,
-                    CopyReadsToTail = false,
-                    ReadCacheSettings = storeLogSettings.ReadCacheSettings
-                },
-                CheckpointSettings = new CheckpointSettings
-                {
-                    CheckpointManager = this.UseLocalFilesForTestingAndDebugging
-                        ? new LocalFileCheckpointManager(this.PsfCheckpointInfos[groupOrdinal], this.LocalPsfCheckpointDirectoryPath(groupOrdinal), this.GetCheckpointCompletedBlobName())
-                        : (ICheckpointManager)new PsfBlobCheckpointManager(this, groupOrdinal),
-                    CheckPointType = CheckpointType.FoldOver
-                }
-            };
-        }
-#endif
 
         public const int MaxRetries = 10;
 
