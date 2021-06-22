@@ -358,38 +358,38 @@ namespace DurableTask.Netherite
         // ----- EventHubs Transport
 
         [Event(270, Level = EventLevel.Informational, Version = 1)]
-        public void EventHubsInformation(string Account, string TaskHub, string EventHubsNamespace, string Details, string AppName, string ExtensionVersion)
+        public void EventHubsInformation(string Account, string TaskHub, string EventHubsNamespace, string PartitionId, string Details, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(270, Account, TaskHub, EventHubsNamespace, Details, AppName, ExtensionVersion);
+            this.WriteEvent(270, Account, TaskHub, EventHubsNamespace, PartitionId, Details, AppName, ExtensionVersion);
         }
 
         [Event(271, Level = EventLevel.Warning, Version = 1)]
-        public void EventHubsWarning(string Account, string TaskHub, string EventHubsNamespace, string Details, string AppName, string ExtensionVersion)
+        public void EventHubsWarning(string Account, string TaskHub, string EventHubsNamespace, string PartitionId, string Details, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(271, Account, TaskHub, EventHubsNamespace, Details, AppName, ExtensionVersion);
+            this.WriteEvent(271, Account, TaskHub, EventHubsNamespace, PartitionId, Details, AppName, ExtensionVersion);
         }
 
         [Event(272, Level = EventLevel.Error, Version = 1)]
-        public void EventHubsError(string Account, string TaskHub, string EventHubsNamespace, string Details, string AppName, string ExtensionVersion)
+        public void EventHubsError(string Account, string TaskHub, string EventHubsNamespace, string PartitionId, string Details, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(272, Account, TaskHub, EventHubsNamespace, Details, AppName, ExtensionVersion);
+            this.WriteEvent(272, Account, TaskHub, EventHubsNamespace, PartitionId, Details, AppName, ExtensionVersion);
         }
 
         [Event(273, Level = EventLevel.Verbose, Version = 1)]
-        public void EventHubsDebug(string Account, string TaskHub, string EventHubsNamespace, string Details, string AppName, string ExtensionVersion)
+        public void EventHubsDebug(string Account, string TaskHub, string EventHubsNamespace, string PartitionId, string Details, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(273, Account, TaskHub, EventHubsNamespace, Details, AppName, ExtensionVersion);
+            this.WriteEvent(273, Account, TaskHub, EventHubsNamespace, PartitionId, Details, AppName, ExtensionVersion);
         }
 
         [Event(274, Level = EventLevel.Verbose, Version = 1)]
-        public void EventHubsTrace(string Account, string TaskHub, string EventHubsNamespace, string Details, string AppName, string ExtensionVersion)
+        public void EventHubsTrace(string Account, string TaskHub, string EventHubsNamespace, string PartitionId, string Details, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(274, Account, TaskHub, EventHubsNamespace, Details, AppName, ExtensionVersion);
+            this.WriteEvent(274, Account, TaskHub, EventHubsNamespace, PartitionId, Details, AppName, ExtensionVersion);
         }
     }
 }

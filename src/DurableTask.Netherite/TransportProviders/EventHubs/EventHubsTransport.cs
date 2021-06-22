@@ -26,6 +26,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly TransportAbstraction.IHost host;
         readonly NetheriteOrchestrationServiceSettings settings;
         readonly CloudStorageAccount cloudStorageAccount;
+        readonly ILogger logger;
         readonly EventHubsTraceHelper traceHelper;
 
         EventProcessorHost eventProcessorHost;
@@ -50,7 +51,8 @@ namespace DurableTask.Netherite.EventHubs
             this.settings = settings;
             this.cloudStorageAccount = CloudStorageAccount.Parse(this.settings.ResolvedStorageConnectionString);
             string namespaceName = TransportConnectionString.EventHubsNamespaceName(settings.ResolvedTransportConnectionString);
-            this.traceHelper = new EventHubsTraceHelper(loggerFactory, settings.TransportLogLevelLimit, this.cloudStorageAccount.Credentials.AccountName, settings.HubName, namespaceName);
+            this.logger = EventHubsTraceHelper.CreateLogger(loggerFactory);
+            this.traceHelper = new EventHubsTraceHelper(this.logger, settings.TransportLogLevelLimit, null, this.cloudStorageAccount.Credentials.AccountName, settings.HubName, namespaceName);
             this.ClientId = Guid.NewGuid();
             var blobContainerName = GetContainerName(settings.HubName);
             var cloudBlobClient = this.cloudStorageAccount.CreateCloudBlobClient();
@@ -258,14 +260,14 @@ namespace DurableTask.Netherite.EventHubs
             {
                 case PartitionManagementOptions.EventProcessorHost:
                     {
-                        this.traceHelper.LogDebug("Unregistering event processor");
+                        this.traceHelper.LogDebug("Unregistering event processor host");
                         await this.eventProcessorHost.UnregisterEventProcessorAsync().ConfigureAwait(false);
                         break;
                     }
 
                 case PartitionManagementOptions.Scripted:
                     {
-                        this.traceHelper.LogDebug("Stopping event processor");
+                        this.traceHelper.LogDebug("Stopping event processor host");
                         await this.scriptedEventProcessorHost.StopAsync();
                         break;
                     }
