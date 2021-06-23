@@ -33,5 +33,10 @@ namespace DurableTask.Netherite
         /// Activities in the local backlog are immediately evenly offloaded to other partitions
         /// </summary>
         Aggressive,
+
+        /// <summary>
+        /// Activities are load balanced with a global load monitor
+        /// </summary>
+        LoadMonitor,
     }
 }

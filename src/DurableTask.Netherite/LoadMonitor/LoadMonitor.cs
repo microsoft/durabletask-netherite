@@ -26,7 +26,8 @@ namespace DurableTask.Netherite
 
         const int OFFLOAD_MAX_BATCH_SIZE = 20;
         const int OFFLOAD_MIN_BATCH_SIZE = 10;
-        const int LOAD_THRESHOLD = int.MaxValue;
+        const int OVERLOAD_THRESHOLD = 20;
+        const int UNDERLOAD_THRESHOLD = 5;
 
         public static string GetShortId(Guid clientId) => clientId.ToString("N").Substring(0, 7);
 
@@ -39,7 +40,7 @@ namespace DurableTask.Netherite
             this.traceHelper = new LoadMonitorTraceHelper(host.Logger, host.Settings.LogLevelLimit, host.StorageAccountName, host.Settings.HubName);
             this.BatchSender = batchSender;
             this.LoadInfo = new Dictionary<uint, int>();
-            this.traceHelper.TraceProgress("Started");
+            this.traceHelper.TraceWarning("Started");
         }  
        
         public void ReportTransportError(string message, Exception e)
@@ -55,43 +56,50 @@ namespace DurableTask.Netherite
 
         public void Process(LoadInformationReceived loadInformationReceived)
         {
-            //TODO this is of course not the algorithm we want but it was useful to debug the transport layer
-
             // update load info
-            //this.LoadInfo.Add(loadInformationReceived.PartitionId, loadInformationReceived.BacklogSize);
+            this.LoadInfo[loadInformationReceived.PartitionId] = loadInformationReceived.BacklogSize;
+            this.traceHelper.TraceWarning($"Received Load information from partition{loadInformationReceived.PartitionId} with load={loadInformationReceived.BacklogSize}");
 
             // check if the load is greater than the threshold
             // xz: in the future, we may also want to check for overloaded nodes if there are multiple partitions on a single node
-            //if (loadInformationReceived.BacklogSize > LOAD_THRESHOLD)
-            //{
-                // start the task migration process 
-
-                // find partitions to offload tasks
-
-                // send offload commands
-
-                // load decisions and update load info
-            //}
-            
-
-            this.traceHelper.TraceProgress($"Sending CommandReceived to partition {loadInformationReceived.PartitionId}");
-
-            // tells the partition from which we received the load information to offload to the next partition
-            this.BatchSender.Submit(new OffloadCommandReceived() 
-            { 
-                RequestId = Guid.NewGuid(),
-                PartitionId = loadInformationReceived.PartitionId,
-                NumActivitiesToSend = 10,
-                OffloadDestination = (loadInformationReceived.PartitionId + 1) % this.host.NumberPartitions,      
-            });;
+            if (loadInformationReceived.BacklogSize > OVERLOAD_THRESHOLD)
+            {
+                // start the task migration process and find offload targets
+                if (this.FindOffloadTarget(loadInformationReceived.PartitionId, loadInformationReceived.BacklogSize - OVERLOAD_THRESHOLD, out Dictionary<uint, int> OffloadTargets))
+                {
+                    // send offload commands
+                    foreach(var kvp in OffloadTargets)
+                    {
+                        this.traceHelper.TraceWarning($"Sending offloadCommand to partition {loadInformationReceived.PartitionId}" +
+                            $"to send {kvp.Value} activities to partition {kvp.Key}");
+                        this.BatchSender.Submit(new OffloadCommandReceived()
+                        {
+                            RequestId = Guid.NewGuid(),
+                            PartitionId = loadInformationReceived.PartitionId,
+                            NumActivitiesToSend = kvp.Value,
+                            OffloadDestination = kvp.Key,
+                        });
+                    }
+                    // load decisions and update load info
+                    this.LoadInfo[loadInformationReceived.PartitionId] -= OffloadTargets.Skip(1).Sum(x => x.Value);
+                }
+            }
         }
 
-        bool FindOffloadTarget(uint currentPartitionId, out uint[] target, out int[] batchsize)
+        bool FindOffloadTarget(uint currentPartitionId, int numActivitiesToOffload, out Dictionary<uint, int> OffloadTargets)
         {
-            const int size = 10;
-            target = new uint[size];
-            batchsize = new int[size];
-            return false;
+            OffloadTargets = new Dictionary<uint, int>();
+            for (uint i = 0; i < this.host.NumberPartitions - 1 && numActivitiesToOffload > 0; i++)
+            {
+                uint target = (currentPartitionId + i + 1) % this.host.NumberPartitions;
+                if (this.LoadInfo[target] < UNDERLOAD_THRESHOLD)
+                {
+                    int capacity = OVERLOAD_THRESHOLD - this.LoadInfo[target];
+                    OffloadTargets[target] = numActivitiesToOffload - capacity > 0 ? capacity : numActivitiesToOffload;
+                    numActivitiesToOffload -= capacity;
+                }
+            }
+            return OffloadTargets.Count == 0 ? false : true;
         }
     }
 }

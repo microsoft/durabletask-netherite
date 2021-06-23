@@ -20,6 +20,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public uint OffloadDestination { get; set; }
 
+        [IgnoreDataMember]
+        public List<(TaskMessage, string)> OffloadedActivities { get; set; }
+
         public override EventId EventId => EventId.MakeLoadMonitorToPartitionEventId(this.RequestId, this.PartitionId);
 
         public override void DetermineEffects(EffectTracker effects)

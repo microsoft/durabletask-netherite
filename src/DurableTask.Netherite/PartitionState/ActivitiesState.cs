@@ -5,16 +5,10 @@ namespace DurableTask.Netherite
 {
     using System;
     using System.Collections.Generic;
-    using System.Diagnostics;
     using System.Linq;
     using System.Runtime.Serialization;
-    using System.Text;
-    using System.Threading;
-    using System.Threading.Tasks;
     using DurableTask.Core;
-    using DurableTask.Core.History;
     using DurableTask.Netherite.Scaling;
-    using Dynamitey;
 
     [DataContract]
     class ActivitiesState : TrackedObject
@@ -23,7 +17,7 @@ namespace DurableTask.Netherite
         public Dictionary<long, (TaskMessage message, string workItem)> Pending { get; private set; }
 
         [DataMember]
-        public Queue<ActivityInfo> LocalBacklog { get; private set; } 
+        public Queue<ActivityInfo> LocalBacklog { get; private set; }
 
         [DataMember]
         public Queue<ActivityInfo> QueuedRemotes { get; private set; }
@@ -74,10 +68,7 @@ namespace DurableTask.Netherite
         const int OFFLOAD_MIN_BATCH_SIZE = 10;
 
         // xz: not sure what this line means
-        const int MAX_WORKITEM_LOAD = 100;
-
-        // minimum time for an activity to be waiting before it is offloaded to a remote partition
-        static readonly TimeSpan WaitTimeThresholdForOffload = TimeSpan.FromMilliseconds(0);
+        const int MAX_WORKITEM_LOAD = 10;
 
         public override void OnRecoveryCompleted()
         {
@@ -89,6 +80,8 @@ namespace DurableTask.Netherite
 
             if (this.LocalBacklog.Count > 0)
             {
+                TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Aggressive ?
+                        TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
                 this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
             }
         }
@@ -125,7 +118,8 @@ namespace DurableTask.Netherite
             if (!this.LastLoadInformationSent.HasValue  // always send info if we have not sent one since loading this partition
                 || (this.LoadMonitorInterval.HasValue && ((DateTime.UtcNow - this.LastLoadInformationSent.Value) > this.LoadMonitorInterval.Value)))
             {
-                this.Partition.Send(new LoadInformationReceived() { 
+                this.Partition.Send(new LoadInformationReceived()
+                {
                     RequestId = Guid.NewGuid(),
                     PartitionId = this.Partition.PartitionId,
                     BacklogSize = this.LocalBacklog.Count + this.QueuedRemotes.Count,
@@ -142,7 +136,8 @@ namespace DurableTask.Netherite
 
         void ScheduleNextOffloadDecision(TimeSpan delay)
         {
-            if (this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Local)
+            if (this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Local
+                && this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.LoadMonitor)
             {
                 this.Partition.PendingTimers.Schedule(DateTime.UtcNow + delay, new OffloadDecision()
                 {
@@ -206,6 +201,8 @@ namespace DurableTask.Netherite
                         this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.LocalBacklog.Count}");
                         if (this.LocalBacklog.Count == 1)
                         {
+                            TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Aggressive ?
+                                TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
                             this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
                         }
                     }
@@ -288,6 +285,8 @@ namespace DurableTask.Netherite
                     break;
                 }
             }
+            this.LoadMonitorInterval = TimeSpan.FromSeconds(1);
+            this.CollectLoadMonitorInformation();
         }
 
         public void Process(RemoteActivityResultReceived evt, EffectTracker effects)
@@ -299,7 +298,22 @@ namespace DurableTask.Netherite
         public void Process(OffloadCommandReceived evt, EffectTracker effects)
         {
             // we can use this for tracing while we develop and debug the code
-            this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processing OffloadCommandReceived, NumActivitiesToSend={evt.NumActivitiesToSend}");
+            this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processing OffloadCommandReceived," +
+                $"OffloadDestination={evt.OffloadDestination}, NumActivitiesToSend={evt.NumActivitiesToSend}");
+
+            for (int i = 0; i < evt.NumActivitiesToSend; i++)
+            {
+                var info = this.LocalBacklog.Dequeue();
+                evt.OffloadedActivities.Add((info.Message, info.WorkItemId));
+
+                // we might want to offload tasks in remote queue as well
+                if (this.LocalBacklog.Count == 0)
+                {
+                    break;
+                }
+            }
+
+            effects.Add(TrackedObjectKey.Outbox);
         }
 
         public void Process(ProbingControlReceived evt, EffectTracker effects)
@@ -351,7 +365,7 @@ namespace DurableTask.Netherite
                 // this may not be the most concise way to format the message. 
                 var offloadCountPerPartition = new List<int>(new int[numberPartitions]);
                 offloadCountPerPartition[(int)this.Partition.PartitionId] = -1;
-                foreach(var kvp in offloadDecisionEvent.OffloadedActivities)
+                foreach (var kvp in offloadDecisionEvent.OffloadedActivities)
                 {
                     offloadCountPerPartition[(int)kvp.Key] = kvp.Value.Count;
                 }
@@ -359,7 +373,7 @@ namespace DurableTask.Netherite
                 var reportedRemotes = string.Join(",", offloadCountPerPartition.Select((int x) => x.ToString()));
 
                 this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, -1, reportedRemotes);
-            } 
+            }
             else
             {
                 // find how many offload candidate tasks we have
@@ -385,6 +399,8 @@ namespace DurableTask.Netherite
                         var info = this.LocalBacklog.Dequeue();
                         ActivitiesToOffload.Add((info.Message, info.WorkItemId));
 
+                        TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Aggressive ?
+                                    TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
                         if (this.LocalBacklog.Count == 0 || offloadDecisionEvent.Timestamp - this.LocalBacklog.Peek().IssueTime < WaitTimeThresholdForOffload)
                         {
                             break;
@@ -428,6 +444,8 @@ namespace DurableTask.Netherite
             int limit = (int)(Math.Min(PORTION_SUBJECT_TO_OFFLOAD * this.LocalBacklog.Count, OFFLOAD_MAX_BATCH_SIZE * this.Partition.NumberPartitions()));
             foreach (var entry in this.LocalBacklog)
             {
+                TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Aggressive ?
+                        TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
                 if (now - entry.IssueTime < WaitTimeThresholdForOffload
                     || numberOffloadCandidates++ > limit)
                 {
@@ -447,7 +465,7 @@ namespace DurableTask.Netherite
 
                 case ActivitySchedulerOptions.PeriodicOffloadRandom:
                     return this.FindOffloadTargetRandom(rand, portionSubjectToOffload, out target, out batchsize);
-                
+
                 default:
                     return this.FindOffloadTargetRandom(rand, portionSubjectToOffload, out target, out batchsize);
             }

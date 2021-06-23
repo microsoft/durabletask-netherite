@@ -243,5 +243,17 @@ namespace DurableTask.Netherite
 
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
+
+        public void Process(OffloadCommandReceived evt, EffectTracker effects)
+        {
+            var batch = new Batch();
+            batch.OutgoingMessages.Add(new ActivityOffloadReceived()
+            {
+                PartitionId = evt.OffloadDestination,
+                OffloadedActivities = evt.OffloadedActivities,
+            });
+
+            this.SendBatchOnceEventIsPersisted(evt, effects, batch);
+        }
     }
 }
