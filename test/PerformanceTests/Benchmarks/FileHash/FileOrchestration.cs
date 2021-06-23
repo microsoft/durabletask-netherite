@@ -24,7 +24,7 @@ namespace PerformanceTests.FileHash
             // get the input
             int numFiles = context.GetInput<int>();
 
-            var books = await context.CallActivityAsync<List<string>>(nameof(GetFilesActivity), numFiles);
+            var books = await context.CallActivityAsync<List<string>>(nameof(GetFilesActivity), null);
 
             int fileCount = 0;
             var results = new List<Task<int>>();
