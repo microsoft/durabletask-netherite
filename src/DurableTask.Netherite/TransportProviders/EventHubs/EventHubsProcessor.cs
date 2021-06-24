@@ -70,7 +70,7 @@ namespace DurableTask.Netherite.EventHubs
             TaskhubParameters parameters,
             PartitionContext partitionContext,
             NetheriteOrchestrationServiceSettings settings,
-            EventHubsTraceHelper logger,
+            EventHubsTraceHelper traceHelper,
             CancellationToken shutdownToken)
         {
             this.host = host;
@@ -83,7 +83,7 @@ namespace DurableTask.Netherite.EventHubs
             this.eventHubPartition = this.partitionContext.PartitionId;
             this.taskHubGuid = parameters.TaskhubGuid.ToByteArray();
             this.partitionId = uint.Parse(this.eventHubPartition);
-            this.traceHelper = logger;
+            this.traceHelper = new EventHubsTraceHelper(traceHelper, this.partitionId);
 
             var _ = shutdownToken.Register(
               () => { var _ = Task.Run(this.IdempotentShutdown); },
@@ -273,7 +273,20 @@ namespace DurableTask.Netherite.EventHubs
 
         Task IEventProcessor.ProcessErrorAsync(PartitionContext context, Exception exception)
         {
-            this.traceHelper.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition} received internal error indication from EventProcessorHost: {exception}", this.eventHubName, this.eventHubPartition, exception);
+            LogLevel GetLogLevel()
+            {
+                switch (exception)
+                {
+                    case ReceiverDisconnectedException: // occur when partitions are being rebalanced by EventProcessorHost
+                        return LogLevel.Information;
+
+                    default:
+                        return LogLevel.Warning;
+                }
+            }
+
+            this.traceHelper.Log(GetLogLevel(), "EventHubsProcessor {eventHubName}/{eventHubPartition} received internal error indication from EventProcessorHost: {exception}", this.eventHubName, this.eventHubPartition, exception);
+
             return Task.CompletedTask;
         }
 
