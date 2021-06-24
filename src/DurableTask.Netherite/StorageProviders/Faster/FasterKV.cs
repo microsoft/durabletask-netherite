@@ -33,7 +33,7 @@ namespace DurableTask.Netherite.Faster
 
             this.fht = new FasterKV<Key, Value>(
                 BlobManager.HashTableSize,
-                blobManager.StoreLogSettings(partition.Settings.UsePremiumStorage, partition.NumberPartitions()),
+                blobManager.StoreLogSettings(partition.Settings.UseSeparatePageBlobStorage, partition.NumberPartitions()),
                 blobManager.StoreCheckpointSettings,
                 new SerializerSettings<Key, Value>
                 {
