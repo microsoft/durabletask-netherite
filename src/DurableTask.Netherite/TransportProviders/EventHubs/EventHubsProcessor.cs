@@ -86,7 +86,7 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper = new EventHubsTraceHelper(traceHelper, this.partitionId);
 
             var _ = shutdownToken.Register(
-              () => { var _ = Task.Run(this.IdempotentShutdown); },
+              () => { var _ = Task.Run(() => this.IdempotentShutdown("shutdownToken")); },
               useSynchronizationContext: false);
         }
 
@@ -95,6 +95,11 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is opening", this.eventHubName, this.eventHubPartition);
             this.eventProcessorShutdown = new CancellationTokenSource();
             this.deliveryLock = new AsyncLock();
+
+            // make sure we shut down as soon as the partition is closing
+            var _ = context.CancellationToken.Register(
+              () => { var _ = Task.Run(() => this.IdempotentShutdown("context.CancellationToken")); },
+              useSynchronizationContext: false);
 
             // we kick off the start-and-retry mechanism for the partition, but don't wait for it to be fully started.
             // instead, we save the task and wait for it when we need it
@@ -198,19 +203,24 @@ namespace DurableTask.Netherite.EventHubs
             return c;
         }
 
-        async Task IdempotentShutdown()
+        async Task IdempotentShutdown(string reason)
         {
             async Task ShutdownAsync()
             {
-                this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is shutting down", this.eventHubName, this.eventHubPartition);
+                this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is shutting down (reason: {reason})", this.eventHubName, this.eventHubPartition, reason);
 
                 this.eventProcessorShutdown.Cancel(); // stops reincarnations
 
-                PartitionIncarnation current = await this.currentIncarnation.ConfigureAwait(false);
+                if (!this.currentIncarnation.IsCompleted)
+                {
+                    // the startup never completed, so there is no point for a clean shutdown. Instead, terminate.
+                    this
+                }
+                PartitionIncarnation current = await this.currentIncarnation;
 
                 while (current != null && current.ErrorHandler.IsTerminated)
                 {
-                    current = await current.Next.ConfigureAwait(false);
+                    current = await current.Next;
                 }
 
                 if (current == null)
@@ -242,7 +252,7 @@ namespace DurableTask.Netherite.EventHubs
         {
             this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is closing", this.eventHubName, this.eventHubPartition);
 
-            await this.IdempotentShutdown();
+            await this.IdempotentShutdown("CloseAsync");
 
             await this.SaveEventHubsReceiverCheckpoint(context).ConfigureAwait(false);
 
@@ -269,23 +279,34 @@ namespace DurableTask.Netherite.EventHubs
                     this.traceHelper.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition} failed to checkpoint receive position: {e}", this.eventHubName, this.eventHubPartition, e);
                 }
             }
-        } 
+        }
 
         Task IEventProcessor.ProcessErrorAsync(PartitionContext context, Exception exception)
         {
-            LogLevel GetLogLevel()
-            {
-                switch (exception)
-                {
-                    case ReceiverDisconnectedException: // occur when partitions are being rebalanced by EventProcessorHost
-                        return LogLevel.Information;
 
-                    default:
-                        return LogLevel.Warning;
-                }
+            LogLevel logLevel;
+
+            switch (exception)
+            {
+                case ReceiverDisconnectedException: 
+
+                    // occurs when partitions are being rebalanced by EventProcessorHost
+                    logLevel = LogLevel.Information;
+
+                    // since this processor is no longer going to receive events, let's shut it down
+                    // one would expect that this is redundant with EventProcessHost calling close
+                    // but empirically we have observed that the latter does not always happen in this situation
+                    Task.Run(this.IdempotentShutdown("Receiver was disconnected"));
+
+                    break;
+
+                default:
+                    logLevel = LogLevel.Warning;
+                    break;
             }
 
-            this.traceHelper.Log(GetLogLevel(), "EventHubsProcessor {eventHubName}/{eventHubPartition} received internal error indication from EventProcessorHost: {exception}", this.eventHubName, this.eventHubPartition, exception);
+
+            this.traceHelper.Log(logLevel, "EventHubsProcessor {eventHubName}/{eventHubPartition} received internal error indication from EventProcessorHost: {exception}", this.eventHubName, this.eventHubPartition, exception);
 
             return Task.CompletedTask;
         }
