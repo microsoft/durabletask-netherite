@@ -9,7 +9,7 @@
 * Concepts
   * [Which engine to choose?](engine.md)
   * [Build](build.md)
-  * [Storage Organization](storage.md)
+  * [Task hubs](storage.md)
   * [Emulation Mode](emulation.md)
   
 * Observability

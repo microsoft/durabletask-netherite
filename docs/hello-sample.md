@@ -12,7 +12,7 @@ You can run `func --version` to check what is installed.
 3. [The Azure CLI 2.18.0](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) or later.
 You can run `az --version` to check what is installed.
 4. [PowerShell 7.1](https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell?view=powershell-7.1) or later.
-You can check what is installed with `pwsh --version`. PowerShell is easy to install or update via `dotnet tool install --global PowerShell`.
+You can check what is installed with `pwsh --version`. PowerShell is easy to install or update via `dotnet tool install --global PowerShell` or `dotnet tool install --global PowerShell`, respectively.
 
 Also, you need an Azure subscription, to allocate and deploy the required resources.
 

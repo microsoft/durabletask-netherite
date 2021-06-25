@@ -34,7 +34,7 @@ The following picture illustrates the architecture, in a situation where five pa
 
 ![Netherite Architecture](images/partitions.png)
 
-Each partition is represented in storage using the FASTER database technology, which also provides basic indexing and querying. We discuss this in more detail in the section on [storage organization](storage-organization).
+Each partition is represented in storage using the FASTER database technology, which also provides basic indexing and querying. We discuss this in more detail in the section on [storage organization](storage?id=description-of-storage-content). 
 
 Another advantage of this architecture is that we can store the current input queue position of a partition as part of the partition state. This is important in cases where we need to recover from a crash, or if we need to move a partition from one node to another. In those situation, the node that is restarting the partition can check the input position of the last processed message, and resume processing exactly where it left off. 
 
@@ -46,8 +46,10 @@ In the future, we plan to support alternatives for these components. For example
 
 ## Status
 
-The current version of Netherite is *0.3.0-alpha*.  Netherite already support almost all of the DT and DF APIs. However, there are still some limitations that we plan to address in the near future, before moving to beta status:
+The current version of Netherite is *0.4.0-alpha*.  Netherite already support almost all of the DT and DF APIs. However, there are still some limitations that we plan to address in the near future, before moving to beta status:
 
 - **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans so far. 
 - **Query Performance**. We have not quite completed our implementation of a FASTER index to speed up queries that are enumerating or purging instance states.
 - **Stability**. We do not recommend using Netherite in a production environment yet; although we have found and fixed many bugs already, we need more testing before moving to beta status. Any help from the community is greatly appreciated!
+
+To learn more about the Netherite architecture, you can also check out our [paper on arXiv](https://arxiv.org/abs/2103.00033).
