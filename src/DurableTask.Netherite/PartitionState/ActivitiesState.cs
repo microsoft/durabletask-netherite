@@ -298,21 +298,27 @@ namespace DurableTask.Netherite
         public void Process(OffloadCommandReceived evt, EffectTracker effects)
         {
             // we can use this for tracing while we develop and debug the code
-            this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processing OffloadCommandReceived," +
+            this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processing OffloadCommand, " +
                 $"OffloadDestination={evt.OffloadDestination}, NumActivitiesToSend={evt.NumActivitiesToSend}");
+
+            evt.OffloadedActivities = new List<(TaskMessage, string)>();
 
             for (int i = 0; i < evt.NumActivitiesToSend; i++)
             {
-                var info = this.LocalBacklog.Dequeue();
-                evt.OffloadedActivities.Add((info.Message, info.WorkItemId));
-
                 // we might want to offload tasks in remote queue as well
                 if (this.LocalBacklog.Count == 0)
                 {
                     break;
                 }
+
+                var info = this.LocalBacklog.Dequeue();
+                evt.OffloadedActivities.Add((info.Message, info.WorkItemId));
+
             }
 
+
+            this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processed OffloadCommand, " +
+                $"OffloadDestination={evt.OffloadDestination}, NumActivitiesSent={evt.OffloadedActivities.Count}");
             effects.Add(TrackedObjectKey.Outbox);
         }
 

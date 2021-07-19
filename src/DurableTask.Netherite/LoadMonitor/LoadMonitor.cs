@@ -70,7 +70,7 @@ namespace DurableTask.Netherite
                     // send offload commands
                     foreach(var kvp in OffloadTargets)
                     {
-                        this.traceHelper.TraceWarning($"Sending offloadCommand to partition {loadInformationReceived.PartitionId}" +
+                        this.traceHelper.TraceWarning($"Sending offloadCommand to partition {loadInformationReceived.PartitionId} " +
                             $"to send {kvp.Value} activities to partition {kvp.Key}");
                         this.BatchSender.Submit(new OffloadCommandReceived()
                         {
