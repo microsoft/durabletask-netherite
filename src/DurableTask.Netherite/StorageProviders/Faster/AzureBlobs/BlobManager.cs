@@ -28,7 +28,7 @@ namespace DurableTask.Netherite.Faster
         readonly uint partitionId;
         readonly CancellationTokenSource shutDownOrTermination;
         readonly CloudStorageAccount cloudStorageAccount;
-        readonly CloudStorageAccount secondaryStorageAccount;
+        readonly CloudStorageAccount pageBlobAccount;
 
         readonly CloudBlobContainer blockBlobContainer;
         readonly CloudBlobContainer pageBlobContainer;
@@ -70,7 +70,7 @@ namespace DurableTask.Netherite.Faster
         internal const long HashTableSize = 1L << 14; // 16 k buckets, 1 GB
         //internal const long HashTableSize = 1L << 14; // 8 M buckets, 512 GB
 
-        public FasterLogSettings EventLogSettings(bool usePremiumStorage) => new FasterLogSettings
+        public FasterLogSettings EventLogSettings(bool useSeparatePageBlobStorage) => new FasterLogSettings
         {
             LogDevice = this.EventLogDevice,
             LogCommitManager = this.UseLocalFiles
@@ -78,20 +78,20 @@ namespace DurableTask.Netherite.Faster
                 : (ILogCommitManager)this,
             PageSizeBits = 21, // 2MB
             SegmentSizeBits =
-                usePremiumStorage ? 35  // 32 GB
-                                  : 30, // 1 GB
+                useSeparatePageBlobStorage ? 35  // 32 GB
+                                           : 30, // 1 GB
             MemorySizeBits = 22, // 2MB
         };
 
-        public LogSettings StoreLogSettings(bool usePremiumStorage, uint numPartitions) => new LogSettings
+        public LogSettings StoreLogSettings(bool useSeparatePageBlobStorage, uint numPartitions) => new LogSettings
         {
             LogDevice = this.HybridLogDevice,
             ObjectLogDevice = this.ObjectLogDevice,
             PageSizeBits = 17, // 128kB
             MutableFraction = 0.9,
             SegmentSizeBits =
-                usePremiumStorage ? 35 // 32 GB
-                                  : 32, // 4 GB
+                useSeparatePageBlobStorage ? 35 // 32 GB
+                                           : 32, // 4 GB
             CopyReadsToTail = true,
             MemorySizeBits =
                 (numPartitions <= 1) ? 25 : // 32MB
@@ -101,37 +101,55 @@ namespace DurableTask.Netherite.Faster
                 (numPartitions <= 16) ? 21 : // 2MB
                                         20, // 1MB         
         };
-
+        
+        // increment this after changes of the storage representation that break compatibility
         const int StorageFormatVersion = 1;
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
         {
-            return JsonConvert.SerializeObject(new
+            return JsonConvert.SerializeObject(new StorageFormatSettings()
                 {
                     UseAlternateObjectStore = settings.UseAlternateObjectStore,
-                    UsePSFQueries = settings.UsePSFQueries,
                     FormatVersion = StorageFormatVersion,
                 }, 
-                Formatting.None);       
+                serializerSettings);       
         }
+
+        [JsonObject]
+        class StorageFormatSettings
+        {
+            // this must stay the same
+
+            [JsonProperty("FormatVersion")]
+            public int FormatVersion { get; set; }
+
+            // the following can be changed between versions
+
+            [JsonProperty("UseAlternateObjectStore", DefaultValueHandling=DefaultValueHandling.Ignore)]
+            public bool? UseAlternateObjectStore { get; set; }
+        }
+
+        static readonly JsonSerializerSettings serializerSettings = new JsonSerializerSettings()
+        { 
+            TypeNameHandling = TypeNameHandling.None,
+            MissingMemberHandling = MissingMemberHandling.Ignore,
+            CheckAdditionalContent = false,
+            Formatting = Formatting.None,
+        };
 
         public static void CheckStorageFormat(string format, NetheriteOrchestrationServiceSettings settings)
         {
             try
             {
-                JObject json = JsonConvert.DeserializeObject<JObject>(format);
+                var taskhubFormat = JsonConvert.DeserializeObject<StorageFormatSettings>(format, serializerSettings);
 
-                if ((bool)json["UseAlternateObjectStore"] != settings.UseAlternateObjectStore)
+                if (taskhubFormat.UseAlternateObjectStore != settings.UseAlternateObjectStore)
                 {
                     throw new InvalidOperationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
                 }
-                if ((bool)json["UsePSFQueries"] != settings.UsePSFQueries)
+                if (taskhubFormat.FormatVersion != StorageFormatVersion)
                 {
-                    throw new InvalidOperationException("The Netherite configuration setting 'UsePSFQueries' is incompatible with the existing taskhub.");
-                }
-                if ((int)json["FormatVersion"] != StorageFormatVersion)
-                {
-                    throw new InvalidOperationException("The current storage format version is incompatible with the existing taskhub.");
+                    throw new InvalidOperationException($"The current storage format version (={StorageFormatVersion}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
                 }
             }
             catch(Exception e)
@@ -155,33 +173,6 @@ namespace DurableTask.Netherite.Faster
             CheckpointManager = this.UseLocalFiles ? (ICheckpointManager)this.LocalCheckpointManager : (ICheckpointManager)this,
             CheckPointType = CheckpointType.FoldOver
         };
-
-#if FASTER_SUPPORTS_PSF
-        internal PSFRegistrationSettings<TKey> CreatePSFRegistrationSettings<TKey>(uint numberPartitions, int groupOrdinal)
-        {
-            var storeLogSettings = this.StoreLogSettings(false, numberPartitions);
-            return new PSFRegistrationSettings<TKey>
-            {
-                HashTableSize = FasterKV.HashTableSize,
-                LogSettings = new LogSettings()
-                {
-                    LogDevice = this.PsfLogDevices[groupOrdinal],
-                    PageSizeBits = storeLogSettings.PageSizeBits,
-                    SegmentSizeBits = storeLogSettings.SegmentSizeBits,
-                    MemorySizeBits = storeLogSettings.MemorySizeBits,
-                    CopyReadsToTail = false,
-                    ReadCacheSettings = storeLogSettings.ReadCacheSettings
-                },
-                CheckpointSettings = new CheckpointSettings
-                {
-                    CheckpointManager = this.UseLocalFilesForTestingAndDebugging
-                        ? new LocalFileCheckpointManager(this.PsfCheckpointInfos[groupOrdinal], this.LocalPsfCheckpointDirectoryPath(groupOrdinal), this.GetCheckpointCompletedBlobName())
-                        : (ICheckpointManager)new PsfBlobCheckpointManager(this, groupOrdinal),
-                    CheckPointType = CheckpointType.FoldOver
-                }
-            };
-        }
-#endif
 
         public const int MaxRetries = 10;
 
@@ -213,8 +204,8 @@ namespace DurableTask.Netherite.Faster
             => TimeSpan.FromSeconds(Math.Pow(2, (numAttempts - 1)));
 
         // For tests only; TODO consider adding PSFs
-        internal BlobManager(CloudStorageAccount storageAccount, CloudStorageAccount secondaryStorageAccount, string localFileDirectory, string taskHubName, ILogger logger, Microsoft.Extensions.Logging.LogLevel logLevelLimit, uint partitionId, IPartitionErrorHandler errorHandler)
-            : this(storageAccount, secondaryStorageAccount, localFileDirectory, taskHubName, logger, logLevelLimit, partitionId, errorHandler, 0)
+        internal BlobManager(CloudStorageAccount storageAccount, CloudStorageAccount pageBlobAccount, string localFileDirectory, string taskHubName, ILogger logger, Microsoft.Extensions.Logging.LogLevel logLevelLimit, uint partitionId, IPartitionErrorHandler errorHandler)
+            : this(storageAccount, pageBlobAccount, localFileDirectory, taskHubName, logger, logLevelLimit, partitionId, errorHandler, 0)
         {
         }
 
@@ -222,7 +213,7 @@ namespace DurableTask.Netherite.Faster
         /// Create a blob manager.
         /// </summary>
         /// <param name="storageAccount">The cloud storage account, or null if using local file paths</param>
-        /// <param name="secondaryStorageAccount">Optionally, a secondary cloud storage accounts</param>
+        /// <param name="pageBlobAccount">The storage account to use for page blobs</param>
         /// <param name="localFilePath">The local file path, or null if using cloud storage</param>
         /// <param name="taskHubName">The name of the taskhub</param>
         /// <param name="logger">A logger for logging</param>
@@ -232,7 +223,7 @@ namespace DurableTask.Netherite.Faster
         /// <param name="psfGroupCount">Number of PSF groups to be created in FASTER</param>
         public BlobManager(
             CloudStorageAccount storageAccount,
-            CloudStorageAccount secondaryStorageAccount,
+            CloudStorageAccount pageBlobAccount,
             string localFilePath,
             string taskHubName,
             ILogger logger,
@@ -241,7 +232,7 @@ namespace DurableTask.Netherite.Faster
             int psfGroupCount)
         {
             this.cloudStorageAccount = storageAccount;
-            this.secondaryStorageAccount = secondaryStorageAccount;
+            this.pageBlobAccount = pageBlobAccount;
             this.UseLocalFiles = (localFilePath != null);
             this.LocalFileDirectoryForTestingAndDebugging = localFilePath;
             this.ContainerName = GetContainerName(taskHubName);
@@ -253,8 +244,16 @@ namespace DurableTask.Netherite.Faster
             {
                 CloudBlobClient serviceClient = this.cloudStorageAccount.CreateCloudBlobClient();
                 this.blockBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
-                serviceClient = this.secondaryStorageAccount.CreateCloudBlobClient();
-                this.pageBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
+
+                if (pageBlobAccount == storageAccount)
+                {
+                    this.pageBlobContainer = this.BlockBlobContainer;
+                }
+                else
+                {
+                    serviceClient = this.pageBlobAccount.CreateCloudBlobClient();
+                    this.pageBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
+                }
             }
             else
             {
@@ -312,9 +311,17 @@ namespace DurableTask.Netherite.Faster
             else
             {
                 await this.blockBlobContainer.CreateIfNotExistsAsync();
-                await this.pageBlobContainer.CreateIfNotExistsAsync();
-                this.pageBlobPartitionDirectory = this.pageBlobContainer.GetDirectoryReference(this.PartitionFolderName);
                 this.blockBlobPartitionDirectory = this.blockBlobContainer.GetDirectoryReference(this.PartitionFolderName);
+
+                if (this.pageBlobContainer == this.blockBlobContainer)
+                {
+                    this.pageBlobPartitionDirectory = this.blockBlobPartitionDirectory;
+                }
+                else
+                {
+                    await this.pageBlobContainer.CreateIfNotExistsAsync();
+                    this.pageBlobPartitionDirectory = this.pageBlobContainer.GetDirectoryReference(this.PartitionFolderName);
+                }
 
                 this.eventLogCommitBlob = this.blockBlobPartitionDirectory.GetBlockBlobReference(CommitBlobName);
 
@@ -326,8 +333,9 @@ namespace DurableTask.Netherite.Faster
                 var objectLogDevice = createDevice(ObjectLogBlobName);
 
                 var psfLogDevices = (from groupOrdinal in Enumerable.Range(0, this.PsfGroupCount)
-                                     let psfDirectory = this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(groupOrdinal))
-                                     select new AzureStorageDevice(PsfHybridLogBlobName, psfDirectory.GetDirectoryReference(PsfHybridLogBlobName), psfDirectory.GetDirectoryReference(PsfHybridLogBlobName), this, true)).ToArray();
+                                     let psfblockDirectory = this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(groupOrdinal))
+                                     let psfpageDirectory = this.pageBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(groupOrdinal))
+                                     select new AzureStorageDevice(PsfHybridLogBlobName, psfblockDirectory.GetDirectoryReference(PsfHybridLogBlobName), psfpageDirectory.GetDirectoryReference(PsfHybridLogBlobName), this, true)).ToArray();
 
                 await this.AcquireOwnership();
 
@@ -371,7 +379,7 @@ namespace DurableTask.Netherite.Faster
             await this.LeaseMaintenanceLoopTask; // wait for loop to terminate cleanly
         }
 
-        public static async Task DeleteTaskhubStorageAsync(CloudStorageAccount account, string localFileDirectoryPath, string taskHubName)
+        public static async Task DeleteTaskhubStorageAsync(CloudStorageAccount account, CloudStorageAccount pageBlobAccount, string localFileDirectoryPath, string taskHubName)
         {
             var containerName = GetContainerName(taskHubName);
 
@@ -385,21 +393,31 @@ namespace DurableTask.Netherite.Faster
             }
             else
             {
-                CloudBlobClient serviceClient = account.CreateCloudBlobClient();
-                var blobContainer = serviceClient.GetContainerReference(containerName);
-
-                if (await blobContainer.ExistsAsync())
+                async Task DeleteContainerContents(CloudStorageAccount account)
                 {
-                    // do a complete deletion of all contents of this directory
-                    var tasks = blobContainer.ListBlobs(null, true)
-                                             .Where(blob => blob.GetType() == typeof(CloudBlob) || blob.GetType().BaseType == typeof(CloudBlob))
-                                             .Select(blob => BlobUtils.ForceDeleteAsync((CloudBlob)blob))
-                                             .ToArray();
-                    await Task.WhenAll(tasks);
+                    CloudBlobClient serviceClient = account.CreateCloudBlobClient();
+                    var blobContainer = serviceClient.GetContainerReference(containerName);
+
+                    if (await blobContainer.ExistsAsync())
+                    {
+                        // do a complete deletion of all contents of this directory
+                        var tasks = blobContainer.ListBlobs(null, true)
+                                                 .Where(blob => blob.GetType() == typeof(CloudBlob) || blob.GetType().BaseType == typeof(CloudBlob))
+                                                 .Select(blob => BlobUtils.ForceDeleteAsync((CloudBlob)blob))
+                                                 .ToArray();
+                        await Task.WhenAll(tasks);
+                    }
+
+                    // We are not deleting the container itself because it creates problems when trying to recreate
+                    // the same container soon afterwards so we leave an empty container behind. Oh well.
                 }
 
-                // We are not deleting the container itself because it creates problems when trying to recreate
-                // the same container soon afterwards so we leave an empty container behind. Oh well.
+                await DeleteContainerContents(account);
+
+                if (pageBlobAccount != account)
+                {
+                    await DeleteContainerContents(pageBlobAccount);
+                }          
             }
         }
 
@@ -984,16 +1002,23 @@ namespace DurableTask.Netherite.Faster
             return result;
         }
 
+        void GetPartitionDirectories(bool isPsf, int psfGroupOrdinal, string path, out CloudBlobDirectory blockBlobDir, out CloudBlobDirectory pageBlobDir)
+        {
+            var blockPartDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
+            blockBlobDir = blockPartDir.GetDirectoryReference(path);
+            var pagePartDir = isPsf ? this.pageBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.pageBlobPartitionDirectory;
+            pageBlobDir = pagePartDir.GetDirectoryReference(path);
+        }
+
         internal IDevice GetIndexDevice(Guid indexToken, int psfGroupOrdinal)
         {
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexDevice Called on {tag}, indexToken={indexToken}");
             var (path, blobName) = this.GetPrimaryHashTableBlobName(indexToken);
-            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-            var blobDirectory = partDir.GetDirectoryReference(path);
-            var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
+            this.GetPartitionDirectories(isPsf, psfGroupOrdinal, path, out var blockBlobDir, out var pageBlobDir);
+            var device = new AzureStorageDevice(blobName, blockBlobDir, pageBlobDir, this, false); // we don't need a lease since the token provides isolation
             device.StartAsync().Wait();
-            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexDevice Returned from {tag}, target={blobDirectory.Prefix}{blobName}");
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexDevice Returned from {tag}, target={blockBlobDir.Prefix}{blobName}");
             return device;
         }
 
@@ -1002,11 +1027,10 @@ namespace DurableTask.Netherite.Faster
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotLogDevice Called on {tag}, token={token}");
             var (path, blobName) = this.GetLogSnapshotBlobName(token);
-            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-            var blobDirectory = partDir.GetDirectoryReference(path);
-            var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
+            this.GetPartitionDirectories(isPsf, psfGroupOrdinal, path, out var blockBlobDir, out var pageBlobDir);
+            var device = new AzureStorageDevice(blobName, blockBlobDir, pageBlobDir, this, false); // we don't need a lease since the token provides isolation
             device.StartAsync().Wait();
-            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotLogDevice Returned from {tag}, blobDirectory={blobDirectory} blobName={blobName}");
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotLogDevice Returned from {tag}, blobDirectory={blockBlobDir} blobName={blobName}");
             return device;
         }
 
@@ -1015,11 +1039,10 @@ namespace DurableTask.Netherite.Faster
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Called on {tag}, token={token}");
             var (path, blobName) = this.GetObjectLogSnapshotBlobName(token);
-            var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
-            var blobDirectory = partDir.GetDirectoryReference(path);
-            var device = new AzureStorageDevice(blobName, blobDirectory, blobDirectory, this, false); // we don't need a lease since the token provides isolation
+            this.GetPartitionDirectories(isPsf, psfGroupOrdinal, path, out var blockBlobDir, out var pageBlobDir);
+            var device = new AzureStorageDevice(blobName, blockBlobDir, pageBlobDir, this, false); // we don't need a lease since the token provides isolation
             device.StartAsync().Wait();
-            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Returned from {tag}, blobDirectory={blobDirectory} blobName={blobName}");
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Returned from {tag}, blobDirectory={blockBlobDir} blobName={blobName}");
             return device;
         }
 

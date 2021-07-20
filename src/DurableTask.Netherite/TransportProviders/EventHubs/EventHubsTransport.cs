@@ -26,6 +26,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly TransportAbstraction.IHost host;
         readonly NetheriteOrchestrationServiceSettings settings;
         readonly CloudStorageAccount cloudStorageAccount;
+        readonly ILogger logger;
         readonly EventHubsTraceHelper traceHelper;
 
         EventProcessorHost eventProcessorHost;
@@ -50,7 +51,8 @@ namespace DurableTask.Netherite.EventHubs
             this.settings = settings;
             this.cloudStorageAccount = CloudStorageAccount.Parse(this.settings.ResolvedStorageConnectionString);
             string namespaceName = TransportConnectionString.EventHubsNamespaceName(settings.ResolvedTransportConnectionString);
-            this.traceHelper = new EventHubsTraceHelper(loggerFactory, settings.TransportLogLevelLimit, this.cloudStorageAccount.Credentials.AccountName, settings.HubName, namespaceName);
+            this.logger = EventHubsTraceHelper.CreateLogger(loggerFactory);
+            this.traceHelper = new EventHubsTraceHelper(this.logger, settings.TransportLogLevelLimit, null, this.cloudStorageAccount.Credentials.AccountName, settings.HubName, namespaceName);
             this.ClientId = Guid.NewGuid();
             var blobContainerName = GetContainerName(settings.HubName);
             var cloudBlobClient = this.cloudStorageAccount.CreateCloudBlobClient();
@@ -103,8 +105,9 @@ namespace DurableTask.Netherite.EventHubs
             }
             await Task.WhenAll(tasks);
 
-            // determine the start positions
-            long[] startPositions = await EventHubsConnections.GetQueuePositionsAsync(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHubs);
+            // determine the start positions and the creation timestamps
+            (long[] startPositions, DateTime[] creationTimestamps, string namespaceEndpoint)
+                = await EventHubsConnections.GetPartitionInfo(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHubs);
 
             var taskHubParameters = new TaskhubParameters()
             {
@@ -116,6 +119,8 @@ namespace DurableTask.Netherite.EventHubs
                 ClientHubs = EventHubsTransport.ClientHubs,
                 PartitionConsumerGroup = EventHubsTransport.PartitionConsumerGroup,
                 ClientConsumerGroup = EventHubsTransport.ClientConsumerGroup,
+                EventHubsEndpoint = namespaceEndpoint,
+                EventHubsCreationTimestamps = creationTimestamps,
                 StartPositions = startPositions
             };
 
@@ -177,7 +182,7 @@ namespace DurableTask.Netherite.EventHubs
                 TraceHelper = this.traceHelper,
             };
 
-            await this.connections.StartAsync(this.parameters.StartPositions.Length);
+            await this.connections.StartAsync(this.parameters);
 
             this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
 
@@ -261,14 +266,14 @@ namespace DurableTask.Netherite.EventHubs
             {
                 case PartitionManagementOptions.EventProcessorHost:
                     {
-                        this.traceHelper.LogDebug("Unregistering event processor");
+                        this.traceHelper.LogDebug("Unregistering event processor host");
                         await this.eventProcessorHost.UnregisterEventProcessorAsync().ConfigureAwait(false);
                         break;
                     }
 
                 case PartitionManagementOptions.Scripted:
                     {
-                        this.traceHelper.LogDebug("Stopping event processor");
+                        this.traceHelper.LogDebug("Stopping event processor host");
                         await this.scriptedEventProcessorHost.StopAsync();
                         break;
                     }
@@ -286,7 +291,7 @@ namespace DurableTask.Netherite.EventHubs
 
         IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
         {
-            var processor = new EventHubsProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper, this, this.shutdownSource.Token);
+            var processor = new EventHubsProcessor(this.host, this, this.parameters, partitionContext, this.settings, this, this.traceHelper, this.shutdownSource.Token);
             return processor;
         }
 

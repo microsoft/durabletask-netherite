@@ -204,7 +204,7 @@ namespace DurableTask.Netherite.Scaling
 
             if (this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
-                positions = await EventHubs.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
+                (positions,_,_) = await EventHubs.EventHubsConnections.GetPartitionInfo(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
 
                 for (uint i = 0; i < positions.Length; i++)
                 {

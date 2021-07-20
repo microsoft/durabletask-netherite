@@ -23,7 +23,7 @@ namespace PerformanceTests.HelloCities
     /// </summary>
     public static partial class HelloSequence
     {
-        [FunctionName(nameof(HelloSequence))]
+        [FunctionName(nameof(HelloSequence3))]
         public static async Task<List<string>> HelloSequence3([OrchestrationTrigger] IDurableOrchestrationContext context)
         {
             var result = new List<string>

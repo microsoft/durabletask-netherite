@@ -12,18 +12,30 @@ namespace DurableTask.Netherite.EventHubs
     class EventHubsTraceHelper : ILogger
     {
         readonly ILogger logger;
+        readonly string partitionId;
         readonly string account;
         readonly string taskHub;
         readonly string eventHubsNamespace;
         readonly LogLevel logLevelLimit;
 
-        public EventHubsTraceHelper(ILoggerFactory loggerFactory, LogLevel logLevelLimit, string storageAccountName, string taskHubName, string eventHubsNamespace)
+        public static ILogger CreateLogger(ILoggerFactory loggerFactory)
         {
-            this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.EventHubsTransport");
+            return loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.EventHubsTransport");
+        }
+
+        public EventHubsTraceHelper(ILogger logger, LogLevel logLevelLimit, uint? partitionId, string storageAccountName, string taskHubName, string eventHubsNamespace)
+        {
+            this.logger = logger;
+            this.partitionId = partitionId?.ToString() ?? string.Empty;
             this.account = storageAccountName;
             this.taskHub = taskHubName;
             this.eventHubsNamespace = eventHubsNamespace;
             this.logLevelLimit = logLevelLimit;
+        }
+
+        public EventHubsTraceHelper(EventHubsTraceHelper traceHelper, uint partitionId)
+            : this(traceHelper.logger, traceHelper.logLevelLimit, partitionId, traceHelper.account, traceHelper.taskHub, traceHelper.eventHubsNamespace)
+        { 
         }
 
         public bool IsEnabled(LogLevel logLevel) => logLevel >= this.logLevelLimit;
@@ -53,24 +65,24 @@ namespace DurableTask.Netherite.EventHubs
                     switch (logLevel)
                     {
                         case LogLevel.Trace:
-                            EtwSource.Log.EventHubsTrace(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                            EtwSource.Log.EventHubsTrace(this.account, this.taskHub, this.eventHubsNamespace, this.partitionId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                             break;
 
                         case LogLevel.Debug:
-                            EtwSource.Log.EventHubsDebug(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                            EtwSource.Log.EventHubsDebug(this.account, this.taskHub, this.eventHubsNamespace, this.partitionId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                             break;
 
                         case LogLevel.Information:
-                            EtwSource.Log.EventHubsInformation(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                            EtwSource.Log.EventHubsInformation(this.account, this.taskHub, this.eventHubsNamespace, this.partitionId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                             break;
 
                         case LogLevel.Warning:
-                            EtwSource.Log.EventHubsWarning(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                            EtwSource.Log.EventHubsWarning(this.account, this.taskHub, this.eventHubsNamespace, this.partitionId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                             break;
 
                         case LogLevel.Error:
                         case LogLevel.Critical:
-                            EtwSource.Log.EventHubsError(this.account, this.taskHub, this.eventHubsNamespace, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                            EtwSource.Log.EventHubsError(this.account, this.taskHub, this.eventHubsNamespace, this.partitionId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                             break;
 
                         default:
