@@ -39,7 +39,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
                     loggingBuilder =>
                     {
                         loggingBuilder.AddProvider(this.logProvider);
-                        loggingBuilder.SetMinimumLevel(LogLevel.Information);
+                        loggingBuilder.SetMinimumLevel(LogLevel.Trace);
                     })
                 .ConfigureWebJobs(
                     webJobsBuilder =>
@@ -47,6 +47,13 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
                         webJobsBuilder.AddDurableTask(options =>
                         {
                             options.StorageProvider["type"] = NetheriteProviderFactory.ProviderName;
+
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.LogLevelLimit)] = LogLevel.Trace.ToString();
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.StorageLogLevelLimit)] = LogLevel.Trace.ToString();
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.TransportLogLevelLimit)] = LogLevel.Trace.ToString();
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.EventLogLevelLimit)] = LogLevel.Trace.ToString();
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.WorkItemLogLevelLimit)] = LogLevel.Trace.ToString();
+
                             options.HubName = $"testhub{Guid.NewGuid():N}";
                         });
                     })
