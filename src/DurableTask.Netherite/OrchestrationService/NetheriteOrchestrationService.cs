@@ -104,6 +104,12 @@ namespace DurableTask.Netherite
             {
                 // force dll load here so exceptions are observed early
                 var _ = System.Threading.Channels.Channel.CreateBounded<DateTime>(10);
+
+                // throw descriptive exception if run on 32bit platform
+                if (!Environment.Is64BitProcess)
+                {
+                    throw new NotSupportedException("Netherite backend requires 64bit, but current process is 32bit.");
+                }
             }
 
             switch (this.configuredTransport)
