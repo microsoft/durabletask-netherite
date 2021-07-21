@@ -70,6 +70,8 @@ namespace DurableTask.Netherite
         // xz: not sure what this line means
         const int MAX_WORKITEM_LOAD = 10;
 
+        const int REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS = 100;
+
         public override void OnRecoveryCompleted()
         {
             // reschedule work items
@@ -115,7 +117,12 @@ namespace DurableTask.Netherite
         // called frequently, directly from the StoreWorker. Must not modify any [DataMember] fields.
         public void CollectLoadMonitorInformation()
         {
-            if (!this.LastLoadInformationSent.HasValue  // always send info if we have not sent one since loading this partition
+            if (// send load information if we have not sent one yet since this partition started
+                !this.LastLoadInformationSent.HasValue
+                // send load information if this partition is backlogged
+                || ((DateTime.UtcNow - this.LastLoadInformationSent.Value) > TimeSpan.FromMilliseconds(REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS)
+                    && (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0))
+                // send load information if instructed to do so by global load monitor
                 || (this.LoadMonitorInterval.HasValue && ((DateTime.UtcNow - this.LastLoadInformationSent.Value) > this.LoadMonitorInterval.Value)))
             {
                 this.Partition.Send(new LoadInformationReceived()
@@ -285,8 +292,6 @@ namespace DurableTask.Netherite
                     break;
                 }
             }
-            this.LoadMonitorInterval = TimeSpan.FromSeconds(1);
-            this.CollectLoadMonitorInformation();
         }
 
         public void Process(RemoteActivityResultReceived evt, EffectTracker effects)
@@ -315,7 +320,6 @@ namespace DurableTask.Netherite
                 evt.OffloadedActivities.Add((info.Message, info.WorkItemId));
 
             }
-
 
             this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processed OffloadCommand, " +
                 $"OffloadDestination={evt.OffloadDestination}, NumActivitiesSent={evt.OffloadedActivities.Count}");
