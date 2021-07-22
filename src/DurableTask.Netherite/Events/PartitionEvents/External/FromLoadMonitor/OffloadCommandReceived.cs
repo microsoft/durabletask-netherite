@@ -6,6 +6,7 @@ namespace DurableTask.Netherite
     using System;
     using System.Collections.Generic;
     using System.Runtime.Serialization;
+    using System.Text;
     using DurableTask.Core;
 
     [DataContract]
@@ -28,6 +29,15 @@ namespace DurableTask.Netherite
         public override void DetermineEffects(EffectTracker effects)
         {
             effects.Add(TrackedObjectKey.Activities);
+        }
+
+        protected override void ExtraTraceInformation(StringBuilder s)
+        {
+           base.ExtraTraceInformation(s);
+
+           s.Append(this.NumActivitiesToSend);
+           s.Append("->Part");
+           s.Append(this.OffloadDestination.ToString("D2"));     
         }
     }
 }
