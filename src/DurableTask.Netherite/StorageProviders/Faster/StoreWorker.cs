@@ -382,11 +382,23 @@ namespace DurableTask.Netherite.Faster
                 }
                 else if (this.CheckpointDue(out var trigger))
                 {
-                    var token = this.store.StartSecondaryIndexIndexCheckpoint();
-                    if (token.HasValue)
+                    if (this.partition.Settings.UseSecondaryIndexQueries)
                     {
-                        this.pendingCheckpointTrigger = trigger;
-                        this.pendingSecondaryIndexIndexCheckpointTask = this.WaitForSecondaryIndexCheckpointAsync(true, token.Value);
+                        var token = this.store.StartSecondaryIndexIndexCheckpoint();
+                        if (token.HasValue)
+                        {
+                            this.pendingCheckpointTrigger = trigger;
+                            this.pendingSecondaryIndexIndexCheckpointTask = this.WaitForSecondaryIndexCheckpointAsync(true, token.Value);
+                        }
+                    }
+                    else
+                    {
+                        var token = this.store.StartPrimaryIndexCheckpoint();
+                        if (token.HasValue)
+                        {
+                            this.pendingCheckpointTrigger = trigger;
+                            this.pendingPrimaryIndexCheckpointTask = this.WaitForPrimaryCheckpointAsync(true, token.Value);
+                        }
                     }
                 }
                 

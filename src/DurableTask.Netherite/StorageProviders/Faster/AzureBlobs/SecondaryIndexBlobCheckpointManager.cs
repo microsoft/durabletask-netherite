@@ -56,14 +56,20 @@ namespace DurableTask.Netherite.Faster
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
-            var indexToken = this.blobManager.SecondaryIndexCheckpointInfos[this.indexOrdinal].IndexToken;
-            yield return indexToken;
+            Guid? token = this.blobManager.CheckpointInfo.SecondaryIndexIndexToken;
+            if (token.HasValue)
+            {
+                yield return token.Value;
+            }
         }
 
         IEnumerable<Guid> ICheckpointManager.GetLogCheckpointTokens()
         {
-            var logToken = this.blobManager.SecondaryIndexCheckpointInfos[this.indexOrdinal].LogToken;
-            yield return logToken;
+            Guid? token = this.blobManager.CheckpointInfo.SecondaryIndexLogToken;
+            if (token.HasValue)
+            {
+                yield return token.Value;
+            }
         }
 
         public void PurgeAll() { /* TODO */ }
