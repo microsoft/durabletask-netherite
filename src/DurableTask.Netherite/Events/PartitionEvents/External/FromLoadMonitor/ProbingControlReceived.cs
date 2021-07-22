@@ -19,6 +19,8 @@ namespace DurableTask.Netherite
 
         public override EventId EventId => EventId.MakeLoadMonitorToPartitionEventId(this.RequestId, this.PartitionId);
 
+        public override IEnumerable<(TaskMessage message, string workItemId)> TracedTaskMessages => throw new NotImplementedException();
+
         public override void DetermineEffects(EffectTracker effects)
         {
             effects.Add(TrackedObjectKey.Activities);
