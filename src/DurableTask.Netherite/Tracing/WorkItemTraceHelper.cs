@@ -128,19 +128,21 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TraceWorkItemCompleted(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId, object status, double latencyMs, string producedMessageIds)
+        public void TraceWorkItemCompleted(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId, object status, double latencyMs, long producedMessages)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
                 if (this.logger.IsEnabled(LogLevel.Information))
                 {
-                    this.logger.LogInformation("Part{partition:D2} completed {workItemType}WorkItem {workItemId} instanceId={instanceId} status={status} latencyMs={latencyMs:F2} producedMessageIds={producedMessageIds}",
-                        partitionId, workItemType, workItemId, instanceId, status, latencyMs, producedMessageIds);
+                    this.logger.LogInformation("Part{partition:D2} completed {workItemType}WorkItem {workItemId} instanceId={instanceId} status={status} latencyMs={latencyMs:F2} producedMessages={producedMessages}",
+                        partitionId, workItemType, workItemId, instanceId, status, latencyMs, producedMessages);
                 }
 
-                this.etw?.WorkItemCompleted(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, status.ToString(), latencyMs, producedMessageIds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.WorkItemCompleted(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, status.ToString(), latencyMs, producedMessages, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
+
+        public bool TraceTaskMessages => this.logLevelLimit <= LogLevel.Trace;
 
         public void TraceTaskMessageReceived(uint partitionId, TaskMessage message, string workItemId, string queuePosition)
         {
@@ -160,22 +162,25 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TraceTaskMessageSent(uint partitionId, TaskMessage message, string workItemId, string sentEventId)
+        public void TraceTaskMessageSent(uint partitionId, TaskMessage message, string workItemId, double? persistenceDelay, double? sendDelay)
         {
             if (this.logLevelLimit <= LogLevel.Trace)
             {
+
                 string messageId = FormatMessageId(message, workItemId);
+                string persistenceDelayMs = persistenceDelay.HasValue ? persistenceDelay.Value.ToString("F2") : string.Empty;
+                string sendDelayMs = sendDelay.HasValue ? sendDelay.Value.ToString("F2") : string.Empty;
 
                 if (this.logger.IsEnabled(LogLevel.Trace))
                 {
                     (long commitLogPosition, string eventId) = EventTraceContext.Current;
 
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
-                    this.logger.LogTrace("Part{partition:D2}{prefix} sent TaskMessage {messageId} eventType={eventType} taskEventId={taskEventId} instanceId={instanceId} executionId={executionId}",
-                        partitionId, prefix, messageId, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId);
+                    this.logger.LogTrace("Part{partition:D2}{prefix} sent TaskMessage {messageId} eventType={eventType} taskEventId={taskEventId} instanceId={instanceId} executionId={executionId} persistenceDelayMs={persistenceDelayMs} sendDelayMs={sendDelayMs}",
+                        partitionId, prefix, messageId, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId, persistenceDelayMs, sendDelayMs);
                 }
 
-                this.etw?.TaskMessageSent(this.account, this.taskHub, (int)partitionId, messageId, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.TaskMessageSent(this.account, this.taskHub, (int)partitionId, messageId, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId ?? "", persistenceDelayMs, sendDelayMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 

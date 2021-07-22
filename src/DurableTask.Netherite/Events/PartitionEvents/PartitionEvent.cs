@@ -28,12 +28,6 @@ namespace DurableTask.Netherite
         public double ReceivedTimestamp { get; set; }
 
         [IgnoreDataMember]
-        public double ReadyToSendTimestamp { get; set; }
-
-        [IgnoreDataMember]
-        public double SentTimestamp { get; set; }
-
-        [IgnoreDataMember]
         public double IssuedTimestamp { get; set; }
 
         // make a copy of an event so we run it through the pipeline a second time
@@ -46,9 +40,7 @@ namespace DurableTask.Netherite
             evt.Serialized = default;
             evt.NextInputQueuePosition = 0;
 
-            // clear the timestamps that will be overwritten
-            evt.ReadyToSendTimestamp = 0;
-            evt.SentTimestamp = 0;
+            // clear the timestamp
             evt.IssuedTimestamp = 0;
 
             return evt;

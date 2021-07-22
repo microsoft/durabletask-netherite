@@ -33,7 +33,7 @@ namespace DurableTask.Netherite
         public string WorkItemId => ActivitiesState.GetWorkItemId(this.OriginPartition, this.ActivityId);
 
         [IgnoreDataMember]
-        public override IEnumerable<(TaskMessage,string)> TracedTaskMessages
+        public override IEnumerable<(TaskMessage message, string workItemId)> TracedTaskMessages
         {
             get
             {

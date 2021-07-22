@@ -12,7 +12,7 @@ namespace DurableTask.Netherite
     class ActivityOffloadReceived : PartitionMessageEvent
     {
         [DataMember]
-        public List<(TaskMessage,string)> OffloadedActivities { get; set; }
+        public List<(TaskMessage message, string workItemId)> OffloadedActivities { get; set; }
 
         [DataMember]
         public DateTime Timestamp { get; set; }
@@ -21,6 +21,6 @@ namespace DurableTask.Netherite
         public override EventId EventId => EventId.MakePartitionToPartitionEventId(OffloadDecision.GetWorkItemId(this.OriginPartition, this.Timestamp), this.PartitionId);
 
         [IgnoreDataMember]
-        public override IEnumerable<(TaskMessage,string)> TracedTaskMessages => this.OffloadedActivities;
+        public override IEnumerable<(TaskMessage message, string workItemId)> TracedTaskMessages => this.OffloadedActivities;
     }
 }

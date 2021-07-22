@@ -32,15 +32,6 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public string WorkItemId => ActivitiesState.GetWorkItemId(this.PartitionId, this.ActivityId);
 
-        [IgnoreDataMember]
-        public override IEnumerable<(TaskMessage,string)> TracedTaskMessages
-        {
-            get
-            {
-                yield return (this.Response, this.WorkItemId);
-            }
-        }
-
         public override void DetermineEffects(EffectTracker effects)
         {
             effects.Add(TrackedObjectKey.Activities);
