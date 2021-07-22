@@ -121,10 +121,10 @@ namespace DurableTask.Netherite
         }
 
         [Event(221, Level = EventLevel.Verbose, Version = 1)]
-        public void TaskMessageSent(string Account, string TaskHub, int PartitionId, string MessageId, string EventType, int TaskEventId, string InstanceId, string ExecutionId, string AppName, string ExtensionVersion)
+        public void TaskMessageSent(string Account, string TaskHub, int PartitionId, string MessageId, string EventType, int TaskEventId, string InstanceId, string ExecutionId, string PersistenceDelayMs, string SendDelayMs, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(221, Account, TaskHub, PartitionId, MessageId, EventType, TaskEventId, InstanceId, ExecutionId, AppName, ExtensionVersion);
+            this.WriteEvent(221, Account, TaskHub, PartitionId, MessageId, EventType, TaskEventId, InstanceId, ExecutionId, PersistenceDelayMs, SendDelayMs, AppName, ExtensionVersion);
         }
 
         [Event(222, Level = EventLevel.Warning, Version = 1)]
@@ -149,10 +149,10 @@ namespace DurableTask.Netherite
         }
 
         [Event(225, Level = EventLevel.Informational, Version = 1)]
-        public void WorkItemCompleted(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string Status, double LatencyMs, string ProducedMessageIds, string AppName, string ExtensionVersion)
+        public void WorkItemCompleted(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string Status, double LatencyMs, long ProducedMessages, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(225, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, Status, LatencyMs, ProducedMessageIds, AppName, ExtensionVersion);
+            this.WriteEvent(225, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, Status, LatencyMs, ProducedMessages, AppName, ExtensionVersion);
         }
 
         [Event(226, Level = EventLevel.Warning, Version = 1)]

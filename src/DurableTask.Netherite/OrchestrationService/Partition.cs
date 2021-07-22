@@ -189,6 +189,10 @@ namespace DurableTask.Netherite
                 {
                     switch(t)
                     {
+                        case TimerFired timerFired:
+                            this.SubmitInternalEvent(timerFired);
+                            this.WorkItemTraceHelper.TraceTaskMessageSent(this.PartitionId, timerFired.TaskMessage, timerFired.OriginWorkItemId, null, null);
+                            break;
                         case PartitionUpdateEvent updateEvent:
                             this.SubmitInternalEvent(updateEvent);
                             break;
@@ -216,21 +220,12 @@ namespace DurableTask.Netherite
         public void Send(ClientEvent clientEvent)
         {
             this.EventDetailTracer?.TraceEventProcessingDetail($"Sending client event {clientEvent} id={clientEvent.EventId}");
-
             this.BatchSender.Submit(clientEvent);
         }
 
         public void Send(PartitionUpdateEvent updateEvent)
         {
             this.EventDetailTracer?.TraceEventProcessingDetail($"Sending partition update event {updateEvent} id={updateEvent.EventId}");
-
-            // trace DTFx TaskMessages that are sent or re-sent to other participants
-            foreach (var entry in updateEvent.TracedTaskMessages)
-            {
-                this.Assert(!string.IsNullOrEmpty(entry.workItemId));
-                this.WorkItemTraceHelper.TraceTaskMessageSent(this.PartitionId, entry.message, entry.workItemId, updateEvent.EventIdString);
-            }
-
             this.BatchSender.Submit(updateEvent);
         }
 
@@ -243,16 +238,7 @@ namespace DurableTask.Netherite
 
         public void SubmitInternalEvent(PartitionUpdateEvent updateEvent)
         {
-            // for better analytics experience, trace DTFx TaskMessages that are "sent" 
-            // by this partition to itself the same way as if sent to other partitions
-            foreach (var entry in updateEvent.TracedTaskMessages)
-            {
-                this.Assert(!string.IsNullOrEmpty(entry.workItemId));
-                this.WorkItemTraceHelper.TraceTaskMessageSent(this.PartitionId, entry.message, entry.workItemId, updateEvent.EventIdString);
-            }
-
             updateEvent.ReceivedTimestamp = this.CurrentTimeMs;
-
             this.State.SubmitInternalEvent(updateEvent);
         }
 

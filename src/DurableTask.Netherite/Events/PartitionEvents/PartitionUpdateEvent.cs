@@ -23,11 +23,6 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public OutboxState.Batch OutboxBatch { get; set; }
 
-        [IgnoreDataMember]
-        public virtual IEnumerable<(TaskMessage message, string workItemId)> TracedTaskMessages => PartitionUpdateEvent.noTaskMessages;
-
-        static readonly IEnumerable<(TaskMessage, string)> noTaskMessages = Enumerable.Empty<(TaskMessage, string)>();
-
         public abstract void DetermineEffects(EffectTracker effects);
     }
 }
