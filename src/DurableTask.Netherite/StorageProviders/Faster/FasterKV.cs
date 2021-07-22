@@ -59,16 +59,16 @@ namespace DurableTask.Netherite.Faster
                 int indexOrdinal = 0;
                 this.secondaryIndex = new HashValueIndex<Key, Value, PredicateKey>("Netherite", this.fht,
                                             this.blobManager.CreateSecondaryIndexRegistrationSettings<PredicateKey>(partition.NumberPartitions(), indexOrdinal++),
-                                            (nameof(this.RuntimeStatusPredicate), v => v.Val is InstanceState state
+                                            (nameof(this.RuntimeStatusPredicate), (k, v) => v.Val is InstanceState state
                                                                                 ? new PredicateKey(state.OrchestrationState.OrchestrationStatus)
                                                                                 : default),
-                                            (nameof(this.CreatedTimePredicate), v => v.Val is InstanceState state
+                                            (nameof(this.CreatedTimePredicate), (k, v) => v.Val is InstanceState state
                                                                                 ? new PredicateKey(state.OrchestrationState.CreatedTime)
                                                                                 : default),
-                                            (nameof(this.InstanceIdPrefixPredicate7), v => v.Val is InstanceState state
+                                            (nameof(this.InstanceIdPrefixPredicate7), (k, v) => v.Val is InstanceState state
                                                                                 ? new PredicateKey(state.InstanceId, PredicateKey.InstanceIdPrefixLen7)
                                                                                 : default),
-                                            (nameof(this.InstanceIdPrefixPredicate4), v => v.Val is InstanceState state
+                                            (nameof(this.InstanceIdPrefixPredicate4), (k, v) => v.Val is InstanceState state
                                                                                  ? new PredicateKey(state.InstanceId, PredicateKey.InstanceIdPrefixLen4)
                                                                                  : default));
                 this.fht.SecondaryIndexBroker.AddIndex(this.secondaryIndex);
@@ -848,7 +848,7 @@ namespace DurableTask.Netherite.Faster
                 this.stats = stats;
             }
 
-            public void InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value)
+            public void InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output)
             {
                 var trackedObject = TrackedObjectKey.Factory(key.Val);
                 this.stats.Create++;
@@ -858,7 +858,7 @@ namespace DurableTask.Netherite.Faster
                 this.stats.Modify++;
             }
 
-            public bool InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value)
+            public bool InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output)
             {
                 this.partition.Assert(value.Val is TrackedObject);
                 TrackedObject trackedObject = value;
@@ -869,9 +869,9 @@ namespace DurableTask.Netherite.Faster
                 return true;
             }
 
-            public bool NeedCopyUpdate(ref Key key, ref EffectTracker tracker, ref Value value) => true;
+            public bool NeedCopyUpdate(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output) => true;
 
-            public void CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue)
+            public void CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref TrackedObject output)
             {
                 this.stats.Copy++;
 
@@ -970,7 +970,7 @@ namespace DurableTask.Netherite.Faster
             }
 
             public void CheckpointCompletionCallback(string sessionId, CommitPoint commitPoint) { }
-            public void RMWCompletionCallback(ref Key key, ref EffectTracker input, object ctx, Status status) { }
+            public void RMWCompletionCallback(ref Key key, ref EffectTracker input, ref TrackedObject output, object ctx, Status status) { }
             public void UpsertCompletionCallback(ref Key key, ref Value value, object ctx) { }
             public void DeleteCompletionCallback(ref Key key, object ctx) { }
 

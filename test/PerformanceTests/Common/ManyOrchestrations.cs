@@ -29,7 +29,8 @@ namespace PerformanceTests
     ///     curl https://.../await -d 1000                      waits for the 1000 instances to complete
     ///     curl https://.../count -d 1000                      check the status of the 1000 instances and reports the (last completed - first started) time range
     ///     curl https://.../purge -d 1000                      purges the 1000 instances
-    ///     curl https://.../query                              issues a query to check the status of all orchestrations
+    ///     curl https://.../query -d ""                        issues a query to check the status of all orchestrations
+    ///     curl https://.../query -d Orch001                   issues a query to check the status of all orchestrations with an InstanceIdPrefix of "Orch001"
     ///     
     /// </summary>
     public static class ManyOrchestrations
