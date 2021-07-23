@@ -59,6 +59,7 @@ namespace DurableTask.Netherite
 
         const int NOT_CONTACTED = -1;
         const int RESPONSE_PENDING = int.MaxValue;
+        bool IDLE_STATE_SENT = false;
 
         const int ABSOLUTE_LOAD_LIMIT_FOR_REMOTES = 1000;
         const double RELATIVE_LOAD_LIMIT_FOR_REMOTES = .8;
@@ -67,7 +68,6 @@ namespace DurableTask.Netherite
         const int OFFLOAD_MAX_BATCH_SIZE = 20;
         const int OFFLOAD_MIN_BATCH_SIZE = 10;
 
-        // xz: not sure what this line means
         const int MAX_WORKITEM_LOAD = 10;
 
         const int REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS = 100;
@@ -118,12 +118,13 @@ namespace DurableTask.Netherite
         public void CollectLoadMonitorInformation()
         {
             if (// send load information if we have not sent one yet since this partition started
-                !this.LastLoadInformationSent.HasValue
+                !this.LastLoadInformationSent.HasValue 
                 // send load information if this partition is backlogged
                 || ((DateTime.UtcNow - this.LastLoadInformationSent.Value) > TimeSpan.FromMilliseconds(REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS)
                     && (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0))
-                // send load information if instructed to do so by global load monitor
-                || (this.LoadMonitorInterval.HasValue && ((DateTime.UtcNow - this.LastLoadInformationSent.Value) > this.LoadMonitorInterval.Value)))
+                // send load information once the partition first becomes idle
+                || !this.IDLE_STATE_SENT)
+              
             {
                 this.Partition.Send(new LoadInformationReceived()
                 {
@@ -132,6 +133,7 @@ namespace DurableTask.Netherite
                     BacklogSize = this.LocalBacklog.Count + this.QueuedRemotes.Count,
                 });
 
+                this.IDLE_STATE_SENT = (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0) ? false : true;
                 this.LastLoadInformationSent = DateTime.UtcNow;
             }
         }

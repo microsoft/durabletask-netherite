@@ -81,7 +81,7 @@ namespace DurableTask.Netherite
                         });
                     }
                     // load decisions and update load info
-                    this.LoadInfo[loadInformationReceived.PartitionId] -= OffloadTargets.Skip(1).Sum(x => x.Value);
+                    this.LoadInfo[loadInformationReceived.PartitionId] -= OffloadTargets.Sum(x => x.Value);
                 }
             }
         }
@@ -97,9 +97,26 @@ namespace DurableTask.Netherite
                     int capacity = OVERLOAD_THRESHOLD - this.LoadInfo[target];
                     OffloadTargets[target] = numActivitiesToOffload - capacity > 0 ? capacity : numActivitiesToOffload;
                     numActivitiesToOffload -= capacity;
+
+                    // prevent the load monitor offload more tasks before the target partition reports its current load
+                    // this.LoadInfo[target] = OVERLOAD_THRESHOLD;
                 }
             }
             return OffloadTargets.Count == 0 ? false : true;
+        }
+
+        // Do we really need this interval?
+        void updateLoadMonitorInterval()
+        {
+            double utilization = this.LoadInfo.Sum(x => x.Value) / (this.LoadInfo.Count * UNDERLOAD_THRESHOLD);
+
+            if (utilization < 1)
+            {
+                this.BatchSender.Submit(new ProbingControlReceived()
+                {
+                    LoadMonitorInterval = TimeSpan.FromMilliseconds(100),
+                });
+            }
         }
     }
 }
