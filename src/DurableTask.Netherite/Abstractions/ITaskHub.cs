@@ -37,8 +37,7 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Stops the transport backend.
         /// </summary>
-        /// <param name="isForced">Whether to shut down as quickly as possible, or gracefully.</param>
         /// <returns>After the transport backend has stopped.</returns>
-        Task StopAsync(bool isForced);
+        Task StopAsync();
     }
 }

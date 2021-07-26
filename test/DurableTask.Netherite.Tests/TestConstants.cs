@@ -40,7 +40,7 @@ namespace DurableTask.Netherite.Tests
                 PartitionCount = 12,
                 TakeStateCheckpointWhenStoppingPartition = true,  // set to false for testing recovery from log
                 UseAlternateObjectStore = false,                  // set to true to bypass FasterKV; default is false
-                MaxTimeMsBetweenCheckpoints = 1000000000,         // set this low for testing frequent checkpointing
+                IdleCheckpointFrequencyMs = 1000000000,         // set this low for testing frequent checkpointing
                 //MaxNumberBytesBetweenCheckpoints = 10000000, // set this low for testing frequent checkpointing
                 //MaxNumberEventsBetweenCheckpoints = 10, // set this low for testing frequent checkpointing
             };

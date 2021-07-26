@@ -86,7 +86,7 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper = new EventHubsTraceHelper(traceHelper, this.partitionId);
 
             var _ = shutdownToken.Register(
-              () => { var _ = Task.Run(() => this.IdempotentShutdown("shutdownToken")); },
+              () => { var _ = Task.Run(() => this.IdempotentShutdown("shutdownToken", false)); },
               useSynchronizationContext: false);
         }
 
@@ -98,7 +98,7 @@ namespace DurableTask.Netherite.EventHubs
 
             // make sure we shut down as soon as the partition is closing
             var _ = context.CancellationToken.Register(
-              () => { var _ = Task.Run(() => this.IdempotentShutdown("context.CancellationToken")); },
+              () => { var _ = Task.Run(() => this.IdempotentShutdown("context.CancellationToken", true)); },
               useSynchronizationContext: false);
 
             // we kick off the start-and-retry mechanism for the partition, but don't wait for it to be fully started.
@@ -212,11 +212,11 @@ namespace DurableTask.Netherite.EventHubs
             return c;
         }
 
-        async Task IdempotentShutdown(string reason)
+        async Task IdempotentShutdown(string reason, bool quickly)
         {
             async Task ShutdownAsync()
             {
-                this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is shutting down (reason: {reason})", this.eventHubName, this.eventHubPartition, reason);
+                this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is shutting down (reason: {reason}, quickly: {quickly})", this.eventHubName, this.eventHubPartition, reason, quickly);
 
                 this.eventProcessorShutdown.Cancel(); // stops reincarnations
 
@@ -233,8 +233,8 @@ namespace DurableTask.Netherite.EventHubs
                 }
                 else
                 {
-                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopping partition (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, current.Incarnation);
-                    await current.Partition.StopAsync(false).ConfigureAwait(false);
+                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopping partition (incarnation: {incarnation}, quickly: {quickly}}", this.eventHubName, this.eventHubPartition, current.Incarnation, quickly);
+                    await current.Partition.StopAsync(quickly).ConfigureAwait(false);
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopped partition (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, current.Incarnation);
                 }
 
@@ -254,9 +254,9 @@ namespace DurableTask.Netherite.EventHubs
 
         async Task IEventProcessor.CloseAsync(PartitionContext context, CloseReason reason)
         {
-            this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is closing", this.eventHubName, this.eventHubPartition);
+            this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is closing (reason: {reason})", this.eventHubName, this.eventHubPartition, reason);
 
-            await this.IdempotentShutdown("CloseAsync");
+            await this.IdempotentShutdown("CloseAsync", reason == CloseReason.LeaseLost);
 
             await this.SaveEventHubsReceiverCheckpoint(context).ConfigureAwait(false);
 
@@ -300,7 +300,7 @@ namespace DurableTask.Netherite.EventHubs
                     // since this processor is no longer going to receive events, let's shut it down
                     // one would expect that this is redundant with EventProcessHost calling close
                     // but empirically we have observed that the latter does not always happen in this situation
-                    Task.Run(() => this.IdempotentShutdown("Receiver was disconnected"));
+                    Task.Run(() => this.IdempotentShutdown("Receiver was disconnected", true));
 
                     break;
 

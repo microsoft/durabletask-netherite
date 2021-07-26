@@ -149,13 +149,13 @@ namespace DurableTask.Netherite
             }
         }
 
-        public async Task StopAsync(bool isForced)
+        public async Task StopAsync(bool quickly)
         {
             if (!this.ErrorHandler.IsTerminated)
             {
-                this.TraceHelper.TracePartitionProgress("Stopping", ref this.LastTransition, this.CurrentTimeMs, $"isForced={isForced}");
+                this.TraceHelper.TracePartitionProgress("Stopping", ref this.LastTransition, this.CurrentTimeMs, $"quickly={quickly}");
 
-                bool takeCheckpoint = this.Settings.TakeStateCheckpointWhenStoppingPartition && !isForced;
+                bool takeCheckpoint = this.Settings.TakeStateCheckpointWhenStoppingPartition && !quickly;
 
                 // for a clean shutdown we try to save some of the latest progress to storage and then release the lease
                 bool clean = true;
