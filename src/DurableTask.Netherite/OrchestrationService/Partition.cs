@@ -117,6 +117,11 @@ namespace DurableTask.Netherite
                 this.TraceHelper.TracePartitionProgress("Started", ref this.LastTransition, this.CurrentTimeMs, $"nextInputQueuePosition={inputQueuePosition}");
                 return inputQueuePosition;
             }
+            catch (OperationCanceledException) when (errorHandler.IsTerminated)
+            {
+                // this happens when startup is canceled
+                throw;
+            }
             catch (Exception e) when (!Utils.IsFatal(e))
             {
                 this.ErrorHandler.HandleError(nameof(CreateOrRestoreAsync), "Could not start partition", e, true, false);
