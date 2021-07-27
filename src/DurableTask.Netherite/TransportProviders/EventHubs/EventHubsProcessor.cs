@@ -245,7 +245,7 @@ namespace DurableTask.Netherite.EventHubs
             {
                 if (this.shutdownTask == null)
                 {
-                    this.shutdownTask = ShutdownAsync();
+                    this.shutdownTask = Task.Run(() => ShutdownAsync());
                 }
             }
 
