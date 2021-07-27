@@ -233,7 +233,7 @@ namespace DurableTask.Netherite.EventHubs
                 }
                 else
                 {
-                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopping partition (incarnation: {incarnation}, quickly: {quickly}}", this.eventHubName, this.eventHubPartition, current.Incarnation, quickly);
+                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopping partition (incarnation: {incarnation}, quickly: {quickly})", this.eventHubName, this.eventHubPartition, current.Incarnation, quickly);
                     await current.Partition.StopAsync(quickly).ConfigureAwait(false);
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopped partition (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, current.Incarnation);
                 }
