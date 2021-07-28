@@ -182,14 +182,22 @@ namespace DurableTask.Netherite
                     // we create a separate trace message for each destination partition
                     foreach (var group in request.TaskMessages.GroupBy((message) => message.OrchestrationInstance.InstanceId))
                     {
+                        double delay = this.client.workItemStopwatch.Elapsed.TotalMilliseconds - this.startTime;
+                        string workItemId = request.WorkItemId;
+
                         this.client.workItemTraceHelper.TraceWorkItemCompleted(
                             request.PartitionId,
                             WorkItemTraceHelper.WorkItemType.Client,
-                            request.WorkItemId,
+                            workItemId,
                             group.Key,
                             WorkItemTraceHelper.ClientStatus.Send,
-                            this.client.workItemStopwatch.Elapsed.TotalMilliseconds - this.startTime,
-                            WorkItemTraceHelper.FormatMessageIdList(group.Select((message) => (message, request.WorkItemId))));
+                            delay,
+                            request.TaskMessages.Length);
+
+                        foreach (var message in request.TaskMessages)
+                        {
+                            this.client.workItemTraceHelper.TraceTaskMessageSent(request.PartitionId, message, workItemId, null, delay);
+                        }
                     }
 
                     // this request is considered completed at the time of durability
@@ -202,14 +210,19 @@ namespace DurableTask.Netherite
                 }
                 else if (evt is CreationRequestReceived creationRequestReceived)
                 {
+                    double delay = this.client.workItemStopwatch.Elapsed.TotalMilliseconds - this.startTime;
+                    string workItemId = creationRequestReceived.WorkItemId;
+
                     this.client.workItemTraceHelper.TraceWorkItemCompleted(
                         creationRequestReceived.PartitionId,
                         WorkItemTraceHelper.WorkItemType.Client,
-                        creationRequestReceived.WorkItemId,
+                        workItemId,
                         creationRequestReceived.InstanceId,
                         WorkItemTraceHelper.ClientStatus.Create,
-                        this.client.workItemStopwatch.Elapsed.TotalMilliseconds - this.startTime,
-                        WorkItemTraceHelper.FormatMessageIdList(creationRequestReceived.TracedTaskMessages));
+                        delay,
+                        1);
+
+                    this.client.workItemTraceHelper.TraceTaskMessageSent(creationRequestReceived.PartitionId, creationRequestReceived.TaskMessage, workItemId, null, delay);
                 }
             }
 

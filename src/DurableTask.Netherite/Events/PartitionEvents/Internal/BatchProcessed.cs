@@ -63,42 +63,6 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.PersistFirst == PersistFirstStatus.Done ? this.WorkItemId + "P" : this.WorkItemId);
 
-        [IgnoreDataMember]
-        public override IEnumerable<(TaskMessage, string)> TracedTaskMessages
-        {
-            get
-            {
-                if (this.ActivityMessages != null)
-                {
-                    foreach (TaskMessage a in this.ActivityMessages)
-                    {
-                        yield return (a, this.WorkItemId);
-                    }
-                }
-                if (this.TimerMessages != null)
-                {
-                    foreach (TaskMessage t in this.TimerMessages)
-                    {
-                        yield return (t, this.WorkItemId);
-                    }
-                }
-                if (this.LocalMessages != null)
-                {
-                    foreach (TaskMessage l in this.LocalMessages)
-                    {
-                        yield return (l, this.WorkItemId);
-                    }
-                }
-                if (this.RemoteMessages != null)
-                {
-                    foreach (TaskMessage r in this.RemoteMessages)
-                    {
-                        yield return (r, this.WorkItemId);
-                    }
-                }
-            }
-        }
-
         IEnumerable<TrackedObjectKey> IRequiresPrefetch.KeysToPrefetch
         {
             get
@@ -112,6 +76,31 @@ namespace DurableTask.Netherite
         {
             // start on the sessions object; further effects are determined from there
             effects.Add(TrackedObjectKey.Sessions);
+        }
+
+        public IEnumerable<TaskMessage> LoopBackMessages()
+        {
+            if (this.ActivityMessages != null)
+            {
+                foreach (var message in this.ActivityMessages)
+                {
+                    yield return message;
+                }
+            }
+            if (this.LocalMessages != null)
+            {
+                foreach (var message in this.LocalMessages)
+                {
+                    yield return message;
+                }
+            }
+            if (this.TimerMessages != null)
+            {
+                foreach (var message in this.TimerMessages)
+                {
+                    yield return message;
+                }
+            }
         }
 
         protected override void ExtraTraceInformation(StringBuilder s)

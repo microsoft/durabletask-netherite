@@ -30,15 +30,6 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.WorkItemId);
 
-        [IgnoreDataMember]
-        public override IEnumerable<(TaskMessage, string)> TracedTaskMessages
-        {
-            get
-            {
-                yield return (this.TaskMessage, this.OriginWorkItemId);
-            }
-        }
-
         public override void DetermineEffects(EffectTracker effects)
         {
             effects.Add(TrackedObjectKey.Sessions);

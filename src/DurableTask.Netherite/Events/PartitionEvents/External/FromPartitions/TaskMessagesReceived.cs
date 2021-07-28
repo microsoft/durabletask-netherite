@@ -32,6 +32,28 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public int NumberMessages => (this.TaskMessages?.Count ?? 0) + (this.DelayedTaskMessages?.Count ?? 0);
 
+        [IgnoreDataMember]
+        public override IEnumerable<(TaskMessage message, string workItemId)> TracedTaskMessages
+        {
+            get
+            {
+                if (this.TaskMessages?.Count > 0)
+                {
+                    foreach (var taskMessage in this.TaskMessages)
+                    {
+                        yield return (taskMessage, this.WorkItemId);
+                    }
+                }
+                if (this.DelayedTaskMessages?.Count > 0)
+                {
+                    foreach (var taskMessage in this.DelayedTaskMessages)
+                    {
+                        yield return (taskMessage, this.WorkItemId);
+                    }
+                }
+            }
+        }
+
         protected override void ExtraTraceInformation(StringBuilder s)
         {
             var tCount = this.TaskMessages?.Count ?? 0;
