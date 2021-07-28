@@ -6,7 +6,7 @@ namespace DurableTask.Netherite
     using System.Runtime.Serialization;
 
     [DataContract]
-    class SendConfirmed : PartitionUpdateEvent
+    class PartitionSendConfirmed : PartitionUpdateEvent
     {
         [DataMember]
         public long Position { get; set; }

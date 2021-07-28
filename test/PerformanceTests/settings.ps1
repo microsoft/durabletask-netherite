@@ -2,10 +2,10 @@
 Write-Host "Using parameters specified in settings.ps1."
 
 # always edit this parameter before running the scripts
-$name="globally-unique-alphanumeric-name-with-no-dashes"
+$name="functionssb1"
 
 # review these parameters before running the scripts
-$location="eastus"
+$location="westus2"
 $storageSku="Standard_LRS"
 
 # optionally, customize the following parameters

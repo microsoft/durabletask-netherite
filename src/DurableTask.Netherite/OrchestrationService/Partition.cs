@@ -41,7 +41,7 @@ namespace DurableTask.Netherite
 
         public IPartitionState State { get; private set; }
         public TransportAbstraction.ISender BatchSender { get; private set; }
-        public WorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; private set; }
+        public DoubleWorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; private set; }
         public WorkItemQueue<OrchestrationWorkItem> OrchestrationWorkItemQueue { get; private set; }
         public LoadPublisher LoadPublisher { get; private set; }
 
@@ -62,7 +62,7 @@ namespace DurableTask.Netherite
             TransportAbstraction.ISender batchSender,
             NetheriteOrchestrationServiceSettings settings,
             string storageAccountName,
-            WorkItemQueue<ActivityWorkItem> activityWorkItemQueue,
+            DoubleWorkItemQueue<ActivityWorkItem> activityWorkItemQueue,
             WorkItemQueue<OrchestrationWorkItem> orchestrationWorkItemQueue,
             LoadPublisher loadPublisher,
             WorkItemTraceHelper workItemTraceHelper)
@@ -225,6 +225,13 @@ namespace DurableTask.Netherite
             this.BatchSender.Submit(clientEvent);
         }
 
+        public void Send(WorkerEvent workerEvent)
+        {
+            this.EventDetailTracer?.TraceEventProcessingDetail($"Sending worker event {workerEvent} id={workerEvent.EventId}");
+
+            this.BatchSender.Submit(workerEvent);
+        }
+
         public void Send(PartitionUpdateEvent updateEvent)
         {
             this.EventDetailTracer?.TraceEventProcessingDetail($"Sending partition update event {updateEvent} id={updateEvent.EventId}");
@@ -276,7 +283,7 @@ namespace DurableTask.Netherite
             this.State.SubmitExternalEvents(partitionEvents);
         }
 
-        public void EnqueueActivityWorkItem(ActivityWorkItem item)
+        public void EnqueueActivityWorkItem(ActivityLocalWorkItem item)
         {
             this.Assert(!string.IsNullOrEmpty(item.OriginWorkItem));
 
@@ -285,10 +292,10 @@ namespace DurableTask.Netherite
                 WorkItemTraceHelper.WorkItemType.Activity,
                 item.WorkItemId,
                 item.TaskMessage.OrchestrationInstance.InstanceId,
-                item.ExecutionType,
+                "Local",
                 WorkItemTraceHelper.FormatMessageId(item.TaskMessage, item.OriginWorkItem));
 
-            this.ActivityWorkItemQueue.Add(item);
+            this.ActivityWorkItemQueue.AddLocal(item);
         }
  
         public void EnqueueOrchestrationWorkItem(OrchestrationWorkItem item)

@@ -46,7 +46,7 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Sessions);
 
-        public static string GetWorkItemId(uint partition, long session, long position) => $"{partition:D2}S{session}P{position}";
+        public static string GetWorkItemId(uint partition, long session, long position, Guid guid) => $"{partition:D2}S{session}P{position}G{guid:N}";
 
 
         public override void OnRecoveryCompleted()
@@ -209,10 +209,10 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(RemoteActivityResultReceived evt, EffectTracker effects)
+        public void Process(WorkerResultReceived evt, EffectTracker effects)
         {
             // queues task message (from another partition) in a new or existing session
-            this.AddMessageToSession(evt.Result, evt.WorkItemId, effects.IsReplaying);
+            this.AddMessageToSession(evt.Result, evt.OriginWorkItemId, effects.IsReplaying);
         }
 
         public void Process(ClientTaskMessagesReceived evt, EffectTracker effects)
@@ -228,7 +228,7 @@ namespace DurableTask.Netherite
             this.AddMessageToSession(timerFired.TaskMessage, timerFired.OriginWorkItemId, effects.IsReplaying);
         }
 
-        public void Process(ActivityCompleted activityCompleted, EffectTracker effects)
+        public void Process(LocalActivityCompleted activityCompleted, EffectTracker effects)
         {
             // queues an activity-completed message in a session
             this.AddMessageToSession(activityCompleted.Response, activityCompleted.WorkItemId, effects.IsReplaying);

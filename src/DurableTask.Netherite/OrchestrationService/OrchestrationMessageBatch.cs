@@ -38,7 +38,7 @@ namespace DurableTask.Netherite
                 this.MessagesToProcess.Add(message);
                 this.MessagesToProcessOrigin.Add(originWorkItemId);
             }
-            this.WorkItemId = SessionsState.GetWorkItemId(partition.PartitionId, this.SessionId, this.BatchStartPosition);
+            this.WorkItemId = SessionsState.GetWorkItemId(partition.PartitionId, this.SessionId, this.BatchStartPosition, Guid.NewGuid());
             this.WaitingSince = partition.CurrentTimeMs;
 
             session.CurrentBatch = this; 
@@ -125,6 +125,7 @@ namespace DurableTask.Netherite
                     InstanceId = this.InstanceId,
                     BatchStartPosition = this.BatchStartPosition,
                     BatchLength = this.BatchLength,
+                    WorkItemId = workItem.MessageBatch.WorkItemId,
                     NewEvents = null,
                     State = null,
                     WorkItemForReuse = null,

@@ -31,6 +31,7 @@ namespace DurableTask.Netherite.EventHubs
 
         EventProcessorHost eventProcessorHost;
         TransportAbstraction.IClient client;
+        TransportAbstraction.IWorker worker;
 
         TaskhubParameters parameters;
         byte[] taskhubGuid;
@@ -172,7 +173,7 @@ namespace DurableTask.Netherite.EventHubs
             BlobManager.CheckStorageFormat(this.parameters.StorageFormat, this.settings);
 
             this.host.NumberPartitions = (uint)this.parameters.StartPositions.Length;
-           
+
             this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs)
             {
                 Host = host,
@@ -183,16 +184,16 @@ namespace DurableTask.Netherite.EventHubs
 
             this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
 
+            if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
+            {
+                this.worker = this.host.AddWorker(this.ClientId, this.parameters.TaskhubGuid, this);
+            }
+
             this.clientEventLoopTask = Task.Run(this.ClientEventLoop);
 
             if (PartitionHubs.Length > 1)
             {
                 throw new NotSupportedException("Using multiple eventhubs for partitions is not yet supported.");
-            }
-
-            if (this.client == null)
-            {
-                throw new InvalidOperationException("client must be started before partition hosting is started.");
             }
 
             string partitionsHub = PartitionHubs[0];
@@ -256,8 +257,10 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper.LogInformation("Shutting down EventHubsBackend");
             this.shutdownSource.Cancel(); // initiates shutdown of client and of all partitions
 
-            this.traceHelper.LogDebug("Stopping client");
-            await this.client.StopAsync().ConfigureAwait(false);
+            this.traceHelper.LogDebug("Stopping client and worker");
+            var clientStopTask = this.client.StopAsync();
+            var workerStopTask = this.worker?.StopAsync() ?? Task.CompletedTask;
+            await Task.WhenAll(clientStopTask, workerStopTask).ConfigureAwait(false);
 
             switch (this.settings.PartitionManagement)
             {

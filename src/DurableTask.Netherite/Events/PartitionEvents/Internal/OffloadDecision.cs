@@ -14,12 +14,6 @@ namespace DurableTask.Netherite
         [DataMember]
         public DateTime Timestamp { get; set; }
 
-        [IgnoreDataMember]
-        public uint DestinationPartitionId { get; set; }
-
-        [IgnoreDataMember]
-        public List<(TaskMessage,string)> OffloadedActivities { get; set; }
-
         public static string GetWorkItemId(uint partition, DateTime timestamp) => $"{partition:D2}F{timestamp:o}";
 
         [IgnoreDataMember]
@@ -27,8 +21,6 @@ namespace DurableTask.Netherite
 
         public override void DetermineEffects(EffectTracker effects)
         {
-            // start processing on activities, which makes the decision, 
-            // and if offloading, fills in the fields, and adds the outbox to the effects
             effects.Add(TrackedObjectKey.Activities);
         }
     }

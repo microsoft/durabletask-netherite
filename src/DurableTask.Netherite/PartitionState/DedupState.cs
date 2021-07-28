@@ -40,25 +40,6 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(ActivityOffloadReceived evt, EffectTracker effects)
-        {
-            // queues activities originating from a remote partition to execute on this partition
-            if (this.IsNotDuplicate(evt))
-            {
-                effects.Add(TrackedObjectKey.Activities);
-            }
-        }
-
-        public void Process(RemoteActivityResultReceived evt, EffectTracker effects)
-        {
-            // returns a response to an ongoing orchestration, and reports load data to the offload logic
-            if (this.IsNotDuplicate(evt))
-            {
-                effects.Add(TrackedObjectKey.Sessions);
-                effects.Add(TrackedObjectKey.Activities);
-            }
-        }
-
         public void Process(TaskMessagesReceived evt, EffectTracker effects)
         {
             // contains messages to be processed by sessions and/or to be scheduled by timer

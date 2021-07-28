@@ -39,6 +39,16 @@ namespace DurableTask.Netherite
             /// An event that is sent from a partition to another partition.
             /// </summary>
             PartitionToPartition,
+
+           /// <summary>
+            /// An event that is sent from a partition to the worker queue.
+            /// </summary>
+            WorkerRequest,
+
+            /// <summary>
+            /// An event that is sent from a worker to a partition.
+            /// </summary>
+            WorkerResponse,
         }
 
         /// <summary>
@@ -103,6 +113,20 @@ namespace DurableTask.Netherite
             Category = EventCategory.PartitionToPartition
         };
 
+        internal static EventId MakeWorkerRequestEventId(string originWorkItemId, long sequenceNumber) => new EventId()
+        {
+            WorkItemId = originWorkItemId,
+            Number = sequenceNumber,
+            Category = EventCategory.WorkerRequest
+        };
+
+        internal static EventId MakeWorkerResponseEventId(Guid workerId, long sequenceNumber) => new EventId()
+        {
+            ClientId = workerId,
+            Number = sequenceNumber,
+            Category = EventCategory.WorkerResponse,
+        };
+
         internal static EventId MakeSubEventId(EventId id, int fragment)
         {
             id.Index = fragment;
@@ -119,6 +143,12 @@ namespace DurableTask.Netherite
 
                 case EventCategory.ClientResponse:
                     return $"{Client.GetShortId(this.ClientId)}R{this.Number}R{this.IndexSuffix}";
+
+                case EventCategory.WorkerRequest:
+                    return $"{this.WorkItemId}M{this.Number}";
+
+                case EventCategory.WorkerResponse:
+                    return $"{Client.GetShortId(this.ClientId)}A{this.Number}";
 
                 case EventCategory.PartitionInternal:
                     return $"{this.WorkItemId}{this.IndexSuffix}";

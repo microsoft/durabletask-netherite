@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-    class ActivityCompleted : PartitionUpdateEvent
+    class LocalActivityCompleted : PartitionUpdateEvent
     {
         [DataMember]
         public long ActivityId { get; set; }

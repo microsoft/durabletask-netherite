@@ -1,9 +1,9 @@
 #!/usr/bin/pwsh
 param (
     $Settings="./settings.ps1",
-	$Plan="EP2", 
+	$Plan="EP3", 
 	$MinNodes="1", 
-	$MaxNodes="20", 
+	$MaxNodes="12", 
 	$Configuration="Release",
 	$HostConfigurationFile="./host.json",
 	$HubName="perftests",

@@ -17,19 +17,16 @@ namespace DurableTask.Netherite
     using Dynamitey;
 
     [DataContract]
-    class ActivitiesState : TrackedObject
+    class ActivitiesState : TrackedObject, TransportAbstraction.IDurabilityListener
     {
         [DataMember]
-        public Dictionary<long, (TaskMessage message, string workItem)> Pending { get; private set; }
+        public Dictionary<long, (TaskMessage message, string workItem)> LocalPending { get; private set; }
 
         [DataMember]
-        public Queue<ActivityInfo> LocalBacklog { get; private set; } 
-
+        public Dictionary<(string originWorkItem, long sequenceNumber), ActivityInfo> RemotePending { get; private set; }
+        
         [DataMember]
-        public Queue<ActivityInfo> QueuedRemotes { get; private set; }
-
-        [DataMember]
-        public int[] ReportedRemoteLoads { get; private set; }
+        public Queue<ActivityInfo> Backlog { get; private set; } 
 
         [DataMember]
         public int EstimatedLocalWorkItemLoad { get; private set; }
@@ -44,52 +41,44 @@ namespace DurableTask.Netherite
 
         public override void OnFirstInitialization()
         {
-            this.Pending = new Dictionary<long, (TaskMessage, string)>();
-            this.LocalBacklog = new Queue<ActivityInfo>();
-            this.QueuedRemotes = new Queue<ActivityInfo>();
-            this.ReportedRemoteLoads = new int[this.Partition.NumberPartitions()];
-            uint numberPartitions = this.Partition.NumberPartitions();
-            for (uint i = 0; i < numberPartitions; i++)
-            {
-                this.ReportedRemoteLoads[i] = NOT_CONTACTED;
-            }
+            this.LocalPending = new Dictionary<long, (TaskMessage, string)>();
+            this.RemotePending = new Dictionary<(string originWorkItem, long sequenceNumber), ActivityInfo>();
+            this.Backlog = new Queue<ActivityInfo>();
         }
 
-        const int NOT_CONTACTED = -1;
-        const int RESPONSE_PENDING = int.MaxValue;
-
-        const int ABSOLUTE_LOAD_LIMIT_FOR_REMOTES = 1000;
-        const double RELATIVE_LOAD_LIMIT_FOR_REMOTES = .8;
-        const double PORTION_SUBJECT_TO_OFFLOAD = .5;
-        const int OFFLOAD_MAX_BATCH_SIZE = 100;
-        const int OFFLOAD_MIN_BATCH_SIZE = 10;
-
-        const int MAX_WORKITEM_LOAD = 10;
-
-        // minimum time for an activity to be waiting before it is offloaded to a remote partition
-        static readonly TimeSpan WaitTimeThresholdForOffload = TimeSpan.FromSeconds(15);
+        // Current design: Use bounded buffers for both pending local and pending remote activities.
+        // In this preliminary design the buffer size is a constant. We will make smarter choices at some point.
+        const int MAX_LOCAL_PENDING = 100;
+        const int MAX_REMOTE_PENDING = 200;
 
         public override void OnRecoveryCompleted()
         {
             // reschedule work items
-            foreach (var pending in this.Pending)
+            foreach (var pending in this.LocalPending)
             {
-                this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, pending.Key, pending.Value.message, pending.Value.workItem));
+                this.Partition.EnqueueActivityWorkItem(new ActivityLocalWorkItem(this.Partition, pending.Key, pending.Value.message, pending.Value.workItem));
             }
 
-            if (this.LocalBacklog.Count > 0)
+            foreach (var pending in this.RemotePending)
             {
-                this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
+                if (!pending.Value.Sent)
+                {
+                    this.Send(pending.Value);
+                }
             }
+            //if (this.Backlog.Count > 0)
+            //{
+            //    this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
+            //}
         }
 
         public override void UpdateLoadInfo(PartitionLoadInfo info)
         {
-            info.Activities = this.Pending.Count + this.LocalBacklog.Count + this.QueuedRemotes.Count;
+            info.Activities = this.LocalPending.Count + this.RemotePending.Count + this.Backlog.Count;
 
             if (info.Activities > 0)
             {
-                var maxLatencyInQueue = Enumerable.Concat(this.LocalBacklog, this.QueuedRemotes)
+                var maxLatencyInQueue = Enumerable.Concat(this.Backlog, this.RemotePending.Values)
                     .Select(a => (long)(DateTime.UtcNow - a.IssueTime).TotalMilliseconds)
                     .DefaultIfEmpty()
                     .Max();
@@ -111,33 +100,27 @@ namespace DurableTask.Netherite
 
         public override string ToString()
         {
-            return $"Activities ({this.Pending.Count} pending) next={this.SequenceNumber:D6}";
+            return $"Activities ({this.LocalPending.Count} pending) next={this.SequenceNumber:D6}";
         }
 
-        void ScheduleNextOffloadDecision(TimeSpan delay)
-        {
-            if (this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Local)
-            {
-                this.Partition.PendingTimers.Schedule(DateTime.UtcNow + delay, new OffloadDecision()
-                {
-                    PartitionId = this.Partition.PartitionId,
-                    Timestamp = DateTime.UtcNow + delay,
-                });
-            }
-        }
+        //void ScheduleNextOffloadDecision(TimeSpan delay)
+        //{
+        //    if (this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Local)
+        //    {
+        //        this.Partition.PendingTimers.Schedule(DateTime.UtcNow + delay, new OffloadDecision()
+        //        {
+        //            PartitionId = this.Partition.PartitionId,
+        //            Timestamp = DateTime.UtcNow + delay,
+        //        });
+        //    }
+        //}
 
         public bool TryGetNextActivity(out ActivityInfo activityInfo)
         {
             // take the most recent from the backlog or the queued remotes
-            if (this.LocalBacklog.Count > 0 &&
-                !(this.QueuedRemotes.Count > 0 && this.QueuedRemotes.Peek().IssueTime < this.LocalBacklog.Peek().IssueTime))
+            if (this.Backlog.Count > 0)
             {
-                activityInfo = this.LocalBacklog.Dequeue();
-                return true;
-            }
-            else if (this.QueuedRemotes.Count > 0)
-            {
-                activityInfo = this.QueuedRemotes.Dequeue();
+                activityInfo = this.Backlog.Dequeue();
                 return true;
             }
             else
@@ -154,105 +137,70 @@ namespace DurableTask.Netherite
             {
                 var activityId = this.SequenceNumber++;
 
-                if (this.Pending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_WORKITEM_LOAD)
+                if (this.LocalPending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_LOCAL_PENDING)
                 {
-                    this.Pending.Add(activityId, (msg, evt.WorkItemId));
+                    this.LocalPending.Add(activityId, (msg, evt.WorkItemId));
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityId, msg, evt.WorkItemId));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityLocalWorkItem(this.Partition, activityId, msg, evt.WorkItemId));
                     }
 
                     this.EstimatedLocalWorkItemLoad++;
                 }
                 else
                 {
-                    this.LocalBacklog.Enqueue(new ActivityInfo()
+                    var activityInfo = new ActivityInfo()
                     {
                         ActivityId = activityId,
                         IssueTime = evt.Timestamp,
                         Message = msg,
                         WorkItemId = evt.WorkItemId,
-                    });
+                    };
 
-                    if (!effects.IsReplaying)
+                    if (this.RemotePending.Count < MAX_REMOTE_PENDING)
                     {
-                        this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.LocalBacklog.Count}");
+                        this.RemotePending.Add((evt.WorkItemId, msg.SequenceNumber), activityInfo);
 
-                        if (this.LocalBacklog.Count == 1)
+                        if (!effects.IsReplaying)
                         {
-                            this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
+                            this.Send(activityInfo);
+                        }
+                    }
+                    else
+                    {
+                        this.Backlog.Enqueue(activityInfo);
+
+                        if (!effects.IsReplaying)
+                        {
+                            this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.Backlog.Count}");
+
+                            //if (this.Backlog.Count == 1)
+                            //{
+                            //    this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
+                            //}
                         }
                     }
                 }
             }
         }
 
-        public void Process(ActivityOffloadReceived evt, EffectTracker effects)
+        public void Process(LocalActivityCompleted evt, EffectTracker effects)
         {
-            // may bring in offloaded activities from other partitions
-            foreach (var msg in evt.OffloadedActivities)
-            {
-                var activityId = this.SequenceNumber++;
-
-                if (this.Pending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_WORKITEM_LOAD)
-                {
-                    this.Pending.Add(activityId, msg);
-
-                    if (!effects.IsReplaying)
-                    {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityId, msg.Item1, msg.Item2));
-                    }
-
-                    this.EstimatedLocalWorkItemLoad++;
-                }
-                else
-                {
-                    this.QueuedRemotes.Enqueue(new ActivityInfo()
-                    {
-                        ActivityId = activityId,
-                        IssueTime = evt.Timestamp,
-                        Message = msg.Item1,
-                        WorkItemId = msg.Item2
-                    });
-
-                    if (!effects.IsReplaying)
-                    {
-                        this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg.Item1, msg.Item2, $"QueuedRemotes@{this.QueuedRemotes.Count}");
-                    }
-                }
-            }
-        }
-
-        public void Process(ActivityCompleted evt, EffectTracker effects)
-        {
-            // records the result of a finished activity and launches an offload decision
-
-            this.Pending.Remove(evt.ActivityId);
-
-            if (evt.OriginPartitionId == effects.Partition.PartitionId)
-            {
-                this.EstimatedLocalWorkItemLoad = evt.ReportedLoad;
-                // the response can be delivered to a session on this partition
-                effects.Add(TrackedObjectKey.Sessions);
-            }
-            else
-            {
-                // the response must be sent to a remote partition
-                evt.ReportedLoad = this.LocalBacklog.Count + this.QueuedRemotes.Count;
-                effects.Add(TrackedObjectKey.Outbox);
-            }
-
-            // now that an activity has completed, we can perhaps add more from the backlog
-            while (this.Pending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_WORKITEM_LOAD)
+            this.LocalPending.Remove(evt.ActivityId);
+            this.EstimatedLocalWorkItemLoad = evt.ReportedLoad;
+            effects.Add(TrackedObjectKey.Sessions);
+         
+            // now that a local activity has completed, we can perhaps add more from the backlog
+            while (this.LocalPending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_LOCAL_PENDING)
             {
                 if (this.TryGetNextActivity(out var activityInfo))
                 {
-                    this.Pending.Add(activityInfo.ActivityId, (activityInfo.Message, activityInfo.WorkItemId));
+                    this.LocalPending.Add(activityInfo.ActivityId, (activityInfo.Message, activityInfo.WorkItemId));
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message, activityInfo.WorkItemId));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityLocalWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message, activityInfo.WorkItemId));
                     }
 
                     this.EstimatedLocalWorkItemLoad++;
@@ -264,154 +212,99 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(RemoteActivityResultReceived evt, EffectTracker effects)
+        public void Process(WorkerResultReceived evt, EffectTracker effects)
         {
-            // records the reported queue size
-            this.ReportedRemoteLoads[evt.OriginPartition] = evt.ActivitiesQueueSize;
-        }
-
-        public void Process(OffloadDecision offloadDecisionEvent, EffectTracker effects)
-        {
-            // check for offload conditions and if satisfied, send batch to remote
-
-            if (this.LocalBacklog.Count == 0)
+            if (this.RemotePending.Remove((evt.OriginWorkItemId, evt.OriginSequenceNumber)))
             {
-                return;
-            }
+                // process this on sessions to deliver the result to the orchestration              
+                effects.Add(TrackedObjectKey.Sessions);
 
-            // find how many offload candidates we have
-            int numberOffloadCandidates = this.CountOffloadCandidates(offloadDecisionEvent.Timestamp);
-
-            if (numberOffloadCandidates < OFFLOAD_MIN_BATCH_SIZE)
-            {
-                return; // no offloading if we cannot offload enough
-            }
-
-            if (this.FindOffloadTarget(numberOffloadCandidates, out uint target, out int maxBatchsize))
-            {
-                // don't pick this same target again until we get a response telling us the current queue size
-                var targetLoad = this.ReportedRemoteLoads[target];
-                this.ReportedRemoteLoads[target] = RESPONSE_PENDING;
-
-                // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
-                offloadDecisionEvent.DestinationPartitionId = target;
-                offloadDecisionEvent.OffloadedActivities = new List<(TaskMessage, string)>();
-
-                for (int i = 0; i < maxBatchsize; i++)
+                // now that a remote activity has completed, we can perhaps add more from the backlog
+                while (this.RemotePending.Count <= MAX_REMOTE_PENDING)
                 {
-                    var info = this.LocalBacklog.Dequeue();
-                    offloadDecisionEvent.OffloadedActivities.Add((info.Message, info.WorkItemId));
+                    if (this.TryGetNextActivity(out var toSend))
+                    {
+                        this.RemotePending.Add((toSend.WorkItemId, toSend.Message.SequenceNumber), toSend);
 
-                    if (this.LocalBacklog.Count == 0 || offloadDecisionEvent.Timestamp - this.LocalBacklog.Peek().IssueTime < WaitTimeThresholdForOffload)
+                        if (!effects.IsReplaying)
+                        {
+                            this.Send(toSend);
+                        }
+                    }
+                    else
                     {
                         break;
                     }
                 }
-
-                // process this on OutboxState so the events get sent
-                effects.Add(TrackedObjectKey.Outbox);
-
-                var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x, int i) =>
-                    (i == target) ? $"{targetLoad}+{offloadDecisionEvent.OffloadedActivities.Count}" : (x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString()))));
-
-                if (!effects.IsReplaying)
-                {
-                    this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
-
-                    // try again relatively soon
-                    this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(200));
-                }
-            }
-            else
-            {
-                var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x) => x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString())));
-
-                if (!effects.IsReplaying)
-                {
-                    this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
-
-                    // there are no eligible recipients... try again in a while
-                    this.ScheduleNextOffloadDecision(TimeSpan.FromSeconds(10));
-                }
             }
         }
 
-        int CountOffloadCandidates(DateTime now)
+        // we are not currently using this. 
+        //public void Process(OffloadDecision offloadDecisionEvent, EffectTracker effects)
+        //{
+        //    // check for offload conditions and if satisfied, send activities to global queue
+        //    if (this.Backlog.Count == 0)
+        //    {
+        //        return; // stop making offload decisions until there is a backlog.
+        //    }
+
+
+        //var 
+
+        //if (offloadDecisionEvent.)
+
+
+        //    var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x, int i) =>
+        //        (i == target) ? $"{targetLoad}+{offloadDecisionEvent.OffloadedActivities.Count}" : (x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString()))));
+
+        //    if (!effects.IsReplaying)
+        //    {
+        //        this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.LocalPending.Count, this.Backlog.Count, this.QueuedRemotes.Count, reportedRemotes);
+
+        //        // try again relatively soon
+        //        this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(200));
+        //    }
+        //}
+        //else
+        //{
+        //    if (!effects.IsReplaying)
+        //    {
+        //        this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.LocalPending.Count, this.Backlog.Count, this.QueuedRemotes.Count, reportedRemotes);
+
+        //        // there are no eligible recipients... try again in a while
+        //        this.ScheduleNextOffloadDecision(TimeSpan.FromSeconds(10));
+        //    }
+        //}
+        //}
+
+        void Send(ActivityInfo activityInfo)
         {
-            int numberOffloadCandidates = 0;
-            int limit = (int)(Math.Min(PORTION_SUBJECT_TO_OFFLOAD * this.LocalBacklog.Count, OFFLOAD_MAX_BATCH_SIZE * this.Partition.NumberPartitions()));
-            foreach (var entry in this.LocalBacklog)
+            var workerEvent = new WorkerRequestReceived()
             {
-                if (now - entry.IssueTime < WaitTimeThresholdForOffload
-                    || numberOffloadCandidates++ > limit)
-                {
-                    break;
-                }
-            }
-            return numberOffloadCandidates;
+                OriginWorkItemId = activityInfo.WorkItemId,
+                Message = activityInfo.Message
+            };
+            DurabilityListeners.Register(workerEvent, this);
+            this.Partition.Send(workerEvent);
         }
 
-        bool FindOffloadTarget(double portionSubjectToOffload, out uint target, out int batchsize)
+        public void ConfirmDurable(Event evt)
         {
-            uint numberPartitions = this.Partition.NumberPartitions();
-            uint? firstNotContacted = null;
-            uint? eligibleTargetWithSmallestQueue = null;
-            int minimalReportedQueueSizeFound = int.MaxValue;
-            double estimatedParallism = 0;
-            double remoteLoadLimit = Math.Min(ABSOLUTE_LOAD_LIMIT_FOR_REMOTES, RELATIVE_LOAD_LIMIT_FOR_REMOTES * this.LocalBacklog.Count);
-
-            for (uint i = 0; i < numberPartitions - 1; i++)
+            var workerRequestReceived = (WorkerRequestReceived)evt;
+            this.Partition.SubmitInternalEvent(new WorkerSendConfirmed()
             {
-                uint candidate = (this.Partition.PartitionId + i + 1) % numberPartitions;
-                int reported = this.ReportedRemoteLoads[candidate];
-                if (reported == NOT_CONTACTED)
-                {
-                    if (!firstNotContacted.HasValue)
-                    {
-                        firstNotContacted = candidate;
-                    }
-                    estimatedParallism += 1;
-                }
-                else if (reported != RESPONSE_PENDING)
-                {
-                    if (reported < remoteLoadLimit)
-                    {
-                        estimatedParallism += 1;
-                        if (reported < minimalReportedQueueSizeFound)
-                        {
-                            minimalReportedQueueSizeFound = reported;
-                            eligibleTargetWithSmallestQueue = candidate;
-                        }
-                    }
-                }
-                else
-                {
-                    estimatedParallism += 1;
-                }
-            }
+                PartitionId = this.Partition.PartitionId,
+                OriginWorkItemId = workerRequestReceived.OriginWorkItemId,
+                OriginSequenceNumber = workerRequestReceived.Message.SequenceNumber,
+            });
+        }
 
-            if (eligibleTargetWithSmallestQueue.HasValue)
+        public void Process(WorkerSendConfirmed workerSendConfirmed, EffectTracker effects)
+        {
+            if (this.RemotePending.TryGetValue((workerSendConfirmed.OriginWorkItemId, workerSendConfirmed.OriginSequenceNumber), out var activityInfo))
             {
-                // we found a lowly loaded target
-                target = eligibleTargetWithSmallestQueue.Value;
-                batchsize = Math.Min(OFFLOAD_MAX_BATCH_SIZE, Math.Max(OFFLOAD_MIN_BATCH_SIZE, (int)Math.Ceiling(portionSubjectToOffload / estimatedParallism)));
-                if (minimalReportedQueueSizeFound < batchsize)
-                {
-                    return true;
-                }
+                activityInfo.Sent = true;
             }
-
-            if (firstNotContacted.HasValue)
-            {
-                // we did not find a lowly loaded target with enough spare capacity
-                target = firstNotContacted.Value;
-                batchsize = OFFLOAD_MIN_BATCH_SIZE;
-                return true;
-            }
-
-            target = 0;
-            batchsize = 0;
-            return false;
         }
 
         [DataContract]
@@ -428,6 +321,9 @@ namespace DurableTask.Netherite
 
             [DataMember]
             public DateTime IssueTime;
+
+            [DataMember]
+            public bool Sent;
         }
     }
 }

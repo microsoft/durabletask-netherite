@@ -63,12 +63,12 @@ namespace DurableTask.Netherite
             yield return typeof(PurgeRequestReceived);
             yield return typeof(StateRequestReceived);
             yield return typeof(WaitRequestReceived);
-            yield return typeof(ActivityCompleted);
+            yield return typeof(LocalActivityCompleted);
             yield return typeof(BatchProcessed);
-            yield return typeof(SendConfirmed);
+            yield return typeof(PartitionSendConfirmed);
             yield return typeof(TimerFired);
-            yield return typeof(ActivityOffloadReceived);
-            yield return typeof(RemoteActivityResultReceived);
+            yield return typeof(WorkerRequestReceived);
+            yield return typeof(WorkerResultReceived);
             yield return typeof(TaskMessagesReceived);
             yield return typeof(OffloadDecision);
             yield return typeof(PurgeBatchIssued);

@@ -45,7 +45,10 @@ namespace PerformanceTests.EventProducer
                 string volume = $"{1.0 * payloadSize * numEvents / (1024 * 1024):F2}MB";
 
                 string connectionString = Environment.GetEnvironmentVariable(Parameters.EventHubsConnectionName);
+                
                 await EventHubsUtil.EnsureEventHubExistsAsync(connectionString, Parameters.EventHubName, numPartitions);
+                await EventHubsUtil.EnsureEventHubExistsAsync(connectionString, "tasks", 32);
+
                 var connectionStringBuilder = new EventHubsConnectionStringBuilder(connectionString)
                 {
                     EntityPath = Parameters.EventHubName,

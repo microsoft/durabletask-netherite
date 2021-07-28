@@ -48,6 +48,17 @@ namespace DurableTask.Netherite
             IPartition AddPartition(uint partitionId, ISender batchSender);
 
             /// <summary>
+            /// Creates a task worker on this host.
+            /// </summary>
+            /// <param name="workerId">A globally unique identifier for this worker</param>
+            /// <param name="taskHubGuid">the unique identifier of the taskhub</param>
+            /// <param name="batchSender">A sender that can be used by the worker for sending results</param>
+            /// <returns>A worker for executing tasks</returns>
+            IWorker AddWorker(Guid workerId, Guid taskHubGuid, ISender batchSender);
+
+
+
+            /// <summary>
             /// Returns an error handler object for the given partition.
             /// </summary>
             /// <param name="partitionId">The partition id.</param>
@@ -128,6 +139,36 @@ namespace DurableTask.Netherite
             /// Stop processing events and shut down.
             /// </summary>
             /// <returns>When the client is shut down.</returns>
+            Task StopAsync();
+
+            /// <summary>
+            /// Indicates an observed error for diagnostic purposes.
+            /// </summary>
+            /// <param name="msg">A message describing the circumstances.</param>
+            /// <param name="e">The exception that was observed.</param>
+            void ReportTransportError(string msg, Exception e);
+        }
+
+        /// <summary>
+        /// The task worker functionality, as seen by the transport back-end.
+        /// </summary>
+        public interface IWorker
+        {
+            /// <summary>
+            /// A unique identifier for this client.
+            /// </summary>
+            Guid WorkerId { get; }
+
+            /// <summary>
+            /// Processes a single event on this client.
+            /// </summary>
+            /// <param name="workerEvent">The event to process.</param>
+            void Process(WorkerRequestReceived workerRequest);
+
+            /// <summary>
+            /// Stop processing tasks and shut down.
+            /// </summary>
+            /// <returns>When the worker is shut down.</returns>
             Task StopAsync();
 
             /// <summary>

@@ -122,7 +122,7 @@ namespace DurableTask.Netherite
 
                 if (++this.numAcks == this.OutgoingMessages.Count)
                 {
-                    this.Partition.SubmitInternalEvent(new SendConfirmed()
+                    this.Partition.SubmitInternalEvent(new PartitionSendConfirmed()
                     {
                         PartitionId = this.Partition.PartitionId,
                         Position = Position,
@@ -131,25 +131,12 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(SendConfirmed evt, EffectTracker _)
+        public void Process(PartitionSendConfirmed evt, EffectTracker _)
         {
             this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Store has sent all outbound messages by event {evt} id={evt.EventIdString}");
 
             // we no longer need to keep these events around
             this.Outbox.Remove(evt.Position);
-        }
-
-        public void Process(ActivityCompleted evt, EffectTracker effects)
-        {
-            var batch = new Batch();
-            batch.OutgoingMessages.Add(new RemoteActivityResultReceived()
-            {
-                PartitionId = evt.OriginPartitionId,
-                Result = evt.Response,
-                ActivityId = evt.ActivityId,
-                ActivitiesQueueSize = evt.ReportedLoad,
-            });
-            this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
 
         public void Process(BatchProcessed evt, EffectTracker effects)
@@ -224,18 +211,6 @@ namespace DurableTask.Netherite
                     batch.OutgoingMessages.Add(outmessage);
                 }
             }
-            this.SendBatchOnceEventIsPersisted(evt, effects, batch);
-        }
-
-        public void Process(OffloadDecision evt, EffectTracker effects)
-        {
-            var batch = new Batch();
-            batch.OutgoingMessages.Add(new ActivityOffloadReceived()
-            {
-                PartitionId = evt.DestinationPartitionId,
-                OffloadedActivities = evt.OffloadedActivities,
-                Timestamp = evt.Timestamp,
-            });
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
     }

@@ -58,6 +58,8 @@ namespace DurableTask.Netherite
         }
         Client client;
 
+        Worker worker;
+
         internal ILoadMonitorService LoadMonitorService { get; private set; }
 
         internal NetheriteOrchestrationServiceSettings Settings { get; private set; }
@@ -65,7 +67,7 @@ namespace DurableTask.Netherite
         uint TransportAbstraction.IHost.NumberPartitions { set => this.NumberPartitions = value; }
         internal string StorageAccountName { get; private set; }
 
-        internal WorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; private set; }
+        internal DoubleWorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; private set; }
         internal WorkItemQueue<OrchestrationWorkItem> OrchestrationWorkItemQueue { get; private set; }
         internal LoadPublisher LoadPublisher { get; private set; }
 
@@ -278,7 +280,7 @@ namespace DurableTask.Netherite
 
                 this.serviceShutdownSource = new CancellationTokenSource();
 
-                this.ActivityWorkItemQueue = new WorkItemQueue<ActivityWorkItem>();
+                this.ActivityWorkItemQueue = new DoubleWorkItemQueue<ActivityWorkItem>();
                 this.OrchestrationWorkItemQueue = new WorkItemQueue<OrchestrationWorkItem>();
 
                 LeaseTimer.Instance.DelayWarning = (int delay) =>
@@ -383,6 +385,14 @@ namespace DurableTask.Netherite
 
             this.client = new Client(this, clientId, taskHubGuid, batchSender, this.workItemTraceHelper, this.serviceShutdownSource.Token);
             return this.client;
+        }
+
+        TransportAbstraction.IWorker TransportAbstraction.IHost.AddWorker(Guid workerId, Guid taskHubGuid, TransportAbstraction.ISender batchSender)
+        {
+            System.Diagnostics.Debug.Assert(this.worker == null, "Backend should create only 1 worker");
+
+            this.worker = new Worker(this, workerId, taskHubGuid, batchSender, this.ActivityWorkItemQueue, this.workItemTraceHelper, this.GetPartitionId, this.serviceShutdownSource.Token);
+            return this.worker;
         }
 
         TransportAbstraction.IPartition TransportAbstraction.IHost.AddPartition(uint partitionId, TransportAbstraction.ISender batchSender)
@@ -779,11 +789,11 @@ namespace DurableTask.Netherite
             if (nextActivityWorkItem != null)
             {
                 this.workItemTraceHelper.TraceWorkItemStarted(
-                    nextActivityWorkItem.Partition.PartitionId,
+                    nextActivityWorkItem.PartitionId,
                     WorkItemTraceHelper.WorkItemType.Activity,
                     nextActivityWorkItem.WorkItemId,
                     nextActivityWorkItem.TaskMessage.OrchestrationInstance.InstanceId,
-                    nextActivityWorkItem.ExecutionType,
+                    nextActivityWorkItem.IsRemote ? "Remote" : "Local",
                     WorkItemTraceHelper.FormatMessageId(nextActivityWorkItem.TaskMessage, nextActivityWorkItem.OriginWorkItem));
 
                 nextActivityWorkItem.StartedAt = this.workItemStopwatch.Elapsed.TotalMilliseconds;
@@ -794,67 +804,27 @@ namespace DurableTask.Netherite
 
         Task IOrchestrationService.AbandonTaskActivityWorkItemAsync(TaskActivityWorkItem workItem)
         {
+            var activityWorkItem = (ActivityWorkItem)workItem;
+
             // put it back into the work queue
-            this.ActivityWorkItemQueue.Add((ActivityWorkItem)workItem);
+            if (activityWorkItem.IsRemote)
+            {
+                this.ActivityWorkItemQueue.AddRemote((ActivityWorkItem)workItem);
+            }
+            else
+            {
+                this.ActivityWorkItemQueue.AddLocal((ActivityWorkItem)workItem);
+            }
+
             return Task.CompletedTask;
         }
 
         Task IOrchestrationService.CompleteTaskActivityWorkItemAsync(TaskActivityWorkItem workItem, TaskMessage responseMessage)
         {
             var activityWorkItem = (ActivityWorkItem)workItem;
-            var partition = activityWorkItem.Partition;
             var latencyMs = this.workItemStopwatch.Elapsed.TotalMilliseconds - activityWorkItem.StartedAt;
 
-            var activityCompletedEvent = new ActivityCompleted()
-            {
-                PartitionId = activityWorkItem.Partition.PartitionId,
-                ActivityId = activityWorkItem.ActivityId,
-                OriginPartitionId = activityWorkItem.OriginPartition,
-                ReportedLoad = this.ActivityWorkItemQueue.Load,
-                Timestamp = DateTime.UtcNow,
-                Response = responseMessage,
-            };
-
-            if (partition.ErrorHandler.IsTerminated)
-            {
-                // we get here if the partition was terminated. The work is thrown away. 
-                // It's unavoidable by design, but let's at least create a warning.
-                this.workItemTraceHelper.TraceWorkItemDiscarded(
-                    partition.PartitionId,
-                    WorkItemTraceHelper.WorkItemType.Activity,
-                    activityWorkItem.WorkItemId,
-                    activityWorkItem.TaskMessage.OrchestrationInstance.InstanceId,
-                    "",
-                    "partition was terminated"
-                   );
-
-                return Task.CompletedTask;
-            }
-
-            this.workItemTraceHelper.TraceWorkItemCompleted(
-                partition.PartitionId,
-                WorkItemTraceHelper.WorkItemType.Activity,
-                activityWorkItem.WorkItemId,
-                activityWorkItem.TaskMessage.OrchestrationInstance.InstanceId,
-                WorkItemTraceHelper.ActivityStatus.Completed,
-                latencyMs,
-                WorkItemTraceHelper.FormatMessageId(responseMessage, activityWorkItem.WorkItemId));
-
-            try
-            {
-                partition.SubmitInternalEvent(activityCompletedEvent);
-            }
-            catch (OperationCanceledException e)
-            {
-                // we get here if the partition was terminated. The work is thrown away. 
-                // It's unavoidable by design, but let's at least create a warning.
-                partition.ErrorHandler.HandleError(
-                    nameof(IOrchestrationService.CompleteTaskActivityWorkItemAsync), 
-                    "Canceling already-completed activity work item because of partition termination", 
-                    e, 
-                    false, 
-                    true);
-            }
+            activityWorkItem.HandleResultAsync(responseMessage, this.ActivityWorkItemQueue.LocalLoad, latencyMs);
 
             return Task.CompletedTask;
         }

@@ -26,6 +26,9 @@ namespace DurableTask.Netherite
         public int BatchLength { get; set; }
 
         [DataMember]
+        public string WorkItemId { get; set; }
+
+        [DataMember]
         public List<HistoryEvent> NewEvents { get; set; }
 
         [DataMember]
@@ -58,9 +61,6 @@ namespace DurableTask.Netherite
         public OrchestrationWorkItem WorkItemForReuse { get; set; }
 
         [IgnoreDataMember]
-        public string WorkItemId => SessionsState.GetWorkItemId(this.PartitionId, this.SessionId, this.BatchStartPosition);
-
-        [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.PersistFirst == PersistFirstStatus.Done ? this.WorkItemId + "P" : this.WorkItemId);
 
         [IgnoreDataMember]
@@ -68,33 +68,32 @@ namespace DurableTask.Netherite
         {
             get
             {
-                string workItemId = SessionsState.GetWorkItemId(this.PartitionId, this.SessionId, this.BatchStartPosition);
                 if (this.ActivityMessages != null)
                 {
                     foreach (TaskMessage a in this.ActivityMessages)
                     {
-                        yield return (a, workItemId);
+                        yield return (a, this.WorkItemId);
                     }
                 }
                 if (this.TimerMessages != null)
                 {
                     foreach (TaskMessage t in this.TimerMessages)
                     {
-                        yield return (t, workItemId);
+                        yield return (t, this.WorkItemId);
                     }
                 }
                 if (this.LocalMessages != null)
                 {
                     foreach (TaskMessage l in this.LocalMessages)
                     {
-                        yield return (l, workItemId);
+                        yield return (l, this.WorkItemId);
                     }
                 }
                 if (this.RemoteMessages != null)
                 {
                     foreach (TaskMessage r in this.RemoteMessages)
                     {
-                        yield return (r, workItemId);
+                        yield return (r, this.WorkItemId);
                     }
                 }
             }
