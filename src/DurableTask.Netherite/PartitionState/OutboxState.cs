@@ -55,10 +55,6 @@ namespace DurableTask.Netherite
             // put the messages in the outbox where they are kept until actually sent
             var commitPosition = evt.NextCommitLogPosition;
 
-            // Update the ready to send timestamp to check the delay caused 
-            // by non-speculation
-            evt.ReadyToSendTimestamp = this.Partition.CurrentTimeMs;
-
             this.Outbox[commitPosition] = batch;
             batch.Position = commitPosition;
             batch.Partition = this.Partition;
@@ -75,6 +71,7 @@ namespace DurableTask.Netherite
 
                 // register for a durability notification, at which point we will send the batch
                 evt.OutboxBatch = batch;
+                batch.ProcessedTimestamp = this.Partition.CurrentTimeMs;
                 DurabilityListeners.Register(evt, this);
             }
         }
@@ -82,21 +79,19 @@ namespace DurableTask.Netherite
         public void ConfirmDurable(Event evt)
         {
             var partitionUpdateEvent = ((PartitionUpdateEvent)evt);
-
-            // Calculate the delay by not sending immediately
-            partitionUpdateEvent.SentTimestamp = this.Partition.CurrentTimeMs;
             this.Send(partitionUpdateEvent.OutboxBatch);
         }
 
         void Send(Batch batch)
         {
+            batch.ReadyToSendTimestamp = this.Partition.CurrentTimeMs;
+
             // now that we know the sending event is persisted, we can send the messages
             foreach (var outmessage in batch.OutgoingMessages)
             {
                 DurabilityListeners.Register(outmessage, batch);
                 outmessage.OriginPartition = this.Partition.PartitionId;
                 outmessage.OriginPosition = batch.Position;
-                //outmessage.SentTimestampUnixMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
                 this.Partition.Send(outmessage);
             }
         }
@@ -116,9 +111,27 @@ namespace DurableTask.Netherite
             [IgnoreDataMember]
             int numAcks = 0;
 
+            [IgnoreDataMember]
+            public double? ProcessedTimestamp { get; set; }
+
+            [IgnoreDataMember]
+            public double ReadyToSendTimestamp { get; set; }
+ 
             public void ConfirmDurable(Event evt)
             {
-                this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Transport has confirmed event {evt} id={evt.EventIdString}");
+                var partitionMessageEvent = (PartitionMessageEvent)evt;
+
+                var workItemTraceHelper = this.Partition.WorkItemTraceHelper;
+                if (workItemTraceHelper.TraceTaskMessages)
+                {
+                    double? persistenceDelayMs = this.ProcessedTimestamp.HasValue ? (this.ReadyToSendTimestamp - this.ProcessedTimestamp.Value) : null;
+                    double sendDelayMs = this.Partition.CurrentTimeMs - this.ReadyToSendTimestamp;
+
+                    foreach (var entry in partitionMessageEvent.TracedTaskMessages)
+                    {
+                        workItemTraceHelper.TraceTaskMessageSent(this.Partition.PartitionId, entry.message, entry.workItemId, persistenceDelayMs, sendDelayMs);
+                    }
+                }
 
                 if (++this.numAcks == this.OutgoingMessages.Count)
                 {

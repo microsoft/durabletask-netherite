@@ -598,7 +598,7 @@ namespace DurableTask.Netherite
         Task IOrchestrationService.CompleteTaskOrchestrationWorkItemAsync(
             TaskOrchestrationWorkItem workItem,
             OrchestrationRuntimeState newOrchestrationRuntimeState,
-            IList<TaskMessage> outboundMessages,
+            IList<TaskMessage> activityMessages,
             IList<TaskMessage> orchestratorMessages,
             IList<TaskMessage> timerMessages,
             TaskMessage continuedAsNewMessage,
@@ -625,9 +625,9 @@ namespace DurableTask.Netherite
             // we assign sequence numbers to all outgoing messages, to help us track them using unique message ids
             long sequenceNumber = 0;
 
-            if (outboundMessages != null)
+            if (activityMessages != null)
             {
-                foreach(TaskMessage taskMessage in outboundMessages)
+                foreach(TaskMessage taskMessage in activityMessages)
                 {
                     taskMessage.SequenceNumber = sequenceNumber++;
                 }
@@ -698,7 +698,7 @@ namespace DurableTask.Netherite
                 PackPartitionTaskMessages = partition.Settings.PackPartitionTaskMessages,
                 PersistFirst = partition.Settings.PersistStepsFirst ? BatchProcessed.PersistFirstStatus.Required : BatchProcessed.PersistFirstStatus.NotRequired,
                 State = state,
-                ActivityMessages = (List<TaskMessage>)outboundMessages,
+                ActivityMessages = (List<TaskMessage>)activityMessages,
                 LocalMessages = localMessages,
                 RemoteMessages = remoteMessages,
                 TimerMessages = (List<TaskMessage>)timerMessages,
@@ -712,10 +712,18 @@ namespace DurableTask.Netherite
                 workItem.InstanceId,
                 batchProcessedEvent.State.OrchestrationStatus,
                 latencyMs,
-                WorkItemTraceHelper.FormatMessageIdList(batchProcessedEvent.TracedTaskMessages));
- 
-            partition.SubmitInternalEvent(batchProcessedEvent);
-            
+                sequenceNumber);
+
+             partition.SubmitInternalEvent(batchProcessedEvent);
+
+            if (this.workItemTraceHelper.TraceTaskMessages)
+            {
+                foreach (var taskMessage in batchProcessedEvent.LoopBackMessages())
+                {
+                    this.workItemTraceHelper.TraceTaskMessageSent(partition.PartitionId, taskMessage, messageBatch.WorkItemId, null, null);
+                }
+            }           
+
             return Task.CompletedTask;
         }
 
@@ -838,11 +846,12 @@ namespace DurableTask.Netherite
                 activityWorkItem.TaskMessage.OrchestrationInstance.InstanceId,
                 WorkItemTraceHelper.ActivityStatus.Completed,
                 latencyMs,
-                WorkItemTraceHelper.FormatMessageId(responseMessage, activityWorkItem.WorkItemId));
+                1);
 
             try
             {
                 partition.SubmitInternalEvent(activityCompletedEvent);
+                this.workItemTraceHelper.TraceTaskMessageSent(partition.PartitionId, activityCompletedEvent.Response, activityWorkItem.WorkItemId, null, null);
             }
             catch (OperationCanceledException e)
             {

@@ -39,7 +39,6 @@ namespace DurableTask.Netherite
             }
         }
 
-
         public override void UpdateLoadInfo(PartitionLoadInfo info)
         {
             info.Timers = this.PendingTimers.Count;
@@ -67,6 +66,19 @@ namespace DurableTask.Netherite
 
             this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Scheduled {message} due at {expirationEvent.Due:o}, id={expirationEvent.EventIdString}");
             this.Partition.PendingTimers.Schedule(expirationEvent.Due, expirationEvent);
+        }
+
+        void AddTimer(TaskMessage taskMessage, string originWorkItemId, bool isReplaying)
+        {
+            var timerId = this.SequenceNumber++;
+            var due = GetDueTime(taskMessage);
+            this.PendingTimers.Add(timerId, (due, taskMessage, originWorkItemId));
+
+            if (!isReplaying)
+            {
+                this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, taskMessage, originWorkItemId, $"Timer@{due}");
+                this.Schedule(timerId, due, taskMessage, originWorkItemId);
+            }
         }
 
         static DateTime GetDueTime(TaskMessage message)
@@ -98,47 +110,24 @@ namespace DurableTask.Netherite
         public void Process(BatchProcessed evt, EffectTracker effects)
         {
             // starts new timers as specified by the batch
-            foreach (var t in evt.TimerMessages)
+            foreach (var taskMessage in evt.TimerMessages)
             {
-                var timerId = this.SequenceNumber++;
-                var due = GetDueTime(t);
-                string workItemId = evt.EventIdString;
-                this.PendingTimers.Add(timerId, (due, t, workItemId));
-
-                if (!effects.IsReplaying)
-                {
-                    this.Schedule(timerId, due, t, workItemId);
-                }
+                this.AddTimer(taskMessage, evt.EventIdString, effects.IsReplaying);
             }
         }
 
         public void Process(TaskMessagesReceived evt, EffectTracker effects)
         {
             // starts new timers as specified by the batch
-            foreach (var t in evt.DelayedTaskMessages)
+            foreach (var taskMessage in evt.DelayedTaskMessages)
             {
-                var timerId = this.SequenceNumber++;
-                var due = GetDueTime(t);
-                this.PendingTimers.Add(timerId, (due, t, evt.WorkItemId));
-
-                if (!effects.IsReplaying)
-                {
-                    this.Schedule(timerId, due, t, evt.WorkItemId);
-                }
+                this.AddTimer(taskMessage, evt.WorkItemId, effects.IsReplaying);
             }
         }
 
         public void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
-            // starts a new timer for the execution started event
-            var timerId = this.SequenceNumber++;
-            var due = GetDueTime(creationRequestReceived.TaskMessage);
-            this.PendingTimers.Add(timerId, (due, creationRequestReceived.TaskMessage, creationRequestReceived.EventIdString));
-
-            if (!effects.IsReplaying)
-            {
-                this.Schedule(timerId, due, creationRequestReceived.TaskMessage, creationRequestReceived.WorkItemId);
-            }
+            this.AddTimer(creationRequestReceived.TaskMessage, creationRequestReceived.EventIdString, effects.IsReplaying);
         }
     }
 }

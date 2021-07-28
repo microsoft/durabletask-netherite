@@ -13,19 +13,6 @@ namespace DurableTask.Netherite
         [DataMember]
         public TaskMessage[] TaskMessages { get; set; }
 
-        [IgnoreDataMember]
-        public override IEnumerable<(TaskMessage, string)> TracedTaskMessages
-        {
-            get
-            {
-                foreach (var message in this.TaskMessages)
-                {
-                    yield return (message, this.WorkItemId);
-                }
-            }
-        }
-
-
         public override void DetermineEffects(EffectTracker effects)
         {
             effects.Add(TrackedObjectKey.Sessions);
