@@ -173,7 +173,7 @@ namespace DurableTask.Netherite
 
                         if (!effects.IsReplaying)
                         {
-                            this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.Backlog.Count}");
+                            this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"Backlog@{this.Backlog.Count}");
 
                             //if (this.Backlog.Count == 1)
                             //{
@@ -282,7 +282,8 @@ namespace DurableTask.Netherite
             var workerEvent = new WorkerRequestReceived()
             {
                 OriginWorkItemId = activityInfo.WorkItemId,
-                Message = activityInfo.Message
+                Message = activityInfo.Message,
+                StartSendTimestamp = this.Partition.CurrentTimeMs,
             };
             DurabilityListeners.Register(workerEvent, this);
             this.Partition.Send(workerEvent);
@@ -291,12 +292,17 @@ namespace DurableTask.Netherite
         public void ConfirmDurable(Event evt)
         {
             var workerRequestReceived = (WorkerRequestReceived)evt;
+
             this.Partition.SubmitInternalEvent(new WorkerSendConfirmed()
             {
                 PartitionId = this.Partition.PartitionId,
                 OriginWorkItemId = workerRequestReceived.OriginWorkItemId,
                 OriginSequenceNumber = workerRequestReceived.Message.SequenceNumber,
             });
+
+            double sendDelayMs = this.Partition.CurrentTimeMs - workerRequestReceived.StartSendTimestamp;
+
+            this.Partition.WorkItemTraceHelper.TraceTaskMessageSent(this.Partition.PartitionId, workerRequestReceived.Message, workerRequestReceived.OriginWorkItemId, null, sendDelayMs);
         }
 
         public void Process(WorkerSendConfirmed workerSendConfirmed, EffectTracker effects)

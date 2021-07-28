@@ -41,11 +41,12 @@ namespace DurableTask.Netherite
                 this.TaskMessage.OrchestrationInstance.InstanceId,
                 WorkItemTraceHelper.ActivityStatus.Completed,
                 latencyMs,
-                WorkItemTraceHelper.FormatMessageId(response, this.Id));
+                1);
 
             try
             {
                 this.Worker.BatchSender.Submit(resultMessage);
+                workItemTraceHelper.TraceTaskMessageSent(this.PartitionId, response, this.WorkItemId, null, null);
             }
             catch (OperationCanceledException)
             {

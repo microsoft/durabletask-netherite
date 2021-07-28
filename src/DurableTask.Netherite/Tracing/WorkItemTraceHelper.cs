@@ -144,12 +144,12 @@ namespace DurableTask.Netherite
 
         public bool TraceTaskMessages => this.logLevelLimit <= LogLevel.Trace;
 
-        public void TraceTaskMessageReceived(uint partitionId, TaskMessage message, string workItemId, string queuePosition)
+        public void TraceTaskMessageReceived(uint partitionId, TaskMessage message, string originWorkItemId, string queuePosition)
         {
             if (this.logLevelLimit <= LogLevel.Trace)
             {
                 (long commitLogPosition, string eventId) = EventTraceContext.Current;
-                string messageId = FormatMessageId(message, workItemId);
+                string messageId = FormatMessageId(message, originWorkItemId);
 
                 if (this.logger.IsEnabled(LogLevel.Trace))
                 {

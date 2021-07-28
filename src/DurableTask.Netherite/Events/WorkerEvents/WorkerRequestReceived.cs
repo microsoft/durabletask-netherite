@@ -17,6 +17,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public TaskMessage Message;
 
+        [IgnoreDataMember]
+        public double StartSendTimestamp;
+
         public override EventId EventId => EventId.MakeWorkerRequestEventId(this.OriginWorkItemId, this.Message.SequenceNumber);
     }
 }

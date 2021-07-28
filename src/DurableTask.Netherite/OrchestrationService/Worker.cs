@@ -51,6 +51,7 @@ namespace DurableTask.Netherite
             this.WorkItemTraceHelper = workItemTraceHelper;
             this.account = host.StorageAccountName;
             this.BatchSender = batchSender;
+            this.partitionHash = partitionHash;
             this.shutdownToken = shutdownToken;
             this.workItemStopwatch = new Stopwatch();
             this.workItemStopwatch.Start();
@@ -68,6 +69,7 @@ namespace DurableTask.Netherite
                 this.sequenceNumber++);
 
             this.ActivityWorkItemQueue.AddRemote(workItem);
+            this.WorkItemTraceHelper.TraceTaskMessageReceived(workItem.PartitionId, workItem.TaskMessage, workItem.OriginWorkItem, workItem.WorkItemId);
         }
 
         Task TransportAbstraction.IWorker.StopAsync()
