@@ -23,7 +23,10 @@ namespace DurableTask.Netherite.Emulated
 
         Dictionary<Guid, IMemoryQueue<ClientEvent>> clientQueues;
         IMemoryQueue<PartitionEvent>[] partitionQueues;
+        IMemoryQueue<WorkerEvent> workerQueue;
+
         TransportAbstraction.IClient client;
+        TransportAbstraction.IWorker worker;
         TransportAbstraction.IPartition[] partitions;
         CancellationTokenSource shutdownTokenSource;
 
@@ -68,6 +71,13 @@ namespace DurableTask.Netherite.Emulated
             this.host.NumberPartitions = this.numberPartitions;
             var creationTimestamp = DateTime.UtcNow;
             var startPositions = new long[this.numberPartitions];
+
+            // create a worker
+            var workerId = Guid.NewGuid();
+            var workerSender = new SendWorker(this.shutdownTokenSource.Token);
+            this.worker = this.host.AddWorker(workerId, default, workerSender);
+            this.workerQueue = new MemoryWorkerQueue(this.worker, this.shutdownTokenSource.Token, this.logger);
+            workerSender.SetHandler(list => this.SendEvents(this.worker, list));
 
             // create a client
             var clientId = Guid.NewGuid();
@@ -149,6 +159,22 @@ namespace DurableTask.Netherite.Emulated
             }
         }
 
+        void SendEvents(TransportAbstraction.IWorker worker, IEnumerable<Event> events)
+        {
+            try
+            {
+                this.SendEvents(events, null);
+            }
+            catch (TaskCanceledException)
+            {
+                // this is normal during shutdown
+            }
+            catch (Exception e)
+            {
+                worker.ReportTransportError(nameof(SendEvents), e);
+            }
+        }
+
         void SendEvents(TransportAbstraction.IPartition partition, IEnumerable<Event> events)
         {
             try
@@ -179,6 +205,10 @@ namespace DurableTask.Netherite.Emulated
                 else if (evt is PartitionEvent partitionEvent)
                 {
                     this.partitionQueues[partitionEvent.PartitionId].Send(partitionEvent);
+                }
+                else if (evt is WorkerEvent workerEvent)
+                {
+                    this.workerQueue.Send(workerEvent);
                 }
             }
         }

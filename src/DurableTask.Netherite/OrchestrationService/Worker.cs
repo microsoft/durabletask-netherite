@@ -59,17 +59,20 @@ namespace DurableTask.Netherite
 
         public string GetWorkItemId(long seqno) => $"W{GetShortId(this.WorkerId)}A{seqno}";
 
-        void TransportAbstraction.IWorker.Process(WorkerRequestReceived workerRequestReceived)
+        void TransportAbstraction.IWorker.Process(WorkerEvent workerEvent)
         {
-            var workItem = new ActivityRemoteWorkItem(
-                this,
-                this.partitionHash(workerRequestReceived.Message.OrchestrationInstance.InstanceId),
-                workerRequestReceived.Message,
-                workerRequestReceived.OriginWorkItemId,
-                this.sequenceNumber++);
+            if (workerEvent is WorkerRequestReceived workerRequestReceived)
+            {
+                var workItem = new ActivityRemoteWorkItem(
+                    this,
+                    this.partitionHash(workerRequestReceived.Message.OrchestrationInstance.InstanceId),
+                    workerRequestReceived.Message,
+                    workerRequestReceived.OriginWorkItemId,
+                    this.sequenceNumber++);
 
-            this.ActivityWorkItemQueue.AddRemote(workItem);
-            this.WorkItemTraceHelper.TraceTaskMessageReceived(workItem.PartitionId, workItem.TaskMessage, workItem.OriginWorkItem, workItem.WorkItemId);
+                this.ActivityWorkItemQueue.AddRemote(workItem);
+                this.WorkItemTraceHelper.TraceTaskMessageReceived(workItem.PartitionId, workItem.TaskMessage, workItem.OriginWorkItem, workItem.WorkItemId);
+            }
         }
 
         Task TransportAbstraction.IWorker.StopAsync()

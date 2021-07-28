@@ -162,8 +162,8 @@ namespace DurableTask.Netherite
             /// <summary>
             /// Processes a single event on this client.
             /// </summary>
-            /// <param name="workerEvent">The event to process.</param>
-            void Process(WorkerRequestReceived workerRequest);
+            /// <param name="evt">The event to process.</param>
+            void Process(WorkerEvent evt);
 
             /// <summary>
             /// Stop processing tasks and shut down.
