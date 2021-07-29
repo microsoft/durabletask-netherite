@@ -26,6 +26,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public DateTime Timestamp { get; set; }
 
+        [DataMember]
+        public double LatencyMs { get; set; }
+
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionToPartitionEventId(this.WorkItemId, this.PartitionId);
 

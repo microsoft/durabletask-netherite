@@ -825,6 +825,7 @@ namespace DurableTask.Netherite
                 OriginPartitionId = activityWorkItem.OriginPartition,
                 ReportedLoad = this.ActivityWorkItemQueue.Load,
                 Timestamp = DateTime.UtcNow,
+                LatencyMs = latencyMs,
                 Response = responseMessage,
             };
 

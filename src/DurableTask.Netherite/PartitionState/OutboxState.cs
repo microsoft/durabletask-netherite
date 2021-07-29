@@ -159,6 +159,8 @@ namespace DurableTask.Netherite
             {
                 PartitionId = evt.OriginPartitionId,
                 Result = evt.Response,
+                Timestamp = evt.Timestamp,
+                LatencyMs = evt.LatencyMs,
                 ActivityId = evt.ActivityId,
                 ActivitiesQueueSize = evt.ReportedLoad,
             });

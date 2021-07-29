@@ -21,6 +21,9 @@ namespace DurableTask.Netherite
         public DateTime Timestamp { get; set; }
 
         [DataMember]
+        public double LatencyMs { get; set; }
+
+        [DataMember]
         public uint OriginPartitionId { get; set; }
 
         [DataMember]
