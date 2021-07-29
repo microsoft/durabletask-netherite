@@ -47,7 +47,6 @@ namespace PerformanceTests.EventProducer
                 string connectionString = Environment.GetEnvironmentVariable(Parameters.EventHubsConnectionName);
                 
                 await EventHubsUtil.EnsureEventHubExistsAsync(connectionString, Parameters.EventHubName, numPartitions);
-                await EventHubsUtil.EnsureEventHubExistsAsync(connectionString, "tasks", 32);
 
                 var connectionStringBuilder = new EventHubsConnectionStringBuilder(connectionString)
                 {

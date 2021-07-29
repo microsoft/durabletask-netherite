@@ -14,6 +14,7 @@ namespace DurableTask.Netherite.EventHubs
     using Microsoft.Azure.Storage.Blob;
     using Newtonsoft.Json;
     using DurableTask.Netherite.Faster;
+    using System.Linq;
 
     /// <summary>
     /// The EventHubs transport implementation.
@@ -65,6 +66,7 @@ namespace DurableTask.Netherite.EventHubs
         // these are hardcoded now but we may turn them into settings
         public static string[] PartitionHubs = { "partitions" };
         public static string[] ClientHubs = { "clients0", "clients1", "clients2", "clients3" };
+        public static string[] WorkerHubs = { "globaltasks" };
         public static string PartitionConsumerGroup = "$Default";
         public static string ClientConsumerGroup = "$Default";
 
@@ -98,6 +100,10 @@ namespace DurableTask.Netherite.EventHubs
             var tasks = new List<Task>();
             tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, PartitionHubs[0], this.settings.PartitionCount));
             foreach (string taskhub in ClientHubs)
+            {
+                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 32));
+            }
+            foreach (string taskhub in WorkerHubs)
             {
                 tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 32));
             }
@@ -291,9 +297,14 @@ namespace DurableTask.Netherite.EventHubs
 
         IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
         {
-            if (partitionContext.EventHubPath.Contains(this.parameters.
-            var processor = new PartitionProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper, this.shutdownSource.Token);
-            return processor;
+            if (this.parameters.WorkerHubs.Contains(partitionContext.EventHubPath))
+            {
+                return new WorkerProcessor(this.host, this.worker, this, this.parameters, partitionContext, this.settings, this.traceHelper, this.shutdownSource.Token);
+            }
+            else
+            {
+                return new PartitionProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper, this.shutdownSource.Token);
+            }
         }
 
         void TransportAbstraction.ISender.Submit(Event evt)
