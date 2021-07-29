@@ -11,37 +11,37 @@ namespace DurableTask.Netherite.Emulated
     /// <summary>
     /// Simulates a in-memory queue for delivering events. Used for local testing and debugging.
     /// </summary>
-    class MemoryWorkerQueue : MemoryQueue<WorkerEvent, byte[]>, IMemoryQueue<WorkerEvent>
+    class MemoryClientQueue : MemoryQueue<ClientEvent, byte[]>, IMemoryQueue<ClientEvent>
     {
-        readonly TransportAbstraction.IWorker worker;
+        readonly TransportAbstraction.IClient client;
 
-        public MemoryWorkerQueue(TransportAbstraction.IWorker worker, CancellationToken cancellationToken, ILogger logger)
-            : base(cancellationToken, $"Worker.{Client.GetShortId(worker.WorkerId)}", logger)
+        public MemoryClientQueue(TransportAbstraction.IClient client, CancellationToken cancellationToken, ILogger logger)
+            : base(cancellationToken, $"Client.{Client.GetShortId(client.ClientId)}", logger)
         {
-            this.worker = worker;
+            this.client = client;
         }
 
-        protected override byte[] Serialize(WorkerEvent evt)
+        protected override byte[] Serialize(ClientEvent evt)
         {
             var stream = new MemoryStream();
             Packet.Serialize(evt, stream, new byte[16]);
             return stream.ToArray();
         }
 
-        protected override WorkerEvent Deserialize(byte[] bytes)
+        protected override ClientEvent Deserialize(byte[] bytes)
         {
             using (var stream = new MemoryStream(bytes, false))
             {
-                Packet.Deserialize(stream, out WorkerEvent workerEvent, null);
-                return workerEvent;
+                Packet.Deserialize(stream, out ClientEvent clientEvent, null);
+                return clientEvent;
             }
         }
 
-        protected override void Deliver(WorkerEvent evt)
+        protected override void Deliver(ClientEvent evt)
         {
             try
             {
-                this.worker.Process(evt);
+                this.client.Process(evt);
             }
             catch (System.Threading.Tasks.TaskCanceledException)
             {
@@ -49,7 +49,7 @@ namespace DurableTask.Netherite.Emulated
             }
             catch (Exception e)
             {
-                this.worker.ReportTransportError(nameof(MemoryClientQueue), e);
+                this.client.ReportTransportError(nameof(MemoryClientQueue), e);
             }
         }
     }

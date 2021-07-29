@@ -15,11 +15,16 @@ namespace DurableTask.Netherite
         /// <summary>
         /// All activities are scheduled on the same partition as the orchestration.
         /// </summary>
-        Local,
+        LocalOnly,
 
         /// <summary>
-        /// Activities are scheduled locally if possible, but backlog is offloaded periodically.
+        /// Activities are scheduled remotely.
         /// </summary>
-        PeriodicOffload,
+        RemoteOnly,
+
+        /// <summary>
+        /// Activities are scheduled locally and remotely.
+        /// </summary>
+        Mixed,
     }
 }

@@ -174,7 +174,7 @@ namespace DurableTask.Netherite.EventHubs
 
             this.host.NumberPartitions = (uint)this.parameters.StartPositions.Length;
 
-            this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs)
+            this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs, this.parameters.WorkerHubs)
             {
                 Host = host,
                 TraceHelper = this.traceHelper,
@@ -291,7 +291,8 @@ namespace DurableTask.Netherite.EventHubs
 
         IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
         {
-            var processor = new EventHubsProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper, this.shutdownSource.Token);
+            if (partitionContext.EventHubPath.Contains(this.parameters.
+            var processor = new PartitionProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper, this.shutdownSource.Token);
             return processor;
         }
 

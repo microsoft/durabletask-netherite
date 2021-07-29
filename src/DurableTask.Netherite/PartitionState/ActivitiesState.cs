@@ -137,7 +137,8 @@ namespace DurableTask.Netherite
             {
                 var activityId = this.SequenceNumber++;
 
-                if (this.LocalPending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_LOCAL_PENDING)
+                if (this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.RemoteOnly
+                    && (this.LocalPending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_LOCAL_PENDING))
                 {
                     this.LocalPending.Add(activityId, (msg, evt.WorkItemId));
 
@@ -154,11 +155,12 @@ namespace DurableTask.Netherite
                     {
                         ActivityId = activityId,
                         IssueTime = evt.Timestamp,
+                        OriginWorkItemId = evt.WorkItemId,
                         Message = msg,
-                        WorkItemId = evt.WorkItemId,
                     };
 
-                    if (this.RemotePending.Count < MAX_REMOTE_PENDING)
+                    if (this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.LocalOnly
+                        && this.RemotePending.Count < MAX_REMOTE_PENDING)
                     {
                         this.RemotePending.Add((evt.WorkItemId, msg.SequenceNumber), activityInfo);
 
@@ -196,11 +198,11 @@ namespace DurableTask.Netherite
             {
                 if (this.TryGetNextActivity(out var activityInfo))
                 {
-                    this.LocalPending.Add(activityInfo.ActivityId, (activityInfo.Message, activityInfo.WorkItemId));
+                    this.LocalPending.Add(activityInfo.ActivityId, (activityInfo.Message, activityInfo.OriginWorkItemId));
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityLocalWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message, activityInfo.WorkItemId));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityLocalWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message, activityInfo.OriginWorkItemId));
                     }
 
                     this.EstimatedLocalWorkItemLoad++;
@@ -224,7 +226,7 @@ namespace DurableTask.Netherite
                 {
                     if (this.TryGetNextActivity(out var toSend))
                     {
-                        this.RemotePending.Add((toSend.WorkItemId, toSend.Message.SequenceNumber), toSend);
+                        this.RemotePending.Add((toSend.OriginWorkItemId, toSend.Message.SequenceNumber), toSend);
 
                         if (!effects.IsReplaying)
                         {
@@ -281,7 +283,7 @@ namespace DurableTask.Netherite
         {
             var workerEvent = new WorkerRequestReceived()
             {
-                OriginWorkItemId = activityInfo.WorkItemId,
+                OriginWorkItemId = activityInfo.OriginWorkItemId,
                 Message = activityInfo.Message,
                 StartSendTimestamp = this.Partition.CurrentTimeMs,
             };
@@ -323,7 +325,7 @@ namespace DurableTask.Netherite
             public TaskMessage Message;
 
             [DataMember]
-            public string WorkItemId;
+            public string OriginWorkItemId;
 
             [DataMember]
             public DateTime IssueTime;

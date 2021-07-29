@@ -25,7 +25,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
 
         public EventHubsSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, EventHubsTraceHelper traceHelper)
-            : base(nameof(EventHubsSender<T>), false, 2000, CancellationToken.None, null)
+            : base(nameof(EventHubsSender<T>) + sender.PartitionId, false, 2000, CancellationToken.None, null)
         {
             this.host = host;
             this.taskHubGuid = taskHubGuid;
@@ -124,7 +124,7 @@ namespace DurableTask.Netherite.EventHubs
             }
             catch (Exception e)
             {
-                this.traceHelper.LogWarning(e, "EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send", this.eventHubName, this.eventHubPartition, this.sender.EventHubClient.EventHubName, this.sender.PartitionId);
+                this.traceHelper.LogWarning(e, "EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send", this.eventHubName, this.eventHubPartition);
                 senderException = e;
             }
             finally
@@ -176,9 +176,9 @@ namespace DurableTask.Netherite.EventHubs
                 }
 
                 if (requeued > 0 || dropped > 0)
-                    this.traceHelper.LogWarning("EventHubsSender {eventHubName}/{eventHubPartitionId} has confirmed {confirmed}, requeued {requeued}, dropped {dropped} outbound events", this.eventHubName, this.eventHubPartition, confirmed, requeued, dropped, this.sender.EventHubClient.EventHubName, this.sender.PartitionId);
+                    this.traceHelper.LogWarning("EventHubsSender {eventHubName}/{eventHubPartitionId} has confirmed {confirmed}, requeued {requeued}, dropped {dropped} outbound events", this.eventHubName, this.eventHubPartition, confirmed, requeued, dropped);
                 else
-                    this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} has confirmed {confirmed}, requeued {requeued}, dropped {dropped} outbound events", this.eventHubName, this.eventHubPartition, confirmed, requeued, dropped, this.sender.EventHubClient.EventHubName, this.sender.PartitionId);
+                    this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} has confirmed {confirmed}, requeued {requeued}, dropped {dropped} outbound events", this.eventHubName, this.eventHubPartition, confirmed, requeued, dropped);
             }
             catch (Exception exception) when (!Utils.IsFatal(exception))
             {

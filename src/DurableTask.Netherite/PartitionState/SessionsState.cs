@@ -46,8 +46,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Sessions);
 
-        public static string GetWorkItemId(uint partition, long session, long position, Guid guid) => $"{partition:D2}S{session}P{position}G{guid:N}";
-
+        string GetSessionId(Session session) => $"{this.Partition.PartitionId:D2}S{session.SessionId}";
+        string GetSessionPosition(Session session) => $"{this.Partition.PartitionId:D2}S{session.SessionId}P{session.BatchStartPosition + session.Batch.Count}";
+        public static string GetWorkItemId(uint partition, long session, long position, Guid guid) => $"{partition:D2}S{session}P{position}X{guid.GetHashCode():X}";
 
         public override void OnRecoveryCompleted()
         {
@@ -93,9 +94,6 @@ namespace DurableTask.Netherite
             return $"Sessions ({this.Sessions.Count} pending) next={this.SequenceNumber:D6}";
         }
 
-        string GetSessionId(Session session) => $"{this.Partition.PartitionId:D2}S{session.SessionId}";
-        string GetSessionPosition(Session session) => $"{this.Partition.PartitionId:D2}S{session.SessionId}P{session.BatchStartPosition + session.Batch.Count}";
-      
 
         void AddMessageToSession(TaskMessage message, string originWorkItemId, bool isReplaying)
         {

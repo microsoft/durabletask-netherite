@@ -78,6 +78,7 @@ namespace DurableTask.Netherite.Emulated
             this.worker = this.host.AddWorker(workerId, default, workerSender);
             this.workerQueue = new MemoryWorkerQueue(this.worker, this.shutdownTokenSource.Token, this.logger);
             workerSender.SetHandler(list => this.SendEvents(this.worker, list));
+            this.workerQueue.Resume();
 
             // create a client
             var clientId = Guid.NewGuid();

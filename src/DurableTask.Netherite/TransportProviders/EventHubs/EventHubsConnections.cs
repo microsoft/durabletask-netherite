@@ -16,9 +16,11 @@ namespace DurableTask.Netherite.EventHubs
         readonly string connectionString;
         readonly string[] partitionHubs;
         readonly string[] clientHubs;
+        readonly string[] workerHubs;
 
         List<EventHubClient> partitionClients;
         List<EventHubClient> clientClients;
+        List<EventHubClient> workerClients;
 
         readonly List<(EventHubClient client, string id)> partitionPartitions = new List<(EventHubClient client, string id)>();
         readonly List<(EventHubClient client, string id)> clientPartitions = new List<(EventHubClient client, string id)>();
@@ -28,6 +30,7 @@ namespace DurableTask.Netherite.EventHubs
 
         public ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>> _partitionSenders = new ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>>();
         public ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>> _clientSenders = new ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>>();
+        public ConcurrentDictionary<int, WorkerSender> _workerSenders = new ConcurrentDictionary<int, WorkerSender>();
 
         public TransportAbstraction.IHost Host { get; set; }
         public EventHubsTraceHelper TraceHelper { get; set; }
@@ -37,11 +40,13 @@ namespace DurableTask.Netherite.EventHubs
         public EventHubsConnections(
             string connectionString, 
             string[] partitionHubs,
-            string[] clientHubs)
+            string[] clientHubs,
+            string[] workerHubs)
         {
             this.connectionString = connectionString;
             this.partitionHubs = partitionHubs;
             this.clientHubs = clientHubs;
+            this.workerHubs = workerHubs;
         }
 
         public async Task StartAsync(TaskhubParameters parameters)
@@ -91,6 +96,14 @@ namespace DurableTask.Netherite.EventHubs
                 if (this.clientClients != null)
                 {
                     foreach (var client in this.clientClients)
+                    {
+                        yield return client;
+                    }
+                }
+
+                if (this.workerClients != null)
+                {
+                    foreach (var client in this.workerClients)
                     {
                         yield return client;
                     }
@@ -157,11 +170,21 @@ namespace DurableTask.Netherite.EventHubs
                     this.clientPartitions.Add((this.clientClients[i], id));
                 }
             }
+
+            // create worker client
+            for (int i = 0; i < this.workerHubs.Length; i++)
+            {
+                var b = new EventHubsConnectionStringBuilder(this.connectionString)
+                {
+                    EntityPath = this.workerHubs[i]
+                };
+                this.workerClients.Add(EventHubClient.CreateFromConnectionString(b.ToString()));
+            }
         }
 
         public static async Task<(long[], DateTime[], string)> GetPartitionInfo(string connectionString, string[] partitionHubs)
         {
-            var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0]);
+            var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0], new string[0]);
             await connections.GetPartitionInformationAsync();
 
             var numberPartitions = connections.partitionPartitions.Count;
@@ -235,5 +258,20 @@ namespace DurableTask.Netherite.EventHubs
                 return sender;
             });
         }
-     }
+
+        public WorkerSender GetWorkerSender(int i, byte[] taskHubGuid, TransportAbstraction.IWorker fallbackWorker)
+        {
+            return this._workerSenders.GetOrAdd(i, (key) =>
+            {
+                var sender = new WorkerSender(
+                    this.Host,
+                    taskHubGuid,
+                    this.workerClients[i],
+                    fallbackWorker,
+                    this.TraceHelper);
+                this.TraceHelper.LogDebug("Created WorkerSender {i} from {clientId}", this.workerClients[i].ClientId);
+                return sender;
+            });
+        }
+    }
 }

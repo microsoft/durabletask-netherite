@@ -704,6 +704,7 @@ namespace DurableTask.Netherite
                 BatchStartPosition = messageBatch.BatchStartPosition,
                 BatchLength = messageBatch.BatchLength,
                 NewEvents = (List<HistoryEvent>)newOrchestrationRuntimeState.NewEvents,
+                WorkItemId = messageBatch.WorkItemId,
                 WorkItemForReuse = cacheWorkItemForReuse ? orchestrationWorkItem : null,
                 PackPartitionTaskMessages = partition.Settings.PackPartitionTaskMessages,
                 PersistFirst = partition.Settings.PersistStepsFirst ? BatchProcessed.PersistFirstStatus.Required : BatchProcessed.PersistFirstStatus.NotRequired,

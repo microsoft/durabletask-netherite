@@ -35,6 +35,9 @@ namespace DurableTask.Netherite.EventHubs
         public string[] ClientHubs { get; set; }
 
         [DataMember]
+        public string[] WorkerHubs { get; set; }
+
+        [DataMember]
         public string ClientConsumerGroup { get; set; }
 
         [DataMember(IsRequired = false)]

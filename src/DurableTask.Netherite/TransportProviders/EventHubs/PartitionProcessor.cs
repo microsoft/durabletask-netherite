@@ -16,7 +16,7 @@ namespace DurableTask.Netherite.EventHubs
     using Microsoft.Azure.EventHubs.Processor;
     using Microsoft.Extensions.Logging;
 
-    class EventHubsProcessor : IEventProcessor, TransportAbstraction.IDurabilityListener
+    class PartitionProcessor : IEventProcessor, TransportAbstraction.IDurabilityListener
     {
         readonly TransportAbstraction.IHost host;
         readonly TransportAbstraction.ISender sender;
@@ -64,7 +64,7 @@ namespace DurableTask.Netherite.EventHubs
 
         readonly Dictionary<string, MemoryStream> reassembly = new Dictionary<string, MemoryStream>();
 
-        public EventHubsProcessor(
+        public PartitionProcessor(
             TransportAbstraction.IHost host,
             TransportAbstraction.ISender sender,
             TaskhubParameters parameters,

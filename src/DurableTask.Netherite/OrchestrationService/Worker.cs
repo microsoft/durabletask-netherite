@@ -30,9 +30,9 @@ namespace DurableTask.Netherite
         internal WorkItemTraceHelper WorkItemTraceHelper { get; }
         internal DoubleWorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; }
 
-        Guid TransportAbstraction.IWorker.WorkerId => throw new NotImplementedException();
+        Guid TransportAbstraction.IWorker.WorkerId => this.WorkerId;
 
-        public static string GetShortId(Guid workerId) => workerId.ToString("N").Substring(0, 7);
+        public static string GetShortId(Guid workerId) => workerId.ToString("N").Substring(0, 7).ToUpper();
 
         public Worker(
             NetheriteOrchestrationService host,
