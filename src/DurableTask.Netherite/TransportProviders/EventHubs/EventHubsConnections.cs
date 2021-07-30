@@ -24,6 +24,7 @@ namespace DurableTask.Netherite.EventHubs
 
         readonly List<(EventHubClient client, string id)> partitionPartitions = new List<(EventHubClient client, string id)>();
         readonly List<(EventHubClient client, string id)> clientPartitions = new List<(EventHubClient client, string id)>();
+        readonly List<(EventHubClient client, string id)> workerPartitions = new List<(EventHubClient client, string id)>();
 
         public string Endpoint { get; private set; }
         public DateTime[] CreationTimestamps { get; private set; }
@@ -51,7 +52,7 @@ namespace DurableTask.Netherite.EventHubs
 
         public async Task StartAsync(TaskhubParameters parameters)
         {
-            await Task.WhenAll(this.GetPartitionInformationAsync(), this.GetClientInformationAsync());
+            await Task.WhenAll(this.GetPartitionInformationAsync(), this.GetClientInformationAsync(), this.GetWorkerInformationAsync());
 
             // check that we are the correct namespace
             if (!string.IsNullOrEmpty(parameters.EventHubsEndpoint)
@@ -78,6 +79,12 @@ namespace DurableTask.Netherite.EventHubs
             if (parameters.StartPositions.Length != this.partitionPartitions.Count)
             {
                 throw new InvalidOperationException($"Cannot recover taskhub because the number of partitions does not match.");
+            }
+
+            // check that the number of worker partitions matches. 
+            if (parameters.WorkerStartPositions.Length != this.workerPartitions.Count)
+            {
+                throw new InvalidOperationException($"Cannot recover taskhub because the number of worker partitions does not match.");
             }
         }
 
@@ -169,9 +176,12 @@ namespace DurableTask.Netherite.EventHubs
                 {
                     this.clientPartitions.Add((this.clientClients[i], id));
                 }
-            }
+            }           
+        }
 
-            // create worker client
+        async Task GetWorkerInformationAsync()
+        {
+            // create worker clients
             this.workerClients = new List<EventHubClient>();
             for (int i = 0; i < this.workerHubs.Length; i++)
             {
@@ -181,31 +191,55 @@ namespace DurableTask.Netherite.EventHubs
                 };
                 this.workerClients.Add(EventHubClient.CreateFromConnectionString(b.ToString()));
             }
+
+            // in parallel, get runtime infos for all the hubs
+            var workerInfos = this.workerClients.Select((ehClient) => ehClient.GetRuntimeInformationAsync()).ToList();
+
+            // create a flat list of worker partitions
+            await Task.WhenAll(workerInfos);
+            for (int i = 0; i < this.workerHubs.Length; i++)
+            {
+                foreach (var id in workerInfos[i].Result.PartitionIds)
+                {
+                    this.workerPartitions.Add((this.workerClients[i], id));
+                }
+            }
         }
 
-        public static async Task<(long[], DateTime[], string)> GetPartitionInfo(string connectionString, string[] partitionHubs)
+        public static async Task<(long[] partitionPositions, long[] workerPositions, DateTime[] creationTimestamps, string endpoint)> GetPartitionInfo(string connectionString, string[] partitionHubs, string[] workerHubs)
         {
-            var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0], new string[0]);
-            await connections.GetPartitionInformationAsync();
+            var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0], workerHubs);
+            await Task.WhenAll(connections.GetPartitionInformationAsync(), connections.GetWorkerInformationAsync());
 
             var numberPartitions = connections.partitionPartitions.Count;
+            var workerPartitions = connections.workerPartitions.Count;
 
-            var positions = new long[numberPartitions];
+            var partitionPositions = new long[numberPartitions];
+            var workerPositions = new long[numberPartitions];
 
-            var infoTasks = connections.partitionPartitions
+            var partitionInfoTasks = connections.partitionPartitions
                 .Select(x => x.client.GetPartitionRuntimeInformationAsync(x.id)).ToList();
 
-            await Task.WhenAll(infoTasks);
+            var workerInfoTasks = connections.workerPartitions
+                .Select(x => x.client.GetPartitionRuntimeInformationAsync(x.id)).ToList();
+
+            await Task.WhenAll(partitionInfoTasks);
+            await Task.WhenAll(workerInfoTasks);
 
             for (int i = 0; i < numberPartitions; i++)
             {
-                var queueInfo = await infoTasks[i].ConfigureAwait(false);
-                positions[i] = queueInfo.LastEnqueuedSequenceNumber + 1;
+                var queueInfo = await partitionInfoTasks[i].ConfigureAwait(false);
+                partitionPositions[i] = queueInfo.LastEnqueuedSequenceNumber + 1;
+            }
+            for (int i = 0; i < workerPartitions; i++)
+            {
+                var queueInfo = await workerInfoTasks[i].ConfigureAwait(false);
+                workerPositions[i] = queueInfo.LastEnqueuedSequenceNumber + 1;
             }
 
             await connections.StopAsync();
 
-            return (positions, connections.CreationTimestamps, connections.Endpoint);
+            return (partitionPositions, workerPositions, connections.CreationTimestamps, connections.Endpoint);
         }
 
         // This is to be used when EventProcessorHost is not used.

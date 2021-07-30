@@ -72,7 +72,7 @@
         "PartitionManagement": "EventProcessorHost",
 
         // set this to "Local" to disable the global activity distribution algorithm
-        "ActivityScheduler": "PeriodicOffload",
+        "ActivityScheduler": "Mixed",
 
         // The log level limits below control the production of log events by the various components.
         // it limits production, not just consumption, of the events, so it can be used to prevent overheads.

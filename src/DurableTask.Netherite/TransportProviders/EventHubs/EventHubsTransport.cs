@@ -111,8 +111,8 @@ namespace DurableTask.Netherite.EventHubs
             await Task.WhenAll(tasks);
 
             // determine the start positions and the creation timestamps
-            (long[] startPositions, DateTime[] creationTimestamps, string namespaceEndpoint)
-                = await EventHubsConnections.GetPartitionInfo(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHubs);
+            (long[] startPositions, long[] workerStartPositions, DateTime[] creationTimestamps, string namespaceEndpoint)
+                = await EventHubsConnections.GetPartitionInfo(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHubs, EventHubsTransport.WorkerHubs);
 
             var taskHubParameters = new TaskhubParameters()
             {
@@ -127,7 +127,8 @@ namespace DurableTask.Netherite.EventHubs
                 ClientConsumerGroup = EventHubsTransport.ClientConsumerGroup,
                 EventHubsEndpoint = namespaceEndpoint,
                 EventHubsCreationTimestamps = creationTimestamps,
-                StartPositions = startPositions
+                StartPositions = startPositions,
+                WorkerStartPositions = workerStartPositions
             };
 
             // try to create the taskhub blob
@@ -276,6 +277,7 @@ namespace DurableTask.Netherite.EventHubs
 
                 var processorOptions = new EventProcessorOptions()
                 {
+                    InitialOffsetProvider = (s) => EventPosition.FromSequenceNumber(this.parameters.WorkerStartPositions[int.Parse(s)] - 1),
                     MaxBatchSize = 100,
                     PrefetchCount = 20,
                 };

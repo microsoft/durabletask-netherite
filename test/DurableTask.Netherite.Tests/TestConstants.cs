@@ -65,6 +65,6 @@ namespace DurableTask.Netherite.Tests
             => new TestOrchestrationHost(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
 
-        public static bool DeleteStorageBeforeRunningTests => false; // set to false for testing log-based recovery
+        public static bool DeleteStorageBeforeRunningTests => true; // set to false for testing log-based recovery
     }
 }

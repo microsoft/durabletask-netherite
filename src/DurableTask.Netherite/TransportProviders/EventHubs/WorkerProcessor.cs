@@ -145,7 +145,7 @@ namespace DurableTask.Netherite.EventHubs
 
                 while (!this.partitionContext.CancellationToken.IsCancellationRequested)
                 {
-                    this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is checkpointing receive position through #{seqno}", this.eventHubName, this.eventHubPartition, checkpoint.SequenceNumber);
+                    this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} is checkpointing receive position through #{seqno}", this.eventHubName, this.eventHubPartition, checkpoint.SequenceNumber);
                     try
                     {
                         await this.partitionContext.CheckpointAsync(batch.Checkpoint).ConfigureAwait(false);
@@ -158,7 +158,7 @@ namespace DurableTask.Netherite.EventHubs
                     }
                     catch (Microsoft.Azure.EventHubs.Processor.LeaseLostException)
                     {
-                        this.traceHelper.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition} lease expired.");
+                        this.traceHelper.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition} failed to checkpoint receive position due to an expired lease.", this.eventHubName, this.eventHubPartition);
 
                         break;
                     }

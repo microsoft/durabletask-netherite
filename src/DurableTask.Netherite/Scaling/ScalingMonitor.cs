@@ -200,11 +200,10 @@ namespace DurableTask.Netherite.Scaling
             // next, check if any of the entries are not current, in the sense that their input queue position
             // does not match the latest queue position
 
-            long[] positions;
-
             if (this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
-                (positions,_,_) = await EventHubs.EventHubsConnections.GetPartitionInfo(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
+                var result = await EventHubs.EventHubsConnections.GetPartitionInfo(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs, EventHubsTransport.WorkerHubs).ConfigureAwait(false);
+                long[] positions = result.partitionPositions;
 
                 for (uint i = 0; i < positions.Length; i++)
                 {
@@ -218,6 +217,8 @@ namespace DurableTask.Netherite.Scaling
                     }
                 }
             }
+
+            // TODO must implement worker scaling
 
             // finally, check if we have waited long enough
             foreach (var kvp in loadInformation)

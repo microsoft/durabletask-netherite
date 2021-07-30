@@ -103,7 +103,7 @@ namespace DurableTask.Netherite.Faster
         };
         
         // increment this after changes of the storage representation that break compatibility
-        const int StorageFormatVersion = 1;
+        const int StorageFormatVersion = 2;
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
         {
