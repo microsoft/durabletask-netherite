@@ -172,6 +172,7 @@ namespace DurableTask.Netherite.EventHubs
             }
 
             // create worker client
+            this.workerClients = new List<EventHubClient>();
             for (int i = 0; i < this.workerHubs.Length; i++)
             {
                 var b = new EventHubsConnectionStringBuilder(this.connectionString)
@@ -259,8 +260,10 @@ namespace DurableTask.Netherite.EventHubs
             });
         }
 
-        public WorkerSender GetWorkerSender(int i, byte[] taskHubGuid, TransportAbstraction.IWorker fallbackWorker)
+        public WorkerSender GetWorkerSender(byte[] taskHubGuid, TransportAbstraction.IWorker fallbackWorker)
         {
+            int i = 0; // for now we only ever have one
+
             return this._workerSenders.GetOrAdd(i, (key) =>
             {
                 var sender = new WorkerSender(
@@ -269,7 +272,7 @@ namespace DurableTask.Netherite.EventHubs
                     this.workerClients[i],
                     fallbackWorker,
                     this.TraceHelper);
-                this.TraceHelper.LogDebug("Created WorkerSender {i} from {clientId}", this.workerClients[i].ClientId);
+                this.TraceHelper.LogDebug("Created WorkerSender {i} from {clientId}", i, this.workerClients[i].ClientId);
                 return sender;
             });
         }

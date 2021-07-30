@@ -144,7 +144,7 @@ namespace DurableTask.Netherite.EventHubs
                         }
                         else
                         {
-                            this.fallbackWorker.Process(evt);
+                            this.fallbackWorker.Process(evt, null);
                             fallback++;
                         }
                     }

@@ -69,6 +69,7 @@ namespace DurableTask.Netherite
             yield return typeof(TimerFired);
             yield return typeof(WorkerRequestReceived);
             yield return typeof(WorkerResultReceived);
+            yield return typeof(WorkerSendConfirmed);
             yield return typeof(TaskMessagesReceived);
             yield return typeof(OffloadDecision);
             yield return typeof(PurgeBatchIssued);

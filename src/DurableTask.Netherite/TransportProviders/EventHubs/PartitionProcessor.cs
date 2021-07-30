@@ -241,12 +241,19 @@ namespace DurableTask.Netherite.EventHubs
                 this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is shut down", this.eventHubName, this.eventHubPartition);
             }
 
-            using (await this.deliveryLock.LockAsync())
+            try
             {
-                if (this.shutdownTask == null)
+                using (await this.deliveryLock.LockAsync())
                 {
-                    this.shutdownTask = ShutdownAsync();
+                    if (this.shutdownTask == null)
+                    {
+                        this.shutdownTask = ShutdownAsync();
+                    }
                 }
+            } 
+            catch (System.ObjectDisposedException)
+            {
+                // can happen if the shutdown has already completed
             }
 
             await this.shutdownTask;
@@ -259,8 +266,6 @@ namespace DurableTask.Netherite.EventHubs
             await this.IdempotentShutdown("CloseAsync");
 
             await this.SaveEventHubsReceiverCheckpoint(context).ConfigureAwait(false);
-
-            this.deliveryLock.Dispose();
 
             this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} closed", this.eventHubName, this.eventHubPartition);
         }

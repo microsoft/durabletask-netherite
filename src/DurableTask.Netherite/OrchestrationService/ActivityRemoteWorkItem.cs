@@ -12,12 +12,15 @@ namespace DurableTask.Netherite
 
     class ActivityRemoteWorkItem : ActivityWorkItem
     {
+        readonly TransportAbstraction.IDurabilityListener listener;
+
         public Worker Worker { get; set; }
 
-        public ActivityRemoteWorkItem(Worker worker, uint originPartition, TaskMessage message, string originWorkItem, long sequenceNumber)
+        public ActivityRemoteWorkItem(Worker worker, uint originPartition, TaskMessage message, string originWorkItem, long sequenceNumber, TransportAbstraction.IDurabilityListener listener)
             : base(originPartition, message, originWorkItem, worker.GetWorkItemId(sequenceNumber))
         {
             this.Worker = worker;
+            this.listener = listener;
         }
 
         public override bool IsRemote => true;
@@ -45,6 +48,10 @@ namespace DurableTask.Netherite
 
             try
             {
+                if (this.listener != null)
+                {
+                    DurabilityListeners.Register(resultMessage, this.listener);
+                }
                 this.Worker.BatchSender.Submit(resultMessage);
                 workItemTraceHelper.TraceTaskMessageSent(this.PartitionId, response, this.WorkItemId, null, null);
             }

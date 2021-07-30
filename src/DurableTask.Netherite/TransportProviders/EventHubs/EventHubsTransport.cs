@@ -21,7 +21,6 @@ namespace DurableTask.Netherite.EventHubs
     /// </summary>
     class EventHubsTransport :
         ITaskHub,
-        IEventProcessorFactory,
         TransportAbstraction.ISender
     {
         readonly TransportAbstraction.IHost host;
@@ -30,7 +29,8 @@ namespace DurableTask.Netherite.EventHubs
         readonly ILogger logger;
         readonly EventHubsTraceHelper traceHelper;
 
-        EventProcessorHost eventProcessorHost;
+        EventProcessorHost partitionHost;
+        EventProcessorHost workerHost;
         TransportAbstraction.IClient client;
         TransportAbstraction.IWorker worker;
 
@@ -45,7 +45,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly CloudBlockBlob partitionScript;
         ScriptedEventProcessorHost scriptedEventProcessorHost;
 
-        public Guid ClientId { get; private set; }
+        public Guid HostId { get; private set; }
 
         public EventHubsTransport(TransportAbstraction.IHost host, NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory)
         {
@@ -55,7 +55,7 @@ namespace DurableTask.Netherite.EventHubs
             string namespaceName = TransportConnectionString.EventHubsNamespaceName(settings.ResolvedTransportConnectionString);
             this.logger = EventHubsTraceHelper.CreateLogger(loggerFactory);
             this.traceHelper = new EventHubsTraceHelper(this.logger, settings.TransportLogLevelLimit, null, this.cloudStorageAccount.Credentials.AccountName, settings.HubName, namespaceName);
-            this.ClientId = Guid.NewGuid();
+            this.HostId = Guid.NewGuid();
             var blobContainerName = GetContainerName(settings.HubName);
             var cloudBlobClient = this.cloudStorageAccount.CreateCloudBlobClient();
             this.cloudBlobContainer = cloudBlobClient.GetContainerReference(blobContainerName);
@@ -68,6 +68,7 @@ namespace DurableTask.Netherite.EventHubs
         public static string[] ClientHubs = { "clients0", "clients1", "clients2", "clients3" };
         public static string[] WorkerHubs = { "globaltasks" };
         public static string PartitionConsumerGroup = "$Default";
+        public static string WorkersConsumerGroup = "$Default";
         public static string ClientConsumerGroup = "$Default";
 
         static string GetContainerName(string taskHubName) => taskHubName.ToLowerInvariant() + "-storage";
@@ -105,7 +106,7 @@ namespace DurableTask.Netherite.EventHubs
             }
             foreach (string taskhub in WorkerHubs)
             {
-                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 32));
+                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 1));
             }
             await Task.WhenAll(tasks);
 
@@ -121,6 +122,7 @@ namespace DurableTask.Netherite.EventHubs
                 StorageFormat = BlobManager.GetStorageFormat(this.settings),
                 PartitionHubs = EventHubsTransport.PartitionHubs,
                 ClientHubs = EventHubsTransport.ClientHubs,
+                WorkerHubs = EventHubsTransport.WorkerHubs,
                 PartitionConsumerGroup = EventHubsTransport.PartitionConsumerGroup,
                 ClientConsumerGroup = EventHubsTransport.ClientConsumerGroup,
                 EventHubsEndpoint = namespaceEndpoint,
@@ -188,11 +190,11 @@ namespace DurableTask.Netherite.EventHubs
 
             await this.connections.StartAsync(this.parameters);
 
-            this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
+            this.client = this.host.AddClient(this.HostId, this.parameters.TaskhubGuid, this);
 
             if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
-                this.worker = this.host.AddWorker(this.ClientId, this.parameters.TaskhubGuid, this);
+                this.worker = this.host.AddWorker(this.HostId, this.parameters.TaskhubGuid, this);
             }
 
             this.clientEventLoopTask = Task.Run(this.ClientEventLoop);
@@ -203,58 +205,127 @@ namespace DurableTask.Netherite.EventHubs
             }
 
             string partitionsHub = PartitionHubs[0];
+            string workersHub = WorkerHubs[0];
 
-            switch (this.settings.PartitionManagement)
+            if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
-                case PartitionManagementOptions.EventProcessorHost:
+                //await Task.WhenAll(StartPartitionHost(), StartWorkerHost()).ConfigureAwait(false);
+                await StartWorkerHost();
+                await StartPartitionHost();
+            }
+
+            async Task StartPartitionHost()
+            {
+                if (this.settings.PartitionManagement != PartitionManagementOptions.Scripted)
+                {
+                    this.traceHelper.LogInformation("Registering Partition Host with EventHubs");
+
+                    this.partitionHost = new EventProcessorHost(
+                        this.HostId.ToString("N"),
+                        partitionsHub,
+                        EventHubsTransport.PartitionConsumerGroup,
+                        this.settings.ResolvedTransportConnectionString,
+                        this.settings.ResolvedStorageConnectionString,
+                        this.cloudBlobContainer.Name,
+                        partitionsHub);
+
+                    var processorOptions = new EventProcessorOptions()
                     {
-                        this.traceHelper.LogInformation("Registering EventProcessorHost with EventHubs");
+                        InitialOffsetProvider = (s) => EventPosition.FromSequenceNumber(this.parameters.StartPositions[int.Parse(s)] - 1),
+                        MaxBatchSize = 300,
+                        PrefetchCount = 500,
+                    };
 
-                        this.eventProcessorHost = new EventProcessorHost(
-                                partitionsHub,
-                                EventHubsTransport.PartitionConsumerGroup,
-                                this.settings.ResolvedTransportConnectionString,
-                                this.settings.ResolvedStorageConnectionString,
-                                this.cloudBlobContainer.Name);
+                    await this.partitionHost.RegisterEventProcessorFactoryAsync(new PartitionEventProcessorFactory(this), processorOptions).ConfigureAwait(false);
+                }
+                else
+                {
+                    this.traceHelper.LogInformation($"Starting scripted partition host");
+                    this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
+                            partitionsHub,
+                            EventHubsTransport.PartitionConsumerGroup,
+                            this.settings.ResolvedTransportConnectionString,
+                            this.settings.ResolvedStorageConnectionString,
+                            this.cloudBlobContainer.Name,
+                            this.host,
+                            this,
+                            this.connections,
+                            this.parameters,
+                            this.settings,
+                            this.traceHelper,
+                            this.settings.WorkerId);
 
-                        var processorOptions = new EventProcessorOptions()
-                        {
-                            InitialOffsetProvider = (s) => EventPosition.FromSequenceNumber(this.parameters.StartPositions[int.Parse(s)] - 1),
-                            MaxBatchSize = 300,
-                            PrefetchCount = 500,
-                        };
+                    var thread = new Thread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript));
+                    thread.Name = "ScriptedEventProcessorHost";
+                    thread.Start();
+                }
+            }
 
-                        await this.eventProcessorHost.RegisterEventProcessorFactoryAsync(this, processorOptions).ConfigureAwait(false);
-                        break;
-                    }
+            async Task StartWorkerHost()
+            {
+                this.traceHelper.LogInformation("Registering Worker Host with EventHubs");
 
-                case PartitionManagementOptions.Scripted:
-                    {
-                        this.traceHelper.LogInformation($"Starting scripted partition host");
-                        this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
-                                partitionsHub,
-                                EventHubsTransport.PartitionConsumerGroup,
-                                this.settings.ResolvedTransportConnectionString,
-                                this.settings.ResolvedStorageConnectionString,
-                                this.cloudBlobContainer.Name,
-                                this.host,
-                                this,
-                                this.connections,
-                                this.parameters,
-                                this.settings,
-                                this.traceHelper,
-                                this.settings.WorkerId);
+                this.workerHost = new EventProcessorHost(
+                        this.HostId.ToString(),
+                        workersHub,
+                        EventHubsTransport.WorkersConsumerGroup,
+                        this.settings.ResolvedTransportConnectionString,
+                        this.settings.ResolvedStorageConnectionString,
+                        this.cloudBlobContainer.Name,
+                        workersHub);
 
-                        var thread = new Thread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript));
-                        thread.Name = "ScriptedEventProcessorHost";
-                        thread.Start();
-                        break;
-                    }
+                var processorOptions = new EventProcessorOptions()
+                {
+                    MaxBatchSize = 100,
+                    PrefetchCount = 20,
+                };
 
-                case PartitionManagementOptions.ClientOnly:
-                    {
-                        break;
-                    }
+                await this.workerHost.RegisterEventProcessorFactoryAsync(new WorkerEventProcessorFactory(this), processorOptions).ConfigureAwait(false);
+            }
+        }
+
+        class PartitionEventProcessorFactory : IEventProcessorFactory
+        {
+            readonly EventHubsTransport transport;
+
+            public PartitionEventProcessorFactory(EventHubsTransport transport)
+            {
+                this.transport = transport;
+            }
+
+            public IEventProcessor CreateEventProcessor(PartitionContext context)
+            {
+                return new PartitionProcessor(
+                    this.transport.host,
+                    this.transport,
+                    this.transport.parameters,
+                    context,
+                    this.transport.settings,
+                    this.transport.traceHelper,
+                    this.transport.shutdownSource.Token);
+            }
+        }
+
+        class WorkerEventProcessorFactory : IEventProcessorFactory
+        {
+            readonly EventHubsTransport transport;
+
+            public WorkerEventProcessorFactory(EventHubsTransport transport)
+            {
+                this.transport = transport;
+            }
+
+            public IEventProcessor CreateEventProcessor(PartitionContext context)
+            {
+                return new WorkerProcessor(
+                    this.transport.host,
+                    this.transport.worker,
+                    this.transport,
+                    this.transport.parameters,
+                    context,
+                    this.transport.settings,
+                    this.transport.traceHelper,
+                    this.transport.shutdownSource.Token);
             }
         }
 
@@ -272,15 +343,19 @@ namespace DurableTask.Netherite.EventHubs
             {
                 case PartitionManagementOptions.EventProcessorHost:
                     {
-                        this.traceHelper.LogDebug("Unregistering event processor host");
-                        await this.eventProcessorHost.UnregisterEventProcessorAsync().ConfigureAwait(false);
+                        this.traceHelper.LogDebug("Stopping partition and worker hosts");
+                        await Task.WhenAll(
+                          this.partitionHost.UnregisterEventProcessorAsync(),
+                          this.workerHost.UnregisterEventProcessorAsync()).ConfigureAwait(false);
                         break;
                     }
 
                 case PartitionManagementOptions.Scripted:
                     {
-                        this.traceHelper.LogDebug("Stopping event processor host");
-                        await this.scriptedEventProcessorHost.StopAsync();
+                        this.traceHelper.LogDebug("Stopping partition and worker hosts");
+                        await Task.WhenAll(
+                          this.scriptedEventProcessorHost.StopAsync(),
+                          this.workerHost.UnregisterEventProcessorAsync()).ConfigureAwait(false);
                         break;
                     }
 
@@ -293,18 +368,6 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper.LogDebug("Closing connections");
             await this.connections.StopAsync().ConfigureAwait(false);
             this.traceHelper.LogInformation("EventHubsBackend shutdown completed");
-        }
-
-        IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
-        {
-            if (this.parameters.WorkerHubs.Contains(partitionContext.EventHubPath))
-            {
-                return new WorkerProcessor(this.host, this.worker, this, this.parameters, partitionContext, this.settings, this.traceHelper, this.shutdownSource.Token);
-            }
-            else
-            {
-                return new PartitionProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper, this.shutdownSource.Token);
-            }
         }
 
         void TransportAbstraction.ISender.Submit(Event evt)
@@ -323,14 +386,19 @@ namespace DurableTask.Netherite.EventHubs
                     partitionSender.Submit(partitionEvent);
                     break;
 
+                case WorkerEvent workerEvent:
+                    var workerSender = this.connections.GetWorkerSender(this.taskhubGuid, this.worker);
+                    workerSender.Submit(workerEvent);
+                    break;
+
                 default:
-                    throw new InvalidCastException("could not cast to neither PartitionReadEvent nor PartitionUpdateEvent");
+                    throw new InvalidCastException("could not cast to a supported Event category");
             }
         }
 
         async Task ClientEventLoop()
         {
-            var clientReceiver = this.connections.CreateClientReceiver(this.ClientId, EventHubsTransport.ClientConsumerGroup);
+            var clientReceiver = this.connections.CreateClientReceiver(this.HostId, EventHubsTransport.ClientConsumerGroup);
             var receivedEvents = new List<ClientEvent>();
 
             byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
@@ -349,17 +417,17 @@ namespace DurableTask.Netherite.EventHubs
                         {
                             Packet.Deserialize(ed.Body, out clientEvent, taskHubGuid);
 
-                            if (clientEvent != null && clientEvent.ClientId == this.ClientId)
+                            if (clientEvent != null && clientEvent.ClientId == this.HostId)
                             {
                                 receivedEvents.Add(clientEvent);
                             }
                         }
                         catch (Exception)
                         {
-                            this.traceHelper.LogError("EventProcessor for Client{clientId} could not deserialize packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), ed.SystemProperties.SequenceNumber, ed.Body.Count);
+                            this.traceHelper.LogError("EventProcessor for Client{clientId} could not deserialize packet #{seqno} ({size} bytes)", Client.GetShortId(this.HostId), ed.SystemProperties.SequenceNumber, ed.Body.Count);
                             throw;
                         }
-                        this.traceHelper.LogDebug("EventProcessor for Client{clientId} received packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), ed.SystemProperties.SequenceNumber, ed.Body.Count);
+                        this.traceHelper.LogDebug("EventProcessor for Client{clientId} received packet #{seqno} ({size} bytes)", Client.GetShortId(this.HostId), ed.SystemProperties.SequenceNumber, ed.Body.Count);
 
                     }
 

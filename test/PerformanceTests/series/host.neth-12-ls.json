@@ -25,7 +25,7 @@
       "DurableTask.Netherite.EventHubsTransport": "Warning",
       "DurableTask.Netherite.Events": "Warning",
       "DurableTask.Netherite.WorkItems": "Warning"
-    },
+    }
   },
   "extensions": {
     "http": {

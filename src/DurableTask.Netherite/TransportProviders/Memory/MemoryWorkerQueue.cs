@@ -41,7 +41,7 @@ namespace DurableTask.Netherite.Emulated
         {
             try
             {
-                this.worker.Process(evt);
+                this.worker.Process(evt, null);
             }
             catch (System.Threading.Tasks.TaskCanceledException)
             {
