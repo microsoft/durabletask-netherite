@@ -48,6 +48,7 @@ namespace DurableTask.Netherite.EventHubs
 
         [DataMember]
         public long[] StartPositions { get; set; }
+
         [DataMember]
         public long[] WorkerStartPositions { get; set; }
     }

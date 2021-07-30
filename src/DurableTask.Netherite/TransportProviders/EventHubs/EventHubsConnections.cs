@@ -215,7 +215,7 @@ namespace DurableTask.Netherite.EventHubs
             var workerPartitions = connections.workerPartitions.Count;
 
             var partitionPositions = new long[numberPartitions];
-            var workerPositions = new long[numberPartitions];
+            var workerPositions = new long[workerPartitions];
 
             var partitionInfoTasks = connections.partitionPartitions
                 .Select(x => x.client.GetPartitionRuntimeInformationAsync(x.id)).ToList();

@@ -106,7 +106,7 @@ namespace DurableTask.Netherite.EventHubs
             }
             foreach (string taskhub in WorkerHubs)
             {
-                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 1));
+                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 32));
             }
             await Task.WhenAll(tasks);
 
