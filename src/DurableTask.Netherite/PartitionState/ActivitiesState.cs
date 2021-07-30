@@ -20,7 +20,7 @@ namespace DurableTask.Netherite
     class ActivitiesState : TrackedObject, TransportAbstraction.IDurabilityListener
     {
         [DataMember]
-        public Dictionary<long, (TaskMessage message, string workItem)> LocalPending { get; private set; }
+        public Dictionary<long, ActivityInfo> LocalPending { get; private set; }
 
         [DataMember]
         public Dictionary<(string originWorkItem, long sequenceNumber), ActivityInfo> RemotePending { get; private set; }
@@ -41,7 +41,7 @@ namespace DurableTask.Netherite
 
         public override void OnFirstInitialization()
         {
-            this.LocalPending = new Dictionary<long, (TaskMessage, string)>();
+            this.LocalPending = new Dictionary<long, ActivityInfo>();
             this.RemotePending = new Dictionary<(string originWorkItem, long sequenceNumber), ActivityInfo>();
             this.Backlog = new Queue<ActivityInfo>();
         }
@@ -56,7 +56,7 @@ namespace DurableTask.Netherite
             // reschedule work items
             foreach (var pending in this.LocalPending)
             {
-                this.Partition.EnqueueActivityWorkItem(new ActivityLocalWorkItem(this.Partition, pending.Key, pending.Value.message, pending.Value.workItem));
+                this.Partition.EnqueueActivityWorkItem(new ActivityLocalWorkItem(this.Partition, pending.Key, pending.Value.Message, pending.Value.OriginWorkItemId));
             }
 
             foreach (var pending in this.RemotePending)
@@ -76,9 +76,11 @@ namespace DurableTask.Netherite
         {
             info.Activities = this.LocalPending.Count + this.RemotePending.Count + this.Backlog.Count;
 
+            info.Remotes = this.RemotePending.Count;
+
             if (info.Activities > 0)
             {
-                var maxLatencyInQueue = Enumerable.Concat(this.Backlog, this.RemotePending.Values)
+                var maxLatencyInQueue = Enumerable.Concat(Enumerable.Concat(this.Backlog, this.RemotePending.Values), this.LocalPending.Values)
                     .Select(a => (long)(DateTime.UtcNow - a.IssueTime).TotalMilliseconds)
                     .DefaultIfEmpty()
                     .Max();
@@ -135,29 +137,30 @@ namespace DurableTask.Netherite
             // the completed orchestration work item can launch activities
             foreach (var msg in evt.ActivityMessages)
             {
-                var activityId = this.SequenceNumber++;
+                var activityInfo = new ActivityInfo()
+                {
+                    ActivityId = this.SequenceNumber++,
+                    IssueTime = evt.Timestamp,
+                    OriginWorkItemId = evt.WorkItemId,
+                    Message = msg,
+                };
+
 
                 if (this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.RemoteOnly
                     && (this.LocalPending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_LOCAL_PENDING))
                 {
-                    this.LocalPending.Add(activityId, (msg, evt.WorkItemId));
+                    this.LocalPending.Add(activityInfo.ActivityId, activityInfo);
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityLocalWorkItem(this.Partition, activityId, msg, evt.WorkItemId));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityLocalWorkItem(this.Partition, activityInfo.ActivityId, msg, evt.WorkItemId));
                     }
 
                     this.EstimatedLocalWorkItemLoad++;
                 }
                 else
                 {
-                    var activityInfo = new ActivityInfo()
-                    {
-                        ActivityId = activityId,
-                        IssueTime = evt.Timestamp,
-                        OriginWorkItemId = evt.WorkItemId,
-                        Message = msg,
-                    };
+                    
 
                     if (this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.LocalOnly
                         && this.RemotePending.Count < MAX_REMOTE_PENDING)
@@ -198,7 +201,7 @@ namespace DurableTask.Netherite
             {
                 if (this.TryGetNextActivity(out var activityInfo))
                 {
-                    this.LocalPending.Add(activityInfo.ActivityId, (activityInfo.Message, activityInfo.OriginWorkItemId));
+                    this.LocalPending.Add(activityInfo.ActivityId, activityInfo);
 
                     if (!effects.IsReplaying)
                     {

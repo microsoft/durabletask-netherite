@@ -27,6 +27,12 @@ namespace DurableTask.Netherite.Scaling
         [DataMember]
         public int Activities { get; set; }
 
+       /// <summary>
+        /// The number of remote activities executing
+        /// </summary>
+        [DataMember]
+        public int Remotes { get; set; }
+
         /// <summary>
         /// The number of timers that are waiting to fire.
         /// </summary>
@@ -149,6 +155,15 @@ namespace DurableTask.Netherite.Scaling
         /// Whether a latency trend indicates the partition has been idle for a long time
         /// </summary>
         public static bool IsLongIdle(string latencyTrend) => latencyTrend.Count() == LatencyTrendLength && latencyTrend.All(c => c == Idle);
+
+        /// <summary>
+        /// Whether a latency trend indicates that a partition is experiencing significant load
+        /// </summary>
+        public bool IsLoaded()
+        {
+            var last = this.LatencyTrend.LastOrDefault();
+            return (last == MediumLatency || last == HighLatency);
+        }
 
         /// <summary>
         /// Copy the load info for the next measuring interval

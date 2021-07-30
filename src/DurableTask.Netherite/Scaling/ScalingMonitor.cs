@@ -137,9 +137,11 @@ namespace DurableTask.Netherite.Scaling
                     reason: "Task hub is idle");
             }
 
-            int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
+            int numberOfLoadedPartitions = metrics.LoadInformation.Values.Count(info => info.IsLoaded());
+            int numberOfRemoteActivities = metrics.LoadInformation.Values.Sum(info => info.Remotes);
+            int maxScaleOut = Math.Max(numberOfLoadedPartitions, numberOfRemoteActivities);
 
-            if (workerCount < numberOfSlowPartitions)
+            if (workerCount < maxScaleOut)
             {
                 // scale up to the number of busy partitions
                 var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
