@@ -91,9 +91,9 @@ namespace DurableTask.Netherite
             /// <summary>
             /// Clean shutdown: stop processing, save partition state to storage, and release ownership.
             /// </summary>
-            /// <param name="isForced">True if the shutdown should happen as quickly as possible.</param>
+            /// <param name="quickly">True if the shutdown should happen as quickly as possible.</param>
             /// <returns>When all steps have completed and termination is performed.</returns>
-            Task StopAsync(bool isForced);
+            Task StopAsync(bool quickly);
 
             /// <summary>
             /// Queues a single event for processing on this partition.

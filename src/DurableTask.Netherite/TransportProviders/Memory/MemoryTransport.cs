@@ -126,7 +126,7 @@ namespace DurableTask.Netherite.Emulated
             clientQueue.Resume();
         }
 
-        async Task ITaskHub.StopAsync(bool isForced)
+        async Task ITaskHub.StopAsync()
         {
             if (this.shutdownTokenSource != null)
             {
@@ -138,7 +138,7 @@ namespace DurableTask.Netherite.Emulated
                 var tasks = new List<Task>();
                 foreach(var p in this.partitions)
                 {
-                    tasks.Add(p.StopAsync(isForced));
+                    tasks.Add(p.StopAsync(false));
                 }
                 await Task.WhenAll(tasks).ConfigureAwait(false);
             }

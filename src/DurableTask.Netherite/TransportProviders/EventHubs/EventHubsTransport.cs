@@ -331,7 +331,7 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        async Task ITaskHub.StopAsync(bool isForced)
+        async Task ITaskHub.StopAsync()
         {
             this.traceHelper.LogInformation("Shutting down EventHubsBackend");
             this.shutdownSource.Cancel(); // initiates shutdown of client and of all partitions

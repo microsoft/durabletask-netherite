@@ -50,7 +50,7 @@
         "TakeStateCheckpointWhenStoppingPartition": "true",
         "MaxNumberBytesBetweenCheckpoints": "20000000",
         "MaxNumberEventsBetweenCheckpoints": "10000",
-        "MaxTimeMsBetweenCheckpoints": "60000",
+        "IdleCheckpointFrequencyMs": "60000",
         "PackPartitionTaskMessages": 100,
 
         "PartitionCount": 12,
