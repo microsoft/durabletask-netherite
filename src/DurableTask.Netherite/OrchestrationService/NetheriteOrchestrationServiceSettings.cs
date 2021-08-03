@@ -142,7 +142,7 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Whether to use the Faster SecondaryIndex support for handling queries.
         /// </summary>
-        public bool UseSecondaryIndexQueries { get; set; } = false;
+        public bool UseSecondaryIndexQueries { get; set; } = true;
 
         /// <summary>
         /// Set this to a local file path to make FASTER use local files instead of blobs. Currently,
@@ -166,12 +166,18 @@ namespace DurableTask.Netherite
         public int PackPartitionTaskMessages { get; set; } = 100;
 
         /// <summary>
-        /// Gets or sets the name used for resolving the premium Azure storage connection string, if used.
+        /// A name for resolving a storage connection string to be used specifically for the page blobs, or null if page blobs are to be stored in the default account.
         /// </summary>
-        public string PremiumStorageConnectionName { get; set; } = null;
+        public string PageBlobStorageConnectionName { get; set; } = null;
+
+        /// <summary>
+        /// The resolved page blob storage connection string, or null if page blobs are to be stored in the default account. Is never serialized or deserialized.
+        /// </summary>
+        [JsonIgnore]
+        public string ResolvedPageBlobStorageConnectionString { get; set; }
 
         [JsonIgnore]
-        internal bool UsePremiumStorage => !string.IsNullOrEmpty(this.PremiumStorageConnectionName);
+        internal bool UseSeparatePageBlobStorage => !string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString);
 
         /// <summary>
         /// A lower limit on the severity level of trace events emitted by the transport layer.
@@ -226,6 +232,17 @@ namespace DurableTask.Netherite
                 if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
                 {
                     throw new InvalidOperationException($"Could not resolve {nameof(this.StorageConnectionName)}:{this.StorageConnectionName} for Netherite storage provider.");
+                }
+            }
+
+            if (string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString)
+                && !string.IsNullOrEmpty(this.PageBlobStorageConnectionName))
+            {
+                this.ResolvedPageBlobStorageConnectionString = connectionStringResolver(this.PageBlobStorageConnectionName);
+
+                if (string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString))
+                {
+                    throw new InvalidOperationException($"Could not resolve {nameof(this.PageBlobStorageConnectionName)}:{this.PageBlobStorageConnectionName} for Netherite storage provider.");
                 }
             }
 

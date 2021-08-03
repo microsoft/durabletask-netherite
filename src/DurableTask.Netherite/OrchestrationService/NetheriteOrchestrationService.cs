@@ -103,6 +103,18 @@ namespace DurableTask.Netherite
             EtwSource.Log.OrchestrationServiceCreated(this.ServiceInstanceId, this.StorageAccountName, this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             this.Logger.LogInformation("NetheriteOrchestrationService created, workerId={workerId}, processorCount={processorCount}, transport={transport}, storage={storage}", this.Settings.WorkerId, Environment.ProcessorCount, this.configuredTransport, this.configuredStorage);
 
+            if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster)
+            {
+                // force dll load here so exceptions are observed early
+                var _ = System.Threading.Channels.Channel.CreateBounded<DateTime>(10);
+
+                // throw descriptive exception if run on 32bit platform
+                if (!Environment.Is64BitProcess)
+                {
+                    throw new NotSupportedException("Netherite backend requires 64bit, but current process is 32bit.");
+                }
+            }
+
             switch (this.configuredTransport)
             {
                 case TransportConnectionString.TransportChoices.Memory:
@@ -181,7 +193,7 @@ namespace DurableTask.Netherite
                     return new MemoryStorage(this.Logger);
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.PremiumStorageConnectionName, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName, this.LoggerFactory);
+                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.ResolvedPageBlobStorageConnectionString, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName, this.LoggerFactory);
 
                 default:
                     throw new NotImplementedException("no such storage choice");
@@ -200,7 +212,11 @@ namespace DurableTask.Netherite
                     break;
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(this.Settings.ResolvedStorageConnectionString, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName).ConfigureAwait(false);
+                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(
+                        this.Settings.ResolvedStorageConnectionString, 
+                        this.Settings.ResolvedPageBlobStorageConnectionString, 
+                        this.Settings.UseLocalDirectoryForPartitionStorage, 
+                        this.Settings.HubName).ConfigureAwait(false);
                     break;
 
                 default:
@@ -585,7 +601,7 @@ namespace DurableTask.Netherite
         Task IOrchestrationService.CompleteTaskOrchestrationWorkItemAsync(
             TaskOrchestrationWorkItem workItem,
             OrchestrationRuntimeState newOrchestrationRuntimeState,
-            IList<TaskMessage> outboundMessages,
+            IList<TaskMessage> activityMessages,
             IList<TaskMessage> orchestratorMessages,
             IList<TaskMessage> timerMessages,
             TaskMessage continuedAsNewMessage,
@@ -612,9 +628,9 @@ namespace DurableTask.Netherite
             // we assign sequence numbers to all outgoing messages, to help us track them using unique message ids
             long sequenceNumber = 0;
 
-            if (outboundMessages != null)
+            if (activityMessages != null)
             {
-                foreach(TaskMessage taskMessage in outboundMessages)
+                foreach(TaskMessage taskMessage in activityMessages)
                 {
                     taskMessage.SequenceNumber = sequenceNumber++;
                 }
@@ -685,7 +701,7 @@ namespace DurableTask.Netherite
                 PackPartitionTaskMessages = partition.Settings.PackPartitionTaskMessages,
                 PersistFirst = partition.Settings.PersistStepsFirst ? BatchProcessed.PersistFirstStatus.Required : BatchProcessed.PersistFirstStatus.NotRequired,
                 State = state,
-                ActivityMessages = (List<TaskMessage>)outboundMessages,
+                ActivityMessages = (List<TaskMessage>)activityMessages,
                 LocalMessages = localMessages,
                 RemoteMessages = remoteMessages,
                 TimerMessages = (List<TaskMessage>)timerMessages,
@@ -699,10 +715,18 @@ namespace DurableTask.Netherite
                 workItem.InstanceId,
                 batchProcessedEvent.State.OrchestrationStatus,
                 latencyMs,
-                WorkItemTraceHelper.FormatMessageIdList(batchProcessedEvent.TracedTaskMessages));
- 
-            partition.SubmitInternalEvent(batchProcessedEvent);
-            
+                sequenceNumber);
+
+             partition.SubmitInternalEvent(batchProcessedEvent);
+
+            if (this.workItemTraceHelper.TraceTaskMessages)
+            {
+                foreach (var taskMessage in batchProcessedEvent.LoopBackMessages())
+                {
+                    this.workItemTraceHelper.TraceTaskMessageSent(partition.PartitionId, taskMessage, messageBatch.WorkItemId, null, null);
+                }
+            }           
+
             return Task.CompletedTask;
         }
 
@@ -825,11 +849,12 @@ namespace DurableTask.Netherite
                 activityWorkItem.TaskMessage.OrchestrationInstance.InstanceId,
                 WorkItemTraceHelper.ActivityStatus.Completed,
                 latencyMs,
-                WorkItemTraceHelper.FormatMessageId(responseMessage, activityWorkItem.WorkItemId));
+                1);
 
             try
             {
                 partition.SubmitInternalEvent(activityCompletedEvent);
+                this.workItemTraceHelper.TraceTaskMessageSent(partition.PartitionId, activityCompletedEvent.Response, activityWorkItem.WorkItemId, null, null);
             }
             catch (OperationCanceledException e)
             {

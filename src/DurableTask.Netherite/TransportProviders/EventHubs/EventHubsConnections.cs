@@ -19,8 +19,12 @@ namespace DurableTask.Netherite.EventHubs
 
         List<EventHubClient> partitionClients;
         List<EventHubClient> clientClients;
+
         readonly List<(EventHubClient client, string id)> partitionPartitions = new List<(EventHubClient client, string id)>();
         readonly List<(EventHubClient client, string id)> clientPartitions = new List<(EventHubClient client, string id)>();
+
+        public string Endpoint { get; private set; }
+        public DateTime[] CreationTimestamps { get; private set; }
 
         public ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>> _partitionSenders = new ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>>();
         public ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>> _clientSenders = new ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>>();
@@ -40,22 +44,60 @@ namespace DurableTask.Netherite.EventHubs
             this.clientHubs = clientHubs;
         }
 
-        public async Task StartAsync(int numberPartitions)
+        public async Task StartAsync(TaskhubParameters parameters)
         {
             await Task.WhenAll(this.GetPartitionInformationAsync(), this.GetClientInformationAsync());
 
-            if (numberPartitions != this.partitionPartitions.Count)
+            // check that we are the correct namespace
+            if (!string.IsNullOrEmpty(parameters.EventHubsEndpoint)
+                && string.Compare(parameters.EventHubsEndpoint, this.Endpoint, StringComparison.InvariantCultureIgnoreCase) != 0)
             {
-                throw new InvalidOperationException("The number of partitions in the specified EventHubs namespace does not match the number of partitions in the TaskHub");
+                throw new InvalidOperationException($"Cannot recover taskhub because the EventHubs namespace does not match."
+                    + " To resolve, either connect to the original namespace, delete the taskhub in storage, or use a fresh taskhub name.");
+            }
+
+            // check that we are dealing with the original event hubs
+            if (parameters.EventHubsCreationTimestamps != null)
+            {
+                for (int i = 0; i < this.CreationTimestamps.Count(); i++)
+                {
+                    if (this.CreationTimestamps[i] != parameters.EventHubsCreationTimestamps[i])
+                    {
+                        throw new InvalidOperationException($"Cannot recover taskhub because the original EventHubs was deleted."
+                             + " To resolve, delete the taskhub in storage, or use a fresh taskhub name.");
+                    }
+                }
+            }
+
+            // check that the number of partitions matches. I don't think it's possible for this to fail without prior checks tripping first.
+            if (parameters.StartPositions.Length != this.partitionPartitions.Count)
+            {
+                throw new InvalidOperationException($"Cannot recover taskhub because the number of partitions does not match.");
             }
         }
 
         public async Task StopAsync()
         {
-            var closePartitionClients = this.partitionClients.Select(c => c.CloseAsync()).ToList();
-            var closeClientClients = this.partitionClients.Select(c => c.CloseAsync()).ToList();
-            await Task.WhenAll(closePartitionClients);
-            await Task.WhenAll(closeClientClients);
+            IEnumerable<EventHubClient> Clients()
+            {
+                if (this.partitionClients != null)
+                {
+                    foreach (var client in this.partitionClients)
+                    {
+                        yield return client;
+                    }
+                }
+
+                if (this.clientClients != null)
+                {
+                    foreach (var client in this.clientClients)
+                    {
+                        yield return client;
+                    }
+                }
+            }
+
+            await Task.WhenAll(Clients().Select(client => client.CloseAsync()).ToList());
         }
 
         async Task GetPartitionInformationAsync()
@@ -70,13 +112,16 @@ namespace DurableTask.Netherite.EventHubs
                 };
                 var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
                 this.partitionClients.Add(client);
+                this.Endpoint = connectionStringBuilder.Endpoint.ToString();
             }
 
             // in parallel, get runtime infos for all the hubs
             var partitionInfos = this.partitionClients.Select((ehClient) => ehClient.GetRuntimeInformationAsync()).ToList();
+            await Task.WhenAll(partitionInfos);
+
+            this.CreationTimestamps = partitionInfos.Select(t => t.Result.CreatedAt).ToArray();
 
             // create a flat list of partition partitions
-            await Task.WhenAll(partitionInfos);
             for (int i = 0; i < this.partitionHubs.Length; i++)
             {
                 foreach (var id in partitionInfos[i].Result.PartitionIds)
@@ -84,9 +129,6 @@ namespace DurableTask.Netherite.EventHubs
                     this.partitionPartitions.Add((this.partitionClients[i], id));
                 }
             }
-
-            // validate the total number of partitions
-
         }
 
         async Task GetClientInformationAsync()
@@ -117,7 +159,7 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        public static async Task<long[]> GetQueuePositionsAsync(string connectionString, string[] partitionHubs)
+        public static async Task<(long[], DateTime[], string)> GetPartitionInfo(string connectionString, string[] partitionHubs)
         {
             var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0]);
             await connections.GetPartitionInformationAsync();
@@ -139,7 +181,7 @@ namespace DurableTask.Netherite.EventHubs
 
             await connections.StopAsync();
 
-            return positions;
+            return (positions, connections.CreationTimestamps, connections.Endpoint);
         }
 
         // This is to be used when EventProcessorHost is not used.
