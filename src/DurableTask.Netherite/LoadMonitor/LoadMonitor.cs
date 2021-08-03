@@ -21,9 +21,10 @@ namespace DurableTask.Netherite
 
         TransportAbstraction.ISender BatchSender { get; set; }
 
-        // data structure for the load monitor (partition id -> backlog size)
-        Dictionary<uint, int> LoadInfo { get; set; }
+        // data structure for the load monitor (partition id -> (backlog size, average activity completion time))
+        Dictionary<uint, (int backlogSize, double AverageActCompletionTime)> LoadInfo { get; set; }
 
+        const string OFFLOAD_METRIC = "Load";
         const int OFFLOAD_MAX_BATCH_SIZE = 20;
         const int OFFLOAD_MIN_BATCH_SIZE = 10;
         const int OVERLOAD_THRESHOLD = 20;
@@ -39,7 +40,7 @@ namespace DurableTask.Netherite
             this.host = host;
             this.traceHelper = new LoadMonitorTraceHelper(host.Logger, host.Settings.LogLevelLimit, host.StorageAccountName, host.Settings.HubName);
             this.BatchSender = batchSender;
-            this.LoadInfo = new Dictionary<uint, int>();
+            this.LoadInfo = new Dictionary<uint, (int, double)>();
             this.traceHelper.TraceWarning("Started");
         }  
        
@@ -57,18 +58,23 @@ namespace DurableTask.Netherite
         public void Process(LoadInformationReceived loadInformationReceived)
         {
             // update load info
-            this.LoadInfo[loadInformationReceived.PartitionId] = loadInformationReceived.BacklogSize;
-            this.traceHelper.TraceWarning($"Received Load information from partition{loadInformationReceived.PartitionId} with load={loadInformationReceived.BacklogSize}");
+            this.LoadInfo[loadInformationReceived.PartitionId] = (loadInformationReceived.BacklogSize, loadInformationReceived.AverageActCompletionTime);
+            this.traceHelper.TraceWarning($"Received Load information from partition{loadInformationReceived.PartitionId} with " +
+                $"load={loadInformationReceived.BacklogSize} and avg completion time={loadInformationReceived.AverageActCompletionTime}");
 
-            // check if the load is greater than the threshold
-            // xz: in the future, we may also want to check for overloaded nodes if there are multiple partitions on a single node
-            if (loadInformationReceived.BacklogSize > OVERLOAD_THRESHOLD)
+            double AverageWaitTime = this.LoadInfo.Select(t => t.Value).Average(t => t.backlogSize * t.AverageActCompletionTime);
+            double CompletionTime = this.LoadInfo[loadInformationReceived.PartitionId].backlogSize * this.LoadInfo[loadInformationReceived.PartitionId].AverageActCompletionTime;
+
+            //if (loadInformationReceived.BacklogSize > OVERLOAD_THRESHOLD)
+            if (CompletionTime > AverageWaitTime)    
             {
                 // start the task migration process and find offload targets
-                if (this.FindOffloadTarget(loadInformationReceived.PartitionId, loadInformationReceived.BacklogSize - OVERLOAD_THRESHOLD, out Dictionary<uint, int> OffloadTargets))
+                //if (this.FindOffloadTargetByLoad(loadInformationReceived.PartitionId, loadInformationReceived.BacklogSize - OVERLOAD_THRESHOLD, out Dictionary<uint, int> OffloadTargets))
+                if (this.FindOffloadTargetByWaitTime(loadInformationReceived.PartitionId, loadInformationReceived.BacklogSize - OVERLOAD_THRESHOLD, 
+                    loadInformationReceived.AverageActCompletionTime, AverageWaitTime, out Dictionary<uint, int> OffloadTargets))
                 {
                     // send offload commands
-                    foreach(var kvp in OffloadTargets)
+                    foreach (var kvp in OffloadTargets)
                     {
                         this.traceHelper.TraceWarning($"Sending offloadCommand to partition {loadInformationReceived.PartitionId} " +
                             $"to send {kvp.Value} activities to partition {kvp.Key}");
@@ -80,21 +86,44 @@ namespace DurableTask.Netherite
                             OffloadDestination = kvp.Key,
                         });
                     }
+
                     // load decisions and update load info
-                    this.LoadInfo[loadInformationReceived.PartitionId] -= OffloadTargets.Sum(x => x.Value);
+                    this.LoadInfo[loadInformationReceived.PartitionId] = (this.LoadInfo[loadInformationReceived.PartitionId].backlogSize 
+                        - OffloadTargets.Sum(x => x.Value), this.LoadInfo[loadInformationReceived.PartitionId].AverageActCompletionTime);
                 }
             }
+
+
         }
 
-        bool FindOffloadTarget(uint currentPartitionId, int numActivitiesToOffload, out Dictionary<uint, int> OffloadTargets)
+        bool FindOffloadTargetByWaitTime(uint currentPartitionId, int numActivitiesToOffload, double AverageActCompletionTime, double AverageWaitTime, out Dictionary<uint, int> OffloadTargets)
         {
             OffloadTargets = new Dictionary<uint, int>();
             for (uint i = 0; i < this.host.NumberPartitions - 1 && numActivitiesToOffload > 0; i++)
             {
                 uint target = (currentPartitionId + i + 1) % this.host.NumberPartitions;
-                if (this.LoadInfo[target] < UNDERLOAD_THRESHOLD)
+                double localWaitTime = (this.LoadInfo[currentPartitionId].backlogSize - OFFLOAD_MAX_BATCH_SIZE) * this.LoadInfo[currentPartitionId].AverageActCompletionTime;
+                double remoteWaitTime = this.LoadInfo[target].backlogSize * this.LoadInfo[target].AverageActCompletionTime;
+
+                if (localWaitTime > remoteWaitTime)
                 {
-                    int capacity = OVERLOAD_THRESHOLD - this.LoadInfo[target];
+                    OffloadTargets[target] = OFFLOAD_MAX_BATCH_SIZE;
+                    numActivitiesToOffload -= OFFLOAD_MAX_BATCH_SIZE;
+                }
+            }
+
+            return OffloadTargets.Count == 0 ? false : true;
+        }
+
+        bool FindOffloadTargetByLoad(uint currentPartitionId, int numActivitiesToOffload, out Dictionary<uint, int> OffloadTargets)
+        {
+            OffloadTargets = new Dictionary<uint, int>();
+            for (uint i = 0; i < this.host.NumberPartitions - 1 && numActivitiesToOffload > 0; i++)
+            {
+                uint target = (currentPartitionId + i + 1) % this.host.NumberPartitions;
+                if (this.LoadInfo[target].backlogSize < UNDERLOAD_THRESHOLD)
+                {
+                    int capacity = OVERLOAD_THRESHOLD - this.LoadInfo[target].backlogSize;
                     OffloadTargets[target] = numActivitiesToOffload - capacity > 0 ? capacity : numActivitiesToOffload;
                     numActivitiesToOffload -= capacity;
 
@@ -108,7 +137,7 @@ namespace DurableTask.Netherite
         // Do we really need this interval?
         void updateLoadMonitorInterval()
         {
-            double utilization = this.LoadInfo.Sum(x => x.Value) / (this.LoadInfo.Count * UNDERLOAD_THRESHOLD);
+            double utilization = this.LoadInfo.Sum(x => x.Value.backlogSize) / (this.LoadInfo.Count * UNDERLOAD_THRESHOLD);
 
             if (utilization < 1)
             {

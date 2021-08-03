@@ -72,6 +72,9 @@ namespace DurableTask.Netherite
 
         const int REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS = 100;
 
+        double AVERAGE_ACT_COMPLETION_TIME = double.MaxValue;
+        const double SMOOTHING_FACTOR = 0.5;
+
         public override void OnRecoveryCompleted()
         {
             // reschedule work items
@@ -126,11 +129,13 @@ namespace DurableTask.Netherite
                 || !this.IDLE_STATE_SENT)
               
             {
+
                 this.Partition.Send(new LoadInformationReceived()
                 {
                     RequestId = Guid.NewGuid(),
                     PartitionId = this.Partition.PartitionId,
                     BacklogSize = this.LocalBacklog.Count + this.QueuedRemotes.Count,
+                    AverageActCompletionTime = this.AVERAGE_ACT_COMPLETION_TIME,
                 });
 
                 this.IDLE_STATE_SENT = (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0) ? false : true;
@@ -267,6 +272,10 @@ namespace DurableTask.Netherite
             {
                 // the response can be delivered to a session on this partition
                 effects.Add(TrackedObjectKey.Sessions);
+
+                // update the average activity completion time
+                this.AVERAGE_ACT_COMPLETION_TIME = this.AVERAGE_ACT_COMPLETION_TIME == double.MaxValue ? evt.LatencyMs :
+                    SMOOTHING_FACTOR * evt.LatencyMs + (1 - SMOOTHING_FACTOR) * this.AVERAGE_ACT_COMPLETION_TIME;
             }
             else
             {
