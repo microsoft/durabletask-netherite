@@ -294,31 +294,29 @@ namespace DurableTask.Netherite.Faster
                         OnStreamEnded = (unusedPredicate, unusedIndex) => false
                     };
 
-                    OrchestrationState getOrchestrationState(ref Value v)
-                    {
-                        if (v.Val is byte[] serialized)
-                        {
-                            var result = ((InstanceState)Serializer.DeserializeTrackedObject(serialized))?.OrchestrationState;
-                            if (result != null && !instanceQuery.FetchInput)
-                            {
-                                result.Input = null;
-                            }
-                            return result;
-                        }
-                        else
-                        {
-                            var state = ((InstanceState)((TrackedObject)v))?.OrchestrationState;
-                            return state?.ClearFieldsImmutably(instanceQuery.FetchInput, true);
-                        }
-                    }
-
                     async IAsyncEnumerable<OrchestrationState> queryPredicate(IPredicate predicate, PredicateKey queryKey)
                     {
                         await foreach (var queryRecord in session.QueryAsync(predicate, queryKey, querySettings).ConfigureAwait(false))
                         {
-                            if (instanceQuery.Matches(getOrchestrationState(ref queryRecord.ValueRef)))
+                            if (queryRecord.ValueRef.Val is byte[] serialized)
                             {
-                                yield return getOrchestrationState(ref queryRecord.ValueRef);
+                                var state = ((InstanceState)Serializer.DeserializeTrackedObject(serialized))?.OrchestrationState;
+                                if (state != null && instanceQuery.Matches(state))
+                                {
+                                    if (!instanceQuery.FetchInput)
+                                    {
+                                        state.Input = null;
+                                    }
+                                    yield return state;
+                                }
+                            }
+                            else
+                            {
+                                var state = ((InstanceState)(TrackedObject)queryRecord.ValueRef.Val)?.OrchestrationState;
+                                if (state != null && instanceQuery.Matches(state))
+                                {
+                                    yield return state.ClearFieldsImmutably(instanceQuery.FetchInput, true);
+                                }
                             }
                             queryRecord.Dispose();
                         }
