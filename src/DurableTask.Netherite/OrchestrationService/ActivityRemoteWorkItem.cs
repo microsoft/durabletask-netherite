@@ -12,6 +12,7 @@ namespace DurableTask.Netherite
 
     class ActivityRemoteWorkItem : ActivityWorkItem
     {
+        // listener that is notified when result has been durably persisted
         readonly TransportAbstraction.IDurabilityListener listener;
 
         public Worker Worker { get; set; }

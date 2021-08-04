@@ -7,6 +7,7 @@ namespace DurableTask.Netherite.Emulated
     using System;
     using System.IO;
     using System.Threading;
+    using System.Threading.Tasks;
 
     /// <summary>
     /// Simulates a in-memory queue for delivering events. Used for local testing and debugging.
@@ -38,7 +39,7 @@ namespace DurableTask.Netherite.Emulated
             }
         }
 
-        protected override void Deliver(PartitionEvent evt)
+        protected override ValueTask DeliverAsync(PartitionEvent evt)
         {
             try
             {
@@ -54,6 +55,8 @@ namespace DurableTask.Netherite.Emulated
             {
                 this.partition.ErrorHandler.HandleError(nameof(MemoryPartitionQueue), $"Encountered exception while trying to deliver event {evt} id={evt.EventIdString}", e, true, false);
             }
+
+            return default;
         }
     }
 }

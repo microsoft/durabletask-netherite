@@ -7,6 +7,7 @@ namespace DurableTask.Netherite.Emulated
     using System;
     using System.IO;
     using System.Threading;
+    using System.Threading.Tasks;
 
     /// <summary>
     /// Simulates a in-memory queue for delivering events. Used for local testing and debugging.
@@ -37,7 +38,7 @@ namespace DurableTask.Netherite.Emulated
             }
         }
 
-        protected override void Deliver(ClientEvent evt)
+        protected override ValueTask DeliverAsync(ClientEvent evt)
         {
             try
             {
@@ -51,6 +52,8 @@ namespace DurableTask.Netherite.Emulated
             {
                 this.client.ReportTransportError(nameof(MemoryClientQueue), e);
             }
+
+            return default;
         }
     }
 }

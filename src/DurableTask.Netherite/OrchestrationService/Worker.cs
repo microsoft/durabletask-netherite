@@ -59,7 +59,7 @@ namespace DurableTask.Netherite
 
         public string GetWorkItemId(long seqno) => $"W{GetShortId(this.WorkerId)}A{seqno}";
 
-        void TransportAbstraction.IWorker.Process(WorkerEvent workerEvent, TransportAbstraction.IDurabilityListener listener)
+        ValueTask TransportAbstraction.IWorker.SubmitAsync(WorkerEvent workerEvent, TransportAbstraction.IDurabilityListener listener)
         {
             if (workerEvent is WorkerRequestReceived workerRequestReceived)
             {
@@ -71,8 +71,13 @@ namespace DurableTask.Netherite
                     this.sequenceNumber++,
                     listener);
 
-                this.ActivityWorkItemQueue.AddRemote(workItem);
                 this.WorkItemTraceHelper.TraceTaskMessageReceived(workItem.PartitionId, workItem.TaskMessage, workItem.OriginWorkItem, workItem.WorkItemId);
+
+                return this.ActivityWorkItemQueue.AddRemoteAsync(workItem);
+            }
+            else
+            {
+                return default;
             }
         }
 

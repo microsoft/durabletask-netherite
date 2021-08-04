@@ -27,7 +27,7 @@ namespace DurableTask.Netherite.Emulated
         protected abstract B Serialize(T evt);
         protected abstract T Deserialize(B evt);
 
-        protected abstract void Deliver(T evt);
+        protected abstract ValueTask DeliverAsync(T evt);
 
         public long FirstInputQueuePosition { get; set; }
 
@@ -68,7 +68,7 @@ namespace DurableTask.Netherite.Emulated
                             this.logger.LogTrace("MemoryQueue {name} is delivering {event} id={eventId}", this.name, evt, evt.EventId);
                         }
 
-                        this.Deliver(evt);
+                        this.DeliverAsync(evt);
                     }
 
                     this.position = this.position + batch.Count;

@@ -77,7 +77,7 @@
         // or to "ClientOnly" to run only the client
         "PartitionManagement": "EventProcessorHost",
 
-        // set this to "Local" to disable the global activity distribution algorithm
+        // set this to "LocalOnly" to disable the global activity distribution algorithm
         "ActivityScheduler": "Mixed",
 
         // The log level limits below control the production of log events by the various components.

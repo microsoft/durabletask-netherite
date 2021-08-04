@@ -174,12 +174,12 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
+        async Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
         {
             this.batch.Next = new Batch(this, this.batch.Id + 1); // can receive acks, but cannot have all acks yet
 
             // submit the events for processing, which means the acks can come trickling in
-            (int numberEvents, Checkpoint checkPoint) = this.SubmitWork(context, packets);
+            (int numberEvents, Checkpoint checkPoint) = await this.SubmitWorkAsync(context, packets);
 
             if (checkPoint != null)
             {
@@ -189,11 +189,9 @@ namespace DurableTask.Netherite.EventHubs
 
                 this.batch = this.batch.Next;
             }
-
-            return Task.CompletedTask;
         }
 
-        (int numberEvents, Checkpoint checkPoint) SubmitWork(PartitionContext context, IEnumerable<EventData> packets)
+        async ValueTask<(int numberEvents, Checkpoint checkPoint)> SubmitWorkAsync(PartitionContext context, IEnumerable<EventData> packets)
         {
             this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} receiving #{seqno}", this.eventHubName, this.eventHubPartition, packets.First().SystemProperties.SequenceNumber);
             try
@@ -234,7 +232,8 @@ namespace DurableTask.Netherite.EventHubs
                         break;
                     }
 
-                    this.worker.Process(workerEvent, this.batch);
+                    await this.worker.SubmitAsync(workerEvent, this.batch);
+
                     count++;
                 }
 

@@ -160,10 +160,11 @@ namespace DurableTask.Netherite
             Guid WorkerId { get; }
 
             /// <summary>
-            /// Processes a single event on this client.
+            /// Submits a single event for processing on this worker.
             /// </summary>
             /// <param name="evt">The event to process.</param>
-            void Process(WorkerEvent evt, IDurabilityListener listener);
+            /// <returns>A task that completes when the submission has been accepted.</returns>
+            ValueTask SubmitAsync(WorkerEvent evt, IDurabilityListener listener);
 
             /// <summary>
             /// Stop processing tasks and shut down.

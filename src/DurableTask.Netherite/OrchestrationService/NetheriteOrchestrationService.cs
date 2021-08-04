@@ -818,7 +818,7 @@ namespace DurableTask.Netherite
             // put it back into the work queue
             if (activityWorkItem.IsRemote)
             {
-                this.ActivityWorkItemQueue.AddRemote((ActivityWorkItem)workItem);
+                var _ = this.ActivityWorkItemQueue.AddRemoteAsync((ActivityWorkItem)workItem);
             }
             else
             {

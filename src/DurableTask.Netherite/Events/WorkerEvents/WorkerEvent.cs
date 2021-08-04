@@ -9,6 +9,6 @@ namespace DurableTask.Netherite
 
     [DataContract]
     abstract class WorkerEvent : Event
-    {      
+    {
     }
 }

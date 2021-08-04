@@ -17,7 +17,10 @@ namespace DurableTask.Netherite
         readonly ConcurrentQueue<T> workLocal = new ConcurrentQueue<T>();
         readonly ConcurrentQueue<T> workRemote = new ConcurrentQueue<T>();
 
-        readonly SemaphoreSlim count = new SemaphoreSlim(0);
+        const int REMOTE_BUFFER_BOUND = 10;
+
+        readonly SemaphoreSlim availableForDequeue = new SemaphoreSlim(0);
+        readonly SemaphoreSlim availableForRemoteEnqueue = new SemaphoreSlim(REMOTE_BUFFER_BOUND);
 
         bool tryLocalFirst = true;
 
@@ -26,18 +29,20 @@ namespace DurableTask.Netherite
         public void AddLocal(T element)
         {
             this.workLocal.Enqueue(element);
-            this.count.Release();
+            this.availableForDequeue.Release();
         }
 
-        public void AddRemote(T element)
+        public async ValueTask AddRemoteAsync(T element)
         {
+            await this.availableForRemoteEnqueue.WaitAsync();
             this.workRemote.Enqueue(element);
-            this.count.Release();
+            this.availableForDequeue.Release();
         }
 
         public void Dispose()
         {
-            this.count.Dispose();
+            this.availableForDequeue.Dispose();
+            this.availableForRemoteEnqueue.Dispose();
         }
 
         public async ValueTask<T> GetNext(TimeSpan timeout, CancellationToken cancellationToken)
@@ -46,7 +51,7 @@ namespace DurableTask.Netherite
             {
                 T result = default;
 
-                bool success = await this.count.WaitAsync((int)timeout.TotalMilliseconds, cancellationToken);
+                bool success = await this.availableForDequeue.WaitAsync((int)timeout.TotalMilliseconds, cancellationToken);
 
                 if (success)
                 {
@@ -56,12 +61,20 @@ namespace DurableTask.Netherite
                         if (!success)
                         {
                             success = this.workRemote.TryDequeue(out result);
+                            if (success)
+                            {
+                                this.availableForRemoteEnqueue.Release();
+                            }
                         }
                     }
                     else
                     {
                         success = this.workRemote.TryDequeue(out result);
-                        if (!success)
+                        if (success)
+                        {
+                            this.availableForRemoteEnqueue.Release();
+                        }
+                        else
                         {
                             success = this.workLocal.TryDequeue(out result);
                         }
@@ -75,7 +88,7 @@ namespace DurableTask.Netherite
                     // put the count back up by one if we didn't actually get an element
                     if (!success)
                     {
-                        this.count.Release();
+                        this.availableForDequeue.Release();
                     }
                 }
 

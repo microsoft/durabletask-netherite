@@ -48,7 +48,7 @@ namespace DurableTask.Netherite
 
         // Current design: Use bounded buffers for both pending local and pending remote activities.
         // In this preliminary design the buffer size is a constant. We will make smarter choices at some point.
-        const int MAX_LOCAL_PENDING = 100;
+        const int MAX_LOCAL_PENDING = 10;
         const int MAX_REMOTE_PENDING = 200;
 
         public override void OnRecoveryCompleted()
