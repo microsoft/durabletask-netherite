@@ -13,6 +13,8 @@ namespace PerformanceTests.CollisionSearch
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using System.Net.Http;
     using Newtonsoft.Json.Linq;
+    using System.Collections.Generic;
+    using Newtonsoft.Json;
 
     public static class HttpTriggers
     {
@@ -52,6 +54,10 @@ namespace PerformanceTests.CollisionSearch
                         orchestrationName = nameof(CollisionSearch.FlatParallelSearch);
                         break;
 
+                    case "flat-parallel-http":
+                        orchestrationName = nameof(CollisionSearch.FlatParallelHttpSearch);
+                        break;
+
                     default:
                         throw new ArgumentException("unknown algorithm");
                 }
@@ -76,6 +82,34 @@ namespace PerformanceTests.CollisionSearch
                 }
 
                 return response;
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(new { error = e.ToString() });
+            }
+        }
+
+        /// <summary>
+        /// Http trigger to search a portion.
+        /// 
+        /// </summary>
+        [FunctionName(nameof(CollisionSearchPortion))]
+        public static IActionResult CollisionSearchPortion(
+           [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "CollisionSearch/Portion/{target}/{start}/{count}")] HttpRequest req,
+           int target,
+           long start,
+           long count)
+        {
+            try
+            {
+                var results = new List<long>();
+                for (var i = start; i < start + count; i++)
+                {
+                    if (i.GetHashCode() == target)
+                        results.Add(i);
+                }
+
+                return new OkObjectResult(JsonConvert.SerializeObject(results));
             }
             catch (Exception e)
             {
