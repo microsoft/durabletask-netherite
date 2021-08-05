@@ -17,7 +17,7 @@ namespace DurableTask.Netherite
         readonly ConcurrentQueue<T> workLocal = new ConcurrentQueue<T>();
         readonly ConcurrentQueue<T> workRemote = new ConcurrentQueue<T>();
 
-        const int REMOTE_BUFFER_BOUND = 10;
+        const int REMOTE_BUFFER_BOUND = 100;
 
         readonly SemaphoreSlim availableForDequeue = new SemaphoreSlim(0);
         readonly SemaphoreSlim availableForRemoteEnqueue = new SemaphoreSlim(REMOTE_BUFFER_BOUND);
