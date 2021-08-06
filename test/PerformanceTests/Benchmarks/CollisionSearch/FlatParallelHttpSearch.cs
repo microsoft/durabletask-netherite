@@ -35,22 +35,53 @@ namespace PerformanceTests.CollisionSearch
 
                 async Task<List<long>> CallHttpAsync(int target, long start, long count)
                 {
+                    int retries = 10;
+
                     while (true)
                     {
-                        DurableHttpRequest request = new DurableHttpRequest(
-                            System.Net.Http.HttpMethod.Post,
-                            //new Uri($"https://functionssb1.azurewebsites.net/CollisionSearch/Portion/{target}/{start}/{count}"));
-                            new Uri($"http://localhost:7071/CollisionSearch/Portion/{target}/{start}/{count}"));
-
-                        DurableHttpResponse response = await context.CallHttpAsync(request);
-
-                        if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                        try
                         {
-                            return JsonConvert.DeserializeObject<List<long>>(response.Content);
+                            DurableHttpRequest request = new DurableHttpRequest(
+                                System.Net.Http.HttpMethod.Post,
+                                new Uri($"https://functionssb1.azurewebsites.net/CollisionSearch/Portion/{target}/{start}/{count}"));
+                            //new Uri($"http://localhost:7071/CollisionSearch/Portion/{target}/{start}/{count}"));
+
+                            retries--;
+                            DurableHttpResponse response = await context.CallHttpAsync(request);
+
+                            if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                            {
+                                return JsonConvert.DeserializeObject<List<long>>(response.Content);
+                            }
+                            else if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                            {
+                                logger.LogWarning("received throttle");
+                                continue;
+                            }
+                            else
+                            {
+                                logger.LogError($"Received {response.StatusCode} response: {request.Content}");
+                                if (retries > 0)
+                                {
+                                    continue;
+                                }
+                                else
+                                {
+                                    throw new Exception($"Received {response.StatusCode} response: {request.Content}");
+                                }
+                            }
                         }
-                        else
+                        catch(Exception e)
                         {
-                            continue;
+                            logger.LogError($"Caught exception {e}");
+                            if (retries > 0)
+                            {
+                                continue;
+                            }
+                            else
+                            {
+                                throw new Exception($"Caught exception {e}");
+                            }
                         }
                     }
                 }

@@ -15,6 +15,8 @@ namespace PerformanceTests.CollisionSearch
     using Newtonsoft.Json.Linq;
     using System.Collections.Generic;
     using Newtonsoft.Json;
+    using System.Threading;
+    using Microsoft.Extensions.Logging;
 
     public static class HttpTriggers
     {
@@ -65,7 +67,7 @@ namespace PerformanceTests.CollisionSearch
                 string orchestrationInstanceId = await client.StartNewAsync(orchestrationName, null, parameters);
 
                 // wait for it to complete and return the result
-                var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(200));
+                var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(60));
 
                 if (response is ObjectResult objectResult
                     && objectResult.Value is HttpResponseMessage responseMessage
@@ -73,12 +75,20 @@ namespace PerformanceTests.CollisionSearch
                     && responseMessage.Content is StringContent stringContent)
                 {
                     var state = await client.GetStatusAsync(orchestrationInstanceId, false, false, false);
-                    var result = (JArray) JToken.Parse(await stringContent.ReadAsStringAsync());
-                    var collisionsFound = result.Count;
-                    var elapsedSeconds = (state.LastUpdatedTime - state.CreatedTime).TotalSeconds;
-                    var size = billions;
-                    var throughput = size / elapsedSeconds;
-                    response = new OkObjectResult(new { collisionsFound, elapsedSeconds, size, throughput });                
+                    var stringresult = await stringContent.ReadAsStringAsync();
+                    try
+                    {
+                        List<long> result = JsonConvert.DeserializeObject<List<long>>(stringresult);
+                        var collisionsFound = result.Count;
+                        var elapsedSeconds = (state.LastUpdatedTime - state.CreatedTime).TotalSeconds;
+                        var size = billions;
+                        var throughput = size / elapsedSeconds;
+                        response = new OkObjectResult(new { collisionsFound, elapsedSeconds, size, throughput });
+                    }
+                    catch (Exception e)
+                    {
+                        return new ObjectResult(new { error = e.ToString(), stringresult });
+                    }
                 }
 
                 return response;
@@ -94,27 +104,51 @@ namespace PerformanceTests.CollisionSearch
         /// 
         /// </summary>
         [FunctionName(nameof(CollisionSearchPortion))]
-        public static IActionResult CollisionSearchPortion(
+        public static async Task<IActionResult> CollisionSearchPortion(
            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "CollisionSearch/Portion/{target}/{start}/{count}")] HttpRequest req,
            int target,
            long start,
-           long count)
+           long count,
+           ILogger logger)
         {
-            try
-            {
-                var results = new List<long>();
-                for (var i = start; i < start + count; i++)
-                {
-                    if (i.GetHashCode() == target)
-                        results.Add(i);
-                }
+            ObjectResult result;
 
-                return new OkObjectResult(JsonConvert.SerializeObject(results));
-            }
-            catch (Exception e)
+            if (await LocalLimit.WaitAsync(TimeSpan.FromSeconds(100 + 10 * (new Random()).NextDouble())))
             {
-                return new ObjectResult(new { error = e.ToString() });
+                //logger.LogWarning($"Start conc={LocalLimit.CurrentCount}");
+                try
+                {
+
+                    var results = new List<long>();
+                    for (var i = start; i < start + count; i++)
+                    {
+                        if (i.GetHashCode() == target)
+                            results.Add(i);
+                    }
+
+                    result = new OkObjectResult(JsonConvert.SerializeObject(results));
+                }
+                catch (Exception e)
+                {
+                    result = new ObjectResult(new { error = e.ToString() });
+                    result.StatusCode = (int) System.Net.HttpStatusCode.InternalServerError;
+                }
+                finally
+                {
+                    //logger.LogWarning($"Complete conc={LocalLimit.CurrentCount}");
+                    LocalLimit.Release();
+                }
             }
+            else
+            {
+                //logger.LogWarning($"Reject conc={LocalLimit.CurrentCount}");
+                result = new ObjectResult("Server busy, try again later");
+                result.StatusCode = (int)System.Net.HttpStatusCode.TooManyRequests;
+            }
+
+            return result;
         }
+
+        static readonly SemaphoreSlim LocalLimit = new SemaphoreSlim(10);
     }
 }
