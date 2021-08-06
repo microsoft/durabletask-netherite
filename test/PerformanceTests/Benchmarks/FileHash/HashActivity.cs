@@ -17,7 +17,7 @@ namespace PerformanceTests.FileHash
     public static class HashActivity
     {
         [FunctionName(nameof(HashActivity))]
-        public static async Task<int> Run([ActivityTrigger] IDurableActivityContext context)
+        public static async Task<long> Run([ActivityTrigger] IDurableActivityContext context)
         {
             char[] separators = { ' ', '\n', '<', '>', '=', '\"', '\'', '/', '\\', '(', ')', '\t', '{', '}', '[', ']', ',', '.', ':', ';' };
 
@@ -33,7 +33,7 @@ namespace PerformanceTests.FileHash
             string doc = await blob.DownloadTextAsync();
 
             // Hash the book content 1000 times
-            int wordCount = 0;
+            long wordCount = 0;
             string[] words = doc.Split(separators, StringSplitOptions.RemoveEmptyEntries);
             foreach (string word in words)
             {
