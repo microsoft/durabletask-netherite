@@ -34,8 +34,14 @@ namespace DurableTask.Netherite
         [DataMember]
         public TimeSpan? LoadMonitorInterval { get; set; }
 
+        [DataMember]
+        public double? AverageActivityCompletionTime { get; set; }
+
         [IgnoreDataMember]
         DateTime? LastLoadInformationSent { get; set; }
+
+        [IgnoreDataMember]
+        bool IdleStateSent { get; set; } = false;
 
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Activities);
@@ -59,7 +65,6 @@ namespace DurableTask.Netherite
 
         const int NOT_CONTACTED = -1;
         const int RESPONSE_PENDING = int.MaxValue;
-        bool IDLE_STATE_SENT = false;
 
         const int ABSOLUTE_LOAD_LIMIT_FOR_REMOTES = 1000;
         const double RELATIVE_LOAD_LIMIT_FOR_REMOTES = .8;
@@ -72,7 +77,6 @@ namespace DurableTask.Netherite
 
         const int REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS = 100;
 
-        double AVERAGE_ACT_COMPLETION_TIME = double.MaxValue;
         const double SMOOTHING_FACTOR = 0.5;
 
         public override void OnRecoveryCompleted()
@@ -126,19 +130,19 @@ namespace DurableTask.Netherite
                 || ((DateTime.UtcNow - this.LastLoadInformationSent.Value) > TimeSpan.FromMilliseconds(REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS)
                     && (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0))
                 // send load information once the partition first becomes idle
-                || !this.IDLE_STATE_SENT)
+                || !this.IdleStateSent
+                || true) // TEMPORARY: always send load info
               
             {
-
                 this.Partition.Send(new LoadInformationReceived()
                 {
                     RequestId = Guid.NewGuid(),
                     PartitionId = this.Partition.PartitionId,
                     BacklogSize = this.LocalBacklog.Count + this.QueuedRemotes.Count,
-                    AverageActCompletionTime = this.AVERAGE_ACT_COMPLETION_TIME,
+                    AverageActCompletionTime = this.AverageActivityCompletionTime,
                 });
 
-                this.IDLE_STATE_SENT = (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0) ? false : true;
+                this.IdleStateSent = (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0) ? false : true;
                 this.LastLoadInformationSent = DateTime.UtcNow;
             }
         }
@@ -262,20 +266,20 @@ namespace DurableTask.Netherite
 
         public void Process(ActivityCompleted evt, EffectTracker effects)
         {
-            // records the result of a finished activity and launches an offload decision
+            // records the result of a finished activity
 
             this.Pending.Remove(evt.ActivityId);
 
             this.EstimatedLocalWorkItemLoad = evt.ReportedLoad;
 
+            // update the average activity completion time
+            this.AverageActivityCompletionTime = !this.AverageActivityCompletionTime.HasValue ? evt.LatencyMs :
+                SMOOTHING_FACTOR * evt.LatencyMs + (1 - SMOOTHING_FACTOR) * this.AverageActivityCompletionTime.Value;
+
             if (evt.OriginPartitionId == effects.Partition.PartitionId)
             {
                 // the response can be delivered to a session on this partition
                 effects.Add(TrackedObjectKey.Sessions);
-
-                // update the average activity completion time
-                this.AVERAGE_ACT_COMPLETION_TIME = this.AVERAGE_ACT_COMPLETION_TIME == double.MaxValue ? evt.LatencyMs :
-                    SMOOTHING_FACTOR * evt.LatencyMs + (1 - SMOOTHING_FACTOR) * this.AVERAGE_ACT_COMPLETION_TIME;
             }
             else
             {

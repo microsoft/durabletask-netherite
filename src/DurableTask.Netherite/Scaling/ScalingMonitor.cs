@@ -137,16 +137,26 @@ namespace DurableTask.Netherite.Scaling
                     reason: "Task hub is idle");
             }
 
-            int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
+            int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.MediumLatency);
 
             if (workerCount < numberOfSlowPartitions)
             {
                 // scale up to the number of busy partitions
-                var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
+                var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.MediumLatency);
                 return new ScaleRecommendation(
                     ScaleAction.AddWorker,
                     keepWorkersAlive: true,
-                    reason: $"High latency in partition {partition.Key}: {partition.Value.LatencyTrend}");
+                    reason: $"Significant latency in {numberOfSlowPartitions} partitions");
+            }
+
+            int backlog = metrics.LoadInformation.Where(info => info.Value.IsLoaded()).Sum(info => info.Value.Activities);
+
+            if (backlog > 0 && workerCount < metrics.LoadInformation.Count)
+            {
+                return new ScaleRecommendation(
+                    ScaleAction.AddWorker,
+                    keepWorkersAlive: true,
+                    reason: $"Backlog of {backlog} activities");
             }
 
             int numberOfNonIdlePartitions = metrics.LoadInformation.Values.Count(info => ! PartitionLoadInfo.IsLongIdle(info.LatencyTrend));

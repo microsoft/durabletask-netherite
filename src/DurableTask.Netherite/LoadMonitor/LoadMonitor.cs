@@ -16,13 +16,12 @@ namespace DurableTask.Netherite
     class LoadMonitor : TransportAbstraction.ILoadMonitor
     {
         readonly NetheriteOrchestrationService host;
-        readonly CancellationToken shutdownToken;
         readonly LoadMonitorTraceHelper traceHelper;
 
         TransportAbstraction.ISender BatchSender { get; set; }
 
         // data structure for the load monitor (partition id -> (backlog size, average activity completion time))
-        Dictionary<uint, (int backlogSize, double AverageActCompletionTime)> LoadInfo { get; set; }
+        Dictionary<uint, (int backlogSize, double? AverageActCompletionTime)> LoadInfo { get; set; }
 
         const string OFFLOAD_METRIC = "Load";
         const int OFFLOAD_MAX_BATCH_SIZE = 20;
@@ -40,10 +39,16 @@ namespace DurableTask.Netherite
             this.host = host;
             this.traceHelper = new LoadMonitorTraceHelper(host.Logger, host.Settings.LogLevelLimit, host.StorageAccountName, host.Settings.HubName);
             this.BatchSender = batchSender;
-            this.LoadInfo = new Dictionary<uint, (int, double)>();
+            this.LoadInfo = new Dictionary<uint, (int, double?)>();
             this.traceHelper.TraceWarning("Started");
-        }  
-       
+        }
+
+        public Task StopAsync()
+        {
+            this.traceHelper.TraceWarning("Stopped");
+            return Task.CompletedTask;
+        }
+
         public void ReportTransportError(string message, Exception e)
         {
             this.traceHelper.TraceError($"Error reported by transport: {message}", e);
@@ -57,63 +62,86 @@ namespace DurableTask.Netherite
 
         public void Process(LoadInformationReceived loadInformationReceived)
         {
-            // update load info
-            this.LoadInfo[loadInformationReceived.PartitionId] = (loadInformationReceived.BacklogSize, loadInformationReceived.AverageActCompletionTime);
             this.traceHelper.TraceWarning($"Received Load information from partition{loadInformationReceived.PartitionId} with " +
                 $"load={loadInformationReceived.BacklogSize} and avg completion time={loadInformationReceived.AverageActCompletionTime}");
 
-            double AverageWaitTime = this.LoadInfo.Select(t => t.Value).Average(t => t.backlogSize * t.AverageActCompletionTime);
-            double CompletionTime = this.LoadInfo[loadInformationReceived.PartitionId].backlogSize * this.LoadInfo[loadInformationReceived.PartitionId].AverageActCompletionTime;
-
-            //if (loadInformationReceived.BacklogSize > OVERLOAD_THRESHOLD)
-            if (CompletionTime > AverageWaitTime)    
+            try
             {
-                // start the task migration process and find offload targets
-                //if (this.FindOffloadTargetByLoad(loadInformationReceived.PartitionId, loadInformationReceived.BacklogSize - OVERLOAD_THRESHOLD, out Dictionary<uint, int> OffloadTargets))
-                if (this.FindOffloadTargetByWaitTime(loadInformationReceived.PartitionId, loadInformationReceived.BacklogSize - OVERLOAD_THRESHOLD, 
-                    loadInformationReceived.AverageActCompletionTime, AverageWaitTime, out Dictionary<uint, int> OffloadTargets))
+                // update load info
+                this.LoadInfo[loadInformationReceived.PartitionId] = (loadInformationReceived.BacklogSize, loadInformationReceived.AverageActCompletionTime);
+
+                // create a default estimation of completion time (we use this to replace missing estimates)
+                double DefaultEstimatedCompletionTime = this.LoadInfo.Select(t => t.Value.AverageActCompletionTime).Average() ?? 100;
+                double EstimatedActCompletionTime(uint partitionId) => this.LoadInfo[partitionId].AverageActCompletionTime ?? DefaultEstimatedCompletionTime;
+
+                // check if it makes sense to redistribute work from this partition to other partitions
+                uint overloadCandidate = loadInformationReceived.PartitionId;
+                double AverageWaitTime = this.LoadInfo.Average(t => t.Value.backlogSize * EstimatedActCompletionTime(t.Key));
+                double CompletionTime = this.LoadInfo[overloadCandidate].backlogSize * EstimatedActCompletionTime(overloadCandidate);
+
+                // if we don't have information for all partitions yet, do not continue
+                if (this.LoadInfo.Count < this.host.NumberPartitions)
                 {
-                    // send offload commands
-                    foreach (var kvp in OffloadTargets)
+                    return;
+                }
+
+                // if the expected  completion time is above average, we consider redistributing the load
+                if (CompletionTime > AverageWaitTime)
+                {
+                    // start the task migration process and find offload targets
+                    //if (this.FindOffloadTargetByLoad(loadInformationReceived.PartitionId, loadInformationReceived.BacklogSize - OVERLOAD_THRESHOLD, out Dictionary<uint, int> OffloadTargets))
+                    if (FindOffloadTargetByWaitTime(this.LoadInfo[overloadCandidate].backlogSize - OVERLOAD_THRESHOLD, out Dictionary<uint, int> OffloadTargets))
                     {
-                        this.traceHelper.TraceWarning($"Sending offloadCommand to partition {loadInformationReceived.PartitionId} " +
-                            $"to send {kvp.Value} activities to partition {kvp.Key}");
-                        this.BatchSender.Submit(new OffloadCommandReceived()
+                        // send offload commands
+                        foreach (var kvp in OffloadTargets)
                         {
-                            RequestId = Guid.NewGuid(),
-                            PartitionId = loadInformationReceived.PartitionId,
-                            NumActivitiesToSend = kvp.Value,
-                            OffloadDestination = kvp.Key,
-                        });
+                            this.traceHelper.TraceWarning($"Sending offloadCommand to partition {overloadCandidate} " +
+                                $"to send {kvp.Value} activities to partition {kvp.Key}");
+                            this.BatchSender.Submit(new OffloadCommandReceived()
+                            {
+                                RequestId = Guid.NewGuid(),
+                                PartitionId = overloadCandidate,
+                                NumActivitiesToSend = kvp.Value,
+                                OffloadDestination = kvp.Key,
+                            });
+                        }
+
+                        // load decisions and update load info
+                        this.LoadInfo[overloadCandidate] = (this.LoadInfo[overloadCandidate].backlogSize
+                            - OffloadTargets.Sum(x => x.Value), this.LoadInfo[overloadCandidate].AverageActCompletionTime);
+                    }
+                }
+
+                bool FindOffloadTargetByWaitTime(int numActivitiesToOffload, out Dictionary<uint, int> OffloadTargets)
+                {
+                    OffloadTargets = new Dictionary<uint, int>();
+                    for (uint i = 0; i < this.host.NumberPartitions - 1 && numActivitiesToOffload > 0; i++)
+                    {
+                        uint target = (overloadCandidate + i + 1) % this.host.NumberPartitions;
+
+                        if (this.LoadInfo.TryGetValue(target, out var targetInfo))
+                        {
+                            int portionSize = Math.Min(OFFLOAD_MAX_BATCH_SIZE, numActivitiesToOffload);
+
+                            double localWaitTime = (this.LoadInfo[overloadCandidate].backlogSize - portionSize) * EstimatedActCompletionTime(overloadCandidate);
+                            double remoteWaitTime = targetInfo.backlogSize * EstimatedActCompletionTime(target);
+
+                            if (localWaitTime > remoteWaitTime)
+                            {
+                                OffloadTargets[target] = portionSize;
+                                numActivitiesToOffload -= portionSize;
+                            }
+                        }
                     }
 
-                    // load decisions and update load info
-                    this.LoadInfo[loadInformationReceived.PartitionId] = (this.LoadInfo[loadInformationReceived.PartitionId].backlogSize 
-                        - OffloadTargets.Sum(x => x.Value), this.LoadInfo[loadInformationReceived.PartitionId].AverageActCompletionTime);
+                    return OffloadTargets.Count == 0 ? false : true;
                 }
             }
-
-
-        }
-
-        bool FindOffloadTargetByWaitTime(uint currentPartitionId, int numActivitiesToOffload, double AverageActCompletionTime, double AverageWaitTime, out Dictionary<uint, int> OffloadTargets)
-        {
-            OffloadTargets = new Dictionary<uint, int>();
-            for (uint i = 0; i < this.host.NumberPartitions - 1 && numActivitiesToOffload > 0; i++)
+            catch (Exception e)
             {
-                uint target = (currentPartitionId + i + 1) % this.host.NumberPartitions;
-                double localWaitTime = (this.LoadInfo[currentPartitionId].backlogSize - OFFLOAD_MAX_BATCH_SIZE) * this.LoadInfo[currentPartitionId].AverageActCompletionTime;
-                double remoteWaitTime = this.LoadInfo[target].backlogSize * this.LoadInfo[target].AverageActCompletionTime;
-
-                if (localWaitTime > remoteWaitTime)
-                {
-                    OffloadTargets[target] = OFFLOAD_MAX_BATCH_SIZE;
-                    numActivitiesToOffload -= OFFLOAD_MAX_BATCH_SIZE;
-                }
+                this.traceHelper.TraceError($"Caught exception: ", e);
             }
-
-            return OffloadTargets.Count == 0 ? false : true;
-        }
+        } 
 
         bool FindOffloadTargetByLoad(uint currentPartitionId, int numActivitiesToOffload, out Dictionary<uint, int> OffloadTargets)
         {
@@ -132,20 +160,6 @@ namespace DurableTask.Netherite
                 }
             }
             return OffloadTargets.Count == 0 ? false : true;
-        }
-
-        // Do we really need this interval?
-        void updateLoadMonitorInterval()
-        {
-            double utilization = this.LoadInfo.Sum(x => x.Value.backlogSize) / (this.LoadInfo.Count * UNDERLOAD_THRESHOLD);
-
-            if (utilization < 1)
-            {
-                this.BatchSender.Submit(new ProbingControlReceived()
-                {
-                    LoadMonitorInterval = TimeSpan.FromMilliseconds(100),
-                });
-            }
         }
     }
 }

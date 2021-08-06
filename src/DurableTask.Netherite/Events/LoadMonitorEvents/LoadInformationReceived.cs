@@ -16,6 +16,6 @@ namespace DurableTask.Netherite
         public int BacklogSize { get; set; } // TODO determine what metrics to use
 
         [DataMember]
-        public double AverageActCompletionTime { get; set; }
+        public double? AverageActCompletionTime { get; set; }
     }
 }

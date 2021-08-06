@@ -260,6 +260,11 @@ namespace DurableTask.Netherite.EventHubs
 
             this.deliveryLock.Dispose();
 
+            if (this.partitionId == 0)
+            {
+                await this.loadMonitor.StopAsync();
+            }
+
             this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} closed", this.eventHubName, this.eventHubPartition);
         }
 
