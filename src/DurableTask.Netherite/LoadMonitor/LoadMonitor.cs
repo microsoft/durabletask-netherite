@@ -70,6 +70,12 @@ namespace DurableTask.Netherite
                 // update load info
                 this.LoadInfo[loadInformationReceived.PartitionId] = (loadInformationReceived.BacklogSize, loadInformationReceived.AverageActCompletionTime);
 
+                // if we don't have information for all partitions yet, do not continue
+                if (this.LoadInfo.Count < this.host.NumberPartitions)
+                {
+                    return;
+                }
+
                 // create a default estimation of completion time (we use this to replace missing estimates)
                 double DefaultEstimatedCompletionTime = this.LoadInfo.Select(t => t.Value.AverageActCompletionTime).Average() ?? 100;
                 double EstimatedActCompletionTime(uint partitionId) => this.LoadInfo[partitionId].AverageActCompletionTime ?? DefaultEstimatedCompletionTime;
@@ -78,12 +84,6 @@ namespace DurableTask.Netherite
                 uint overloadCandidate = loadInformationReceived.PartitionId;
                 double AverageWaitTime = this.LoadInfo.Average(t => t.Value.backlogSize * EstimatedActCompletionTime(t.Key));
                 double CompletionTime = this.LoadInfo[overloadCandidate].backlogSize * EstimatedActCompletionTime(overloadCandidate);
-
-                // if we don't have information for all partitions yet, do not continue
-                if (this.LoadInfo.Count < this.host.NumberPartitions)
-                {
-                    return;
-                }
 
                 // if the expected  completion time is above average, we consider redistributing the load
                 if (CompletionTime > AverageWaitTime)

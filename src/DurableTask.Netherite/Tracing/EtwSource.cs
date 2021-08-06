@@ -53,6 +53,13 @@ namespace DurableTask.Netherite
             this.WriteEvent(202, Account, Message, Details, TaskHub, WorkerName, AppName, ExtensionVersion);
         }
 
+        [Event(203, Level = EventLevel.Informational, Version = 1)]
+        public void OrchestrationServiceScaleRecommendation(string Account, string TaskHub, string Action, int WorkerCount, string Details, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(203, Account, TaskHub, Action, WorkerCount, Details, AppName, ExtensionVersion);
+        }
+
         // ----- partition and client lifecycles
 
         [Event(210, Level = EventLevel.Informational, Version = 1)]

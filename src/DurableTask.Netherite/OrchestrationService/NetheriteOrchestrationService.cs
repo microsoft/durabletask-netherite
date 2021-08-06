@@ -168,6 +168,7 @@ namespace DurableTask.Netherite
                     this.Settings.ResolvedTransportConnectionString, 
                     this.Settings.LoadInformationAzureTableName, 
                     this.Settings.HubName,
+                    this.TraceScaleRecommendation,
                     this.LoggerFactory.CreateLogger($"{LoggerCategoryName}.Scaling"));
                 return true;
             }
@@ -176,6 +177,11 @@ namespace DurableTask.Netherite
                 monitor = null;
                 return false;
             }
+        }
+
+        void TraceScaleRecommendation(string action, int workerCount, string details)
+        {
+            EtwSource.Log.OrchestrationServiceScaleRecommendation(this.StorageAccountName, this.Settings.HubName, action, workerCount, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
         }
 
         /******************************/
