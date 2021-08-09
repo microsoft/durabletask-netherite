@@ -35,9 +35,6 @@ namespace DurableTask.Netherite.EventHubs
         // we set this task once shutdown has been initiated
         Task shutdownTask = null;
 
-        // we always colocate the load monitor with partition 0
-        TransportAbstraction.ILoadMonitor loadMonitor;
-
         // we occasionally checkpoint received packets with eventhubs. It is not required for correctness
         // as we filter duplicates anyway, but it will help startup time.
         readonly Stopwatch timeSinceLastCheckpoint = new Stopwatch();
