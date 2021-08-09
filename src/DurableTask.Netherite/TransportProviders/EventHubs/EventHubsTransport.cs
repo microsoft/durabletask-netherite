@@ -30,6 +30,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly EventHubsTraceHelper traceHelper;
 
         EventProcessorHost eventProcessorHost;
+        EventProcessorHost loadMonitorHost;
         TransportAbstraction.IClient client;
 
         TaskhubParameters parameters;
@@ -199,58 +200,128 @@ namespace DurableTask.Netherite.EventHubs
             }
 
             string partitionsHub = PartitionHubs[0];
-
-            switch (this.settings.PartitionManagement)
+            
+            if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
-                case PartitionManagementOptions.EventProcessorHost:
+                await Task.WhenAll(StartPartitionHost(), StartLoadMonitorHost()).ConfigureAwait(false);
+            }
+
+            async Task StartPartitionHost()
+            {
+                if (this.settings.PartitionManagement != PartitionManagementOptions.Scripted)
+                {
+                    this.traceHelper.LogInformation("Registering Partition Host with EventHubs");
+
+                    this.eventProcessorHost = new EventProcessorHost(
+                        Guid.NewGuid().ToString(),
+                        partitionsHub,
+                        EventHubsTransport.PartitionConsumerGroup,
+                        this.settings.ResolvedTransportConnectionString,
+                        this.settings.ResolvedStorageConnectionString,
+                        this.cloudBlobContainer.Name);
+
+                    var processorOptions = new EventProcessorOptions()
                     {
-                        this.traceHelper.LogInformation("Registering EventProcessorHost with EventHubs");
+                        InitialOffsetProvider = (s) => EventPosition.FromSequenceNumber(this.parameters.StartPositions[int.Parse(s)] - 1),
+                        MaxBatchSize = 300,
+                        PrefetchCount = 500,
+                    };
 
-                        this.eventProcessorHost = new EventProcessorHost(
-                                partitionsHub,
-                                EventHubsTransport.PartitionConsumerGroup,
-                                this.settings.ResolvedTransportConnectionString,
-                                this.settings.ResolvedStorageConnectionString,
-                                this.cloudBlobContainer.Name);
+                    await this.eventProcessorHost.RegisterEventProcessorFactoryAsync(
+                        new PartitionEventProcessorFactory(this), 
+                        processorOptions).ConfigureAwait(false);
+                }
+                else
+                {
+                    this.traceHelper.LogInformation($"Starting scripted partition host");
+                    this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
+                            partitionsHub,
+                            EventHubsTransport.PartitionConsumerGroup,
+                            this.settings.ResolvedTransportConnectionString,
+                            this.settings.ResolvedStorageConnectionString,
+                            this.cloudBlobContainer.Name,
+                            this.host,
+                            this,
+                            this.connections,
+                            this.parameters,
+                            this.settings,
+                            this.traceHelper,
+                            this.settings.WorkerId);
 
-                        var processorOptions = new EventProcessorOptions()
-                        {
-                            InitialOffsetProvider = (s) => EventPosition.FromSequenceNumber(this.parameters.StartPositions[int.Parse(s)] - 1),
-                            MaxBatchSize = 300,
-                            PrefetchCount = 500,
-                        };
+                    var thread = new Thread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript));
+                    thread.Name = "ScriptedEventProcessorHost";
+                    thread.Start();
+                }
+            }
 
-                        await this.eventProcessorHost.RegisterEventProcessorFactoryAsync(this, processorOptions).ConfigureAwait(false);
-                        break;
-                    }
+            async Task StartLoadMonitorHost()
+            {
+                this.traceHelper.LogInformation("Registering LoadMonitor Host with EventHubs");
 
-                case PartitionManagementOptions.Scripted:
-                    {
-                        this.traceHelper.LogInformation($"Starting scripted partition host");
-                        this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
-                                partitionsHub,
-                                EventHubsTransport.PartitionConsumerGroup,
-                                this.settings.ResolvedTransportConnectionString,
-                                this.settings.ResolvedStorageConnectionString,
-                                this.cloudBlobContainer.Name,
-                                this.host,
-                                this,
-                                this.connections,
-                                this.parameters,
-                                this.settings,
-                                this.traceHelper,
-                                this.settings.WorkerId);
+                this.loadMonitorHost = new EventProcessorHost(
+                        Guid.NewGuid().ToString(),
+                        LoadMonitorHub,
+                        LoadMonitorConsumerGroup,
+                        this.settings.ResolvedTransportConnectionString,
+                        this.settings.ResolvedStorageConnectionString,
+                        this.cloudBlobContainer.Name,
+                        LoadMonitorHub);
 
-                        var thread = new Thread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript));
-                        thread.Name = "ScriptedEventProcessorHost";
-                        thread.Start();
-                        break;
-                    }
+                var processorOptions = new EventProcessorOptions()
+                {
+                    InitialOffsetProvider = (s) => EventPosition.FromEnqueuedTime(DateTime.UtcNow - TimeSpan.FromSeconds(30)),
+                    MaxBatchSize = 500,
+                    PrefetchCount = 500,
+                };
 
-                case PartitionManagementOptions.ClientOnly:
-                    {
-                        break;
-                    }
+                await this.loadMonitorHost.RegisterEventProcessorFactoryAsync(
+                    new LoadMonitorEventProcessorFactory(this), 
+                    processorOptions).ConfigureAwait(false);
+            }
+        }
+
+        class PartitionEventProcessorFactory : IEventProcessorFactory
+        {
+            readonly EventHubsTransport transport;
+
+            public PartitionEventProcessorFactory(EventHubsTransport transport)
+            {
+                this.transport = transport;
+            }
+
+            public IEventProcessor CreateEventProcessor(PartitionContext context)
+            {
+                return new EventHubsProcessor(
+                    this.transport.host,
+                    this.transport,
+                    this.transport.parameters,
+                    context,
+                    this.transport.settings,
+                    this.transport,
+                    this.transport.traceHelper,
+                    this.transport.shutdownSource.Token);
+            }
+        }
+
+        class LoadMonitorEventProcessorFactory : IEventProcessorFactory
+        {
+            readonly EventHubsTransport transport;
+
+            public LoadMonitorEventProcessorFactory(EventHubsTransport transport)
+            {
+                this.transport = transport;
+            }
+
+            public IEventProcessor CreateEventProcessor(PartitionContext context)
+            {
+                return new LoadMonitorProcessor(
+                    this.transport.host,
+                    this.transport,
+                    this.transport.parameters,
+                    context,
+                    this.transport.settings,
+                    this.transport.traceHelper,
+                    this.transport.shutdownSource.Token);
             }
         }
 
@@ -266,15 +337,19 @@ namespace DurableTask.Netherite.EventHubs
             {
                 case PartitionManagementOptions.EventProcessorHost:
                     {
-                        this.traceHelper.LogDebug("Unregistering event processor host");
-                        await this.eventProcessorHost.UnregisterEventProcessorAsync().ConfigureAwait(false);
+                        this.traceHelper.LogDebug("Stopping partition and worker hosts");
+                        await Task.WhenAll(
+                          this.eventProcessorHost.UnregisterEventProcessorAsync(),
+                          this.loadMonitorHost.UnregisterEventProcessorAsync()).ConfigureAwait(false);
                         break;
                     }
 
                 case PartitionManagementOptions.Scripted:
                     {
-                        this.traceHelper.LogDebug("Stopping event processor host");
-                        await this.scriptedEventProcessorHost.StopAsync();
+                        this.traceHelper.LogDebug("Stopping partition and worker hosts");
+                        await Task.WhenAll(
+                          this.scriptedEventProcessorHost.StopAsync(),
+                          this.loadMonitorHost.UnregisterEventProcessorAsync()).ConfigureAwait(false);
                         break;
                     }
 
@@ -361,52 +436,6 @@ namespace DurableTask.Netherite.EventHubs
                         foreach (var evt in receivedEvents)
                         {
                             this.client.Process(evt);
-                        }
-                        receivedEvents.Clear();
-                    }
-                }
-            }
-        }
-
-        internal async Task LoadMonitorEventLoop(TransportAbstraction.ILoadMonitor loadMonitor, CancellationToken cancellationToken)
-        {
-            var loadMonitorReceiver = this.connections.CreateLoadMonitorReceiver(EventHubsTransport.LoadMonitorConsumerGroup);
-            var receivedEvents = new List<LoadMonitorEvent>();
-
-            byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
-
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                IEnumerable<EventData> eventData = await loadMonitorReceiver.ReceiveAsync(1000, TimeSpan.FromMinutes(1)).ConfigureAwait(false);
-
-                if (eventData != null)
-                {
-                    foreach (var ed in eventData)
-                    {
-                        LoadMonitorEvent loadMonitorEvent = null;
-
-                        try
-                        {
-                            Packet.Deserialize(ed.Body, out loadMonitorEvent, taskHubGuid);
-
-                            if (loadMonitorEvent != null)
-                            {
-                                receivedEvents.Add(loadMonitorEvent);
-                            }
-                        }
-                        catch (Exception)
-                        {
-                            this.traceHelper.LogError("EventProcessor for LoadMonitor could not deserialize packet #{seqno} ({size} bytes)", ed.SystemProperties.SequenceNumber, ed.Body.Count);
-                            throw;
-                        }
-                        this.traceHelper.LogDebug("EventProcessor for LoadMonitor received packet #{seqno} ({size} bytes)", ed.SystemProperties.SequenceNumber, ed.Body.Count);
-                    }
-
-                    if (receivedEvents.Count > 0 && !cancellationToken.IsCancellationRequested)
-                    {
-                        foreach (var evt in receivedEvents)
-                        {
-                            loadMonitor.Process(evt);
                         }
                         receivedEvents.Clear();
                     }

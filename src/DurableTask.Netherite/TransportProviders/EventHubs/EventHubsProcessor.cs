@@ -102,12 +102,6 @@ namespace DurableTask.Netherite.EventHubs
             this.eventProcessorShutdown = new CancellationTokenSource();
             this.deliveryLock = new AsyncLock();
 
-            if (this.partitionId == 0)
-            {
-                this.loadMonitor = this.host.AddLoadMonitor(this.parameters.TaskhubGuid, this.sender);
-                Task.Run(() => this.eventHubsTransport.LoadMonitorEventLoop(this.loadMonitor, this.eventProcessorShutdown.Token));
-            }
-
             // we kick off the start-and-retry mechanism for the partition, but don't wait for it to be fully started.
             // instead, we save the task and wait for it when we need it
             this.currentIncarnation = Task.Run(() => this.StartPartitionAsync());
@@ -259,11 +253,6 @@ namespace DurableTask.Netherite.EventHubs
             await this.SaveEventHubsReceiverCheckpoint(context).ConfigureAwait(false);
 
             this.deliveryLock.Dispose();
-
-            if (this.partitionId == 0)
-            {
-                await this.loadMonitor.StopAsync();
-            }
 
             this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} closed", this.eventHubName, this.eventHubPartition);
         }
