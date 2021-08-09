@@ -37,6 +37,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public double? AverageActivityCompletionTime { get; set; }
 
+        [DataMember]
+        public Dictionary<uint, DateTime> OffloadsReceived { get; set; }
+
         [IgnoreDataMember]
         DateTime? LastLoadInformationSent { get; set; }
 
@@ -140,6 +143,7 @@ namespace DurableTask.Netherite
                     PartitionId = this.Partition.PartitionId,
                     BacklogSize = this.LocalBacklog.Count + this.QueuedRemotes.Count,
                     AverageActCompletionTime = this.AverageActivityCompletionTime,
+                    OffloadsReceived = this.OffloadsReceived,
                 });
 
                 this.IdleStateSent = (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0) ? false : true;
@@ -261,6 +265,15 @@ namespace DurableTask.Netherite
                         this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg.Item1, msg.Item2, $"QueuedRemotes@{this.QueuedRemotes.Count}");
                     }
                 }
+            }
+
+            if (this.OffloadsReceived == null)
+            {
+                this.OffloadsReceived = new Dictionary<uint, DateTime>();
+            }
+            if (!this.OffloadsReceived.TryGetValue(evt.OriginPartition, out var current) || current < evt.Timestamp)
+            {
+                this.OffloadsReceived[evt.OriginPartition] = evt.Timestamp;
             }
         }
 

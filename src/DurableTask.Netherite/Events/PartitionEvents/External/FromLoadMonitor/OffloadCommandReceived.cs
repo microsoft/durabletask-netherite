@@ -21,6 +21,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public uint OffloadDestination { get; set; }
 
+        [DataMember]
+        public DateTime Timestamp { get; set; }
+
         [IgnoreDataMember]
         public List<(TaskMessage, string)> OffloadedActivities { get; set; }
 

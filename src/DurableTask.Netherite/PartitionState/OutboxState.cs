@@ -266,6 +266,7 @@ namespace DurableTask.Netherite
             {
                 PartitionId = evt.OffloadDestination,
                 OffloadedActivities = evt.OffloadedActivities,
+                Timestamp = evt.Timestamp,
             });
 
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
