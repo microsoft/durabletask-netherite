@@ -23,8 +23,11 @@ namespace DurableTask.Netherite
         // data structure for the load monitor (partition id -> (backlog size, average activity completion time))
         SortedDictionary<uint, Info> LoadInfo { get; set; }
 
-        // the list of offload commands that have been sent, but not yet acknowledged by the destination partition
-        List<OffloadCommandReceived> PendingOffloads { get; set; }
+        // the list of offload commands that are not yet acknowledged by the source partition
+        List<OffloadCommandReceived> PendingOnSource { get; set; }
+
+        // the list of offload commands that are not yet acknowledged by the destination partition
+        List<OffloadCommandReceived> PendingOnDestination { get; set; }
 
         const string OFFLOAD_METRIC = "Load";
         const int OFFLOAD_MAX_BATCH_SIZE = 20;
@@ -36,9 +39,15 @@ namespace DurableTask.Netherite
 
         class Info
         {
-            public int ReportedBacklog;
-            public int EstimatedBacklog;
+            // latest metrics as reported
+            public int ReportedStationary;
+            public int ReportedMobile;
             public double? AverageActCompletionTime;
+
+            // estimations that take into account pending offload commands
+            public int EstimatedStationary;
+            public int EstimatedMobile;
+            public int EstimatedLoad => this.EstimatedStationary + this.EstimatedMobile;
         }
 
         public LoadMonitor(
@@ -50,7 +59,8 @@ namespace DurableTask.Netherite
             this.traceHelper = new LoadMonitorTraceHelper(host.Logger, host.Settings.LogLevelLimit, host.StorageAccountName, host.Settings.HubName);
             this.BatchSender = batchSender;
             this.LoadInfo = new SortedDictionary<uint, Info>();
-            this.PendingOffloads = new List<OffloadCommandReceived>();
+            this.PendingOnSource = new List<OffloadCommandReceived>();
+            this.PendingOnDestination = new List<OffloadCommandReceived>();
             this.traceHelper.TraceWarning("Started");
         }
 
@@ -92,7 +102,8 @@ namespace DurableTask.Netherite
 
             this.traceHelper.TraceWarning($"Sending offloadCommand: move {num} from {from} to {to} (id={offloadCommand.Timestamp:o})");
 
-            this.PendingOffloads.Add(offloadCommand);
+            this.PendingOnSource.Add(offloadCommand);
+            this.PendingOnDestination.Add(offloadCommand);
             this.BatchSender.Submit(offloadCommand);
         }
 
@@ -101,20 +112,26 @@ namespace DurableTask.Netherite
             // start from the reported baseline
             foreach(var info in this.LoadInfo.Values)
             {
-                info.EstimatedBacklog = info.ReportedBacklog;
+                info.EstimatedStationary = info.ReportedStationary;
+                info.EstimatedMobile = info.ReportedMobile;
             }
             // then add the effect of all pending commands
-            foreach(var command in this.PendingOffloads)
+            foreach (var command in this.PendingOnDestination)
             {
-                this.LoadInfo[command.PartitionId].EstimatedBacklog -= command.NumActivitiesToSend;
-                this.LoadInfo[command.OffloadDestination].EstimatedBacklog += command.NumActivitiesToSend;
+                this.LoadInfo[command.OffloadDestination].EstimatedStationary += command.NumActivitiesToSend;
+            }
+            foreach (var command in this.PendingOnSource)
+            {
+                int estimate = this.LoadInfo[command.PartitionId].EstimatedMobile;
+                estimate = Math.Max(0, estimate - command.NumActivitiesToSend);
+                this.LoadInfo[command.PartitionId].EstimatedMobile = estimate;
             }
         }
 
         public void Process(LoadInformationReceived loadInformationReceived)
         {
             this.traceHelper.TraceWarning($"Received Load information from partition{loadInformationReceived.PartitionId} with " +
-                $"load={loadInformationReceived.BacklogSize} and avg completion time={loadInformationReceived.AverageActCompletionTime}");
+                $"mobile={loadInformationReceived.Mobile} stationary={loadInformationReceived.Stationary} and avg completion time={loadInformationReceived.AverageActCompletionTime}");
 
             try
             {
@@ -123,11 +140,13 @@ namespace DurableTask.Netherite
                 {
                     info = this.LoadInfo[loadInformationReceived.PartitionId] = new Info();
                 }
-                info.ReportedBacklog = loadInformationReceived.BacklogSize;
+                info.ReportedMobile = loadInformationReceived.Mobile;
+                info.ReportedStationary = loadInformationReceived.Stationary;
                 info.AverageActCompletionTime = loadInformationReceived.AverageActCompletionTime;
 
                 // process acks
-                this.PendingOffloads = this.PendingOffloads.Where(c => !loadInformationReceived.ConfirmsReceiptOf(c)).ToList();
+                this.PendingOnSource = this.PendingOnSource.Where(c => !loadInformationReceived.ConfirmsSource(c)).ToList();
+                this.PendingOnDestination = this.PendingOnDestination.Where(c => !loadInformationReceived.ConfirmsDestination(c)).ToList();
 
                 // if we don't have information for all partitions yet, do not continue
                 if (this.LoadInfo.Count < this.host.NumberPartitions)
@@ -154,19 +173,26 @@ namespace DurableTask.Netherite
 
         void MakeDecisions(uint overloadCandidate, Func<uint,double> EstimatedActCompletionTime)
         {
-            this.traceHelper.TraceWarning(
-                $"Decision on estimated loads [{(string.Join(',', this.LoadInfo.Values.Select(i=>i.EstimatedBacklog)))}] with {this.PendingOffloads.Count} pending");
+            string estimated = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedLoad.ToString()));
+            string mobile = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedMobile.ToString()));
+            this.traceHelper.TraceWarning($"Decision pending={this.PendingOnSource.Count},{this.PendingOnDestination.Count} estimated=[{estimated}] mobile=[{mobile}]");
+
+            if (this.LoadInfo.Values.Select(i => i.EstimatedMobile).Sum() == 0)
+            {
+                // there are no mobile activities, so there is no rebalancing possible
+                return;
+            }
 
             // check if it makes sense to redistribute work from this partition to other partitions
-            double AverageWaitTime = this.LoadInfo.Average(t => t.Value.EstimatedBacklog * EstimatedActCompletionTime(t.Key));
-            double CompletionTime = this.LoadInfo[overloadCandidate].EstimatedBacklog * EstimatedActCompletionTime(overloadCandidate);
+            double AverageWaitTime = this.LoadInfo.Average(t => t.Value.EstimatedLoad * EstimatedActCompletionTime(t.Key));
+            double CompletionTime = this.LoadInfo[overloadCandidate].EstimatedLoad * EstimatedActCompletionTime(overloadCandidate);
 
             // if the expected  completion time is above average, we consider redistributing the load
             if (CompletionTime > AverageWaitTime)
             {
                 // start the task migration process and find offload targets
                 //if (this.FindOffloadTargetByLoad(loadInformationReceived.PartitionId, loadInformationReceived.BacklogSize - OVERLOAD_THRESHOLD, out Dictionary<uint, int> OffloadTargets))
-                if (FindOffloadTargetByWaitTime(this.LoadInfo[overloadCandidate].EstimatedBacklog - OVERLOAD_THRESHOLD, out Dictionary<uint, int> OffloadTargets))
+                if (FindOffloadTargetByWaitTime(this.LoadInfo[overloadCandidate].EstimatedMobile, out Dictionary<uint, int> OffloadTargets))
                 {
                     // send offload commands
                     foreach (var kvp in OffloadTargets)
@@ -187,8 +213,8 @@ namespace DurableTask.Netherite
                     {
                         int portionSize = Math.Min(OFFLOAD_MAX_BATCH_SIZE, numActivitiesToOffload);
 
-                        double localWaitTime = (this.LoadInfo[overloadCandidate].EstimatedBacklog - portionSize) * EstimatedActCompletionTime(overloadCandidate);
-                        double remoteWaitTime = targetInfo.EstimatedBacklog * EstimatedActCompletionTime(target);
+                        double localWaitTime = (this.LoadInfo[overloadCandidate].EstimatedLoad - portionSize) * EstimatedActCompletionTime(overloadCandidate);
+                        double remoteWaitTime = targetInfo.EstimatedLoad * EstimatedActCompletionTime(target);
 
                         if (localWaitTime > remoteWaitTime)
                         {
@@ -208,9 +234,9 @@ namespace DurableTask.Netherite
             for (uint i = 0; i < this.host.NumberPartitions - 1 && numActivitiesToOffload > 0; i++)
             {
                 uint target = (currentPartitionId + i + 1) % this.host.NumberPartitions;
-                if (this.LoadInfo[target].EstimatedBacklog < UNDERLOAD_THRESHOLD)
+                if (this.LoadInfo[target].EstimatedLoad < UNDERLOAD_THRESHOLD)
                 {
-                    int capacity = OVERLOAD_THRESHOLD - this.LoadInfo[target].EstimatedBacklog;
+                    int capacity = OVERLOAD_THRESHOLD - this.LoadInfo[target].EstimatedLoad;
                     OffloadTargets[target] = numActivitiesToOffload - capacity > 0 ? capacity : numActivitiesToOffload;
                     numActivitiesToOffload -= capacity;
 

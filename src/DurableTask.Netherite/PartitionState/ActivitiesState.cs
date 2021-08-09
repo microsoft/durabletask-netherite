@@ -141,7 +141,8 @@ namespace DurableTask.Netherite
                 {
                     RequestId = Guid.NewGuid(),
                     PartitionId = this.Partition.PartitionId,
-                    BacklogSize = this.LocalBacklog.Count + this.QueuedRemotes.Count,
+                    Stationary = this.Pending.Count + this.QueuedRemotes.Count,
+                    Mobile = this.LocalBacklog.Count,
                     AverageActCompletionTime = this.AverageActivityCompletionTime,
                     OffloadsReceived = this.OffloadsReceived,
                 });
@@ -347,6 +348,15 @@ namespace DurableTask.Netherite
                 var info = this.LocalBacklog.Dequeue();
                 evt.OffloadedActivities.Add((info.Message, info.WorkItemId));
 
+            }
+
+            if (this.OffloadsReceived == null)
+            {
+                this.OffloadsReceived = new Dictionary<uint, DateTime>();
+            }
+            if (!this.OffloadsReceived.TryGetValue(evt.PartitionId, out var current) || current < evt.Timestamp)
+            {
+                this.OffloadsReceived[evt.PartitionId] = evt.Timestamp;
             }
 
             this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processed OffloadCommand, " +
