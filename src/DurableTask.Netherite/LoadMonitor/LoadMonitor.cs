@@ -161,7 +161,7 @@ namespace DurableTask.Netherite
 
                 // create a default estimation of completion time (we use this to replace missing estimates)
                 double DefaultEstimatedCompletionTime = this.LoadInfo
-                    .Select(t => t.Value.AverageActCompletionTime).Average() ?? 100;
+                    .Select(t => t.Value.AverageActCompletionTime).Average() ?? TimeSpan.FromMinutes(1).TotalMilliseconds;
                 double EstimatedActCompletionTime(uint partitionId) 
                     => this.LoadInfo[partitionId].AverageActCompletionTime ?? DefaultEstimatedCompletionTime;
 
