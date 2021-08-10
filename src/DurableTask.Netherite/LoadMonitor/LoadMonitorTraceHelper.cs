@@ -48,7 +48,7 @@ namespace DurableTask.Netherite
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.LoadMonitorProgress(this.account, this.taskHub, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.LoadMonitorWarning(this.account, this.taskHub, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }

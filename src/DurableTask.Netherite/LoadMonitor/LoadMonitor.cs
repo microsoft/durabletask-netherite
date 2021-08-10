@@ -214,11 +214,13 @@ namespace DurableTask.Netherite
                     int targetCurrentQueueLen = this.LoadInfo[target].EstimatedLoad;
                     int targetTargetQueueLen = (int)Math.Ceiling(this.ESTIMATED_RTT_MS / EstimatedActCompletionTime(target)) + this.host.Settings.MaxConcurrentActivityFunctions;
 
-                    if (targetCurrentQueueLen > targetTargetQueueLen)
+                    int availableToPull = Math.Max(targetCurrentQueueLen - targetTargetQueueLen, this.LoadInfo[target].EstimatedMobile);
+                    int amount = Math.Max(availableToPull, numActToPull);
+
+                    if (amount > 0)
                     {
-                        int numActToOffload = targetCurrentQueueLen - targetTargetQueueLen > numActToPull ? numActToPull : targetCurrentQueueLen - targetTargetQueueLen;
-                        numActToPull -= numActToOffload;
-                        OffloadTargets[target] = numActToOffload;
+                        numActToPull -= amount;
+                        OffloadTargets[target] = amount;
                     }
                 }
 
