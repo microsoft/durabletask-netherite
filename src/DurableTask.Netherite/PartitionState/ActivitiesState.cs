@@ -80,7 +80,7 @@ namespace DurableTask.Netherite
 
         const int REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS = 100;
 
-        const double SMOOTHING_FACTOR = 0.5;
+        const double SMOOTHING_FACTOR = 0.1;
 
         public override void OnRecoveryCompleted()
         {

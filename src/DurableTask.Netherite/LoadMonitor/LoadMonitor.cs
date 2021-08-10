@@ -30,7 +30,7 @@ namespace DurableTask.Netherite
         List<OffloadCommandReceived> PendingOnDestination { get; set; }
 
         // estimated communication delay between partitions and the load monitor
-        public double ESTIMATED_RTT_MS { get; private set; } = 20000;
+        public double ESTIMATED_RTT_MS { get; private set; } = 10000;
 
         public static string GetShortId(Guid clientId) => clientId.ToString("N").Substring(0, 7);
 
