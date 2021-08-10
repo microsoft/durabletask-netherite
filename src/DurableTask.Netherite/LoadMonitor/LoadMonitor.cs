@@ -127,8 +127,14 @@ namespace DurableTask.Netherite
 
         public void Process(LoadInformationReceived loadInformationReceived)
         {
+            // compute RTT for confirmations
+            var RTT_latency = this.PendingOnDestination
+                .Where(c => loadInformationReceived.ConfirmsDestination(c))
+                .Select(c => (double?) (DateTime.UtcNow - c.Timestamp).TotalMilliseconds)
+                .Average();
+
             this.traceHelper.TraceWarning($"Received Load information from partition{loadInformationReceived.PartitionId} with " +
-                $"mobile={loadInformationReceived.Mobile} stationary={loadInformationReceived.Stationary} and AverageActCompletionTime={loadInformationReceived.AverageActCompletionTime}");
+                $"mobile={loadInformationReceived.Mobile} stationary={loadInformationReceived.Stationary} and AverageActCompletionTime={loadInformationReceived.AverageActCompletionTime} RTT={RTT_latency}");
 
             try
             {
