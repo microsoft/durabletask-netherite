@@ -29,7 +29,9 @@ namespace DurableTask.Netherite
         // the list of offload commands that are not yet acknowledged by the destination partition
         List<OffloadCommandReceived> PendingOnDestination { get; set; }
 
-        const string OFFLOAD_METRIC = "Load";
+        // estimated communication delay between partitions and the load monitor
+        public double ESTIMATED_RTT_MS { get; private set; } = 20000;
+
         const int OFFLOAD_MAX_BATCH_SIZE = 20;
         const int OFFLOAD_MIN_BATCH_SIZE = 10;
         const int OVERLOAD_THRESHOLD = 20;
@@ -131,7 +133,7 @@ namespace DurableTask.Netherite
         public void Process(LoadInformationReceived loadInformationReceived)
         {
             this.traceHelper.TraceWarning($"Received Load information from partition{loadInformationReceived.PartitionId} with " +
-                $"mobile={loadInformationReceived.Mobile} stationary={loadInformationReceived.Stationary} and avg completion time={loadInformationReceived.AverageActCompletionTime}");
+                $"mobile={loadInformationReceived.Mobile} stationary={loadInformationReceived.Stationary} and AverageActCompletionTime={loadInformationReceived.AverageActCompletionTime}");
 
             try
             {
@@ -171,7 +173,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        void MakeDecisions(uint overloadCandidate, Func<uint,double> EstimatedActCompletionTime)
+        void MakeDecisions(uint underloadCandidate, Func<uint, double> EstimatedActCompletionTime)
         {
             string estimated = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedLoad.ToString()));
             string mobile = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedMobile.ToString()));
@@ -183,68 +185,45 @@ namespace DurableTask.Netherite
                 return;
             }
 
-            // check if it makes sense to redistribute work from this partition to other partitions
-            double AverageWaitTime = this.LoadInfo.Average(t => t.Value.EstimatedLoad * EstimatedActCompletionTime(t.Key));
-            double CompletionTime = this.LoadInfo[overloadCandidate].EstimatedLoad * EstimatedActCompletionTime(overloadCandidate);
+            // get the current and target queue length
+            int currentQueueLen = this.LoadInfo[underloadCandidate].EstimatedLoad;
+            int targetQueueLen = (int)Math.Ceiling(this.ESTIMATED_RTT_MS / EstimatedActCompletionTime(underloadCandidate)) + this.host.Settings.MaxConcurrentActivityFunctions;
+            this.traceHelper.TraceWarning($"Partition={underloadCandidate}, ESTIMATED_RTT_MS={this.ESTIMATED_RTT_MS}, EstimatedActCompletionTime={EstimatedActCompletionTime(underloadCandidate)}, currentQueueLength={currentQueueLen}, and targetQueueLength={targetQueueLen}");
 
-            // if the expected  completion time is above average, we consider redistributing the load
-            if (CompletionTime > AverageWaitTime)
+
+            // if the current queue length is smaller than the desired queue length, try to pull works from other partitions
+            if (currentQueueLen < targetQueueLen)
             {
-                // start the task migration process and find offload targets
-                //if (this.FindOffloadTargetByLoad(loadInformationReceived.PartitionId, loadInformationReceived.BacklogSize - OVERLOAD_THRESHOLD, out Dictionary<uint, int> OffloadTargets))
-                if (FindOffloadTargetByWaitTime(this.LoadInfo[overloadCandidate].EstimatedMobile, out Dictionary<uint, int> OffloadTargets))
+                if (tryPullActFromRemote(underloadCandidate, targetQueueLen - currentQueueLen, out Dictionary<uint, int> OffloadTargets))
                 {
                     // send offload commands
                     foreach (var kvp in OffloadTargets)
                     {
-                        this.SendOffloadCommand(overloadCandidate, kvp.Key, kvp.Value);
+                        this.SendOffloadCommand(kvp.Key, underloadCandidate, kvp.Value);
                     }
                 }
             }
 
-            bool FindOffloadTargetByWaitTime(int numActivitiesToOffload, out Dictionary<uint, int> OffloadTargets)
+            bool tryPullActFromRemote(uint underloadCandidate, int numActToPull, out Dictionary<uint, int> OffloadTargets)
             {
                 OffloadTargets = new Dictionary<uint, int>();
-                for (uint i = 0; i < this.host.NumberPartitions - 1 && numActivitiesToOffload > 0; i++)
+
+                for (uint i = 0; i < this.host.NumberPartitions - 1 && numActToPull > 0; i++)
                 {
-                    uint target = (overloadCandidate + i + 1) % this.host.NumberPartitions;
+                    uint target = (underloadCandidate + i + 1) % this.host.NumberPartitions;
+                    int targetCurrentQueueLen = this.LoadInfo[target].EstimatedLoad;
+                    int targetTargetQueueLen = (int)Math.Ceiling(this.ESTIMATED_RTT_MS / EstimatedActCompletionTime(target)) + this.host.Settings.MaxConcurrentActivityFunctions;
 
-                    if (this.LoadInfo.TryGetValue(target, out var targetInfo))
+                    if (targetCurrentQueueLen > targetTargetQueueLen)
                     {
-                        int portionSize = Math.Min(OFFLOAD_MAX_BATCH_SIZE, numActivitiesToOffload);
-
-                        double localWaitTime = (this.LoadInfo[overloadCandidate].EstimatedLoad - portionSize) * EstimatedActCompletionTime(overloadCandidate);
-                        double remoteWaitTime = targetInfo.EstimatedLoad * EstimatedActCompletionTime(target);
-
-                        if (localWaitTime > remoteWaitTime)
-                        {
-                            OffloadTargets[target] = portionSize;
-                            numActivitiesToOffload -= portionSize;
-                        }
+                        int numActToOffload = targetCurrentQueueLen - targetTargetQueueLen > numActToPull ? numActToPull : targetCurrentQueueLen - targetTargetQueueLen;
+                        numActToPull -= numActToOffload;
+                        OffloadTargets[target] = numActToOffload;
                     }
                 }
 
                 return OffloadTargets.Count == 0 ? false : true;
             }
-        }
-
-        bool FindOffloadTargetByLoad(uint currentPartitionId, int numActivitiesToOffload, out Dictionary<uint, int> OffloadTargets)
-        {
-            OffloadTargets = new Dictionary<uint, int>();
-            for (uint i = 0; i < this.host.NumberPartitions - 1 && numActivitiesToOffload > 0; i++)
-            {
-                uint target = (currentPartitionId + i + 1) % this.host.NumberPartitions;
-                if (this.LoadInfo[target].EstimatedLoad < UNDERLOAD_THRESHOLD)
-                {
-                    int capacity = OVERLOAD_THRESHOLD - this.LoadInfo[target].EstimatedLoad;
-                    OffloadTargets[target] = numActivitiesToOffload - capacity > 0 ? capacity : numActivitiesToOffload;
-                    numActivitiesToOffload -= capacity;
-
-                    // prevent the load monitor offload more tasks before the target partition reports its current load
-                    // this.LoadInfo[target] = OVERLOAD_THRESHOLD;
-                }
-            }
-            return OffloadTargets.Count == 0 ? false : true;
         }
     }
 }
