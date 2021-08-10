@@ -32,11 +32,6 @@ namespace DurableTask.Netherite
         // estimated communication delay between partitions and the load monitor
         public double ESTIMATED_RTT_MS { get; private set; } = 20000;
 
-        const int OFFLOAD_MAX_BATCH_SIZE = 20;
-        const int OFFLOAD_MIN_BATCH_SIZE = 10;
-        const int OVERLOAD_THRESHOLD = 20;
-        const int UNDERLOAD_THRESHOLD = 5;
-
         public static string GetShortId(Guid clientId) => clientId.ToString("N").Substring(0, 7);
 
         class Info
