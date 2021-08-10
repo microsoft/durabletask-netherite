@@ -187,7 +187,7 @@ namespace DurableTask.Netherite
 
             // get the current and target queue length
             int currentQueueLen = this.LoadInfo[underloadCandidate].EstimatedLoad;
-            int targetQueueLen = (int)Math.Ceiling(this.ESTIMATED_RTT_MS / EstimatedActCompletionTime(underloadCandidate)) + this.host.Settings.MaxConcurrentActivityFunctions;
+            int targetQueueLen = (int)Math.Ceiling(this.ESTIMATED_RTT_MS * this.host.Settings.MaxConcurrentActivityFunctions / EstimatedActCompletionTime(underloadCandidate));
             this.traceHelper.TraceWarning($"Partition={underloadCandidate}, ESTIMATED_RTT_MS={this.ESTIMATED_RTT_MS}, EstimatedActCompletionTime={EstimatedActCompletionTime(underloadCandidate)}, currentQueueLength={currentQueueLen}, and targetQueueLength={targetQueueLen}");
 
 
@@ -212,7 +212,7 @@ namespace DurableTask.Netherite
                 {
                     uint target = (underloadCandidate + i + 1) % this.host.NumberPartitions;
                     int targetCurrentQueueLen = this.LoadInfo[target].EstimatedLoad;
-                    int targetTargetQueueLen = (int)Math.Ceiling(this.ESTIMATED_RTT_MS / EstimatedActCompletionTime(target)) + this.host.Settings.MaxConcurrentActivityFunctions;
+                    int targetTargetQueueLen = (int)Math.Ceiling(this.ESTIMATED_RTT_MS * this.host.Settings.MaxConcurrentActivityFunctions / EstimatedActCompletionTime(target));
 
                     int availableToPull = Math.Min(targetCurrentQueueLen - targetTargetQueueLen, this.LoadInfo[target].EstimatedMobile);
                     int amount = Math.Min(availableToPull, numActToPull);
