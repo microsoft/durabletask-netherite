@@ -241,11 +241,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(246, Account, TaskHub, PartitionId, WorkItems, Activities, Timers, Requests, Outbox, NextTimer, WorkerId, LatencyTrend, MissRate, InputQueuePosition, CommitLogPosition, AppName, ExtensionVersion);
         }
 
-        [Event(247, Level = EventLevel.Verbose, Version = 2)]
-        public void BatchWorkerProgress(string Account, string TaskHub, string PartitionId, string Worker, int BatchSize, double LatencyMs, string NextBatch, string AppName, string ExtensionVersion)
+        [Event(247, Level = EventLevel.Verbose, Version = 1)]
+        public void BatchWorkerProgress(string Account, string TaskHub, string PartitionId, string Worker, int BatchSize, double ElapsedMilliseconds, string NextBatch, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(247, Account, TaskHub, PartitionId, Worker, BatchSize, LatencyMs, NextBatch, AppName, ExtensionVersion);
+            this.WriteEvent(247, Account, TaskHub, PartitionId, Worker, BatchSize, ElapsedMilliseconds, NextBatch, AppName, ExtensionVersion);
         }
 
         // ----- Faster Storage

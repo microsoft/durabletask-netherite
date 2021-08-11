@@ -101,9 +101,10 @@ namespace DurableTask.Netherite.EventHubs
             {
                 this.logger.LogDebug("{worker} completed batch: batchSize={batchSize} elapsedMilliseconds={elapsedMilliseconds:F2} nextBatch={nextBatch}",
                    worker, batchSize, elapsedMilliseconds, nextBatch.ToString() ?? "");
-            }
 
-            EtwSource.Log.BatchWorkerProgress(this.account, this.taskHub, null, worker, batchSize, elapsedMilliseconds, nextBatch.ToString() ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
+
+                EtwSource.Log.BatchWorkerProgress(this.account, this.taskHub, "", worker, batchSize, elapsedMilliseconds, nextBatch.ToString() ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
+            }
         }
     }
 }
