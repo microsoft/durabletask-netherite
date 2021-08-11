@@ -23,7 +23,7 @@ namespace DurableTask.Netherite
         public double? AverageActCompletionTime { get; set; }
 
         [DataMember]
-        public Dictionary<uint, DateTime> OffloadsReceived { get; set; }
+        public DateTime[] OffloadsReceived { get; set; }
 
         public bool ConfirmsSource(OffloadCommandReceived cmd)
         {
@@ -33,8 +33,7 @@ namespace DurableTask.Netherite
             return
                 source == this.PartitionId
                 && this.OffloadsReceived != null
-                && this.OffloadsReceived.TryGetValue(source, out DateTime lastReceived)
-                && lastReceived >= id;
+                && this.OffloadsReceived[source] >= id;
         }
 
         public bool ConfirmsDestination(OffloadCommandReceived cmd)
@@ -46,8 +45,7 @@ namespace DurableTask.Netherite
             return
                 destination == this.PartitionId
                 && this.OffloadsReceived != null
-                && this.OffloadsReceived.TryGetValue(source, out DateTime lastReceived)
-                && lastReceived >= id;
+                && this.OffloadsReceived[source] >= id;
         }
     }
 }

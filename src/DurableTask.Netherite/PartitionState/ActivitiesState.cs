@@ -38,7 +38,7 @@ namespace DurableTask.Netherite
         public double? AverageActivityCompletionTime { get; set; }
 
         [DataMember]
-        public Dictionary<uint, DateTime> OffloadsReceived { get; set; }
+        public DateTime[] OffloadsReceived { get; set; }
 
         [IgnoreDataMember]
         DateTime? LastLoadInformationSent { get; set; }
@@ -58,6 +58,7 @@ namespace DurableTask.Netherite
             this.LocalBacklog = new Queue<ActivityInfo>();
             // Queue for remote tasks
             this.QueuedRemotes = new Queue<ActivityInfo>();
+            this.OffloadsReceived = new DateTime[this.Partition.NumberPartitions()];
             this.ReportedRemoteLoads = new int[this.Partition.NumberPartitions()];
             uint numberPartitions = this.Partition.NumberPartitions();
             for (uint i = 0; i < numberPartitions; i++)
@@ -144,8 +145,8 @@ namespace DurableTask.Netherite
                     Stationary = this.Pending.Count + this.QueuedRemotes.Count,
                     Mobile = this.LocalBacklog.Count,
                     AverageActCompletionTime = this.AverageActivityCompletionTime,
-                    OffloadsReceived = this.OffloadsReceived,
-                });
+                    OffloadsReceived = (DateTime[]) this.OffloadsReceived.Clone()
+                }); ;
 
                 this.IdleStateSent = (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0) ? false : true;
                 this.LastLoadInformationSent = DateTime.UtcNow;
@@ -268,11 +269,7 @@ namespace DurableTask.Netherite
                 }
             }
 
-            if (this.OffloadsReceived == null)
-            {
-                this.OffloadsReceived = new Dictionary<uint, DateTime>();
-            }
-            if (!this.OffloadsReceived.TryGetValue(evt.OriginPartition, out var current) || current < evt.Timestamp)
+            if (this.OffloadsReceived[evt.OriginPartition] < evt.Timestamp)
             {
                 this.OffloadsReceived[evt.OriginPartition] = evt.Timestamp;
             }
@@ -347,14 +344,9 @@ namespace DurableTask.Netherite
 
                 var info = this.LocalBacklog.Dequeue();
                 evt.OffloadedActivities.Add((info.Message, info.WorkItemId));
-
             }
 
-            if (this.OffloadsReceived == null)
-            {
-                this.OffloadsReceived = new Dictionary<uint, DateTime>();
-            }
-            if (!this.OffloadsReceived.TryGetValue(evt.PartitionId, out var current) || current < evt.Timestamp)
+            if (this.OffloadsReceived[evt.PartitionId] < evt.Timestamp)
             {
                 this.OffloadsReceived[evt.PartitionId] = evt.Timestamp;
             }
