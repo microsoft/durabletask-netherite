@@ -30,7 +30,7 @@ namespace DurableTask.Netherite.EventHubs
 
         public ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>> _partitionSenders = new ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>>();
         public ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>> _clientSenders = new ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>>();
-        public ConcurrentDictionary<int, EventHubsSender<LoadMonitorEvent>> _loadMonitorSenders = new ConcurrentDictionary<int, EventHubsSender<LoadMonitorEvent>>();
+        public ConcurrentDictionary<int, LoadMonitorSender> _loadMonitorSenders = new ConcurrentDictionary<int, LoadMonitorSender>();
 
         public TransportAbstraction.IHost Host { get; set; }
         public EventHubsTraceHelper TraceHelper { get; set; }
@@ -265,12 +265,12 @@ namespace DurableTask.Netherite.EventHubs
             });
         }
 
-        public EventHubsSender<LoadMonitorEvent> GetLoadMonitorSender(byte[] taskHubGuid)
+        public LoadMonitorSender GetLoadMonitorSender(byte[] taskHubGuid)
         {
             return this._loadMonitorSenders.GetOrAdd(0, (key) =>
             {
                 var loadMonitorSender = this.loadMonitorClient.CreatePartitionSender("0");
-                var sender = new EventHubsSender<LoadMonitorEvent>(
+                var sender = new LoadMonitorSender(
                     this.Host,
                     taskHubGuid,
                     loadMonitorSender,
