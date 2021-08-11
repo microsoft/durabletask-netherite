@@ -9,10 +9,10 @@ namespace DurableTask.Netherite.EventHubs
     /// <summary>
     /// Trace helpers for the event hubs transport.
     /// </summary>
-    class EventHubsTraceHelper : ILogger
+    class EventHubsTraceHelper : ILogger, IBatchWorkerTraceHelper
     {
         readonly ILogger logger;
-        readonly string partitionId;
+        readonly string partitionId; // is null for host-level, but is non-null for partition eventprocessor
         readonly string account;
         readonly string taskHub;
         readonly string eventHubsNamespace;
@@ -90,6 +90,20 @@ namespace DurableTask.Netherite.EventHubs
                     }
                 }
             }
+        }
+
+        public void TraceBatchWorkerProgress(string worker, int batchSize, double elapsedMilliseconds, int? nextBatch)
+        {
+            // used only at host level
+            System.Diagnostics.Debug.Assert(this.partitionId == null);
+
+            if (this.logLevelLimit <= LogLevel.Debug)
+            {
+                this.logger.LogDebug("{worker} completed batch: batchSize={batchSize} elapsedMilliseconds={elapsedMilliseconds:F2} nextBatch={nextBatch}",
+                   worker, batchSize, elapsedMilliseconds, nextBatch.ToString() ?? "");
+            }
+
+            EtwSource.Log.BatchWorkerProgress(this.account, this.taskHub, null, worker, batchSize, elapsedMilliseconds, nextBatch.ToString() ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
         }
     }
 }
