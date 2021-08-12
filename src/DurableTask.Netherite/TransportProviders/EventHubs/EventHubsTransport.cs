@@ -99,7 +99,10 @@ namespace DurableTask.Netherite.EventHubs
             // ensure the task hubs exist, creating them if necessary
             var tasks = new List<Task>();
             tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, PartitionHubs[0], this.settings.PartitionCount));
-            tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, LoadMonitorHub, 1));
+            if (this.settings.ActivityScheduler == ActivitySchedulerOptions.LoadMonitor)
+            {
+                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, LoadMonitorHub, 1));
+            }
             foreach (string taskhub in ClientHubs)
             {
                 tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 32));
@@ -203,7 +206,14 @@ namespace DurableTask.Netherite.EventHubs
             
             if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
-                await Task.WhenAll(StartPartitionHost(), StartLoadMonitorHost()).ConfigureAwait(false);
+                if (this.settings.ActivityScheduler == ActivitySchedulerOptions.LoadMonitor)
+                {
+                    await Task.WhenAll(StartPartitionHost(), StartLoadMonitorHost()).ConfigureAwait(false);
+                }
+                else
+                {
+                    await StartPartitionHost().ConfigureAwait(false);
+                }
             }
 
             async Task StartPartitionHost()
@@ -333,30 +343,20 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper.LogDebug("Stopping client");
             await this.client.StopAsync().ConfigureAwait(false);
 
-            switch (this.settings.PartitionManagement)
+            if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
-                case PartitionManagementOptions.EventProcessorHost:
-                    {
-                        this.traceHelper.LogDebug("Stopping partition and worker hosts");
-                        await Task.WhenAll(
-                          this.eventProcessorHost.UnregisterEventProcessorAsync(),
-                          this.loadMonitorHost.UnregisterEventProcessorAsync()).ConfigureAwait(false);
-                        break;
-                    }
-
-                case PartitionManagementOptions.Scripted:
-                    {
-                        this.traceHelper.LogDebug("Stopping partition and worker hosts");
-                        await Task.WhenAll(
-                          this.scriptedEventProcessorHost.StopAsync(),
-                          this.loadMonitorHost.UnregisterEventProcessorAsync()).ConfigureAwait(false);
-                        break;
-                    }
-
-                case PartitionManagementOptions.ClientOnly:
-                    {
-                        break;
-                    }
+                if (this.settings.ActivityScheduler == ActivitySchedulerOptions.LoadMonitor)
+                {
+                    this.traceHelper.LogDebug("Stopping partition and loadmonitor hosts");
+                    await Task.WhenAll(
+                      this.eventProcessorHost.UnregisterEventProcessorAsync(),
+                      this.loadMonitorHost.UnregisterEventProcessorAsync()).ConfigureAwait(false);
+                }
+                else
+                {
+                    this.traceHelper.LogDebug("Stopping partition host");
+                    await this.eventProcessorHost.UnregisterEventProcessorAsync().ConfigureAwait(false);
+                }
             }
 
             this.traceHelper.LogDebug("Closing connections");

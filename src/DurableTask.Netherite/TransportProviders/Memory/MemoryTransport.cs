@@ -80,10 +80,13 @@ namespace DurableTask.Netherite.Emulated
             clientSender.SetHandler(list => this.SendEvents(this.client, list));
 
             // create a load monitor
-            var loadMonitorSender = new SendWorker(this.shutdownTokenSource.Token);
-            this.loadMonitor = this.host.AddLoadMonitor(default, loadMonitorSender);
-            this.loadMonitorQueue = new MemoryLoadMonitorQueue(this.loadMonitor, this.shutdownTokenSource.Token, this.logger);
-            loadMonitorSender.SetHandler(list => this.SendEvents(this.loadMonitor, list));
+            if (this.settings.ActivityScheduler == ActivitySchedulerOptions.LoadMonitor)
+            {
+                var loadMonitorSender = new SendWorker(this.shutdownTokenSource.Token);
+                this.loadMonitor = this.host.AddLoadMonitor(default, loadMonitorSender);
+                this.loadMonitorQueue = new MemoryLoadMonitorQueue(this.loadMonitor, this.shutdownTokenSource.Token, this.logger);
+                loadMonitorSender.SetHandler(list => this.SendEvents(this.loadMonitor, list));
+            }
 
             // we finish the (possibly lengthy) partition loading asynchronously so it is possible to receive 
             // stop signals before partitions are fully recovered

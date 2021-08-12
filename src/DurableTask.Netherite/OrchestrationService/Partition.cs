@@ -232,7 +232,6 @@ namespace DurableTask.Netherite
         public void Send(LoadMonitorEvent loadMonitorEvent)
         {
             this.EventDetailTracer?.TraceEventProcessingDetail($"Sending load monitor event {loadMonitorEvent} id={loadMonitorEvent.EventId}");
-
             this.BatchSender.Submit(loadMonitorEvent);
         }
 
