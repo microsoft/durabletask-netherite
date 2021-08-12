@@ -93,7 +93,7 @@ namespace DurableTask.Netherite
 
             if (this.LocalBacklog.Count > 0)
             {
-                TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Aggressive ?
+                TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Static ?
                         TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
                 this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
             }
@@ -225,7 +225,7 @@ namespace DurableTask.Netherite
                         this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.LocalBacklog.Count}");
                         if (this.LocalBacklog.Count == 1)
                         {
-                            TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Aggressive ?
+                            TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Static ?
                                 TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
                             this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
                         }
@@ -369,50 +369,56 @@ namespace DurableTask.Netherite
                 return;
             }
 
-            if (this.Partition.Settings.ActivityScheduler == ActivitySchedulerOptions.Aggressive)
+            if (this.Partition.Settings.ActivityScheduler == ActivitySchedulerOptions.Static)
             {
                 uint numberPartitions = this.Partition.NumberPartitions();
                 int numberOffloadPerPart = (int)(this.LocalBacklog.Count / (this.Partition.NumberPartitions() - 1));
+
                 // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
-                offloadDecisionEvent.OffloadedActivities = new Dictionary<uint, List<(TaskMessage, string)>>();
+                offloadDecisionEvent.OffloadedActivities = new SortedDictionary<uint, List<(TaskMessage, string)>>();
 
-                foreach (uint target in Enumerable.Range(0, (int)numberPartitions))
+                Queue<ActivityInfo> keep = new Queue<ActivityInfo>();
+
+                while (this.LocalBacklog.Count > 0)
                 {
-                    if (target == this.Partition.PartitionId)
+                    ActivityInfo next = this.LocalBacklog.Dequeue();
+
+                    // we distribute activities round-robin across all partitions, based on their sequence number
+                    uint destination = (uint) (next.ActivityId % numberPartitions);
+
+                    if (destination == this.Partition.PartitionId)
                     {
-                        continue;
+                        keep.Enqueue(next);
                     }
-
-                    var ActivitiesToOffload = new List<(TaskMessage, string)>();
-                    for (int i = 0; i < numberOffloadPerPart; i++)
+                    else
                     {
-                        var info = this.LocalBacklog.Dequeue();
-                        ActivitiesToOffload.Add((info.Message, info.WorkItemId));
-
-                        if (this.LocalBacklog.Count == 0)
+                        if (!offloadDecisionEvent.OffloadedActivities.TryGetValue(destination, out var list))
                         {
-                            break;
+                            offloadDecisionEvent.OffloadedActivities[destination] = list = new List<(TaskMessage, string)>();
                         }
+                        list.Add((next.Message, next.WorkItemId));
                     }
-
-                    offloadDecisionEvent.OffloadedActivities.Add(target, ActivitiesToOffload);
                 }
 
+                this.LocalBacklog = keep; // these are the activities that should remain local
 
-                // process this on OutboxState so the events get sent
-                effects.Add(TrackedObjectKey.Outbox);
-
-                // this may not be the most concise way to format the message. 
-                var offloadCountPerPartition = new List<int>(new int[numberPartitions]);
-                offloadCountPerPartition[(int)this.Partition.PartitionId] = -1;
-                foreach (var kvp in offloadDecisionEvent.OffloadedActivities)
+                if (offloadDecisionEvent.OffloadedActivities.Count > 0)
                 {
-                    offloadCountPerPartition[(int)kvp.Key] = kvp.Value.Count;
+                    // process this on OutboxState so the events get sent
+                    effects.Add(TrackedObjectKey.Outbox);
                 }
 
-                var reportedRemotes = string.Join(",", offloadCountPerPartition.Select((int x) => x.ToString()));
+                var reportedRemotes = string.Join(",", offloadDecisionEvent.OffloadedActivities.Select(kvp => kvp.Value.Count.ToString()));
 
-                this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, -1, reportedRemotes);
+                if (!effects.IsReplaying)
+                {
+                    this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, -1, reportedRemotes);
+
+                    if (this.LocalBacklog.Count > 0)
+                    {
+                        this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(50));
+                    }
+                }
             }
             else
             {
@@ -431,7 +437,7 @@ namespace DurableTask.Netherite
                     this.ReportedRemoteLoads[target] = RESPONSE_PENDING;
 
                     // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
-                    offloadDecisionEvent.OffloadedActivities = new Dictionary<uint, List<(TaskMessage, string)>>();
+                    offloadDecisionEvent.OffloadedActivities = new SortedDictionary<uint, List<(TaskMessage, string)>>();
                     var ActivitiesToOffload = new List<(TaskMessage, string)>();
 
                     for (int i = 0; i < maxBatchsize; i++)
@@ -439,7 +445,7 @@ namespace DurableTask.Netherite
                         var info = this.LocalBacklog.Dequeue();
                         ActivitiesToOffload.Add((info.Message, info.WorkItemId));
 
-                        TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Aggressive ?
+                        TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Static ?
                                     TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
                         if (this.LocalBacklog.Count == 0 || offloadDecisionEvent.Timestamp - this.LocalBacklog.Peek().IssueTime < WaitTimeThresholdForOffload)
                         {
@@ -484,7 +490,7 @@ namespace DurableTask.Netherite
             int limit = (int)(Math.Min(PORTION_SUBJECT_TO_OFFLOAD * this.LocalBacklog.Count, OFFLOAD_MAX_BATCH_SIZE * this.Partition.NumberPartitions()));
             foreach (var entry in this.LocalBacklog)
             {
-                TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Aggressive ?
+                TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Static ?
                         TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
                 if (now - entry.IssueTime < WaitTimeThresholdForOffload
                     || numberOffloadCandidates++ > limit)

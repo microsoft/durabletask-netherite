@@ -15,7 +15,7 @@ namespace DurableTask.Netherite
         public DateTime Timestamp { get; set; }
 
         [IgnoreDataMember]
-        public Dictionary<uint, List<(TaskMessage,string)>> OffloadedActivities { get; set; }
+        public SortedDictionary<uint, List<(TaskMessage,string)>> OffloadedActivities { get; set; }
 
         public static string GetWorkItemId(uint partition, DateTime timestamp) => $"{partition:D2}F{timestamp:o}";
 
