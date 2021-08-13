@@ -58,7 +58,7 @@ namespace DurableTask.Netherite
             this.LoadInfo = new SortedDictionary<uint, Info>();
             this.PendingOnSource = new List<OffloadCommandReceived>();
             this.PendingOnDestination = new List<OffloadCommandReceived>();
-            this.traceHelper.TraceWarning("Started");
+            this.traceHelper.TraceProgress("Started");
         }
 
         long lastTimestamp = long.MinValue;
@@ -71,7 +71,7 @@ namespace DurableTask.Netherite
 
         public Task StopAsync()
         {
-            this.traceHelper.TraceWarning("Stopped");
+            this.traceHelper.TraceProgress("Stopped");
             return Task.CompletedTask;
         }
 
@@ -97,7 +97,7 @@ namespace DurableTask.Netherite
                 Timestamp = this.GetUniqueTimestamp(),
             };
 
-            this.traceHelper.TraceWarning($"Sending offloadCommand: move {num} from {from} to {to} (id={offloadCommand.Timestamp:o})");
+            this.traceHelper.TraceProgress($"Sending offloadCommand: move {num} from {from} to {to} (id={offloadCommand.Timestamp:o})");
 
             this.PendingOnSource.Add(offloadCommand);
             this.PendingOnDestination.Add(offloadCommand);
@@ -133,7 +133,7 @@ namespace DurableTask.Netherite
                 .Select(c => (double?) (DateTime.UtcNow - c.Timestamp).TotalMilliseconds)
                 .Average();
 
-            this.traceHelper.TraceWarning($"Received Load information from partition{loadInformationReceived.PartitionId} with " +
+            this.traceHelper.TraceProgress($"Received Load information from partition{loadInformationReceived.PartitionId} with " +
                 $"mobile={loadInformationReceived.Mobile} stationary={loadInformationReceived.Stationary} and AverageActCompletionTime={loadInformationReceived.AverageActCompletionTime} RTT={RTT_latency}");
 
             try
@@ -189,7 +189,7 @@ namespace DurableTask.Netherite
             // get the current and target queue length
             int currentQueueLen = this.LoadInfo[underloadCandidate].EstimatedLoad;
             int targetQueueLen = (int)Math.Ceiling(this.ESTIMATED_RTT_MS * this.host.Settings.MaxConcurrentActivityFunctions / EstimatedActCompletionTime(underloadCandidate));
-            this.traceHelper.TraceWarning($"Partition={underloadCandidate}, ESTIMATED_RTT_MS={this.ESTIMATED_RTT_MS}, EstimatedActCompletionTime={EstimatedActCompletionTime(underloadCandidate)}, currentQueueLength={currentQueueLen}, and targetQueueLength={targetQueueLen}");
+            this.traceHelper.TraceProgress($"Partition={underloadCandidate}, ESTIMATED_RTT_MS={this.ESTIMATED_RTT_MS}, EstimatedActCompletionTime={EstimatedActCompletionTime(underloadCandidate)}, currentQueueLength={currentQueueLen}, and targetQueueLength={targetQueueLen}");
 
 
             // if the current queue length is smaller than the desired queue length, try to pull works from other partitions

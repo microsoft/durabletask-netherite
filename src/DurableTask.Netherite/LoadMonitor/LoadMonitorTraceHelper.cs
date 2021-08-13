@@ -25,9 +25,9 @@ namespace DurableTask.Netherite
 
         public void TraceProgress(string details)
         {
-            if (this.logLevelLimit <= LogLevel.Information)
+            if (this.logLevelLimit <= LogLevel.Debug)
             {
-                if (this.logger.IsEnabled(LogLevel.Information))
+                if (this.logger.IsEnabled(LogLevel.Debug))
                 {
                     this.logger.LogInformation("LoadMonitor {details}", details);
                 }
