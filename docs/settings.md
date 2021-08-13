@@ -163,7 +163,7 @@ Since progress is already being continously persisted to the commit log, how oft
 | TakeStateCheckpointWhenStoppingPartition |  bool | Whether to checkpoint the current state of a partition when it is stopped. This improves recovery time but lengthens shutdown time.|
 | MaxNumberBytesBetweenCheckpoints |  long | A limit on how many bytes to append to the log before initiating a state checkpoint. The default is 20MB.|
 | MaxNumberEventsBetweenCheckpoints |  long |A limit on how many events to append to the log before initiating a state checkpoint. The default is 10000. |
-| MaxTimeMsBetweenCheckpoints |  long |A limit on how long to wait between state checkpoints, in milliseconds. The default is 60s. |
+| IdleCheckpointFrequencyMs |  long | How often to checkpoint when the partition is idle. The default is 60s. |
 
 #### Unsupported Parameters (For Debugging/Experiments Only)
 
