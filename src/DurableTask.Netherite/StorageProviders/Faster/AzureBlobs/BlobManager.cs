@@ -563,7 +563,11 @@ namespace DurableTask.Netherite.Faster
                     }
                     continue;
                 }
-                catch (Exception e)
+                catch (OperationCanceledException) when (this.PartitionErrorHandler.IsTerminated)
+                {
+                    throw; // o.k. during termination or shutdown
+                }
+                catch (Exception e) when (!Utils.IsFatal(e))
                 {
                     this.PartitionErrorHandler.HandleError(nameof(AcquireOwnership), "Could not acquire partition lease", e, true, false);
                     throw;
@@ -596,11 +600,11 @@ namespace DurableTask.Netherite.Faster
 
                 this.leaseTimer = nextLeaseTimer;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (this.PartitionErrorHandler.IsTerminated)
             {
-                // o.k. during termination or shutdown
+                throw; // o.k. during termination or shutdown
             }
-            catch (Exception)
+            catch (Exception e) when (!Utils.IsFatal(e))
             {
                 this.TraceHelper.LeaseLost(this.leaseTimer.Elapsed.TotalSeconds, nameof(RenewLeaseTask));
                 throw;

@@ -35,7 +35,7 @@ namespace DurableTask.Netherite.Faster
         long lastCheckpointedInputQueuePosition;
         long lastCheckpointedCommitLogPosition;
         long numberEventsSinceLastCheckpoint;
-        long timeOfNextCheckpoint;
+        long timeOfNextIdleCheckpoint;
 
         // periodic load publishing
         PartitionLoadInfo loadInfo;
@@ -103,7 +103,7 @@ namespace DurableTask.Netherite.Faster
             this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
             this.lastCheckpointedInputQueuePosition = this.InputQueuePosition;
             this.numberEventsSinceLastCheckpoint = 0;
-            this.ScheduleNextCheckpointTime();
+            this.ScheduleNextIdleCheckpointTime();
         }
 
         internal async ValueTask TakeFullCheckpointAsync(string reason)
@@ -131,7 +131,7 @@ namespace DurableTask.Netherite.Faster
                 this.traceHelper.FasterProgress($"Checkpoint skipped: {reason}");
             }
 
-            this.ScheduleNextCheckpointTime();
+            this.ScheduleNextIdleCheckpointTime();
         }
 
         public async Task CancelAndShutdown()
@@ -226,7 +226,7 @@ namespace DurableTask.Netherite.Faster
             None,
             CommitLogBytes,
             EventCount,
-            TimeElapsed
+            Idle
         }
 
         bool CheckpointDue(out CheckpointTrigger trigger)
@@ -247,21 +247,22 @@ namespace DurableTask.Netherite.Faster
             }
             else if (
                 (this.numberEventsSinceLastCheckpoint > 0 || inputQueuePositionLag > 0)
-                && DateTime.UtcNow.Ticks > this.timeOfNextCheckpoint)
+                && DateTime.UtcNow.Ticks > this.timeOfNextIdleCheckpoint
+                && this.loadInfo.IsBusy() == null)
             {
-                trigger = CheckpointTrigger.TimeElapsed;
+                trigger = CheckpointTrigger.Idle;
             }
              
             return trigger != CheckpointTrigger.None;
         }
 
-        void ScheduleNextCheckpointTime()
+        void ScheduleNextIdleCheckpointTime()
         {
             // to avoid all partitions taking snapshots at the same time, align to a partition-based spot
-            var period = this.partition.Settings.MaxTimeMsBetweenCheckpoints * TimeSpan.TicksPerMillisecond;
+            var period = this.partition.Settings.IdleCheckpointFrequencyMs * TimeSpan.TicksPerMillisecond;
             var offset = (this.partition.PartitionId * period / this.partition.NumberPartitions());
             var maxTime = DateTime.UtcNow.Ticks + period;
-            this.timeOfNextCheckpoint = (((maxTime - offset) / period) * period) + offset;
+            this.timeOfNextIdleCheckpoint = (((maxTime - offset) / period) * period) + offset;
         }
 
         protected override async Task Process(IList<PartitionEvent> batch)
@@ -377,7 +378,7 @@ namespace DurableTask.Netherite.Faster
                             = await this.pendingPrimaryStoreCheckpointTask.ConfigureAwait(false); // observe exceptions here
                         this.pendingPrimaryStoreCheckpointTask = null;
                         this.pendingCheckpointTrigger = CheckpointTrigger.None;
-                        this.ScheduleNextCheckpointTime();
+                        this.ScheduleNextIdleCheckpointTime();
                     }
                 }
                 else if (this.CheckpointDue(out var trigger))
@@ -407,13 +408,13 @@ namespace DurableTask.Netherite.Faster
                     await this.PublishPartitionLoad().ConfigureAwait(false);
                 }
 
-                if (this.lastCheckpointedCommitLogPosition == this.CommitLogPosition 
-                    && this.lastCheckpointedInputQueuePosition == this.InputQueuePosition
-                    && this.LogWorker.LastCommittedInputQueuePosition <= this.InputQueuePosition)
+                if (this.loadInfo.IsBusy() != null
+                     || (this.lastCheckpointedCommitLogPosition == this.CommitLogPosition 
+                         && this.lastCheckpointedInputQueuePosition == this.InputQueuePosition
+                         && this.LogWorker.LastCommittedInputQueuePosition <= this.InputQueuePosition))
                 {
-                    // since there were no changes since the last snapshot 
-                    // we can pretend that it was taken just now
-                    this.ScheduleNextCheckpointTime();
+                    // the partition is not idle, or nothing has changed, so we do delay the time for the nex idle checkpoint
+                    this.ScheduleNextIdleCheckpointTime();
                 }
 
                 // make sure to complete ready read requests, or notify this worker

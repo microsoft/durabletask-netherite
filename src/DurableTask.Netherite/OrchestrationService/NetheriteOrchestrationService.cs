@@ -315,12 +315,12 @@ namespace DurableTask.Netherite
         }
 
         /// <inheritdoc />
-        public async Task StopAsync(bool isForced)
+        public async Task StopAsync(bool quickly)
         {
             try
             {
 
-                this.Logger.LogInformation("NetheriteOrchestrationService stopping, workerId={workerId} isForced={isForced}", this.Settings.WorkerId, isForced);
+                this.Logger.LogInformation("NetheriteOrchestrationService stopping, workerId={workerId} quickly={quickly}", this.Settings.WorkerId, quickly);
 
                 if (!this.Settings.KeepServiceRunning && this.serviceShutdownSource != null)
                 {
@@ -328,7 +328,7 @@ namespace DurableTask.Netherite
                     this.serviceShutdownSource.Dispose();
                     this.serviceShutdownSource = null;
 
-                    await this.taskHub.StopAsync(isForced).ConfigureAwait(false);
+                    await this.taskHub.StopAsync().ConfigureAwait(false);
 
                     this.ActivityWorkItemQueue.Dispose();
                     this.OrchestrationWorkItemQueue.Dispose();
@@ -350,7 +350,7 @@ namespace DurableTask.Netherite
         public Task StopAsync() => ((IOrchestrationService)this).StopAsync(false);
 
         /// <inheritdoc/>
-        public void Dispose() => this.taskHub.StopAsync(true);
+        public void Dispose() => this.taskHub.StopAsync();
 
         /// <summary>
         /// Computes the partition for the given instance.

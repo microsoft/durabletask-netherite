@@ -137,7 +137,7 @@ namespace DurableTask.Netherite
         /// <summary>
         /// A limit on how long to wait between state checkpoints, in milliseconds. The default is 60s.
         /// </summary>
-        public long MaxTimeMsBetweenCheckpoints { get; set; } = 60 * 1000;
+        public long IdleCheckpointFrequencyMs { get; set; } = 60 * 1000;
 
         /// <summary>
         /// Whether to use the Faster SecondaryIndex support for handling queries.

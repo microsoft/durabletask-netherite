@@ -141,6 +141,10 @@ namespace DurableTask.Netherite.Faster
 
                     this.TraceHelper.FasterCheckpointLoaded(this.storeWorker.CommitLogPosition, this.storeWorker.InputQueuePosition, this.store.StoreStats.Get(), stopwatch.ElapsedMilliseconds);
                 }
+                catch(OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
+                {
+                    throw; // normal if recovery was canceled
+                }
                 catch (Exception e)
                 {
                     this.TraceHelper.FasterStorageError("loading checkpoint", e);
@@ -158,6 +162,10 @@ namespace DurableTask.Netherite.Faster
                         // replay log as the store checkpoint lags behind the log
                         await this.storeWorker.ReplayCommitLog(this.logWorker).ConfigureAwait(false);
                     }
+                }
+                catch (OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
+                {
+                    throw; // normal if recovery was canceled
                 }
                 catch (Exception e)
                 {

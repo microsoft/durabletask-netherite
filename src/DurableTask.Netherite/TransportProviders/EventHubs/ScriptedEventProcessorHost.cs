@@ -254,7 +254,7 @@ namespace DurableTask.Netherite.EventHubs
 
                     this.partitionEventLoop = Task.Run(() => this.PartitionEventLoop(nextPacketToReceive));
                 }
-                catch(Exception e) when (!Utils.IsFatal(e))
+                catch (Exception e) when (!Utils.IsFatal(e))
                 {
                     this.host.logger.LogError("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) failed to start partition: {exception}", this.host.eventHubPath, this.partitionId, this.Incarnation, e);
                     throw;
