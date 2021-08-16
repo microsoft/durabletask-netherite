@@ -32,7 +32,7 @@ namespace PerformanceTests.FileHash
             // get the list of files(books) from blob storage
             List<IListBlobItem> books = blobDirectory.ListBlobs().ToList();
             List<string> bookNames = new List<string>(); ;
-            foreach (int _ in Enumerable.Range(1, 20))
+            foreach (int _ in Enumerable.Range(1, 50))
             {
                 bookNames = bookNames.Concat(books.Select(x => ((CloudBlockBlob)x).Name).ToList()).ToList();
             }
