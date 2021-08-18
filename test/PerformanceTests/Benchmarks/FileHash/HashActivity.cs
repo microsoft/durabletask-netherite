@@ -32,13 +32,19 @@ namespace PerformanceTests.FileHash
             CloudBlockBlob blob = blobContainer.GetBlockBlobReference(book);
             string doc = await blob.DownloadTextAsync();
 
-            // Hash the book content 1000 times
             long wordCount = 0;
             string[] words = doc.Split(separators, StringSplitOptions.RemoveEmptyEntries);
-            foreach (string word in words)
-            {
-                int _ = word.GetHashCode();
-                wordCount++;
+
+            // randomly scale up the work to create unbalanced work between activities
+            System.Random random = new System.Random();
+            int scale = random.Next(20, 50);
+            foreach (int _ in Enumerable.Range(1, scale))
+            { 
+                foreach (string word in words)
+                {
+                    int v = word.GetHashCode();
+                    wordCount++;
+                }
             }
 
             // return the number of words hashed
