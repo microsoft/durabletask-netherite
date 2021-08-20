@@ -23,13 +23,13 @@ namespace DurableTask.Netherite
         public Queue<ActivityInfo> QueuedRemotes { get; private set; }
 
         [DataMember]
-        public int[] ReportedRemoteLoads { get; private set; }
-
-        [DataMember]
-        public int EstimatedLocalWorkItemLoad { get; private set; }
-
-        [DataMember]
         public long SequenceNumber { get; set; }
+
+        [DataMember]
+        public int EstimatedWorkItemQueueSize { get; private set; }
+
+        [DataMember]
+        public int WorkItemQueueLimit { get; set; }
 
         [DataMember]
         public TimeSpan? LoadMonitorInterval { get; set; }
@@ -59,28 +59,12 @@ namespace DurableTask.Netherite
             // Queue for remote tasks
             this.QueuedRemotes = new Queue<ActivityInfo>();
             this.OffloadsReceived = new DateTime[this.Partition.NumberPartitions()];
-            this.ReportedRemoteLoads = new int[this.Partition.NumberPartitions()];
             uint numberPartitions = this.Partition.NumberPartitions();
-            for (uint i = 0; i < numberPartitions; i++)
-            {
-                this.ReportedRemoteLoads[i] = NOT_CONTACTED;
-            }
+            this.WorkItemQueueLimit = 10;
         }
 
-        const int NOT_CONTACTED = -1;
-        const int RESPONSE_PENDING = int.MaxValue;
-
-        const int ABSOLUTE_LOAD_LIMIT_FOR_REMOTES = 1000;
-        const double RELATIVE_LOAD_LIMIT_FOR_REMOTES = .8;
-        const double PORTION_SUBJECT_TO_OFFLOAD = .5;
-        // xz: I feel like the max offload should be larger than the maxConcurrentActivities. e.g. 2*max
-        const int OFFLOAD_MAX_BATCH_SIZE = 20;
-        const int OFFLOAD_MIN_BATCH_SIZE = 10;
-
         const int MAX_WORKITEM_LOAD = 10;
-
         const int REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS = 100;
-
         const double SMOOTHING_FACTOR = 0.1;
 
         public override void OnRecoveryCompleted()
@@ -93,9 +77,7 @@ namespace DurableTask.Netherite
 
             if (this.LocalBacklog.Count > 0)
             {
-                TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Static ?
-                        TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
-                this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
+                this.ScheduleNextOffloadDecision(TimeSpan.Zero);
             }
         }
 
@@ -130,12 +112,14 @@ namespace DurableTask.Netherite
         {
             if (// send load information if we have not sent one yet since this partition started
                 !this.LastLoadInformationSent.HasValue 
-                // send load information if this partition is backlogged
-                || ((DateTime.UtcNow - this.LastLoadInformationSent.Value) > TimeSpan.FromMilliseconds(REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS)
-                    && (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0))
+                // send load information if this partition is backlogged or has remote activities
+                || ((this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0)
+                    && (DateTime.UtcNow - this.LastLoadInformationSent.Value) > TimeSpan.FromMilliseconds(REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS))
+                // send load information if instructed by loadmonitor
+                || (this.LoadMonitorInterval.HasValue 
+                    && (DateTime.UtcNow - this.LastLoadInformationSent.Value) > this.LoadMonitorInterval.Value)
                 // send load information once the partition first becomes idle
-                || !this.IdleStateSent
-                || true) // TEMPORARY: always send load info
+                || !this.IdleStateSent)
               
             {
                 this.Partition.Send(new LoadInformationReceived()
@@ -146,7 +130,7 @@ namespace DurableTask.Netherite
                     Mobile = this.LocalBacklog.Count,
                     AverageActCompletionTime = this.AverageActivityCompletionTime,
                     OffloadsReceived = (DateTime[]) this.OffloadsReceived.Clone()
-                }); ;
+                });
 
                 this.IdleStateSent = (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0) ? false : true;
                 this.LastLoadInformationSent = DateTime.UtcNow;
@@ -160,8 +144,7 @@ namespace DurableTask.Netherite
 
         void ScheduleNextOffloadDecision(TimeSpan delay)
         {
-            if (this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Local
-                && this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.LoadMonitor)
+            if (ActivityScheduling.RequiresPeriodicOffloadDecision(this.Partition.Settings.ActivityScheduler))
             {
                 this.Partition.PendingTimers.Schedule(DateTime.UtcNow + delay, new OffloadDecision()
                 {
@@ -199,7 +182,7 @@ namespace DurableTask.Netherite
             {
                 var activityId = this.SequenceNumber++;
 
-                if (this.Pending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_WORKITEM_LOAD)
+                if (this.Pending.Count == 0 || this.EstimatedWorkItemQueueSize < this.WorkItemQueueLimit)
                 {
                     this.Pending.Add(activityId, (msg, evt.WorkItemId));
 
@@ -208,7 +191,7 @@ namespace DurableTask.Netherite
                         this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityId, msg, evt.WorkItemId));
                     }
 
-                    this.EstimatedLocalWorkItemLoad++;
+                    this.EstimatedWorkItemQueueSize++;
                 }
                 else
                 {
@@ -225,9 +208,7 @@ namespace DurableTask.Netherite
                         this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, msg, evt.WorkItemId, $"LocalBacklog@{this.LocalBacklog.Count}");
                         if (this.LocalBacklog.Count == 1)
                         {
-                            TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Static ?
-                                TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
-                            this.ScheduleNextOffloadDecision(WaitTimeThresholdForOffload);
+                            this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(100));
                         }
                     }
                 }
@@ -241,7 +222,7 @@ namespace DurableTask.Netherite
             {
                 var activityId = this.SequenceNumber++;
 
-                if (this.Pending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_WORKITEM_LOAD)
+                if (this.Pending.Count == 0 || this.EstimatedWorkItemQueueSize <= this.WorkItemQueueLimit)
                 {
                     this.Pending.Add(activityId, msg);
 
@@ -250,7 +231,7 @@ namespace DurableTask.Netherite
                         this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityId, msg.Item1, msg.Item2));
                     }
 
-                    this.EstimatedLocalWorkItemLoad++;
+                    this.EstimatedWorkItemQueueSize++;
                 }
                 else
                 {
@@ -281,7 +262,7 @@ namespace DurableTask.Netherite
 
             this.Pending.Remove(evt.ActivityId);
 
-            this.EstimatedLocalWorkItemLoad = evt.ReportedLoad;
+            this.EstimatedWorkItemQueueSize = evt.ReportedLoad;
 
             // update the average activity completion time
             this.AverageActivityCompletionTime = !this.AverageActivityCompletionTime.HasValue ? evt.LatencyMs :
@@ -300,7 +281,7 @@ namespace DurableTask.Netherite
             }
 
             // now that an activity has completed, we can perhaps add more from the backlog
-            while (this.Pending.Count == 0 || this.EstimatedLocalWorkItemLoad <= MAX_WORKITEM_LOAD)
+            while (this.Pending.Count == 0 || this.EstimatedWorkItemQueueSize < this.WorkItemQueueLimit)
             {
                 if (this.TryGetNextActivity(out var activityInfo))
                 {
@@ -311,19 +292,13 @@ namespace DurableTask.Netherite
                         this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message, activityInfo.WorkItemId));
                     }
 
-                    this.EstimatedLocalWorkItemLoad++;
+                    this.EstimatedWorkItemQueueSize++;
                 }
                 else
                 {
                     break;
                 }
             }
-        }
-
-        public void Process(RemoteActivityResultReceived evt, EffectTracker effects)
-        {
-            // records the reported queue size
-            this.ReportedRemoteLoads[evt.OriginPartition] = evt.ActivitiesQueueSize;
         }
 
         public void Process(OffloadCommandReceived evt, EffectTracker effects)
@@ -369,232 +344,54 @@ namespace DurableTask.Netherite
                 return;
             }
 
-            if (this.Partition.Settings.ActivityScheduler == ActivitySchedulerOptions.Static)
+            uint numberPartitions = this.Partition.NumberPartitions();
+            int numberOffloadPerPart = (int)(this.LocalBacklog.Count / (this.Partition.NumberPartitions() - 1));
+
+            // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
+            offloadDecisionEvent.OffloadedActivities = new SortedDictionary<uint, List<(TaskMessage, string)>>();
+
+            Queue<ActivityInfo> keep = new Queue<ActivityInfo>();
+
+            while (this.LocalBacklog.Count > 0)
             {
-                uint numberPartitions = this.Partition.NumberPartitions();
-                int numberOffloadPerPart = (int)(this.LocalBacklog.Count / (this.Partition.NumberPartitions() - 1));
+                ActivityInfo next = this.LocalBacklog.Dequeue();
 
-                // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
-                offloadDecisionEvent.OffloadedActivities = new SortedDictionary<uint, List<(TaskMessage, string)>>();
+                // we distribute activities round-robin across all partitions, based on their sequence number
+                uint destination = (uint)(next.ActivityId % numberPartitions);
 
-                Queue<ActivityInfo> keep = new Queue<ActivityInfo>();
-
-                while (this.LocalBacklog.Count > 0)
+                if (destination == this.Partition.PartitionId)
                 {
-                    ActivityInfo next = this.LocalBacklog.Dequeue();
-
-                    // we distribute activities round-robin across all partitions, based on their sequence number
-                    uint destination = (uint) (next.ActivityId % numberPartitions);
-
-                    if (destination == this.Partition.PartitionId)
-                    {
-                        keep.Enqueue(next);
-                    }
-                    else
-                    {
-                        if (!offloadDecisionEvent.OffloadedActivities.TryGetValue(destination, out var list))
-                        {
-                            offloadDecisionEvent.OffloadedActivities[destination] = list = new List<(TaskMessage, string)>();
-                        }
-                        list.Add((next.Message, next.WorkItemId));
-                    }
-                }
-
-                this.LocalBacklog = keep; // these are the activities that should remain local
-
-                if (offloadDecisionEvent.OffloadedActivities.Count > 0)
-                {
-                    // process this on OutboxState so the events get sent
-                    effects.Add(TrackedObjectKey.Outbox);
-                }
-
-                var reportedRemotes = string.Join(",", offloadDecisionEvent.OffloadedActivities.Select(kvp => kvp.Value.Count.ToString()));
-
-                if (!effects.IsReplaying)
-                {
-                    this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, -1, reportedRemotes);
-
-                    if (this.LocalBacklog.Count > 0)
-                    {
-                        this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(50));
-                    }
-                }
-            }
-            else
-            {
-                // find how many offload candidate tasks we have
-                int numberOffloadCandidates = this.CountOffloadCandidates(offloadDecisionEvent.Timestamp);
-
-                if (numberOffloadCandidates < OFFLOAD_MIN_BATCH_SIZE)
-                {
-                    return; // no offloading if we cannot offload enough
-                }
-
-                if (this.FindOffloadTarget(offloadDecisionEvent.Timestamp, numberOffloadCandidates, out uint target, out int maxBatchsize))
-                {
-                    // don't pick this same target again until we get a response telling us the current queue size
-                    var targetLoad = this.ReportedRemoteLoads[target];
-                    this.ReportedRemoteLoads[target] = RESPONSE_PENDING;
-
-                    // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
-                    offloadDecisionEvent.OffloadedActivities = new SortedDictionary<uint, List<(TaskMessage, string)>>();
-                    var ActivitiesToOffload = new List<(TaskMessage, string)>();
-
-                    for (int i = 0; i < maxBatchsize; i++)
-                    {
-                        var info = this.LocalBacklog.Dequeue();
-                        ActivitiesToOffload.Add((info.Message, info.WorkItemId));
-
-                        TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Static ?
-                                    TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
-                        if (this.LocalBacklog.Count == 0 || offloadDecisionEvent.Timestamp - this.LocalBacklog.Peek().IssueTime < WaitTimeThresholdForOffload)
-                        {
-                            break;
-                        }
-                    }
-
-                    offloadDecisionEvent.OffloadedActivities.Add(target, ActivitiesToOffload);
-
-                    // process this on OutboxState so the events get sent
-                    effects.Add(TrackedObjectKey.Outbox);
-
-                    var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x, int i) =>
-                        (i == target) ? $"{targetLoad}+{offloadDecisionEvent.OffloadedActivities.Count}" : (x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString()))));
-
-                    if (!effects.IsReplaying)
-                    {
-                        this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
-
-                        // try again relatively soon
-                        this.ScheduleNextOffloadDecision(TimeSpan.FromMilliseconds(50));
-                    }
+                    keep.Enqueue(next);
                 }
                 else
                 {
-                    var reportedRemotes = string.Join(",", this.ReportedRemoteLoads.Select((int x) => x == NOT_CONTACTED ? "-" : (x == RESPONSE_PENDING ? "X" : x.ToString())));
-
-                    if (!effects.IsReplaying)
+                    if (!offloadDecisionEvent.OffloadedActivities.TryGetValue(destination, out var list))
                     {
-                        this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedLocalWorkItemLoad, this.Pending.Count, this.LocalBacklog.Count, this.QueuedRemotes.Count, reportedRemotes);
-
-                        // there are no eligible recipients... try again in a while
-                        this.ScheduleNextOffloadDecision(TimeSpan.FromSeconds(10));
+                        offloadDecisionEvent.OffloadedActivities[destination] = list = new List<(TaskMessage, string)>();
                     }
+                    list.Add((next.Message, next.WorkItemId));
                 }
             }
-        }
 
-        int CountOffloadCandidates(DateTime now)
-        {
-            int numberOffloadCandidates = 0;
-            int limit = (int)(Math.Min(PORTION_SUBJECT_TO_OFFLOAD * this.LocalBacklog.Count, OFFLOAD_MAX_BATCH_SIZE * this.Partition.NumberPartitions()));
-            foreach (var entry in this.LocalBacklog)
+            this.LocalBacklog = keep; // these are the activities that should remain local
+
+            if (offloadDecisionEvent.OffloadedActivities.Count > 0)
             {
-                TimeSpan WaitTimeThresholdForOffload = this.Partition.Settings.ActivityScheduler != ActivitySchedulerOptions.Static ?
-                        TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds(10);
-                if (now - entry.IssueTime < WaitTimeThresholdForOffload
-                    || numberOffloadCandidates++ > limit)
+                // process this on OutboxState so the events get sent
+                effects.Add(TrackedObjectKey.Outbox);
+            }
+
+            var reportedRemotes = string.Join(",", offloadDecisionEvent.OffloadedActivities.Select(kvp => kvp.Value.Count.ToString()));
+
+            if (!effects.IsReplaying)
+            {
+                this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedWorkItemQueueSize, this.Pending.Count, this.LocalBacklog.Count, -1, reportedRemotes);
+
+                if (this.LocalBacklog.Count > 0)
                 {
-                    break;
+                    this.ScheduleNextOffloadDecision(TimeSpan.FromSeconds(1));
                 }
             }
-            return numberOffloadCandidates;
-        }
-
-        bool FindOffloadTarget(DateTime timeStamp, double portionSubjectToOffload, out uint target, out int batchsize)
-        {
-            Random rand = new Random((int)timeStamp.Ticks);
-            switch (this.Partition.Settings.ActivityScheduler)
-            {
-                case ActivitySchedulerOptions.PeriodicOffloadThreshold:
-                    return this.FindOffloadTargetThreshold(portionSubjectToOffload, out target, out batchsize);
-
-                case ActivitySchedulerOptions.PeriodicOffloadRandom:
-                    return this.FindOffloadTargetRandom(rand, portionSubjectToOffload, out target, out batchsize);
-
-                default:
-                    return this.FindOffloadTargetRandom(rand, portionSubjectToOffload, out target, out batchsize);
-            }
-
-        }
-
-        bool FindOffloadTargetRandom(Random rand, double portionSubjectToOffload, out uint target, out int batchsize)
-        {
-            uint numberPartitions = this.Partition.NumberPartitions();
-            target = this.Partition.PartitionId;
-
-            // pick a random partition to offload tasks
-            while (target == this.Partition.PartitionId)
-            {
-                target = (uint)rand.Next(0, (int)numberPartitions);
-            }
-
-            batchsize = Math.Min(OFFLOAD_MAX_BATCH_SIZE, Math.Max(OFFLOAD_MIN_BATCH_SIZE, (int)Math.Ceiling(portionSubjectToOffload)));
-            return true;
-        }
-
-
-        bool FindOffloadTargetThreshold(double portionSubjectToOffload, out uint target, out int batchsize)
-        {
-            uint numberPartitions = this.Partition.NumberPartitions();
-            uint? firstNotContacted = null;
-            uint? eligibleTargetWithSmallestQueue = null;
-            int minimalReportedQueueSizeFound = int.MaxValue;
-            double estimatedParallism = 0;
-            double remoteLoadLimit = Math.Min(ABSOLUTE_LOAD_LIMIT_FOR_REMOTES, RELATIVE_LOAD_LIMIT_FOR_REMOTES * this.LocalBacklog.Count);
-
-            for (uint i = 0; i < numberPartitions - 1; i++)
-            {
-                uint candidate = (this.Partition.PartitionId + i + 1) % numberPartitions;
-                int reported = this.ReportedRemoteLoads[candidate];
-                if (reported == NOT_CONTACTED)
-                {
-                    if (!firstNotContacted.HasValue)
-                    {
-                        firstNotContacted = candidate;
-                    }
-                    estimatedParallism += 1;
-                }
-                else if (reported != RESPONSE_PENDING)
-                {
-                    if (reported < remoteLoadLimit)
-                    {
-                        estimatedParallism += 1;
-                        if (reported < minimalReportedQueueSizeFound)
-                        {
-                            minimalReportedQueueSizeFound = reported;
-                            eligibleTargetWithSmallestQueue = candidate;
-                        }
-                    }
-                }
-                else
-                {
-                    estimatedParallism += 1;
-                }
-            }
-
-            if (eligibleTargetWithSmallestQueue.HasValue)
-            {
-                // we found a lowly loaded target
-                target = eligibleTargetWithSmallestQueue.Value;
-                batchsize = Math.Min(OFFLOAD_MAX_BATCH_SIZE, Math.Max(OFFLOAD_MIN_BATCH_SIZE, (int)Math.Ceiling(portionSubjectToOffload / estimatedParallism)));
-                if (minimalReportedQueueSizeFound < batchsize)
-                {
-                    return true;
-                }
-            }
-
-            if (firstNotContacted.HasValue)
-            {
-                // we did not find a lowly loaded target with enough spare capacity
-                target = firstNotContacted.Value;
-                batchsize = OFFLOAD_MIN_BATCH_SIZE;
-                return true;
-            }
-
-            target = 0;
-            batchsize = 0;
-            return false;
         }
 
         [DataContract]

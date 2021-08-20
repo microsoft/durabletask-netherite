@@ -347,7 +347,7 @@ namespace DurableTask.Netherite.Faster
                     await this.PublishPartitionLoad().ConfigureAwait(false);
                 }
 
-                if (this.partition.Settings.ActivityScheduler == ActivitySchedulerOptions.LoadMonitor)
+                if (ActivityScheduling.RequiresLoadMonitor(this.partition.Settings.ActivityScheduler))
                 {
                     var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker).ConfigureAwait(false)) as ActivitiesState;
                     activitiesState.CollectLoadMonitorInformation();

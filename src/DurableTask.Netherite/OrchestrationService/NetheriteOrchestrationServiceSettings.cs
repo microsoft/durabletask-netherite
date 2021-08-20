@@ -94,7 +94,7 @@ namespace DurableTask.Netherite
         /// Gets or sets the activity scheduler option
         /// </summary>
         [JsonConverter(typeof(StringEnumConverter))]
-        public ActivitySchedulerOptions ActivityScheduler { get; set; } = ActivitySchedulerOptions.PeriodicOffloadRandom;
+        public ActivitySchedulerOptions ActivityScheduler { get; set; } = ActivitySchedulerOptions.Locavore;
 
         /// <summary>
         /// Gets or sets a flag indicating whether to enable caching of execution cursors to avoid replay.

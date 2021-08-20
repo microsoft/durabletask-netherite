@@ -80,7 +80,7 @@ namespace DurableTask.Netherite.Emulated
             clientSender.SetHandler(list => this.SendEvents(this.client, list));
 
             // create a load monitor
-            if (this.settings.ActivityScheduler == ActivitySchedulerOptions.LoadMonitor)
+            if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
             {
                 var loadMonitorSender = new SendWorker(this.shutdownTokenSource.Token);
                 this.loadMonitor = this.host.AddLoadMonitor(default, loadMonitorSender);

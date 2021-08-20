@@ -162,7 +162,6 @@ namespace DurableTask.Netherite
                 Timestamp = evt.Timestamp,
                 LatencyMs = evt.LatencyMs,
                 ActivityId = evt.ActivityId,
-                ActivitiesQueueSize = evt.ReportedLoad,
             });
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }

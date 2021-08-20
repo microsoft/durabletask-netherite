@@ -21,9 +21,6 @@ namespace DurableTask.Netherite
         public long ActivityId { get; set; }
 
         [DataMember]
-        public int ActivitiesQueueSize { get; set; }
-
-        [DataMember]
         public DateTime Timestamp { get; set; }
 
         [DataMember]

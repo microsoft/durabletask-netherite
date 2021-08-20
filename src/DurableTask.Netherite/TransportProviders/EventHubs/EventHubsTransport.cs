@@ -99,7 +99,7 @@ namespace DurableTask.Netherite.EventHubs
             // ensure the task hubs exist, creating them if necessary
             var tasks = new List<Task>();
             tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, PartitionHubs[0], this.settings.PartitionCount));
-            if (this.settings.ActivityScheduler == ActivitySchedulerOptions.LoadMonitor)
+            if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
             {
                 tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, LoadMonitorHub, 1));
             }
@@ -206,7 +206,7 @@ namespace DurableTask.Netherite.EventHubs
             
             if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
-                if (this.settings.ActivityScheduler == ActivitySchedulerOptions.LoadMonitor)
+                if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
                 {
                     await Task.WhenAll(StartPartitionHost(), StartLoadMonitorHost()).ConfigureAwait(false);
                 }
@@ -345,7 +345,7 @@ namespace DurableTask.Netherite.EventHubs
 
             if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
-                if (this.settings.ActivityScheduler == ActivitySchedulerOptions.LoadMonitor)
+                if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
                 {
                     this.traceHelper.LogDebug("Stopping partition and loadmonitor hosts");
                     await Task.WhenAll(

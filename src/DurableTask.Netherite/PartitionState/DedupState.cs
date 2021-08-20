@@ -55,7 +55,6 @@ namespace DurableTask.Netherite
             if (this.IsNotDuplicate(evt))
             {
                 effects.Add(TrackedObjectKey.Sessions);
-                effects.Add(TrackedObjectKey.Activities);
             }
         }
 
