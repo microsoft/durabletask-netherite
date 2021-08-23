@@ -32,19 +32,13 @@ namespace DurableTask.Netherite
         public int WorkItemQueueLimit { get; set; }
 
         [DataMember]
-        public TimeSpan? LoadMonitorInterval { get; set; }
+        public DateTime? LastSolicitation { get; set; }
 
         [DataMember]
         public double? AverageActivityCompletionTime { get; set; }
 
         [DataMember]
-        public DateTime[] OffloadsReceived { get; set; }
-
-        [IgnoreDataMember]
-        DateTime? LastLoadInformationSent { get; set; }
-
-        [IgnoreDataMember]
-        bool IdleStateSent { get; set; } = false;
+        public DateTime[] TransferCommandsReceived { get; set; }
 
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Activities);
@@ -58,13 +52,11 @@ namespace DurableTask.Netherite
             this.LocalBacklog = new Queue<ActivityInfo>();
             // Queue for remote tasks
             this.QueuedRemotes = new Queue<ActivityInfo>();
-            this.OffloadsReceived = new DateTime[this.Partition.NumberPartitions()];
+            this.TransferCommandsReceived = new DateTime[this.Partition.NumberPartitions()];
             uint numberPartitions = this.Partition.NumberPartitions();
             this.WorkItemQueueLimit = 10;
         }
 
-        const int MAX_WORKITEM_LOAD = 10;
-        const int REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS = 100;
         const double SMOOTHING_FACTOR = 0.1;
 
         public override void OnRecoveryCompleted()
@@ -110,18 +102,12 @@ namespace DurableTask.Netherite
         // called frequently, directly from the StoreWorker. Must not modify any [DataMember] fields.
         public void CollectLoadMonitorInformation()
         {
-            if (// send load information if we have not sent one yet since this partition started
-                !this.LastLoadInformationSent.HasValue 
-                // send load information if this partition is backlogged or has remote activities
-                || ((this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0)
-                    && (DateTime.UtcNow - this.LastLoadInformationSent.Value) > TimeSpan.FromMilliseconds(REPORTING_FREQUENCY_WHEN_BACKLOGGED_MS))
-                // send load information if instructed by loadmonitor
-                || (this.LoadMonitorInterval.HasValue 
-                    && (DateTime.UtcNow - this.LastLoadInformationSent.Value) > this.LoadMonitorInterval.Value)
-                // send load information once the partition first becomes idle
-                || !this.IdleStateSent)
-              
-            {
+            // send load information if there is a backlog of if it was solicited recently
+            if (this.LocalBacklog.Count > 0  
+                || this.QueuedRemotes.Count > 0
+                || (this.LastSolicitation.HasValue 
+                    && (DateTime.UtcNow - this.LastSolicitation.Value) < LoadMonitor.SOLICITATION_VALIDITY))
+            {          
                 this.Partition.Send(new LoadInformationReceived()
                 {
                     RequestId = Guid.NewGuid(),
@@ -129,11 +115,8 @@ namespace DurableTask.Netherite
                     Stationary = this.Pending.Count + this.QueuedRemotes.Count,
                     Mobile = this.LocalBacklog.Count,
                     AverageActCompletionTime = this.AverageActivityCompletionTime,
-                    OffloadsReceived = (DateTime[]) this.OffloadsReceived.Clone()
+                    TransfersReceived = (DateTime[]) this.TransferCommandsReceived.Clone()
                 });
-
-                this.IdleStateSent = (this.LocalBacklog.Count > 0 || this.QueuedRemotes.Count > 0) ? false : true;
-                this.LastLoadInformationSent = DateTime.UtcNow;
             }
         }
 
@@ -215,10 +198,10 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(ActivityOffloadReceived evt, EffectTracker effects)
+        public void Process(ActivityTransferReceived evt, EffectTracker effects)
         {
             // may bring in offloaded activities from other partitions
-            foreach (var msg in evt.OffloadedActivities)
+            foreach (var msg in evt.TransferredActivities)
             {
                 var activityId = this.SequenceNumber++;
 
@@ -250,9 +233,9 @@ namespace DurableTask.Netherite
                 }
             }
 
-            if (this.OffloadsReceived[evt.OriginPartition] < evt.Timestamp)
+            if (this.TransferCommandsReceived[evt.OriginPartition] < evt.Timestamp)
             {
-                this.OffloadsReceived[evt.OriginPartition] = evt.Timestamp;
+                this.TransferCommandsReceived[evt.OriginPartition] = evt.Timestamp;
             }
         }
 
@@ -301,13 +284,13 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(OffloadCommandReceived evt, EffectTracker effects)
+        public void Process(TransferCommandReceived evt, EffectTracker effects)
         {
             // we can use this for tracing while we develop and debug the code
             this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processing OffloadCommand, " +
-                $"OffloadDestination={evt.OffloadDestination}, NumActivitiesToSend={evt.NumActivitiesToSend}");
+                $"OffloadDestination={evt.TransferDestination}, NumActivitiesToSend={evt.NumActivitiesToSend}");
 
-            evt.OffloadedActivities = new List<(TaskMessage, string)>();
+            evt.TransferredActivities = new List<(TaskMessage, string)>();
 
             for (int i = 0; i < evt.NumActivitiesToSend; i++)
             {
@@ -318,22 +301,22 @@ namespace DurableTask.Netherite
                 }
 
                 var info = this.LocalBacklog.Dequeue();
-                evt.OffloadedActivities.Add((info.Message, info.WorkItemId));
+                evt.TransferredActivities.Add((info.Message, info.WorkItemId));
             }
 
-            if (this.OffloadsReceived[evt.PartitionId] < evt.Timestamp)
+            if (this.TransferCommandsReceived[evt.PartitionId] < evt.Timestamp)
             {
-                this.OffloadsReceived[evt.PartitionId] = evt.Timestamp;
+                this.TransferCommandsReceived[evt.PartitionId] = evt.Timestamp;
             }
 
             this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processed OffloadCommand, " +
-                $"OffloadDestination={evt.OffloadDestination}, NumActivitiesSent={evt.OffloadedActivities.Count}");
+                $"OffloadDestination={evt.TransferDestination}, NumActivitiesSent={evt.TransferredActivities.Count}");
             effects.Add(TrackedObjectKey.Outbox);
         }
 
-        public void Process(ProbingControlReceived evt, EffectTracker effects)
+        public void Process(SolicitationReceived evt, EffectTracker effects)
         {
-            this.LoadMonitorInterval = evt.LoadMonitorInterval;
+            this.LastSolicitation = evt.Timestamp;
         }
 
         public void Process(OffloadDecision offloadDecisionEvent, EffectTracker effects)
@@ -348,7 +331,7 @@ namespace DurableTask.Netherite
             int numberOffloadPerPart = (int)(this.LocalBacklog.Count / (this.Partition.NumberPartitions() - 1));
 
             // we are adding (nonpersisted) information to the event just as a way of passing it to the OutboxState
-            offloadDecisionEvent.OffloadedActivities = new SortedDictionary<uint, List<(TaskMessage, string)>>();
+            offloadDecisionEvent.ActivitiesToTransfer = new SortedDictionary<uint, List<(TaskMessage, string)>>();
 
             Queue<ActivityInfo> keep = new Queue<ActivityInfo>();
 
@@ -365,9 +348,9 @@ namespace DurableTask.Netherite
                 }
                 else
                 {
-                    if (!offloadDecisionEvent.OffloadedActivities.TryGetValue(destination, out var list))
+                    if (!offloadDecisionEvent.ActivitiesToTransfer.TryGetValue(destination, out var list))
                     {
-                        offloadDecisionEvent.OffloadedActivities[destination] = list = new List<(TaskMessage, string)>();
+                        offloadDecisionEvent.ActivitiesToTransfer[destination] = list = new List<(TaskMessage, string)>();
                     }
                     list.Add((next.Message, next.WorkItemId));
                 }
@@ -375,17 +358,15 @@ namespace DurableTask.Netherite
 
             this.LocalBacklog = keep; // these are the activities that should remain local
 
-            if (offloadDecisionEvent.OffloadedActivities.Count > 0)
+            if (offloadDecisionEvent.ActivitiesToTransfer.Count > 0)
             {
                 // process this on OutboxState so the events get sent
                 effects.Add(TrackedObjectKey.Outbox);
             }
 
-            var reportedRemotes = string.Join(",", offloadDecisionEvent.OffloadedActivities.Select(kvp => kvp.Value.Count.ToString()));
-
             if (!effects.IsReplaying)
             {
-                this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedWorkItemQueueSize, this.Pending.Count, this.LocalBacklog.Count, -1, reportedRemotes);
+                this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedWorkItemQueueSize, this.Pending.Count, this.LocalBacklog.Count, -1, offloadDecisionEvent);
 
                 if (this.LocalBacklog.Count > 0)
                 {

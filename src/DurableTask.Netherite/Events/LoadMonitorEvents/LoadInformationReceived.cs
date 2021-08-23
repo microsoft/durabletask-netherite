@@ -17,35 +17,35 @@ namespace DurableTask.Netherite
         public int Stationary { get; set; } // The number of queued activities that can only execute on this partition
 
         [DataMember]
-        public int Mobile { get; set; } // The number of queued activities that are available for offloading
+        public int Mobile { get; set; } // The number of queued activities that are available for transfer
 
         [DataMember]
         public double? AverageActCompletionTime { get; set; }
 
         [DataMember]
-        public DateTime[] OffloadsReceived { get; set; }
+        public DateTime[] TransfersReceived { get; set; }
 
-        public bool ConfirmsSource(OffloadCommandReceived cmd)
+        public bool ConfirmsSource(TransferCommandReceived cmd)
         {
             uint source = cmd.PartitionId;
             DateTime id = cmd.Timestamp;
 
             return
                 source == this.PartitionId
-                && this.OffloadsReceived != null
-                && this.OffloadsReceived[source] >= id;
+                && this.TransfersReceived != null
+                && this.TransfersReceived[source] >= id;
         }
 
-        public bool ConfirmsDestination(OffloadCommandReceived cmd)
+        public bool ConfirmsDestination(TransferCommandReceived cmd)
         {
             uint source = cmd.PartitionId;
-            uint destination = cmd.OffloadDestination;
+            uint destination = cmd.TransferDestination;
             DateTime id = cmd.Timestamp;
 
             return
                 destination == this.PartitionId
-                && this.OffloadsReceived != null
-                && this.OffloadsReceived[source] >= id;
+                && this.TransfersReceived != null
+                && this.TransfersReceived[source] >= id;
         }
     }
 }

@@ -23,7 +23,7 @@ namespace DurableTask.Netherite
         Static,
 
         /// <summary>
-        /// Activities are load balanced with a global load monitor
+        /// Activities are load balanced with a global load monitor that issues transfer commands
         /// </summary>
         Locavore,
     }
@@ -57,5 +57,7 @@ namespace DurableTask.Netherite
                     throw new NotImplementedException("missing switch case");
             }
         }
+
+        public static string GetWorkItemId(uint partition, DateTime timestamp) => $"{partition:D2}F{timestamp:o}";
     }
 }

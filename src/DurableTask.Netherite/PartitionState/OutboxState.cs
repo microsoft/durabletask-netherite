@@ -245,12 +245,12 @@ namespace DurableTask.Netherite
         {
             var batch = new Batch();
 
-            foreach(var kvp in evt.OffloadedActivities)
+            foreach(var kvp in evt.ActivitiesToTransfer)
             {
-                batch.OutgoingMessages.Add(new ActivityOffloadReceived()
+                batch.OutgoingMessages.Add(new ActivityTransferReceived()
                 {
                     PartitionId=kvp.Key,
-                    OffloadedActivities = kvp.Value,
+                    TransferredActivities = kvp.Value,
                     Timestamp = evt.Timestamp,
                 });
             }
@@ -258,13 +258,13 @@ namespace DurableTask.Netherite
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
 
-        public void Process(OffloadCommandReceived evt, EffectTracker effects)
+        public void Process(TransferCommandReceived evt, EffectTracker effects)
         {
             var batch = new Batch();
-            batch.OutgoingMessages.Add(new ActivityOffloadReceived()
+            batch.OutgoingMessages.Add(new ActivityTransferReceived()
             {
-                PartitionId = evt.OffloadDestination,
-                OffloadedActivities = evt.OffloadedActivities,
+                PartitionId = evt.TransferDestination,
+                TransferredActivities = evt.TransferredActivities,
                 Timestamp = evt.Timestamp,
             });
 

@@ -227,11 +227,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(244, Account, TaskHub, ClientId, PartitionEventId, EventInfo, AppName, ExtensionVersion);
         }
 
-        [Event(245, Level = EventLevel.Warning, Version = 1)]
-        public void PartitionOffloadDecision(string Account, string TaskHub, int PartitionId, long CommitLogPosition, string PartitionEventId, int ReportedLocalLoad, int Pending, int Backlog, int Remotes, string ReportedRemoteLoad, string AppName, string ExtensionVersion)
+        [Event(245, Level = EventLevel.Informational, Version = 1)]
+        public void PartitionOffloadDecision(string Account, string TaskHub, int PartitionId, string PartitionEventId, int ReportedLocalLoad, int Pending, int Backlog, int Remotes, string Distribution, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(245, Account, TaskHub, PartitionId, CommitLogPosition, PartitionEventId, ReportedLocalLoad, Pending, Backlog, Remotes, ReportedRemoteLoad, AppName, ExtensionVersion);
+            this.WriteEvent(245, Account, TaskHub, PartitionId, PartitionEventId, ReportedLocalLoad, Pending, Backlog, Remotes, Distribution, AppName, ExtensionVersion);
         }
 
         [Event(246, Level = EventLevel.Informational, Version = 1)]

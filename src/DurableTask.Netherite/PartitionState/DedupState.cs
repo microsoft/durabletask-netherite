@@ -40,7 +40,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(ActivityOffloadReceived evt, EffectTracker effects)
+        public void Process(ActivityTransferReceived evt, EffectTracker effects)
         {
             // queues activities originating from a remote partition to execute on this partition
             if (this.IsNotDuplicate(evt))

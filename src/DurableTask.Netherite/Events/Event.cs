@@ -65,9 +65,9 @@ namespace DurableTask.Netherite
             yield return typeof(PurgeRequestReceived);
             yield return typeof(StateRequestReceived);
             yield return typeof(WaitRequestReceived);
-            yield return typeof(OffloadCommandReceived);
-            yield return typeof(ProbingControlReceived);
-            yield return typeof(ActivityOffloadReceived);
+            yield return typeof(TransferCommandReceived);
+            yield return typeof(SolicitationReceived);
+            yield return typeof(ActivityTransferReceived);
             yield return typeof(RemoteActivityResultReceived);
             yield return typeof(TaskMessagesReceived);
             yield return typeof(ActivityCompleted);
