@@ -58,6 +58,6 @@ namespace DurableTask.Netherite
             }
         }
 
-        public static string GetWorkItemId(uint partition, DateTime timestamp) => $"{partition:D2}F{timestamp:o}";
+        
     }
 }

@@ -158,13 +158,6 @@ namespace DurableTask.Netherite
             void Process(LoadMonitorEvent loadMonitorEvent);
 
             /// <summary>
-            /// Indicates an observed error for diagnostic purposes.
-            /// </summary>
-            /// <param name="msg">A message describing the circumstances.</param>
-            /// <param name="e">The exception that was observed.</param>
-            void ReportTransportError(string msg, Exception e);
-
-            /// <summary>
             /// Stop processing events and shut down.
             /// </summary>
             /// <returns>When the load monitor is shut down.</returns>

@@ -19,7 +19,7 @@ namespace DurableTask.Netherite
 
         [IgnoreDataMember]
         public override EventId EventId => 
-            EventId.MakePartitionInternalEventId(ActivityScheduling.GetWorkItemId(this.PartitionId, this.Timestamp));
+            EventId.MakePartitionInternalEventId($"{this.PartitionId:D2}F{this.Timestamp:o}");
 
         public override void DetermineEffects(EffectTracker effects)
         {

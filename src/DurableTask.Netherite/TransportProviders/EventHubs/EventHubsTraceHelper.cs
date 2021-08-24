@@ -95,7 +95,7 @@ namespace DurableTask.Netherite.EventHubs
         public void TraceBatchWorkerProgress(string worker, int batchSize, double elapsedMilliseconds, int? nextBatch)
         {
             // used only at host level
-            System.Diagnostics.Debug.Assert(this.partitionId == null);
+            System.Diagnostics.Debug.Assert(this.partitionId == string.Empty);
 
             if (this.logLevelLimit <= LogLevel.Debug)
             {

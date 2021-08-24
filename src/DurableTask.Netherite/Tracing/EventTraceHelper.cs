@@ -42,7 +42,6 @@ namespace DurableTask.Netherite
             QueryEvent
         }
 
-
         public bool IsTracingAtMostDetailedLevel => this.logLevelLimit == LogLevel.Trace;
 
         public void TraceEventProcessed(long commitLogPosition, PartitionEvent evt, EventCategory category, double startedTimestamp, double finishedTimestamp, bool replaying)

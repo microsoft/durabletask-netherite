@@ -29,17 +29,22 @@ namespace DurableTask.Netherite
         // the list of transfer commands that are not yet acknowledged by the destination partition
         List<TransferCommandReceived> PendingOnDestination { get; set; }
 
-        DateTime LastSolicitation { get; set; } = DateTime.MinValue;
+        DateTime LastSolicitation { get; set; }
 
         // estimated round-trip duration for transfer commands
         public double EstimatedTransferRTT = INITIAL_RTT_ESTIMATE.TotalMilliseconds;
 
         public static TimeSpan INITIAL_RTT_ESTIMATE = TimeSpan.FromSeconds(3);
         public static TimeSpan EXTRA_BUFFER_RESERVE = TimeSpan.FromSeconds(5);
+ 
+        public static TimeSpan MAX_PLANAHEAD_INTERVAL = TimeSpan.FromSeconds(20);
+
         public const double SMOOTHING_FACTOR = 0.1;
 
         public static TimeSpan SOLICITATION_INTERVAL = TimeSpan.FromSeconds(10);
         public static TimeSpan SOLICITATION_VALIDITY = TimeSpan.FromSeconds(30);
+
+        public static TimeSpan COMMAND_EXPIRATION = TimeSpan.FromHours(1);
 
         public static string GetShortId(Guid clientId) => clientId.ToString("N").Substring(0, 7);
 
@@ -53,8 +58,9 @@ namespace DurableTask.Netherite
             // estimations that take into account pending transfer commands
             public int EstimatedStationary;
             public int EstimatedMobile;
-            public int EstimatedLoad => this.EstimatedStationary + this.EstimatedMobile;
 
+            public int ReportedLoad => this.ReportedStationary + this.ReportedMobile;
+            public int EstimatedLoad => this.EstimatedStationary + this.EstimatedMobile;
         }
 
         public LoadMonitor(
@@ -68,6 +74,7 @@ namespace DurableTask.Netherite
             this.LoadInfo = new SortedDictionary<uint, Info>();
             this.PendingOnSource = new List<TransferCommandReceived>();
             this.PendingOnDestination = new List<TransferCommandReceived>();
+            this.LastSolicitation = DateTime.MinValue;
             this.traceHelper.TraceProgress("Started");
         }
 
@@ -85,11 +92,6 @@ namespace DurableTask.Netherite
             return Task.CompletedTask;
         }
 
-        public void ReportTransportError(string message, Exception e)
-        {
-            this.traceHelper.TraceError($"Error reported by transport: {message}", e);
-        }
-
         void TransportAbstraction.ILoadMonitor.Process(LoadMonitorEvent loadMonitorEvent)
         {
             // dispatch call to matching method
@@ -98,20 +100,21 @@ namespace DurableTask.Netherite
 
         void SendTransferCommand(uint from, uint to, int num)
         {
-            var transferCommand = new TransferCommandReceived()
+            if (num > 0)
             {
-                RequestId = Guid.NewGuid(),
-                PartitionId = from,
-                NumActivitiesToSend = num,
-                TransferDestination = to,
-                Timestamp = this.GetUniqueTimestamp(),
-            };
+                var transferCommand = new TransferCommandReceived()
+                {
+                    RequestId = Guid.NewGuid(),
+                    PartitionId = from,
+                    NumActivitiesToSend = num,
+                    TransferDestination = to,
+                    Timestamp = this.GetUniqueTimestamp(),
+                };
 
-            this.traceHelper.TraceProgress($"Sending transferCommand: move {num} from {from} to {to} (id={transferCommand.Timestamp:o})");
-
-            this.PendingOnSource.Add(transferCommand);
-            this.PendingOnDestination.Add(transferCommand);
-            this.BatchSender.Submit(transferCommand);
+                this.PendingOnSource.Add(transferCommand);
+                this.PendingOnDestination.Add(transferCommand);
+                this.BatchSender.Submit(transferCommand);
+            }
         }
 
         void SendSolicitations()
@@ -119,7 +122,7 @@ namespace DurableTask.Netherite
             DateTime timestamp = DateTime.UtcNow;
 
             // limit solicitation frequency
-            if (timestamp - this.LastSolicitation < SOLICITATION_INTERVAL)
+            if (timestamp - this.LastSolicitation >= SOLICITATION_INTERVAL)
             {
                 this.traceHelper.TraceProgress($"Sending solicitations, timestamp={timestamp:o}");
 
@@ -133,6 +136,8 @@ namespace DurableTask.Netherite
                     };
                     this.BatchSender.Submit(solicitation);
                 }
+
+                this.LastSolicitation = timestamp;
             }
         }
 
@@ -144,6 +149,7 @@ namespace DurableTask.Netherite
                 info.EstimatedStationary = info.ReportedStationary;
                 info.EstimatedMobile = info.ReportedMobile;
             }
+
             // then add the effect of all pending commands
             foreach (var command in this.PendingOnDestination)
             {
@@ -155,6 +161,24 @@ namespace DurableTask.Netherite
                 estimate = Math.Max(0, estimate - command.NumActivitiesToSend);
                 this.LoadInfo[command.PartitionId].EstimatedMobile = estimate;
             }
+
+            // trace backlog estimates
+            string estimated = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedLoad.ToString()));
+            string mobile = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedMobile.ToString()));
+            this.traceHelper.TraceProgress($"BacklogEstimates pending={this.PendingOnSource.Count},{this.PendingOnDestination.Count} RTT={this.EstimatedTransferRTT:f2} estimated=[{estimated}] mobile=[{mobile}]");
+        }
+
+        void ProcessTransferCommandAcksAndExpirations(LoadInformationReceived loadInformationReceived)
+        {
+            this.PendingOnSource = this.PendingOnSource
+                .Where(c => !loadInformationReceived.ConfirmsSource(c) 
+                    && DateTime.UtcNow - c.Timestamp <= COMMAND_EXPIRATION)
+                .ToList();
+
+            this.PendingOnDestination = this.PendingOnDestination
+                .Where(c => !loadInformationReceived.ConfirmsDestination(c)
+                    && DateTime.UtcNow - c.Timestamp <= COMMAND_EXPIRATION)
+                .ToList();
         }
 
         public void Process(LoadInformationReceived loadInformationReceived)
@@ -182,20 +206,25 @@ namespace DurableTask.Netherite
                     this.EstimatedTransferRTT = SMOOTHING_FACTOR * transferRTT.Value + (1 - SMOOTHING_FACTOR) * this.EstimatedTransferRTT;
                 }
 
-                this.traceHelper.TraceProgress($"Received Load information from partition{loadInformationReceived.PartitionId} with " +
-                    $"mobile={loadInformationReceived.Mobile} stationary={loadInformationReceived.Stationary} and AverageActCompletionTime={loadInformationReceived.AverageActCompletionTime} RTT={transferRTT}");
+                // process acks and expirations
+                this.ProcessTransferCommandAcksAndExpirations(loadInformationReceived);
 
-                // process acks
-                this.PendingOnSource = this.PendingOnSource.Where(c => !loadInformationReceived.ConfirmsSource(c)).ToList();
-                this.PendingOnDestination = this.PendingOnDestination.Where(c => !loadInformationReceived.ConfirmsDestination(c)).ToList();
-
-                // if the reporting node is above TQS and can offload, solicit load reports from all partitions
-                if (info.EstimatedMobile > 0 &&
-                    info.AverageActCompletionTime.HasValue &&
-                    this.TargetQueueLength(info.AverageActCompletionTime.Value) < info.EstimatedLoad)
+                // solicit load information if there are commands pending,
+                // or if the reporting node is above TQS and can offload
+                bool solicitInformationFromAllPartitions = 
+                    this.PendingOnDestination.Count > 0 
+                    || this.PendingOnSource.Count > 0
+                    || (info.ReportedMobile > 0 &&
+                        info.AverageActCompletionTime.HasValue &&
+                        0.5 * this.TargetQueueSize(info.AverageActCompletionTime.Value) < info.ReportedLoad);
+                
+                if (solicitInformationFromAllPartitions)
                 {
                     this.SendSolicitations();
                 }
+
+                this.traceHelper.TraceProgress(
+                    $"LoadInformation partition={loadInformationReceived.PartitionId} mobile={info.ReportedMobile} stationary={info.ReportedStationary} ACT={info.AverageActCompletionTime} RTT={transferRTT} AvgRTT={this.EstimatedTransferRTT} solicit={solicitInformationFromAllPartitions} reporting={this.LoadInfo.Count}");
 
                 // if we have load information from all partitions, try to see if we 
                 // should transfer load to this node
@@ -204,14 +233,17 @@ namespace DurableTask.Netherite
                     // compute estimated backlog sizes based on reported size and pending commands
                     this.ComputeBacklogEstimates();
 
-                    // create a default estimation of average activity completion time
-                    // (we use this to replace missing estimates)
-                    double DefaultEstimatedCompletionTime = this.LoadInfo
-                        .Select(t => t.Value.AverageActCompletionTime).Average() ?? TimeSpan.FromMinutes(1).TotalMilliseconds;
-                    double EstimatedActCompletionTime(uint partitionId)
-                        => this.LoadInfo[partitionId].AverageActCompletionTime ?? DefaultEstimatedCompletionTime;
+                    if (this.LoadInfo.Values.Select(i => i.EstimatedMobile).Sum() > 0)
+                    {
+                        // create a default estimation of average activity completion time
+                        // (we use this to replace missing estimates)
+                        double DefaultEstimatedCompletionTime = this.LoadInfo
+                            .Select(t => t.Value.AverageActCompletionTime).Average() ?? TimeSpan.FromMinutes(1).TotalMilliseconds;
+                        double EstimatedActCompletionTime(uint partitionId)
+                            => this.LoadInfo[partitionId].AverageActCompletionTime ?? DefaultEstimatedCompletionTime;
 
-                    this.ConsiderLoadTransfers(loadInformationReceived.PartitionId, EstimatedActCompletionTime);
+                        this.DecideLoadTransfers(loadInformationReceived.PartitionId, EstimatedActCompletionTime);
+                    }
                 }
             }
             catch (Exception e)
@@ -220,63 +252,60 @@ namespace DurableTask.Netherite
             }
         }
 
-        int TargetQueueLength(double estimatedActCompletionTime) =>
-            (int)Math.Ceiling(this.EstimatedTransferRTT * this.host.Settings.MaxConcurrentActivityFunctions / estimatedActCompletionTime);
+        double PlanAheadInterval => Math.Min(
+                MAX_PLANAHEAD_INTERVAL.TotalMilliseconds,
+                (this.EstimatedTransferRTT + EXTRA_BUFFER_RESERVE.TotalMilliseconds));
 
-        void ConsiderLoadTransfers(uint underloadCandidate, Func<uint, double> EstimatedActCompletionTime)
+        int TargetQueueSize(double estimatedActCompletionTime) =>
+            (int)Math.Ceiling(this.PlanAheadInterval * this.host.Settings.MaxConcurrentActivityFunctions / estimatedActCompletionTime);
+
+        void DecideLoadTransfers(uint destination, Func<uint, double> EstimatedActCompletionTime)
         {
-            string estimated = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedLoad.ToString()));
-            string mobile = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedMobile.ToString()));
-            this.traceHelper.TraceWarning($"Decision pending={this.PendingOnSource.Count},{this.PendingOnDestination.Count} estimated=[{estimated}] mobile=[{mobile}]");
-
-            if (this.LoadInfo.Values.Select(i => i.EstimatedMobile).Sum() == 0)
-            {
-                // there are no mobile activities, so there is no rebalancing possible
-                return;
-            }
+            var transferTargets = new int[this.host.NumberPartitions];
 
             // get the current and target queue length
-            int currentQueueLen = this.LoadInfo[underloadCandidate].EstimatedLoad;
-            int targetQueueLen = this.TargetQueueLength(EstimatedActCompletionTime(underloadCandidate));
-            this.traceHelper.TraceProgress($"Partition={underloadCandidate}, ESTIMATED_RTT_MS={this.EstimatedTransferRTT}, EstimatedActCompletionTime={EstimatedActCompletionTime(underloadCandidate)}, currentQueueLength={currentQueueLen}, and targetQueueLength={targetQueueLen}");
+            int currentQueueSize = this.LoadInfo[destination].EstimatedLoad;
+            int targetQueueSize = this.TargetQueueSize(EstimatedActCompletionTime(destination));
+            int totalTransferTarget = targetQueueSize - currentQueueSize;
+            int transferCount = 0;
 
-            // if the current queue length is smaller than the desired queue length, try to pull works from other partitions
-            if (currentQueueLen < targetQueueLen)
+            // If we have not received actual latency measurements from this node, limit transfer size
+            if (!this.LoadInfo[destination].AverageActCompletionTime.HasValue)
             {
-                if (tryIssueTransferCommands(underloadCandidate, targetQueueLen - currentQueueLen, out Dictionary<uint, int> transferTargets))
+                totalTransferTarget = (int)Math.Ceiling((double)totalTransferTarget / this.host.NumberPartitions);
+            }
+
+            // while below target, try to find transfer candidates
+            for (uint i = 0; i < this.host.NumberPartitions - 1 && totalTransferTarget > 0; i++)
+            {
+                uint candidate = (destination + i + 1) % this.host.NumberPartitions;
+                int candidateCurrentQueueSize = this.LoadInfo[candidate].EstimatedLoad;
+                int candidateTargetQueueSize = this.TargetQueueSize(EstimatedActCompletionTime(candidate));
+
+                int availableToPull = Math.Min(
+                    candidateCurrentQueueSize - candidateTargetQueueSize,
+                    this.LoadInfo[candidate].EstimatedMobile);
+
+                int amount = Math.Min(availableToPull, totalTransferTarget);
+
+
+                if (amount > 0)
                 {
-                    // send transfer commands
-                    foreach (var kvp in transferTargets)
-                    {
-                        this.SendTransferCommand(kvp.Key, underloadCandidate, kvp.Value);
-                    }
+                    totalTransferTarget -= amount;
+                    transferTargets[candidate] = amount;
+                    transferCount += amount;
                 }
             }
 
-            bool tryIssueTransferCommands(uint underloadCandidate, int numActToPull, out Dictionary<uint, int> transferTargets)
+            if (transferCount > 0)
             {
-                transferTargets = new Dictionary<uint, int>();
-
-                for (uint i = 0; i < this.host.NumberPartitions - 1 && numActToPull > 0; i++)
+                this.traceHelper.TraceProgress($"TransferDecision Partition={destination} ACT={EstimatedActCompletionTime(destination):f2} TQS={targetQueueSize} RQS={currentQueueSize} Relative={currentQueueSize - targetQueueSize} Count={transferCount}");
+ 
+                // send transfer commands
+                for (uint i = 0; i < transferTargets.Length; i++)
                 {
-                    uint target = (underloadCandidate + i + 1) % this.host.NumberPartitions;
-                    int targetCurrentQueueLen = this.LoadInfo[target].EstimatedLoad;
-                    int targetTargetQueueLen = this.TargetQueueLength(EstimatedActCompletionTime(target));
-
-                    int availableToPull = Math.Min(
-                        targetCurrentQueueLen - targetTargetQueueLen, 
-                        this.LoadInfo[target].EstimatedMobile);
-
-                    int amount = Math.Min(availableToPull, numActToPull);
-
-                    if (amount > 0)
-                    {
-                        numActToPull -= amount;
-                        transferTargets[target] = amount;
-                    }
+                    this.SendTransferCommand(i, destination, transferTargets[i]);
                 }
-
-                return transferTargets.Count == 0 ? false : true;
             }
         }
     }

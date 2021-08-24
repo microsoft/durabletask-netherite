@@ -17,11 +17,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public DateTime Timestamp { get; set; }
 
-
         [IgnoreDataMember]
         public override EventId EventId => 
-            EventId.MakePartitionToPartitionEventId(
-                ActivityScheduling.GetWorkItemId(this.OriginPartition, this.Timestamp), this.PartitionId);
+            EventId.MakePartitionToPartitionEventId($"{this.OriginPartition:D2}F{this.Timestamp:o}", this.PartitionId);
 
         [IgnoreDataMember]
         public override IEnumerable<(TaskMessage message, string workItemId)> TracedTaskMessages =>

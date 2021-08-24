@@ -286,10 +286,6 @@ namespace DurableTask.Netherite
 
         public void Process(TransferCommandReceived evt, EffectTracker effects)
         {
-            // we can use this for tracing while we develop and debug the code
-            this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processing OffloadCommand, " +
-                $"OffloadDestination={evt.TransferDestination}, NumActivitiesToSend={evt.NumActivitiesToSend}");
-
             evt.TransferredActivities = new List<(TaskMessage, string)>();
 
             for (int i = 0; i < evt.NumActivitiesToSend; i++)
@@ -309,7 +305,7 @@ namespace DurableTask.Netherite
                 this.TransferCommandsReceived[evt.PartitionId] = evt.Timestamp;
             }
 
-            this.Partition.EventTraceHelper.TraceEventProcessingWarning($"Processed OffloadCommand, " +
+            this.Partition.EventTraceHelper.TraceEventProcessingDetail($"Processed OffloadCommand, " +
                 $"OffloadDestination={evt.TransferDestination}, NumActivitiesSent={evt.TransferredActivities.Count}");
             effects.Add(TrackedObjectKey.Outbox);
         }

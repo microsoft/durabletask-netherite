@@ -47,9 +47,8 @@ namespace DurableTask.Netherite.Emulated
             {
                 // this is normal during shutdown
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                this.loadMonitor.ReportTransportError(nameof(MemoryLoadMonitorQueue), e);
             }
         }
     }
