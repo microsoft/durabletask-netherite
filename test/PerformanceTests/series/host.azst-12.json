@@ -28,10 +28,7 @@
 
       "hubName": "perftests",
 
-      "UseGracefulShutdown": true, // helps to avoid lengthy waits for lease expiration
-
-      "maxConcurrentActivityFunctions": "100",
-      "maxConcurrentOrchestratorFunctions": "100",
+      "UseGracefulShutdown": true,
 
       "storageProvider": {
         "type": "AzureStorage",

@@ -28,13 +28,11 @@
 
       "hubName": "perftests",
 
-      "extendedSessionsEnabled": true,
-      "extendedSessionIdleTimeoutInSeconds": 30,
-
       "UseGracefulShutdown": true, 
 
-      "maxConcurrentActivityFunctions": "100",
-      "maxConcurrentOrchestratorFunctions": "100",
+      // turn on extended sessions
+      "extendedSessionsEnabled": true,
+      "extendedSessionIdleTimeoutInSeconds": 30,
 
       "storageProvider": {
         "type": "AzureStorage",
