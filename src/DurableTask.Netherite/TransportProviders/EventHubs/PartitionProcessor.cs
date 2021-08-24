@@ -266,6 +266,8 @@ namespace DurableTask.Netherite.EventHubs
 
             await this.IdempotentShutdown("CloseAsync", reason == CloseReason.LeaseLost);
 
+            await this.IdempotentShutdown("CloseAsync", reason == CloseReason.LeaseLost);
+
             this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} closed", this.eventHubName, this.eventHubPartition);
         }   
 
