@@ -37,7 +37,7 @@ namespace DurableTask.Netherite
         public static TimeSpan INITIAL_RTT_ESTIMATE = TimeSpan.FromSeconds(3);
         public static TimeSpan EXTRA_BUFFER_RESERVE = TimeSpan.FromSeconds(5);
  
-        public static TimeSpan MAX_PLANAHEAD_INTERVAL = TimeSpan.FromSeconds(20);
+        public static TimeSpan MAX_PLANAHEAD_INTERVAL = TimeSpan.FromSeconds(60);
 
         public const double SMOOTHING_FACTOR = 0.1;
 
@@ -60,7 +60,7 @@ namespace DurableTask.Netherite
             public int EstimatedMobile;
 
             public int ReportedLoad => this.ReportedStationary + this.ReportedMobile;
-            public int EstimatedLoad => this.EstimatedStationary + this.EstimatedMobile;
+            public int ProjectedLoad => this.EstimatedStationary + this.EstimatedMobile;
         }
 
         public LoadMonitor(
@@ -163,7 +163,7 @@ namespace DurableTask.Netherite
             }
 
             // trace backlog estimates
-            string estimated = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedLoad.ToString()));
+            string estimated = string.Join(',', this.LoadInfo.Values.Select(i => i.ProjectedLoad.ToString()));
             string mobile = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedMobile.ToString()));
             this.traceHelper.TraceProgress($"BacklogEstimates pending={this.PendingOnSource.Count},{this.PendingOnDestination.Count} RTT={this.EstimatedTransferRTT:f2} estimated=[{estimated}] mobile=[{mobile}]");
         }
@@ -264,9 +264,10 @@ namespace DurableTask.Netherite
             var transferTargets = new int[this.host.NumberPartitions];
 
             // get the current and target queue length
-            int currentQueueSize = this.LoadInfo[destination].EstimatedLoad;
+            int reportedQueueSize = this.LoadInfo[destination].ReportedLoad;
+            int projectedQueueSize = this.LoadInfo[destination].ProjectedLoad;
             int targetQueueSize = this.TargetQueueSize(EstimatedActCompletionTime(destination));
-            int totalTransferTarget = targetQueueSize - currentQueueSize;
+            int totalTransferTarget = Math.Max(0, targetQueueSize - projectedQueueSize);
             int transferCount = 0;
 
             // If we have not received actual latency measurements from this node, limit transfer size
@@ -275,11 +276,13 @@ namespace DurableTask.Netherite
                 totalTransferTarget = (int)Math.Ceiling((double)totalTransferTarget / this.host.NumberPartitions);
             }
 
+            totalTransferTarget = Math.Max(0, totalTransferTarget);
+
             // while below target, try to find transfer candidates
             for (uint i = 0; i < this.host.NumberPartitions - 1 && totalTransferTarget > 0; i++)
             {
                 uint candidate = (destination + i + 1) % this.host.NumberPartitions;
-                int candidateCurrentQueueSize = this.LoadInfo[candidate].EstimatedLoad;
+                int candidateCurrentQueueSize = this.LoadInfo[candidate].ProjectedLoad;
                 int candidateTargetQueueSize = this.TargetQueueSize(EstimatedActCompletionTime(candidate));
 
                 int availableToPull = Math.Min(
@@ -297,9 +300,10 @@ namespace DurableTask.Netherite
                 }
             }
 
+            this.traceHelper.TraceProgress($"TransferDecision partition={destination} ACT={EstimatedActCompletionTime(destination)/1000:f2}s PI={this.PlanAheadInterval/1000:F2}s RQS={reportedQueueSize} PQS={projectedQueueSize} TQS={targetQueueSize} Target={totalTransferTarget} Actual={transferCount}");
+        
             if (transferCount > 0)
             {
-                this.traceHelper.TraceProgress($"TransferDecision Partition={destination} ACT={EstimatedActCompletionTime(destination):f2} TQS={targetQueueSize} RQS={currentQueueSize} Relative={currentQueueSize - targetQueueSize} Count={transferCount}");
  
                 // send transfer commands
                 for (uint i = 0; i < transferTargets.Length; i++)
