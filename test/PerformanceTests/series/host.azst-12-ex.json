@@ -17,8 +17,8 @@
 
       // ---- Per-invocation application-generated logging
       //"Function": "Information", // use this setting for small-scale debugging only
-      "Function": "Warning", // use this setting when running perf tests  
-    },
+      "Function": "Warning" // use this setting when running perf tests  
+    }
   },
   "extensions": {
     "http": {
