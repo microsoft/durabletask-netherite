@@ -267,19 +267,17 @@ namespace DurableTask.Netherite
             int reportedQueueSize = this.LoadInfo[destination].ReportedLoad;
             int projectedQueueSize = this.LoadInfo[destination].ProjectedLoad;
             int targetQueueSize = this.TargetQueueSize(EstimatedActCompletionTime(destination));
-            int totalTransferTarget = Math.Max(0, targetQueueSize - projectedQueueSize);
+            int howMuchToPull = Math.Max(0, targetQueueSize - projectedQueueSize);
             int transferCount = 0;
 
             // If we have not received actual latency measurements from this node, limit transfer size
             if (!this.LoadInfo[destination].AverageActCompletionTime.HasValue)
             {
-                totalTransferTarget = (int)Math.Ceiling((double)totalTransferTarget / this.host.NumberPartitions);
+                howMuchToPull = (int)Math.Ceiling((double)howMuchToPull / this.host.NumberPartitions);
             }
 
-            totalTransferTarget = Math.Max(0, totalTransferTarget);
-
             // while below target, try to find transfer candidates
-            for (uint i = 0; i < this.host.NumberPartitions - 1 && totalTransferTarget > 0; i++)
+            for (uint i = 0; i < this.host.NumberPartitions - 1 && howMuchToPull > 0; i++)
             {
                 uint candidate = (destination + i + 1) % this.host.NumberPartitions;
                 int candidateCurrentQueueSize = this.LoadInfo[candidate].ProjectedLoad;
@@ -289,18 +287,18 @@ namespace DurableTask.Netherite
                     candidateCurrentQueueSize - candidateTargetQueueSize,
                     this.LoadInfo[candidate].EstimatedMobile);
 
-                int amount = Math.Min(availableToPull, totalTransferTarget);
+                int amount = Math.Min(availableToPull, howMuchToPull);
 
 
                 if (amount > 0)
                 {
-                    totalTransferTarget -= amount;
+                    howMuchToPull -= amount;
                     transferTargets[candidate] = amount;
                     transferCount += amount;
                 }
             }
 
-            this.traceHelper.TraceProgress($"TransferDecision partition={destination} ACT={EstimatedActCompletionTime(destination)/1000:f2}s PI={this.PlanAheadInterval/1000:F2}s RQS={reportedQueueSize} PQS={projectedQueueSize} TQS={targetQueueSize} Target={totalTransferTarget} Actual={transferCount}");
+            this.traceHelper.TraceProgress($"TransferDecision partition={destination} ACT={EstimatedActCompletionTime(destination)/1000:f2}s PI={this.PlanAheadInterval/1000:F2}s RQS={reportedQueueSize} PQS={projectedQueueSize} TQS={targetQueueSize} Target={howMuchToPull+transferCount} Actual={transferCount}");
         
             if (transferCount > 0)
             {
