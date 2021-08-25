@@ -50,9 +50,9 @@ namespace PerformanceTests.FileHash
                     var state = await client.GetStatusAsync(orchestrationInstanceId, false, false, false);
                     var wordsHashed = (double)JToken.Parse(await stringContent.ReadAsStringAsync()); // millions of words
                     var elapsedSeconds = (state.LastUpdatedTime - state.CreatedTime).TotalSeconds;
-                    //var size = (double) wordsHashed / 1000000; // millions of words
+                    var size = (double) wordsHashed / 1000000; // millions of words
                     var throughput = wordsHashed / elapsedSeconds;
-                    response = new OkObjectResult(new { numFiles, wordsHashed, elapsedSeconds, throughput });
+                    response = new OkObjectResult(new { numFiles, wordsHashed, elapsedSeconds, size, throughput });
                 }
 
                 return response;

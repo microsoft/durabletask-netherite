@@ -27,18 +27,16 @@ namespace PerformanceTests.FileHash
             CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
 
             // download the book from blob storage
-            string book = context.GetInput<string>();
+            var input = context.GetInput<(string book, int multiplier)>();
             CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
-            CloudBlockBlob blob = blobContainer.GetBlockBlobReference(book);
+            CloudBlockBlob blob = blobContainer.GetBlockBlobReference(input.book);
             string doc = await blob.DownloadTextAsync();
 
             long wordCount = 0;
             string[] words = doc.Split(separators, StringSplitOptions.RemoveEmptyEntries);
 
             // randomly scale up the work to create unbalanced work between activities
-            System.Random random = new System.Random();
-            int scale = random.Next(20, 50);
-            foreach (int _ in Enumerable.Range(1, scale))
+            for (int i = 0; i < input.multiplier; i++)
             { 
                 foreach (string word in words)
                 {

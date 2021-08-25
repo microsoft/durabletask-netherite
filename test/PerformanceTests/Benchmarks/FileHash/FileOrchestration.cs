@@ -26,22 +26,13 @@ namespace PerformanceTests.FileHash
 
             var books = await context.CallActivityAsync<List<string>>(nameof(GetFilesActivity), null);
 
-            int fileCount = 0;
             var results = new List<Task<long>>();
+            System.Random random = new System.Random(0);
 
-            foreach (var book in books)
+            for (int i = 0; i < numFiles; i++)
             {
-                Task<long> wordCount = context.CallActivityAsync<long>(nameof(HashActivity), book);
-                //log.LogWarning($"Processing {book}");
-
-                results.Add(wordCount);
-                fileCount++;
-
-                if (fileCount == numFiles)
-                {
-                    log.LogWarning($"Sent request to process {fileCount} files, exiting");
-                    break;
-                }
+                (string book, int multiplier) input = (books[i % books.Count], random.Next(20, 50));
+                results.Add(context.CallActivityAsync<long>(nameof(HashActivity), input));
             }
 
             await Task.WhenAll(results);
