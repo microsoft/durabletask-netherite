@@ -135,10 +135,10 @@ namespace DurableTask.Netherite
         }
 
         [Event(222, Level = EventLevel.Warning, Version = 1)]
-        public void TaskMessageDiscarded(string Account, string TaskHub, int PartitionId, string MessageId, string Reason, string EventType, int TaskEventId, string InstanceId, string ExecutionId, string AppName, string ExtensionVersion)
+        public void TaskMessageDiscarded(string Account, string TaskHub, int PartitionId, string MessageId, string Details, string EventType, int TaskEventId, string InstanceId, string ExecutionId, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(222, Account, TaskHub, PartitionId, MessageId, Reason, EventType, TaskEventId, InstanceId, ExecutionId, AppName, ExtensionVersion);
+            this.WriteEvent(222, Account, TaskHub, PartitionId, MessageId, Details, EventType, TaskEventId, InstanceId, ExecutionId, AppName, ExtensionVersion);
         }
 
         [Event(223, Level = EventLevel.Verbose, Version = 1)]
@@ -163,10 +163,10 @@ namespace DurableTask.Netherite
         }
 
         [Event(226, Level = EventLevel.Warning, Version = 1)]
-        public void WorkItemDiscarded(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string Reason, string ReplacedBy, string AppName, string ExtensionVersion)
+        public void WorkItemDiscarded(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string Details, string ReplacedBy, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(226, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, Reason, ReplacedBy, AppName, ExtensionVersion);
+            this.WriteEvent(226, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, Details, ReplacedBy, AppName, ExtensionVersion);
         }
 
         [Event(227, Level = EventLevel.Verbose, Version = 1)]
