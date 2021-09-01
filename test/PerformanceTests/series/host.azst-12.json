@@ -17,8 +17,8 @@
 
       // ---- Per-invocation application-generated logging
       //"Function": "Information", // use this setting for small-scale debugging only
-      "Function": "Warning", // use this setting when running perf tests  
-    },
+      "Function": "Warning" // use this setting when running perf tests  
+    }
   },
   "extensions": {
     "http": {
@@ -28,10 +28,7 @@
 
       "hubName": "perftests",
 
-      "UseGracefulShutdown": true, // helps to avoid lengthy waits for lease expiration
-
-      "maxConcurrentActivityFunctions": "100",
-      "maxConcurrentOrchestratorFunctions": "100",
+      "UseGracefulShutdown": true,
 
       "storageProvider": {
         "type": "AzureStorage",

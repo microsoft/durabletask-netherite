@@ -40,7 +40,7 @@ namespace PerformanceTests.FileHash
                 string orchestrationInstanceId = await client.StartNewAsync(nameof(FileOrchestration), null, numFiles);
 
                 // wait for it to complete and return the result
-                var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(400));
+                var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(600));
 
                 if (response is ObjectResult objectResult
                     && objectResult.Value is HttpResponseMessage responseMessage
@@ -48,10 +48,10 @@ namespace PerformanceTests.FileHash
                     && responseMessage.Content is StringContent stringContent)
                 {
                     var state = await client.GetStatusAsync(orchestrationInstanceId, false, false, false);
-                    var wordsHashed = (int)JToken.Parse(await stringContent.ReadAsStringAsync());
+                    var wordsHashed = (double)JToken.Parse(await stringContent.ReadAsStringAsync()); // millions of words
                     var elapsedSeconds = (state.LastUpdatedTime - state.CreatedTime).TotalSeconds;
                     var size = (double) wordsHashed / 1000000; // millions of words
-                    var throughput = size / elapsedSeconds;
+                    var throughput = wordsHashed / elapsedSeconds;
                     response = new OkObjectResult(new { numFiles, wordsHashed, elapsedSeconds, size, throughput });
                 }
 

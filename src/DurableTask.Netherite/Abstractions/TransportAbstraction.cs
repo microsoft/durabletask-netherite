@@ -36,7 +36,7 @@ namespace DurableTask.Netherite
             /// <param name="clientId">A globally unique identifier for this client</param>
             /// <param name="taskHubGuid">the unique identifier of the taskhub</param>
             /// <param name="batchSender">A sender that can be used by the client for sending messages</param>
-            /// <returns>A sender for passing messages to the transport backend</returns>
+            /// <returns>A handle to the created client</returns>
             IClient AddClient(Guid clientId, Guid taskHubGuid, ISender batchSender);
 
             /// <summary>
@@ -46,6 +46,14 @@ namespace DurableTask.Netherite
             /// <param name="batchSender">A sender for passing messages to the transport backend</param>
             /// <returns></returns>
             IPartition AddPartition(uint partitionId, ISender batchSender);
+
+            /// <summary>
+            /// Creates a client on this host.
+            /// </summary>
+            /// <param name="taskHubGuid">the unique identifier of the taskhub</param>
+            /// <param name="batchSender">A sender that can be used by the load monitor for sending messages</param>
+            /// <returns>A handle to the created load monitor</returns>
+            ILoadMonitor AddLoadMonitor(Guid taskHubGuid, ISender batchSender);
 
             /// <summary>
             /// Returns an error handler object for the given partition.
@@ -136,6 +144,24 @@ namespace DurableTask.Netherite
             /// <param name="msg">A message describing the circumstances.</param>
             /// <param name="e">The exception that was observed.</param>
             void ReportTransportError(string msg, Exception e);
+        }
+
+        /// <summary>
+        /// The load monitor functionality, as seen by the transport back-end.
+        /// </summary>
+        public interface ILoadMonitor
+        {
+            /// <summary>
+            /// Processes a single event on this client.
+            /// </summary>
+            /// <param name="loadMonitorEvent">The event to process.</param>
+            void Process(LoadMonitorEvent loadMonitorEvent);
+
+            /// <summary>
+            /// Stop processing events and shut down.
+            /// </summary>
+            /// <returns>When the load monitor is shut down.</returns>
+            Task StopAsync();
         }
 
         /// <summary>

@@ -168,6 +168,7 @@ namespace DurableTask.Netherite
                     this.Settings.ResolvedTransportConnectionString, 
                     this.Settings.LoadInformationAzureTableName, 
                     this.Settings.HubName,
+                    this.TraceScaleRecommendation,
                     this.LoggerFactory.CreateLogger($"{LoggerCategoryName}.Scaling"));
                 return true;
             }
@@ -176,6 +177,11 @@ namespace DurableTask.Netherite
                 monitor = null;
                 return false;
             }
+        }
+
+        void TraceScaleRecommendation(string action, int workerCount, string details)
+        {
+            EtwSource.Log.OrchestrationServiceScaleRecommendation(this.StorageAccountName, this.Settings.HubName, action, workerCount, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
         }
 
         /******************************/
@@ -391,6 +397,11 @@ namespace DurableTask.Netherite
                 this.ActivityWorkItemQueue, this.OrchestrationWorkItemQueue, this.LoadPublisher, this.workItemTraceHelper);
 
             return partition;
+        }
+
+        TransportAbstraction.ILoadMonitor TransportAbstraction.IHost.AddLoadMonitor(Guid taskHubGuid, TransportAbstraction.ISender batchSender)
+        {
+            return new LoadMonitor(this, taskHubGuid, batchSender);
         }
 
         IStorageProvider TransportAbstraction.IHost.StorageProvider => this;
@@ -820,6 +831,7 @@ namespace DurableTask.Netherite
                 OriginPartitionId = activityWorkItem.OriginPartition,
                 ReportedLoad = this.ActivityWorkItemQueue.Load,
                 Timestamp = DateTime.UtcNow,
+                LatencyMs = latencyMs,
                 Response = responseMessage,
             };
 

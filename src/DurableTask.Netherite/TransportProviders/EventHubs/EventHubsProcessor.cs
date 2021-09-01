@@ -23,6 +23,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly TaskhubParameters parameters;
         readonly EventHubsTraceHelper traceHelper;
         readonly NetheriteOrchestrationServiceSettings settings;
+        readonly EventHubsTransport eventHubsTransport;
         readonly PartitionContext partitionContext;
         readonly string eventHubName;
         readonly string eventHubPartition;
@@ -71,6 +72,7 @@ namespace DurableTask.Netherite.EventHubs
             TaskhubParameters parameters,
             PartitionContext partitionContext,
             NetheriteOrchestrationServiceSettings settings,
+            EventHubsTransport eventHubsTransport,
             EventHubsTraceHelper traceHelper,
             CancellationToken shutdownToken)
         {
@@ -80,6 +82,7 @@ namespace DurableTask.Netherite.EventHubs
             this.pendingDelivery = new ConcurrentQueue<(PartitionEvent evt, long offset, long seqno)>();
             this.partitionContext = partitionContext;
             this.settings = settings;
+            this.eventHubsTransport = eventHubsTransport;
             this.eventHubName = this.partitionContext.EventHubPath;
             this.eventHubPartition = this.partitionContext.PartitionId;
             this.taskHubGuid = parameters.TaskhubGuid.ToByteArray();

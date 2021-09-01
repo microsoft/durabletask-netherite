@@ -233,10 +233,6 @@ namespace DurableTask.Netherite.AzureFunctions
                         break;
                 }
 
-                this.scalingMonitor.Logger.LogInformation(
-                    "Netherite autoscaler recommends: {scaleRecommendation} from: {workerCount} because: {reason}",
-                    scaleStatus.Vote.ToString(), workerCount, recommendation.Reason);
-
                 return scaleStatus;
             }
         }
