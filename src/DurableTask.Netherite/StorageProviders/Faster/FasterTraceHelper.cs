@@ -158,7 +158,7 @@ namespace DurableTask.Netherite.Faster
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
-                this.logger.LogInformation("Part{partition:D2} PartitionLease renewed after {elapsedSeconds:F2}s timing={timing:F2}s", this.partitionId, elapsedSeconds, timing);
+                this.logger.LogDebug("Part{partition:D2} PartitionLease renewed after {elapsedSeconds:F2}s timing={timing:F2}s", this.partitionId, elapsedSeconds, timing);
                 this.etwLogDebug?.FasterLeaseRenewed(this.account, this.taskHub, this.partitionId, elapsedSeconds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
