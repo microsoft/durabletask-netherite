@@ -10,7 +10,7 @@ namespace DurableTask.Netherite
     using DurableTask.Netherite.Scaling;
     using Microsoft.Extensions.Logging;
 
-    class PartitionTraceHelper
+    class PartitionTraceHelper : IBatchWorkerTraceHelper
     {
         readonly ILogger logger;
         readonly string account;
@@ -51,14 +51,14 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void BatchWorkerProgress(string worker, int batchSize, double elapsedMilliseconds, int? nextBatch)
+        public void TraceBatchWorkerProgress(string worker, int batchSize, double elapsedMilliseconds, int? nextBatch)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
                 this.logger.LogDebug("Part{partition:D2} {worker} completed batch: batchSize={batchSize} elapsedMilliseconds={elapsedMilliseconds:F2} nextBatch={nextBatch}",
                     this.partitionId, worker, batchSize, elapsedMilliseconds, nextBatch.ToString() ?? "");
        
-                EtwSource.Log.BatchWorkerProgress(this.account, this.taskHub, this.partitionId, worker, batchSize, elapsedMilliseconds, nextBatch.ToString() ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                EtwSource.Log.BatchWorkerProgress(this.account, this.taskHub, this.partitionId.ToString(), worker, batchSize, elapsedMilliseconds, nextBatch.ToString() ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
     }

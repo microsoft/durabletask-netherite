@@ -53,6 +53,13 @@ namespace DurableTask.Netherite
             this.WriteEvent(202, Account, Message, Details, TaskHub, WorkerName, AppName, ExtensionVersion);
         }
 
+        [Event(203, Level = EventLevel.Informational, Version = 1)]
+        public void OrchestrationServiceScaleRecommendation(string Account, string TaskHub, string Action, int WorkerCount, string Details, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(203, Account, TaskHub, Action, WorkerCount, Details, AppName, ExtensionVersion);
+        }
+
         // ----- partition and client lifecycles
 
         [Event(210, Level = EventLevel.Informational, Version = 1)]
@@ -220,11 +227,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(244, Account, TaskHub, ClientId, PartitionEventId, EventInfo, AppName, ExtensionVersion);
         }
 
-        [Event(245, Level = EventLevel.Warning, Version = 1)]
-        public void PartitionOffloadDecision(string Account, string TaskHub, int PartitionId, long CommitLogPosition, string PartitionEventId, int ReportedLocalLoad, int Pending, int Backlog, int Remotes, string ReportedRemoteLoad, string AppName, string ExtensionVersion)
+        [Event(245, Level = EventLevel.Informational, Version = 1)]
+        public void PartitionOffloadDecision(string Account, string TaskHub, int PartitionId, string PartitionEventId, int ReportedLocalLoad, int Pending, int Backlog, int Remotes, string Distribution, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(245, Account, TaskHub, PartitionId, CommitLogPosition, PartitionEventId, ReportedLocalLoad, Pending, Backlog, Remotes, ReportedRemoteLoad, AppName, ExtensionVersion);
+            this.WriteEvent(245, Account, TaskHub, PartitionId, PartitionEventId, ReportedLocalLoad, Pending, Backlog, Remotes, Distribution, AppName, ExtensionVersion);
         }
 
         [Event(246, Level = EventLevel.Informational, Version = 1)]
@@ -235,10 +242,10 @@ namespace DurableTask.Netherite
         }
 
         [Event(247, Level = EventLevel.Verbose, Version = 1)]
-        public void BatchWorkerProgress(string Account, string TaskHub, int PartitionId, string Worker, int BatchSize, double LatencyMs, string NextBatch, string AppName, string ExtensionVersion)
+        public void BatchWorkerProgress(string Account, string TaskHub, string PartitionId, string Worker, int BatchSize, double ElapsedMilliseconds, string NextBatch, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(247, Account, TaskHub, PartitionId, Worker, BatchSize, LatencyMs, NextBatch, AppName, ExtensionVersion);
+            this.WriteEvent(247, Account, TaskHub, PartitionId, Worker, BatchSize, ElapsedMilliseconds, NextBatch, AppName, ExtensionVersion);
         }
 
         // ----- Faster Storage
@@ -390,6 +397,28 @@ namespace DurableTask.Netherite
         {
             SetCurrentThreadActivityId(serviceInstanceId);
             this.WriteEvent(274, Account, TaskHub, EventHubsNamespace, PartitionId, Details, AppName, ExtensionVersion);
+        }
+
+        // ----- LoadMonitor
+        [Event(275, Level = EventLevel.Informational, Version = 1)]
+        public void LoadMonitorProgress(string Account, string TaskHub, string Details, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(275, Account, TaskHub, Details, AppName, ExtensionVersion);
+        }
+
+        [Event(276, Level = EventLevel.Warning, Version = 1)]
+        public void LoadMonitorWarning(string Account, string TaskHub, string Details, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(276, Account, TaskHub, Details, AppName, ExtensionVersion);
+        }
+
+        [Event(277, Level = EventLevel.Error, Version = 1)]
+        public void LoadMonitorError(string Account, string TaskHub, string Message, string Details, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(277, Account, TaskHub, Message, Details, AppName, ExtensionVersion);
         }
     }
 }

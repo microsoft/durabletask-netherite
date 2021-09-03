@@ -39,6 +39,16 @@ namespace DurableTask.Netherite
             /// An event that is sent from a partition to another partition.
             /// </summary>
             PartitionToPartition,
+
+            /// <summary>
+            /// An event that is sent from a partition to the load monitor.
+            /// </summary>
+            ToLoadMonitor,
+
+            /// <summary>
+            /// An event that is sent from the load monitor to a partition
+            /// </summary>
+            LoadMonitorToPartition,
         }
 
         /// <summary>
@@ -90,6 +100,12 @@ namespace DurableTask.Netherite
             Category = EventCategory.ClientResponse
         };
 
+        internal static EventId MakeLoadMonitorEventId(Guid RequestId) => new EventId()
+        {
+            WorkItemId = RequestId.ToString("N"),
+            Category = EventCategory.ToLoadMonitor
+        };
+
         internal static EventId MakePartitionInternalEventId(string workItemId) => new EventId()
         {
             WorkItemId = workItemId,
@@ -101,6 +117,13 @@ namespace DurableTask.Netherite
             WorkItemId = workItemId,
             PartitionId = destinationPartition,
             Category = EventCategory.PartitionToPartition
+        };
+
+        internal static EventId MakeLoadMonitorToPartitionEventId(Guid RequestId, uint destinationPartition) => new EventId()
+        {
+            WorkItemId = RequestId.ToString("N"),
+            PartitionId = destinationPartition,
+            Category = EventCategory.LoadMonitorToPartition
         };
 
         internal static EventId MakeSubEventId(EventId id, int fragment)
@@ -124,6 +147,12 @@ namespace DurableTask.Netherite
                     return $"{this.WorkItemId}{this.IndexSuffix}";
 
                 case EventCategory.PartitionToPartition:
+                    return $"{this.WorkItemId}P{this.PartitionId:D2}{this.IndexSuffix}";
+
+                case EventCategory.ToLoadMonitor:
+                    return $"{this.WorkItemId}{this.IndexSuffix}";
+
+                case EventCategory.LoadMonitorToPartition:
                     return $"{this.WorkItemId}P{this.PartitionId:D2}{this.IndexSuffix}";
 
                 default:

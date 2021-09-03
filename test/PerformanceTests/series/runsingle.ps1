@@ -13,7 +13,7 @@ param (
 	$Orchestration="CollisionSearch/divide-and-conquer",
 	$Data="1000",
 	$DelayAfterRun = 15,
-	$Tag="neth-12-ls",
+	$Tag="neth",
 	$HubName="perftests",
 	$ResultsFile="./results.csv",
 	$DeployCode=$true,

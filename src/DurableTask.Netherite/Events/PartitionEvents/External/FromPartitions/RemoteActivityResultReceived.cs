@@ -21,10 +21,10 @@ namespace DurableTask.Netherite
         public long ActivityId { get; set; }
 
         [DataMember]
-        public int ActivitiesQueueSize { get; set; }
+        public DateTime Timestamp { get; set; }
 
         [DataMember]
-        public DateTime Timestamp { get; set; }
+        public double LatencyMs { get; set; }
 
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionToPartitionEventId(this.WorkItemId, this.PartitionId);

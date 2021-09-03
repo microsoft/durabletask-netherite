@@ -59,7 +59,7 @@ namespace PerformanceTests.CollisionSearch
                 string orchestrationInstanceId = await client.StartNewAsync(orchestrationName, null, parameters);
 
                 // wait for it to complete and return the result
-                var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(200));
+                var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(900));
 
                 if (response is ObjectResult objectResult
                     && objectResult.Value is HttpResponseMessage responseMessage

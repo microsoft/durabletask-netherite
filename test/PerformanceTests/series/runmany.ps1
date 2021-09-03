@@ -15,7 +15,7 @@ param (
 	$NumOrchestrations=10000,
 	$PortionSize=200,
 	$DelayAfterRun=25,
-	$Tag="neth-12-ls",
+	$Tag="neth",
 	$HubName="perftests",
 	$ResultsFile="./results.csv",
 	$DeployCode=$true,

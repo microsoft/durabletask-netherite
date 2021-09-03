@@ -16,9 +16,11 @@ namespace DurableTask.Netherite.EventHubs
         readonly string connectionString;
         readonly string[] partitionHubs;
         readonly string[] clientHubs;
+        readonly string loadMonitorHub;
 
         List<EventHubClient> partitionClients;
         List<EventHubClient> clientClients;
+        EventHubClient loadMonitorClient;
 
         readonly List<(EventHubClient client, string id)> partitionPartitions = new List<(EventHubClient client, string id)>();
         readonly List<(EventHubClient client, string id)> clientPartitions = new List<(EventHubClient client, string id)>();
@@ -28,6 +30,7 @@ namespace DurableTask.Netherite.EventHubs
 
         public ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>> _partitionSenders = new ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>>();
         public ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>> _clientSenders = new ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>>();
+        public ConcurrentDictionary<int, LoadMonitorSender> _loadMonitorSenders = new ConcurrentDictionary<int, LoadMonitorSender>();
 
         public TransportAbstraction.IHost Host { get; set; }
         public EventHubsTraceHelper TraceHelper { get; set; }
@@ -37,16 +40,18 @@ namespace DurableTask.Netherite.EventHubs
         public EventHubsConnections(
             string connectionString, 
             string[] partitionHubs,
-            string[] clientHubs)
+            string[] clientHubs,
+            string loadMonitorHub)
         {
             this.connectionString = connectionString;
             this.partitionHubs = partitionHubs;
             this.clientHubs = clientHubs;
-        }
+            this.loadMonitorHub = loadMonitorHub;
+       }
 
         public async Task StartAsync(TaskhubParameters parameters)
         {
-            await Task.WhenAll(this.GetPartitionInformationAsync(), this.GetClientInformationAsync());
+            await Task.WhenAll(this.GetPartitionInformationAsync(), this.GetClientInformationAsync(), this.GetLoadMonitorInformationAsync());
 
             // check that we are the correct namespace
             if (!string.IsNullOrEmpty(parameters.EventHubsEndpoint)
@@ -94,6 +99,11 @@ namespace DurableTask.Netherite.EventHubs
                     {
                         yield return client;
                     }
+                }
+
+                if (this.loadMonitorHub != null)
+                {
+                    yield return this.loadMonitorClient;
                 }
             }
 
@@ -159,9 +169,20 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
+        Task GetLoadMonitorInformationAsync()
+        {
+            // create loadmonitor client
+            var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
+            {
+                EntityPath = loadMonitorHub,
+            };
+            this.loadMonitorClient = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+            return Task.CompletedTask;
+        }
+
         public static async Task<(long[], DateTime[], string)> GetPartitionInfo(string connectionString, string[] partitionHubs)
         {
-            var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0]);
+            var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0], null);
             await connections.GetPartitionInformationAsync();
 
             var numberPartitions = connections.partitionPartitions.Count;
@@ -204,6 +225,14 @@ namespace DurableTask.Netherite.EventHubs
             return clientReceiver;
         }
 
+        public PartitionReceiver CreateLoadMonitorReceiver(string consumerGroupName)
+        {
+            var loadMonitorReceiver = this.loadMonitorClient.CreateReceiver(consumerGroupName, "0", EventPosition.FromEnqueuedTime(DateTime.UtcNow - TimeSpan.FromSeconds(10)));
+            this.TraceHelper.LogDebug("Created LoadMonitor PartitionReceiver {receiver} from {clientId}", loadMonitorReceiver.ClientId, this.loadMonitorClient.ClientId);
+            return loadMonitorReceiver;
+        }
+
+
         public EventHubsSender<PartitionUpdateEvent> GetPartitionSender(int partitionId, byte[] taskHubGuid)
         {
             return this._partitionSenders.GetOrAdd(partitionId, (key) => {
@@ -235,5 +264,20 @@ namespace DurableTask.Netherite.EventHubs
                 return sender;
             });
         }
-     }
+
+        public LoadMonitorSender GetLoadMonitorSender(byte[] taskHubGuid)
+        {
+            return this._loadMonitorSenders.GetOrAdd(0, (key) =>
+            {
+                var loadMonitorSender = this.loadMonitorClient.CreatePartitionSender("0");
+                var sender = new LoadMonitorSender(
+                    this.Host,
+                    taskHubGuid,
+                    loadMonitorSender,
+                    this.TraceHelper);
+                this.TraceHelper.LogDebug("Created LoadMonitorSender {sender} from {clientId}", loadMonitorSender.ClientId, this.loadMonitorClient.ClientId);
+                return sender;
+            });
+        }
+    }
 }

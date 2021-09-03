@@ -151,6 +151,15 @@ namespace DurableTask.Netherite.Scaling
         public static bool IsLongIdle(string latencyTrend) => latencyTrend.Count() == LatencyTrendLength && latencyTrend.All(c => c == Idle);
 
         /// <summary>
+        /// Whether a latency trend indicates that a partition is experiencing significant load
+        /// </summary>
+        public bool IsLoaded()
+        {
+            var last = this.LatencyTrend.LastOrDefault();
+            return (last == MediumLatency || last == HighLatency);
+        }
+
+        /// <summary>
         /// Copy the load info for the next measuring interval
         /// </summary>
         /// <returns></returns>

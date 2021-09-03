@@ -408,6 +408,11 @@ namespace DurableTask.Netherite.Faster
                     await this.PublishPartitionLoad().ConfigureAwait(false);
                 }
 
+                if (ActivityScheduling.RequiresLoadMonitor(this.partition.Settings.ActivityScheduler))
+                {
+                    var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker).ConfigureAwait(false)) as ActivitiesState;
+                    activitiesState.CollectLoadMonitorInformation();
+                }
                 if (this.loadInfo.IsBusy() != null
                      || (this.lastCheckpointedCommitLogPosition == this.CommitLogPosition 
                          && this.lastCheckpointedInputQueuePosition == this.InputQueuePosition
