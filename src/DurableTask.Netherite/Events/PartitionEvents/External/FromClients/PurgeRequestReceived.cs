@@ -19,7 +19,10 @@ namespace DurableTask.Netherite
 
         const int MaxBatchSize = 1000;
 
-        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition)
+        public async override Task OnQueryCompleteAsync(
+            IAsyncEnumerable<OrchestrationState> instances, 
+            Partition partition,
+            PartitionQueryEvent evt)
         {
             int batchCount = 0;
 

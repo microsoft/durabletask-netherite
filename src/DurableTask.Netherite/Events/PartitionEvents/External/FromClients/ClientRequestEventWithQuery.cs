@@ -19,10 +19,19 @@ namespace DurableTask.Netherite
         [DataMember]
         public InstanceQuery InstanceQuery { get; set; }
 
+        [DataMember]
+        public string ContinuationToken { get; set; }
+
+        [DataMember]
+        public int PageSize { get; set; }
+
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakeClientRequestEventId(this.ClientId, this.RequestId);
 
-        public abstract Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition);
+        public abstract Task OnQueryCompleteAsync(
+            IAsyncEnumerable<OrchestrationState> result, 
+            Partition partition,
+            PartitionQueryEvent evt);
 
         public sealed override void DetermineEffects(EffectTracker effects)
         {

@@ -13,6 +13,12 @@ namespace DurableTask.Netherite
         [DataMember]
         public IList<OrchestrationState> OrchestrationStates { get; set; }
 
+        [DataMember]
+        public string ContinuationToken { get; set; }
+
+        [IgnoreDataMember]
+        public bool NonEmpty => this.OrchestrationStates.Count > 0 || this.ContinuationToken != null;
+
         public override string ToString() => $"Count: {this.OrchestrationStates.Count}";
     }
 }

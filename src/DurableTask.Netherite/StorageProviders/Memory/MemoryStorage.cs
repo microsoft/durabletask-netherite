@@ -152,6 +152,8 @@ namespace DurableTask.Netherite
 
                                 case PartitionQueryEvent queryEvent:
                                     var instances = this.QueryOrchestrationStates(queryEvent.InstanceQuery);
+                                    queryEvent.PageSizeResult = instances.Count;
+                                    queryEvent.ContinuationTokenResult = null;
                                     var backgroundTask = Task.Run(() => effects.ProcessQueryResultAsync(queryEvent, instances.ToAsyncEnumerable()));
                                     break;
 

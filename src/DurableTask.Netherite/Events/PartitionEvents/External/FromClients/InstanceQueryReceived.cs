@@ -11,13 +11,16 @@ namespace DurableTask.Netherite
     [DataContract]
     class InstanceQueryReceived : ClientRequestEventWithQuery
     {
-        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition)
+        public async override Task OnQueryCompleteAsync(
+            IAsyncEnumerable<OrchestrationState> instances, 
+            Partition partition,
+            PartitionQueryEvent evt)
         {
             var response = new QueryResponseReceived
             {
                 ClientId = this.ClientId,
                 RequestId = this.RequestId,
-                OrchestrationStates = new List<OrchestrationState>()
+                OrchestrationStates = new List<OrchestrationState>(),
             };
 
             await foreach (var orchestrationState in instances)
@@ -25,6 +28,8 @@ namespace DurableTask.Netherite
                 response.OrchestrationStates.Add(orchestrationState);
             }
 
+            partition.Assert(response.OrchestrationStates.Count == evt.PageSizeResult);
+            response.ContinuationToken = evt.ContinuationTokenResult;
             partition.Send(response);
         }
     }

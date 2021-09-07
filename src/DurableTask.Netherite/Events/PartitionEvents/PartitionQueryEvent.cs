@@ -8,11 +8,18 @@ namespace DurableTask.Netherite
     using System.Threading.Tasks;
     using DurableTask.Core;
 
-    [DataContract]
     abstract class PartitionQueryEvent : PartitionEvent
     {
         public abstract InstanceQuery InstanceQuery { get; }
-   
+
+        public abstract int? PageSize { get; }
+
+        public abstract string ContinuationToken { get; }
+
+        public int PageSizeResult { get; set; }
+
+        public string ContinuationTokenResult { get; set; }
+
         /// <summary>
         /// The continuation for the query operation.
         /// </summary>

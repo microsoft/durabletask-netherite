@@ -9,10 +9,13 @@ namespace DurableTask.Netherite
     using System.Diagnostics;
     using System.IO;
     using System.Linq;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Core;
     using DurableTask.Core.History;
+    using Newtonsoft.Json;
+    using Newtonsoft.Json.Linq;
 
     class Client : TransportAbstraction.IClient
     {
@@ -416,88 +419,285 @@ namespace DurableTask.Netherite
         }
 
         public Task<IList<OrchestrationState>> GetOrchestrationStateAsync(CancellationToken cancellationToken)
-            => this.RunPartitionQueries<InstanceQueryReceived, QueryResponseReceived, IList<OrchestrationState>>(
-                partitionId => new InstanceQueryReceived() {
-                    PartitionId = partitionId,
-                    ClientId = this.ClientId,
-                    RequestId = Interlocked.Increment(ref this.SequenceNumber),
-                    TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
-                    InstanceQuery = new InstanceQuery(),
-                },
-                (IEnumerable<QueryResponseReceived> responses) => responses.SelectMany(response => response.OrchestrationStates).ToList(),
+            => this.RunUnpagedPartitionQueries(
+                new InstanceQuery(),
                 cancellationToken);
 
         public Task<IList<OrchestrationState>> GetOrchestrationStateAsync(DateTime? createdTimeFrom, DateTime? createdTimeTo,
                     IEnumerable<OrchestrationStatus> runtimeStatus, string instanceIdPrefix, CancellationToken cancellationToken = default)
-            => this.RunPartitionQueries<InstanceQueryReceived,QueryResponseReceived,IList<OrchestrationState>>(
-                partitionId => new InstanceQueryReceived() {
-                    PartitionId = partitionId,
-                    ClientId = this.ClientId,
-                    RequestId = Interlocked.Increment(ref this.SequenceNumber),
-                    TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
-                    InstanceQuery = new InstanceQuery(
+            => this.RunUnpagedPartitionQueries(
+                new InstanceQuery(
                         runtimeStatus?.ToArray(), 
                         createdTimeFrom?.ToUniversalTime(),
                         createdTimeTo?.ToUniversalTime(),
                         instanceIdPrefix,
                         fetchInput: true),
-                },
-                (IEnumerable<QueryResponseReceived> responses) => responses.SelectMany(response => response.OrchestrationStates).ToList(),
                 cancellationToken);
 
-        public Task<int> PurgeInstanceHistoryAsync(DateTime? createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus, CancellationToken cancellationToken = default)
-            => this.RunPartitionQueries(
-                partitionId => new PurgeRequestReceived()
-                {
-                    PartitionId = partitionId,
-                    ClientId = this.ClientId,
-                    RequestId = Interlocked.Increment(ref this.SequenceNumber),
-                    TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
-                    InstanceQuery = new InstanceQuery(
-                        runtimeStatus?.ToArray(),
-                        createdTimeFrom?.ToUniversalTime(),
-                        createdTimeTo?.ToUniversalTime(),
-                        null,
-                        fetchInput: false)
-                    { PrefetchHistory = true },
-                },
-                (IEnumerable<PurgeResponseReceived> responses) => responses.Sum(response => response.NumberInstancesPurged),
-                cancellationToken);
-
-        public Task<InstanceQueryResult> QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
-            => this.RunPartitionQueries(
-                partitionId => new InstanceQueryReceived()
-                {
-                    PartitionId = partitionId,
-                    ClientId = this.ClientId,
-                    RequestId = Interlocked.Increment(ref this.SequenceNumber),
-                    TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
-                    InstanceQuery = instanceQuery,
-                },
-                (IEnumerable<QueryResponseReceived> responses) => new InstanceQueryResult()
-                {
-                    Instances = responses.SelectMany(response => response.OrchestrationStates),
-                    ContinuationToken = null,
-                },
-                cancellationToken);
-
-        async Task<TResult> RunPartitionQueries<TRequest,TResponse,TResult>(
-            Func<uint, TRequest> requestCreator, 
-            Func<IEnumerable<TResponse>,TResult> responseAggregator,
-            CancellationToken cancellationToken)
-            where TRequest: IClientRequestEvent
+        async Task<IList<OrchestrationState>> RunUnpagedPartitionQueries(
+           InstanceQuery instanceQuery,
+           CancellationToken cancellationToken)
         {
             IEnumerable<Task<ClientEvent>> launchQueries()
             {
                 for (uint partitionId = 0; partitionId < this.host.NumberPartitions; ++partitionId)
                 {
-                    yield return this.PerformRequestWithTimeoutAndCancellation(cancellationToken, requestCreator(partitionId), false);
+                    yield return this.PerformRequestWithTimeoutAndCancellation(
+                        cancellationToken,
+                        new InstanceQueryReceived()
+                        {
+                            PartitionId = partitionId,
+                            ClientId = this.ClientId,
+                            RequestId = Interlocked.Increment(ref this.SequenceNumber),
+                            TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                            InstanceQuery = instanceQuery,
+                            ContinuationToken = null,
+                            PageSize = 0,
+                        },
+                        false);
                 }
             }
             ClientEvent[] responses = await Task.WhenAll(launchQueries().ToList()).ConfigureAwait(false);
-            return responseAggregator(responses.Cast<TResponse>());
+            return responses.SelectMany(response => ((QueryResponseReceived)response).OrchestrationStates).ToList();
         }
 
+        [JsonObject]
+        class ContinuationToken
+        {
+            public JObject FToken { get; set; }
+            public string Remainder { get; set; } // bitvector
+
+            // ftoken and remainder are interpreted as follows
+            // (null,     "1"     )   continue at start of last partition
+            // (non-null,  ""     )   continue in middle of last partition
+            // (null,     "1bbbbb")   continue at start of sixth-from-end partition
+            // (non-null,  "bbbbb")   continue in middle of sixth-from-end partition
+        }
+
+        public async Task<InstanceQueryResult> QueryOrchestrationStatesAsync(
+            InstanceQuery instanceQuery,
+            int pageSize,
+            string continuationTokenString,
+            CancellationToken cancellationToken)
+        {
+            if (continuationTokenString == null)
+            {
+                int numberPartitions = (int)this.host.NumberPartitions;
+                int[] pageSizes = Enumerable
+                    .Range(0, numberPartitions)
+                    .Select(i => i == 0   // query pattern is (100, 10, 10, ..., 10)
+                        ? pageSize
+                        : (int)Math.Ceiling((double)pageSize / numberPartitions))
+                    .ToArray();
+                var continuationTokens = new JObject[numberPartitions];
+
+                var tasks = new Task<ClientEvent>[numberPartitions];
+                for (uint partitionId = 0; partitionId < numberPartitions; partitionId++)
+                {
+                    tasks[partitionId] = this.PerformRequestWithTimeoutAndCancellation(
+                            cancellationToken,
+                            new InstanceQueryReceived()
+                            {
+                                PartitionId = partitionId,
+                                ClientId = this.ClientId,
+                                RequestId = Interlocked.Increment(ref this.SequenceNumber),
+                                TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                                InstanceQuery = instanceQuery,
+                                ContinuationToken = null,
+                                PageSize = partitionId == 0   // query pattern is (100, 10, 10, ..., 10)
+                                    ? pageSize
+                                    : (int)Math.Ceiling((double)pageSize / numberPartitions),
+                            },
+                            false);
+                }
+
+                List<OrchestrationState> states = new List<OrchestrationState>();
+                bool toBeContinued = false;
+                JObject ftoken = null;
+                var remainder = new StringBuilder();
+                for (int i = 0; i < tasks.Length; i++)
+                {
+                    var response = (QueryResponseReceived)await tasks[i];
+                    if (response.NonEmpty)
+                    {
+                        if (toBeContinued)
+                        {
+                            remainder.Append('1');
+                        }
+                        else
+                        {
+                            states.AddRange(response.OrchestrationStates);
+                            if (states.Count >= pageSize)
+                            {
+                                toBeContinued = true;
+                            }
+                            if (response.ContinuationToken != null)
+                            {
+                                toBeContinued = true;
+                                ftoken = JsonConvert.DeserializeObject<JObject>(response.ContinuationToken);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (toBeContinued 
+                            && (ftoken != null | remainder.Length > 0))
+                        {
+                            remainder.Append('0');
+                        }
+                    }            
+                }
+
+                string ctoken = null;
+                if (ftoken != null || remainder.Length > 0)
+                {
+                    ctoken = JsonConvert.SerializeObject(new ContinuationToken()
+                    {
+                        FToken = ftoken,
+                        Remainder = remainder.ToString(),
+                    });
+                }
+ 
+                return new InstanceQueryResult()
+                {
+                    Instances = states,
+                    ContinuationToken = ctoken,
+                };
+            }
+            else
+            {
+                var token = (ContinuationToken)JsonConvert.DeserializeObject<ContinuationToken>(continuationTokenString);
+
+                if (token.FToken == null)
+                {
+                    // we are starting the next partition in the remainder
+                    Debug.Assert(token.Remainder.Length > 0 && token.Remainder[0] == '1');
+                    token.Remainder = token.Remainder.Substring(1);
+                }
+
+                int position = (int) this.host.NumberPartitions - token.Remainder.Length - 1;
+
+                var queryResponseReceived = (QueryResponseReceived) await this.PerformRequestWithTimeoutAndCancellation(
+                        cancellationToken,
+                        new InstanceQueryReceived()
+                        {
+                            PartitionId = (uint) position,
+                            ClientId = this.ClientId,
+                            RequestId = Interlocked.Increment(ref this.SequenceNumber),
+                            TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                            InstanceQuery = instanceQuery,
+                            ContinuationToken = token.FToken?.ToString(),
+                            PageSize = pageSize
+                        },
+                        false);
+
+                if (queryResponseReceived.ContinuationToken != null)
+                {
+                    token.FToken = JsonConvert.DeserializeObject<JObject>(queryResponseReceived.ContinuationToken);
+                }
+                else
+                {
+                    int next = token.Remainder.IndexOf('1');
+                    if (next == -1)
+                    {
+                        token = null;
+                    }
+                    else
+                    {
+                        token.FToken = null;
+                        token.Remainder = token.Remainder.Substring(next);
+                    }
+                }
+
+                return new InstanceQueryResult()
+                {
+                    Instances = queryResponseReceived.OrchestrationStates,
+                    ContinuationToken = token != null ? JsonConvert.SerializeObject(token) : null,
+                };
+            }
+        }
+
+        public async Task<(IList<OrchestrationState>,bool)> QueryParallelPagesAsync(
+            InstanceQuery instanceQuery,
+            JObject[] continuationTokens,
+            (uint partitionId, int pageSize)[] pageSizes,
+            CancellationToken cancellationToken)
+        {
+            var tasks = new Task<ClientEvent>[pageSizes.Length];
+            for (int i = 0; i < pageSizes.Length; i++)
+            {
+                var partitionId = pageSizes[i].partitionId;
+                tasks[i] = this.PerformRequestWithTimeoutAndCancellation(
+                        cancellationToken,
+                        new InstanceQueryReceived()
+                        {
+                            PartitionId = partitionId,
+                            ClientId = this.ClientId,
+                            RequestId = Interlocked.Increment(ref this.SequenceNumber),
+                            TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                            InstanceQuery = instanceQuery,
+                            ContinuationToken = continuationTokens[partitionId]?.ToString(),
+                            PageSize = pageSizes[i].pageSize
+                        },
+                        false);
+            }
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+            List<OrchestrationState> states = new List<OrchestrationState>();
+            bool hasMore = false;
+            for (int i = 0; i < pageSizes.Length; i++)
+            {
+                var partitionId = pageSizes[i].partitionId;
+                var queryResponseReceived = (QueryResponseReceived)tasks[i].Result;
+                foreach (var state in queryResponseReceived.OrchestrationStates)
+                {
+                    states.Add(state);
+                }
+                if (queryResponseReceived.ContinuationToken != null)
+                {
+                    hasMore = true;
+                    continuationTokens[pageSizes[i].partitionId] =
+                        queryResponseReceived.ContinuationToken != null ?
+                        JObject.Parse(queryResponseReceived.ContinuationToken) : null;
+                }
+                else
+                {
+                    continuationTokens[pageSizes[i].partitionId] = null;
+                }
+            }
+            return (states, hasMore);
+        }
+
+
+
+        public async Task<int> PurgeInstanceHistoryAsync(DateTime? createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus, CancellationToken cancellationToken = default)
+        {
+            IEnumerable<Task<ClientEvent>> launchQueries()
+            {
+                for (uint partitionId = 0; partitionId < this.host.NumberPartitions; ++partitionId)
+                {
+                    yield return this.PerformRequestWithTimeoutAndCancellation(
+                        cancellationToken,
+                        new PurgeRequestReceived()
+                        {
+                            PartitionId = partitionId,
+                            ClientId = this.ClientId,
+                            RequestId = Interlocked.Increment(ref this.SequenceNumber),
+                            TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                            InstanceQuery = new InstanceQuery(
+                                runtimeStatus?.ToArray(),
+                                createdTimeFrom?.ToUniversalTime(),
+                                createdTimeTo?.ToUniversalTime(),
+                                null,
+                                fetchInput: false)
+                                { PrefetchHistory = true },
+                        },
+                        false);
+                }
+            }
+            ClientEvent[] responses = await Task.WhenAll(launchQueries().ToList()).ConfigureAwait(false);
+            return responses.Cast<PurgeResponseReceived>().Sum(response => response.NumberInstancesPurged);
+        }
+        
         public Task ForceTerminateTaskOrchestrationAsync(uint partitionId, string instanceId, string message)
         {
             var taskMessages = new[] { new TaskMessage

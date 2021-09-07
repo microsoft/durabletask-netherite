@@ -13,7 +13,6 @@ namespace DurableTask.Netherite
     /// <summary>
     /// The result returned by an instance query
     /// </summary>
-    [DataContract]
     public class InstanceQueryResult
     {
         /// <summary>

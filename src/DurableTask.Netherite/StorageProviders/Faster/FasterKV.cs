@@ -279,98 +279,136 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+
+        async IAsyncEnumerable<OrchestrationState> QueryIndexAsync(
+            PartitionQueryEvent queryEvent,
+            EffectTracker effectTracker,
+            ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
+        {
+            var instanceQuery = queryEvent.InstanceQuery;
+            string continuationToken = queryEvent.ContinuationToken;
+            int totalcount = 0;
+
+            if (this.partition.Settings.UseSecondaryIndexQueries && instanceQuery.IsSet)
+            {
+                // These are arranged in the order of the expected most-to-least granular property: query the index for that, then post-process the others.
+                if (!string.IsNullOrWhiteSpace(instanceQuery.InstanceIdPrefix) && instanceQuery.InstanceIdPrefix.Length >= PredicateKey.InstanceIdPrefixLen4)
+                {
+                    var is7 = instanceQuery.InstanceIdPrefix.Length >= PredicateKey.InstanceIdPrefixLen7;
+                    var predicate = is7 ? this.InstanceIdPrefixPredicate7 : this.InstanceIdPrefixPredicate4;
+                    var prefixLen = is7 ? PredicateKey.InstanceIdPrefixLen7 : PredicateKey.InstanceIdPrefixLen4;
+                    await foreach (var orcState in queryPredicate(predicate, new PredicateKey(instanceQuery.InstanceIdPrefix, prefixLen)).ConfigureAwait(false))
+                    {
+                        yield return orcState;
+                        totalcount++;
+                    }
+                }
+                else if (instanceQuery.CreatedTimeFrom.HasValue || instanceQuery.CreatedTimeTo.HasValue)
+                {
+                    var createdTimeTo = instanceQuery.CreatedTimeTo ?? DateTime.UtcNow;
+                    var createdTimeFrom = instanceQuery.CreatedTimeFrom ?? createdTimeTo.AddDays(-7);   // TODO Some default so we don't have to iterate from the first possible date
+                    for (var dt = createdTimeFrom; dt <= createdTimeTo; dt += PredicateKey.DateBinInterval)
+                    {
+                        await foreach (var orcState in queryPredicate(this.CreatedTimePredicate, new PredicateKey(dt)).ConfigureAwait(false))
+                        {
+                            yield return orcState;
+                            totalcount++;
+                        }
+                    }
+                }
+                else if (instanceQuery.HasRuntimeStatus)
+                {
+                    foreach (var status in instanceQuery.RuntimeStatus)
+                    {
+                        await foreach (var orcState in queryPredicate(this.RuntimeStatusPredicate, new PredicateKey(status)).ConfigureAwait(false))
+                        {
+                            yield return orcState;
+                            totalcount++;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                await foreach (var orcState in this.ScanOrchestrationStates(effectTracker, queryEvent).ConfigureAwait(false))
+                {
+                    yield return orcState;
+                    totalcount++;
+                }
+            }
+
+            // we have finished this query
+            queryEvent.PageSizeResult = totalcount;
+            queryEvent.ContinuationTokenResult = continuationToken;
+            yield break;
+
+            async IAsyncEnumerable<OrchestrationState> queryPredicate(IPredicate predicate, PredicateKey queryKey)
+            {
+                var querySettings = new QuerySettings
+                {
+                    // This is a match-all-Predicates enumeration so do not continue after any Predicate has hit EOS. Currently we only query the index on a single Predicate, so this is not used.
+                    OnStreamEnded = (unusedPredicate, unusedIndex) => false,
+                };
+
+                int segmentSize = queryEvent.PageSize ?? 500;
+                do
+                {
+                    using var segment = await session.QuerySegmentedAsync(
+                        predicate,
+                        queryKey,
+                        continuationToken,
+                        segmentSize,
+                        querySettings).ConfigureAwait(false);
+
+                    int segmentcount = 0;
+                    foreach (var queryRecord in segment)
+                    {
+                        segmentcount++;
+                        if (queryRecord.ValueRef.Val is byte[] serialized)
+                        {
+                            var state = ((InstanceState)Serializer.DeserializeTrackedObject(serialized))?.OrchestrationState;
+                            if (state != null && instanceQuery.Matches(state))
+                            {
+                                if (!instanceQuery.FetchInput)
+                                {
+                                    state.Input = null;
+                                }
+                                yield return state;
+                            }
+                        }
+                        else
+                        {
+                            var state = ((InstanceState)(TrackedObject)queryRecord.ValueRef.Val)?.OrchestrationState;
+                            if (state != null && instanceQuery.Matches(state))
+                            {
+                                yield return state.ClearFieldsImmutably(instanceQuery.FetchInput, true);
+                            }
+                        }
+                        queryRecord.Dispose();
+                    }
+                    continuationToken = (segmentcount < segmentSize) ? null : segment.ContinuationToken;
+
+                    if (totalcount >= queryEvent.PageSize)
+                    {
+                        break; // we have already connected enough results to fill the page
+                    }
+                }
+                while (continuationToken != null);
+            }
+        }
+
         // perform a query
         public override async Task QueryAsync(PartitionQueryEvent queryEvent, EffectTracker effectTracker)
         {
             try
             {
-                var instanceQuery = queryEvent.InstanceQuery;
-
-                async IAsyncEnumerable<OrchestrationState> queryIndexAsync(ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> session)
-                {
-                    var querySettings = new QuerySettings
-                    {
-                        // This is a match-all-Predicates enumeration so do not continue after any Predicate has hit EOS. Currently we only query the index on a single Predicate, so this is not used.
-                        OnStreamEnded = (unusedPredicate, unusedIndex) => false
-                    };
-
-                    async IAsyncEnumerable<OrchestrationState> queryPredicate(IPredicate predicate, PredicateKey queryKey)
-                    {
-                        await foreach (var queryRecord in session.QueryAsync(predicate, queryKey, querySettings).ConfigureAwait(false))
-                        {
-                            if (queryRecord.ValueRef.Val is byte[] serialized)
-                            {
-                                var state = ((InstanceState)Serializer.DeserializeTrackedObject(serialized))?.OrchestrationState;
-                                if (state != null && instanceQuery.Matches(state))
-                                {
-                                    if (!instanceQuery.FetchInput)
-                                    {
-                                        state.Input = null;
-                                    }
-                                    yield return state;
-                                }
-                            }
-                            else
-                            {
-                                var state = ((InstanceState)(TrackedObject)queryRecord.ValueRef.Val)?.OrchestrationState;
-                                if (state != null && instanceQuery.Matches(state))
-                                {
-                                    yield return state.ClearFieldsImmutably(instanceQuery.FetchInput, true);
-                                }
-                            }
-                            queryRecord.Dispose();
-                        }
-                    }
-
-                    // These are arranged in the order of the expected most-to-least granular property: query the index for that, then post-process the others.
-                    if (!string.IsNullOrWhiteSpace(instanceQuery.InstanceIdPrefix) && instanceQuery.InstanceIdPrefix.Length >= PredicateKey.InstanceIdPrefixLen4)
-                    {
-                        var is7 = instanceQuery.InstanceIdPrefix.Length >= PredicateKey.InstanceIdPrefixLen7;
-                        var predicate = is7 ? this.InstanceIdPrefixPredicate7 : this.InstanceIdPrefixPredicate4;
-                        var prefixLen = is7 ? PredicateKey.InstanceIdPrefixLen7 : PredicateKey.InstanceIdPrefixLen4;
-                        await foreach (var orcState in queryPredicate(predicate, new PredicateKey(instanceQuery.InstanceIdPrefix, prefixLen)).ConfigureAwait(false))
-                        {
-                            yield return orcState;
-                        }
-                    }
-                    else if (instanceQuery.CreatedTimeFrom.HasValue || instanceQuery.CreatedTimeTo.HasValue)
-                    {
-                        var createdTimeTo = instanceQuery.CreatedTimeTo ?? DateTime.UtcNow;
-                        var createdTimeFrom = instanceQuery.CreatedTimeFrom ?? createdTimeTo.AddDays(-7);   // TODO Some default so we don't have to iterate from the first possible date
-                        for (var dt = createdTimeFrom; dt <= createdTimeTo; dt += PredicateKey.DateBinInterval)
-                        {
-                            await foreach (var orcState in queryPredicate(this.CreatedTimePredicate, new PredicateKey(dt)).ConfigureAwait(false))
-                            {
-                                yield return orcState;
-                            }
-                        }
-                    }
-                    else if (instanceQuery.HasRuntimeStatus)
-                    {
-                        foreach (var status in instanceQuery.RuntimeStatus)
-                        { 
-                            await foreach (var orcState in queryPredicate(this.RuntimeStatusPredicate, new PredicateKey(status)).ConfigureAwait(false))
-                            {
-                                yield return orcState;
-                            }
-                         }
-                    }
-                    else
-                    {
-                        await foreach (var orcState in this.ScanOrchestrationStates(effectTracker, queryEvent).ConfigureAwait(false))
-                        {
-                            yield return orcState;
-                        }
-                    }
-                }
+                
 
                 // create an individual session for this query so the main session can be used
                 // while the query is progressing.
                 using (var session = this.CreateASession())
                 {
-                    var orchestrationStates = (this.partition.Settings.UseSecondaryIndexQueries && instanceQuery.IsSet)
-                        ? queryIndexAsync(session)
-                        : this.ScanOrchestrationStates(effectTracker, queryEvent);
+                    var orchestrationStates = this.QueryIndexAsync(queryEvent, effectTracker, session);
 
                     await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates);
                 }

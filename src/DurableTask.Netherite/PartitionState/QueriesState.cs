@@ -99,11 +99,15 @@ namespace DurableTask.Netherite
 
             public override Netherite.InstanceQuery InstanceQuery => this.request.InstanceQuery;
 
+            public override string ContinuationToken => this.request.ContinuationToken;
+
+            public override int? PageSize => this.request.PageSize;
+
             public override async Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition)
             {
                 partition.Assert(this.request.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query);
 
-                await this.request.OnQueryCompleteAsync(result, partition);
+                await this.request.OnQueryCompleteAsync(result, partition, this);
 
                 // we now how to recycle the request event again in order to remove it from the list of pending queries
                 var again = (ClientRequestEventWithQuery)this.request.Clone();
