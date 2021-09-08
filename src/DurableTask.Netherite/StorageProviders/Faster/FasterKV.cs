@@ -381,7 +381,7 @@ namespace DurableTask.Netherite.Faster
                             var state = ((InstanceState)(TrackedObject)queryRecord.ValueRef.Val)?.OrchestrationState;
                             if (state != null && instanceQuery.Matches(state))
                             {
-                                yield return state.ClearFieldsImmutably(instanceQuery.FetchInput, true);
+                                yield return state;
                             }
                         }
                         queryRecord.Dispose();

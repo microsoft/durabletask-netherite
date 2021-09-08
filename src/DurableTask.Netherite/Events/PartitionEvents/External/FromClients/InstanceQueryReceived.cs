@@ -25,7 +25,7 @@ namespace DurableTask.Netherite
 
             await foreach (var orchestrationState in instances)
             {
-                response.OrchestrationStates.Add(orchestrationState);
+                response.OrchestrationStates.Add(orchestrationState.ClearFieldsImmutably(!evt.InstanceQuery.FetchInput, false));
             }
 
             partition.Assert(response.OrchestrationStates.Count == evt.PageSizeResult);
