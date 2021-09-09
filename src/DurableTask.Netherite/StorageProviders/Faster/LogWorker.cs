@@ -90,12 +90,12 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public void SubmitInternalEvent(PartitionEvent evt)
+        public void SubmitEvent(PartitionEvent evt)
         {
             this.intakeWorker.Submit(evt);
         }
 
-        public void SubmitExternalEvents(IList<PartitionEvent> events)
+        public void SubmitEvents(IList<PartitionEvent> events)
         {
             this.intakeWorker.SubmitBatch(events);
         }

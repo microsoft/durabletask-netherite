@@ -24,17 +24,11 @@ namespace DurableTask.Netherite
         public virtual TrackedObjectKey? Prefetch => null;
 
         /// <summary>
-        /// Optionally, some extra action to perform before issuing the read
-        /// </summary>
-        public virtual void OnReadIssued(Partition partition) { }
-
-        /// <summary>
         /// The continuation for the read operation.
         /// </summary>
         /// <param name="target">The current value of the tracked object for this key, or null if not present</param>
         /// <param name="partition">The partition</param>
         public abstract void OnReadComplete(TrackedObject target, Partition partition);
-
 
         #region prefetch state machine
 

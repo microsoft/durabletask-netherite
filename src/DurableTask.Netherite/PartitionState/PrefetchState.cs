@@ -27,7 +27,7 @@ namespace DurableTask.Netherite
             // reissue prefetch tasks for what did not complete prior to crash/recovery
             foreach (var kvp in this.PendingPrefetches)
             {
-                this.Partition.SubmitInternalEvent(new InstanceLookup(kvp.Value));
+                this.Partition.SubmitParallelEvent(new InstancePrefetch(kvp.Value));
             }
         }
 
@@ -51,11 +51,6 @@ namespace DurableTask.Netherite
                 // We have to buffer this request in the pending list so we can recover it.
 
                 this.PendingPrefetches.Add(clientRequestEvent.EventIdString, clientRequestEvent);
-
-                if (!effects.IsReplaying)
-                {
-                    this.Partition.SubmitInternalEvent(new InstanceLookup(clientRequestEvent));
-                }
             }
             else 
             {
@@ -69,11 +64,11 @@ namespace DurableTask.Netherite
             }
         }
 
-        internal class InstanceLookup : InternalReadEvent
+        internal class InstancePrefetch : InternalReadEvent
         {
             readonly ClientRequestEventWithPrefetch request;
 
-            public InstanceLookup(ClientRequestEventWithPrefetch clientRequest)
+            public InstancePrefetch(ClientRequestEventWithPrefetch clientRequest)
             {
                 this.request = clientRequest;
             }
@@ -103,7 +98,7 @@ namespace DurableTask.Netherite
                 again.Phase = requiresProcessing ?
                     ClientRequestEventWithPrefetch.ProcessingPhase.ConfirmAndProcess : ClientRequestEventWithPrefetch.ProcessingPhase.Confirm;
                  
-                partition.SubmitInternalEvent(again);
+                partition.SubmitEvent(again);
             }
         }
     }

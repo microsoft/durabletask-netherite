@@ -241,15 +241,31 @@ namespace DurableTask.Netherite.Faster
             return trigger != CheckpointTrigger.None;
         }
 
-        void ScheduleNextIdleCheckpointTime()
+        public void ProcessInParallel(PartitionEvent partitionEvent)
         {
-            // to avoid all partitions taking snapshots at the same time, align to a partition-based spot
-            var period = this.partition.Settings.IdleCheckpointFrequencyMs * TimeSpan.TicksPerMillisecond;
-            var offset = (this.partition.PartitionId * period / this.partition.NumberPartitions());
-            var maxTime = DateTime.UtcNow.Ticks + period;
-            this.timeOfNextIdleCheckpoint = (((maxTime - offset) / period) * period) + offset;
+            switch (partitionEvent)
+            {
+                case PartitionReadEvent readEvent:
+                    // todo: actually use a parallel session worker for prefetches
+                    this.Submit(partitionEvent);
+                    break;
+
+                case PartitionQueryEvent queryEvent:
+                    // async queries execute on their own task and their own session
+                    Task ignored = Task.Run(() => this.store.QueryAsync(queryEvent, this.effectTracker));
+                    break;
+            }
         }
 
+        void ScheduleNextIdleCheckpointTime()
+        {
+            var period = this.partition.Settings.IdleCheckpointFrequencyMs * TimeSpan.TicksPerMillisecond;
+            // to avoid all partitions taking snapshots at the same time, align to a partition-based spot between 0.5 and 1.5 of the period
+            var earliest = DateTime.UtcNow.Ticks + period/2;
+            var offset = (this.partition.PartitionId * period / this.partition.NumberPartitions());
+            this.timeOfNextIdleCheckpoint = earliest + offset;
+        }
+        
         protected override async Task Process(IList<PartitionEvent> batch)
         {
             try
@@ -275,14 +291,8 @@ namespace DurableTask.Netherite.Faster
                             break;
 
                         case PartitionReadEvent readEvent:
-                            readEvent.OnReadIssued(this.partition);
                             // async reads may either complete immediately (on cache hit) or later (on cache miss) when CompletePending() is called
                             this.store.ReadAsync(readEvent, this.effectTracker);
-                            break;
-
-                        case PartitionQueryEvent queryEvent:
-                            // async queries execute on their own task and their own session
-                            Task ignored = Task.Run(() => this.store.QueryAsync(queryEvent, this.effectTracker));
                             break;
 
                         default:
