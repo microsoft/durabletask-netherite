@@ -7,6 +7,7 @@ namespace DurableTask.Netherite.EventHubs
     using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Logging;
@@ -25,17 +26,19 @@ namespace DurableTask.Netherite.EventHubs
         readonly List<(EventHubClient client, string id)> partitionPartitions = new List<(EventHubClient client, string id)>();
         readonly List<(EventHubClient client, string id)> clientPartitions = new List<(EventHubClient client, string id)>();
 
+        public const int NumClientChannels = 2;
+
         public string Endpoint { get; private set; }
         public DateTime[] CreationTimestamps { get; private set; }
 
         public ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>> _partitionSenders = new ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>>();
-        public ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>> _clientSenders = new ConcurrentDictionary<Guid, EventHubsSender<ClientEvent>>();
+        public ConcurrentDictionary<Guid, EventHubsClientSender> _clientSenders = new ConcurrentDictionary<Guid, EventHubsClientSender>();
         public ConcurrentDictionary<int, LoadMonitorSender> _loadMonitorSenders = new ConcurrentDictionary<int, LoadMonitorSender>();
 
         public TransportAbstraction.IHost Host { get; set; }
         public EventHubsTraceHelper TraceHelper { get; set; }
 
-        int GetClientBucket(Guid clientId) => (int)(Fnv1aHashHelper.ComputeHash(clientId.ToByteArray()) % (uint)this.clientClients.Count);
+        int GetClientBucket(Guid clientId, int index) => (int)((Fnv1aHashHelper.ComputeHash(clientId.ToByteArray()) + index) % (uint)this.clientPartitions.Count);
 
         public EventHubsConnections(
             string connectionString, 
@@ -216,13 +219,18 @@ namespace DurableTask.Netherite.EventHubs
             return partitionReceiver;
         }
 
-        public PartitionReceiver CreateClientReceiver(Guid clientId, string consumerGroupName)
+        public PartitionReceiver[] CreateClientReceivers(Guid clientId, string consumerGroupName)
         {
-            int clientBucket = this.GetClientBucket(clientId);
-            (EventHubClient client, string id) = this.clientPartitions[clientBucket];
-            var clientReceiver = client.CreateReceiver(consumerGroupName, id, EventPosition.FromEnd());
-            this.TraceHelper.LogDebug("Created Client {clientId} PartitionReceiver {receiver} from {clientId}", clientId, clientReceiver.ClientId, client.ClientId);
-            return clientReceiver;
+            var partitionReceivers = new PartitionReceiver[EventHubsConnections.NumClientChannels];
+            for (int index = 0; index < EventHubsConnections.NumClientChannels; index++)
+            {
+                int clientBucket = this.GetClientBucket(clientId, index);
+                (EventHubClient client, string id) = this.clientPartitions[clientBucket];
+                var clientReceiver = client.CreateReceiver(consumerGroupName, id, EventPosition.FromEnd());
+                this.TraceHelper.LogDebug("Created Client {clientId} PartitionReceiver {receiver} from {clientId}", clientId, clientReceiver.ClientId, client.ClientId);
+                partitionReceivers[index] = clientReceiver;
+            }
+            return partitionReceivers;
         }
 
         public PartitionReceiver CreateLoadMonitorReceiver(string consumerGroupName)
@@ -248,19 +256,24 @@ namespace DurableTask.Netherite.EventHubs
             });
         }
 
-        public EventHubsSender<ClientEvent> GetClientSender(Guid clientId, byte[] taskHubGuid)
+        public EventHubsClientSender GetClientSender(Guid clientId, byte[] taskHubGuid)
         {
             return this._clientSenders.GetOrAdd(clientId, (key) =>
             {
-                int clientBucket = this.GetClientBucket(clientId);
-                (EventHubClient client, string id) = this.clientPartitions[clientBucket];
-                var partitionSender = client.CreatePartitionSender(id);
-                var sender = new EventHubsSender<ClientEvent>(
-                    this.Host,
-                    taskHubGuid,
-                    partitionSender,
-                    this.TraceHelper);
-                this.TraceHelper.LogDebug("Created ClientSender {sender} from {clientId}", partitionSender.ClientId, client.ClientId);
+                var partitionSenders = new PartitionSender[NumClientChannels];
+                for (int index = 0; index < NumClientChannels; index++)
+                {
+                    int clientBucket = this.GetClientBucket(clientId, index);
+                    (EventHubClient client, string id) = this.clientPartitions[clientBucket];
+                    partitionSenders[index] = client.CreatePartitionSender(id);
+                    this.TraceHelper.LogDebug("Created ClientSender {sender} from {clientId}", partitionSenders[index].ClientId, client.ClientId);
+                }
+                var sender = new EventHubsClientSender(
+                        this.Host,
+                        taskHubGuid,
+                        clientId,
+                        partitionSenders,
+                        this.TraceHelper);
                 return sender;
             });
         }

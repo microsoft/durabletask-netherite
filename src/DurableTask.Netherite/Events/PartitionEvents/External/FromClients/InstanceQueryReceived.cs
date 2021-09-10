@@ -11,8 +11,12 @@ namespace DurableTask.Netherite
     [DataContract]
     class InstanceQueryReceived : ClientRequestEventWithQuery
     {
+        const int batchsize = 11;
+
         public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition)
         {
+            int totalcount = 0;
+
             var response = new QueryResponseReceived
             {
                 ClientId = this.ClientId,
@@ -22,9 +26,22 @@ namespace DurableTask.Netherite
 
             await foreach (var orchestrationState in instances)
             {
+                if (response.OrchestrationStates.Count == batchsize)
+                {
+                    partition.Send(response);
+                    response = new QueryResponseReceived
+                    {
+                        ClientId = this.ClientId,
+                        RequestId = this.RequestId,
+                        OrchestrationStates = new List<OrchestrationState>()
+                    };
+                }
+
                 response.OrchestrationStates.Add(orchestrationState);
+                totalcount++;
             }
 
+            response.Final = totalcount; 
             partition.Send(response);
         }
     }

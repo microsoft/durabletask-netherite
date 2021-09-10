@@ -11,8 +11,11 @@ namespace DurableTask.Netherite
     class QueryResponseReceived : ClientEvent
     {
         [DataMember]
-        public IList<OrchestrationState> OrchestrationStates { get; set; }
+        public List<OrchestrationState> OrchestrationStates { get; set; }
 
-        public override string ToString() => $"Count: {this.OrchestrationStates.Count}";
+        [DataMember]
+        public int? Final { get; set; }
+
+        public override string ToString() => $"Count={this.OrchestrationStates.Count} Final={this.Final}";
     }
 }

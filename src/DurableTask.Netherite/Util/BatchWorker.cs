@@ -49,6 +49,8 @@ namespace DurableTask.Netherite
             this.traceHelper = traceHelper;
         }
 
+        public bool IsIdle => (this.state == IDLE);
+
         protected Action<string> Tracer { get; set; } = null;
 
         /// <summary>Implement this member in derived classes to process a batch</summary>
