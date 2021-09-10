@@ -57,6 +57,8 @@ namespace DurableTask.Netherite.EventHubs
                 {
                     long startPos = this.stream.Position;
                     var evt = toSend[i];
+
+                    this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} is sending event {evt} id={eventId}", this.eventHubName, this.eventHubPartition, evt, evt.EventIdString);
                     Packet.Serialize(evt, this.stream, this.taskHubGuid);
                     int length = (int)(this.stream.Position - startPos);
                     var arraySegment = new ArraySegment<byte>(this.stream.GetBuffer(), (int)startPos, length);
