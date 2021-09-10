@@ -78,10 +78,11 @@ namespace DurableTask.Netherite
 
         public void Process(ClientEvent clientEvent)
         {
-            bool IsComplete(QueryResponseReceived r) => r.Final == r.OrchestrationStates.Count;
-
             if (clientEvent is QueryResponseReceived queryResponseReceived)
             {
+                queryResponseReceived.DeserializeOrchestrationStates();
+                bool GotAllResults() => queryResponseReceived.Final == queryResponseReceived.OrchestrationStates.Count;
+
                 if (this.QueryResponses.TryGetValue(queryResponseReceived.RequestId, out QueryResponseReceived prev))
                 {
                     // combine all received states
@@ -94,13 +95,13 @@ namespace DurableTask.Netherite
                         queryResponseReceived.Final = prev.Final;
                     }
 
-                    if (IsComplete(queryResponseReceived))
+                    if (GotAllResults())
                     {
                         this.QueryResponses.Remove(queryResponseReceived.RequestId);
                     }
                 }             
 
-                if (IsComplete(queryResponseReceived))
+                if (GotAllResults())
                 {
                     this.ProcessInternal(queryResponseReceived);
                 }

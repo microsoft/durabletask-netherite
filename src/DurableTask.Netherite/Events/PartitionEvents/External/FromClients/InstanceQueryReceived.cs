@@ -4,6 +4,7 @@
 namespace DurableTask.Netherite
 {
     using System.Collections.Generic;
+    using System.IO;
     using System.Runtime.Serialization;
     using System.Threading.Tasks;
     using DurableTask.Core;
@@ -24,10 +25,13 @@ namespace DurableTask.Netherite
                 OrchestrationStates = new List<OrchestrationState>()
             };
 
+            using var memoryStream = new MemoryStream();
+
             await foreach (var orchestrationState in instances)
             {
                 if (response.OrchestrationStates.Count == batchsize)
                 {
+                    response.SerializeOrchestrationStates(memoryStream, this.InstanceQuery.FetchInput);
                     partition.Send(response);
                     response = new QueryResponseReceived
                     {
@@ -41,7 +45,8 @@ namespace DurableTask.Netherite
                 totalcount++;
             }
 
-            response.Final = totalcount; 
+            response.Final = totalcount;
+            response.SerializeOrchestrationStates(memoryStream, this.InstanceQuery.FetchInput);
             partition.Send(response);
         }
     }

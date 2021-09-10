@@ -432,7 +432,8 @@ namespace DurableTask.Netherite.EventHubs
                             Packet.Deserialize(ed.Body, out clientEvent, taskHubGuid);
                             if (clientEvent != null && clientEvent.ClientId == this.ClientId)
                             {
-                                await channelWriter.WriteAsync(clientEvent);
+                               this.traceHelper.LogTrace("Client{clientId}/{index} receiving event {evt} id={eventId}]", Client.GetShortId(this.ClientId), index, clientEvent, clientEvent.EventIdString);
+                               await channelWriter.WriteAsync(clientEvent);
                             }
                         }
                         catch (Exception)
