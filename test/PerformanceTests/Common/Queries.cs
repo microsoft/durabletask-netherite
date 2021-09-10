@@ -79,7 +79,7 @@ namespace PerformanceTests
                     {
                         if (parameters.TryGetValue("showInput", out string val))
                         {
-                            parameters.Remove("showinput");
+                            parameters.Remove("showInput");
                             queryCondition.ShowInput = bool.Parse(val);
                         }
                     }
