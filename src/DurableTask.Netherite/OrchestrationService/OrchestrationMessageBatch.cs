@@ -46,7 +46,7 @@ namespace DurableTask.Netherite
             partition.EventDetailTracer?.TraceEventProcessingDetail($"OrchestrationMessageBatch is prefetching instance={this.InstanceId} batch={this.WorkItemId}");
 
             // continue when we have the history state loaded, which gives us the latest state and/or cursor
-            partition.SubmitInternalEvent(this);
+            partition.SubmitEvent(this);
         }
 
         public IEnumerable<(TaskMessage, string)> TracedMessages
@@ -118,7 +118,7 @@ namespace DurableTask.Netherite
                 }
 
                 // we issue a batch processed event which will remove the messages without updating the instance state
-                partition.SubmitInternalEvent(new BatchProcessed()
+                partition.SubmitEvent(new BatchProcessed()
                 {
                     PartitionId = partition.PartitionId,
                     SessionId = this.SessionId,

@@ -14,6 +14,8 @@ namespace DurableTask.Netherite.EventHubs
     using Microsoft.Azure.Storage.Blob;
     using Newtonsoft.Json;
     using DurableTask.Netherite.Faster;
+    using System.Linq;
+    using System.Threading.Channels;
 
     /// <summary>
     /// The EventHubs transport implementation.
@@ -37,7 +39,9 @@ namespace DurableTask.Netherite.EventHubs
         byte[] taskhubGuid;
         EventHubsConnections connections;
 
-        Task clientEventLoopTask = Task.CompletedTask;
+        Task[] clientReceiveTasks;
+        Task clientProcessTask;
+
         CancellationTokenSource shutdownSource;
         readonly CloudBlobContainer cloudBlobContainer;
         readonly CloudBlockBlob taskhubParameters;
@@ -190,7 +194,19 @@ namespace DurableTask.Netherite.EventHubs
 
             this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
 
-            this.clientEventLoopTask = Task.Run(this.ClientEventLoop);
+            var channel = Channel.CreateBounded<ClientEvent>(new BoundedChannelOptions(500) {
+                SingleReader = true, 
+                AllowSynchronousContinuations = true 
+            });
+
+            var clientReceivers = this.connections.CreateClientReceivers(this.ClientId, EventHubsTransport.ClientConsumerGroup);
+
+            this.clientReceiveTasks = Enumerable
+                .Range(0, EventHubsConnections.NumClientChannels)
+                .Select(i => this.ClientReceiveLoopAsync(i, clientReceivers[i], channel.Writer))
+                .ToArray();
+
+            this.clientProcessTask = this.ClientProcessLoopAsync(channel.Reader);
 
             if (PartitionHubs.Length > 1)
             {
@@ -396,16 +412,13 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        async Task ClientEventLoop()
+        async Task ClientReceiveLoopAsync(int index, PartitionReceiver receiver, ChannelWriter<ClientEvent> channelWriter)
         {
-            var clientReceiver = this.connections.CreateClientReceiver(this.ClientId, EventHubsTransport.ClientConsumerGroup);
-            var receivedEvents = new List<ClientEvent>();
-
             byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
 
             while (!this.shutdownSource.IsCancellationRequested)
             {
-                IEnumerable<EventData> eventData = await clientReceiver.ReceiveAsync(1000, TimeSpan.FromMinutes(1)).ConfigureAwait(false);
+                IEnumerable<EventData> eventData = await receiver.ReceiveAsync(1000, TimeSpan.FromMinutes(1));
 
                 if (eventData != null)
                 {
@@ -415,31 +428,30 @@ namespace DurableTask.Netherite.EventHubs
 
                         try
                         {
+                            this.traceHelper.LogDebug("Client{clientId}/{index} received packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
                             Packet.Deserialize(ed.Body, out clientEvent, taskHubGuid);
-
                             if (clientEvent != null && clientEvent.ClientId == this.ClientId)
                             {
-                                receivedEvents.Add(clientEvent);
+                               this.traceHelper.LogTrace("Client{clientId}/{index} receiving event {evt} id={eventId}]", Client.GetShortId(this.ClientId), index, clientEvent, clientEvent.EventIdString);
+                               await channelWriter.WriteAsync(clientEvent);
                             }
                         }
                         catch (Exception)
                         {
-                            this.traceHelper.LogError("EventProcessor for Client{clientId} could not deserialize packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), ed.SystemProperties.SequenceNumber, ed.Body.Count);
+                            this.traceHelper.LogError("Client{clientId}/{index} could not deserialize packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
                             throw;
                         }
-                        this.traceHelper.LogDebug("EventProcessor for Client{clientId} received packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), ed.SystemProperties.SequenceNumber, ed.Body.Count);
-
-                    }
-
-                    if (receivedEvents.Count > 0)
-                    {
-                        foreach (var evt in receivedEvents)
-                        {
-                            this.client.Process(evt);
-                        }
-                        receivedEvents.Clear();
                     }
                 }
+            }
+        }
+
+        async Task ClientProcessLoopAsync(ChannelReader<ClientEvent> channelReader)
+        {           
+            while (!this.shutdownSource.IsCancellationRequested)
+            {
+                var clientEvent = await channelReader.ReadAsync(this.shutdownSource.Token);
+                this.client.Process(clientEvent);
             }
         }
     }

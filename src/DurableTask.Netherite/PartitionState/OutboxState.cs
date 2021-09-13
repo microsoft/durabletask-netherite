@@ -135,7 +135,7 @@ namespace DurableTask.Netherite
 
                 if (++this.numAcks == this.OutgoingMessages.Count)
                 {
-                    this.Partition.SubmitInternalEvent(new SendConfirmed()
+                    this.Partition.SubmitEvent(new SendConfirmed()
                     {
                         PartitionId = this.Partition.PartitionId,
                         Position = Position,

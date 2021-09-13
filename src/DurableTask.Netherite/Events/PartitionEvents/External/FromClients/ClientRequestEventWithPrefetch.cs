@@ -37,6 +37,13 @@ namespace DurableTask.Netherite
                 }
             }
         }
+        public override void OnSubmit(Partition partition)
+        {
+            if (this.Phase == ProcessingPhase.Read)
+            {
+                partition.SubmitEvent(new PrefetchState.InstancePrefetch(this));
+            }
+        }
 
         public sealed override void DetermineEffects(EffectTracker effects)
         {

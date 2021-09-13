@@ -728,7 +728,7 @@ namespace DurableTask.Netherite
                 latencyMs,
                 sequenceNumber);
 
-             partition.SubmitInternalEvent(batchProcessedEvent);
+             partition.SubmitEvent(batchProcessedEvent);
 
             if (this.workItemTraceHelper.TraceTaskMessages)
             {
@@ -865,7 +865,7 @@ namespace DurableTask.Netherite
 
             try
             {
-                partition.SubmitInternalEvent(activityCompletedEvent);
+                partition.SubmitEvent(activityCompletedEvent);
                 this.workItemTraceHelper.TraceTaskMessageSent(partition.PartitionId, activityCompletedEvent.Response, activityWorkItem.WorkItemId, null, null);
             }
             catch (OperationCanceledException e)

@@ -8,6 +8,7 @@ namespace DurableTask.Netherite.EventHubs
     using Microsoft.Extensions.Logging;
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.IO;
     using System.Threading;
     using System.Threading.Tasks;
@@ -23,6 +24,12 @@ namespace DurableTask.Netherite.EventHubs
         readonly TimeSpan backoff = TimeSpan.FromSeconds(5);
         const int maxFragmentSize = 500 * 1024; // account for very non-optimal serialization of event
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
+        readonly Stopwatch stopwatch = new Stopwatch();
+
+
+        // we manually set the max message size to leave extra room as
+        // we have observed exceptions in practice otherwise.
+        readonly BatchOptions batchOptions = new BatchOptions() { MaxMessageSize = 900 * 1024 };
 
         public EventHubsSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, EventHubsTraceHelper traceHelper)
             : base($"EventHubsSender {sender.EventHubClient.EventHubName}/{sender.PartitionId}", false, 2000, CancellationToken.None, traceHelper)
@@ -49,14 +56,25 @@ namespace DurableTask.Netherite.EventHubs
             
             try
             {
-                // we manually set the max message size to leave extra room as
-                // we have observed exceptions in practice otherwise.
-                var batch = this.sender.CreateBatch(new BatchOptions() { MaxMessageSize = 900 * 1024 });
+                var batch = this.sender.CreateBatch(this.batchOptions);
+
+                async Task SendBatch(int lastPosition)
+                {
+                    maybeSent = lastPosition;
+                    this.stopwatch.Restart();
+                    await this.sender.SendAsync(batch).ConfigureAwait(false);
+                    this.stopwatch.Stop();
+                    sentSuccessfully = lastPosition;
+                    this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent batch of {numPackets} packets ({size} bytes) in {latencyMs:F2}ms, throughput={throughput:F2}MB/s", this.eventHubName, this.eventHubPartition, batch.Count, batch.Size, this.stopwatch.Elapsed.TotalMilliseconds, batch.Size/(1024*1024*this.stopwatch.Elapsed.TotalSeconds));
+                    batch.Dispose();
+                }
 
                 for (int i = 0; i < toSend.Count; i++)
                 {
                     long startPos = this.stream.Position;
                     var evt = toSend[i];
+
+                    this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} is sending event {evt} id={eventId}", this.eventHubName, this.eventHubPartition, evt, evt.EventIdString);
                     Packet.Serialize(evt, this.stream, this.taskHubGuid);
                     int length = (int)(this.stream.Position - startPos);
                     var arraySegment = new ArraySegment<byte>(this.stream.GetBuffer(), (int)startPos, length);
@@ -73,29 +91,28 @@ namespace DurableTask.Netherite.EventHubs
                         if (batch.Count > 0)
                         {
                             // send the batch we have so far
-                            maybeSent = i - 1;
-                            await this.sender.SendAsync(batch).ConfigureAwait(false);
-                            sentSuccessfully = i - 1;
-
-                            this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent batch of {numPackets} packets", this.eventHubName, this.eventHubPartition, batch.Count);
+                            await SendBatch(i - 1);
 
                             // create a fresh batch
-                            batch = this.sender.CreateBatch();
+                            batch = this.sender.CreateBatch(this.batchOptions);
                         }
 
                         if (tooBig)
                         {
                             // the message is too big. Break it into fragments, and send each individually.
+                            this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} fragmenting large event ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, length, evt.EventIdString);
                             var fragments = FragmentationAndReassembly.Fragment(arraySegment, evt, maxFragmentSize);
                             maybeSent = i;
-                            foreach (var fragment in fragments)
+                            for (int k = 0; k < fragments.Count; k++)
                             {
                                 //TODO send bytes directly instead of as events (which causes significant space overhead)
                                 this.stream.Seek(0, SeekOrigin.Begin);
+                                var fragment = fragments[k];
                                 Packet.Serialize((Event)fragment, this.stream, this.taskHubGuid);
+                                this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} sending fragment {index}/{total} ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, k, fragments.Count, length, ((Event)fragment).EventIdString);
                                 length = (int)this.stream.Position;
                                 await this.sender.SendAsync(new EventData(new ArraySegment<byte>(this.stream.GetBuffer(), 0, length))).ConfigureAwait(false);
-                                this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent packet ({size} bytes) {evt} id={eventId}", this.eventHubName, this.eventHubPartition, length, fragment, ((Event)fragment).EventIdString);
+                                this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent fragment {index}/{total} ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, k, fragments.Count, length, ((Event)fragment).EventIdString);
                             }
                             sentSuccessfully = i;
                         }
@@ -112,12 +129,8 @@ namespace DurableTask.Netherite.EventHubs
 
                 if (batch.Count > 0)
                 {
-                    maybeSent = toSend.Count - 1;
-                    await this.sender.SendAsync(batch).ConfigureAwait(false);
-                    sentSuccessfully = toSend.Count - 1;
-
-                    this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent batch of {numPackets} packets", this.eventHubName, this.eventHubPartition, batch.Count);
-
+                    await SendBatch(toSend.Count - 1);
+                    
                     // the buffer can be reused now
                     this.stream.Seek(0, SeekOrigin.Begin);
                 }
