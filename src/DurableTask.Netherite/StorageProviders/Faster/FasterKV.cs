@@ -521,9 +521,7 @@ namespace DurableTask.Netherite.Faster
 
                                 this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.InstanceId}");
 
-                                var value = orchestrationState.ClearFieldsImmutably(!instanceQuery.FetchInput, false);
-
-                                var task = channel.Writer.WriteAsync(value);
+                                var task = channel.Writer.WriteAsync(orchestrationState);
 
                                 if (!task.IsCompleted)
                                 {

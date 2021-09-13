@@ -96,13 +96,13 @@ namespace DurableTask.Netherite
             /// Queues a single event for processing on this partition.
             /// </summary>
             /// <param name="partitionEvent">The event to process.</param>
-            void SubmitInternalEvent(PartitionUpdateEvent partitionEvent);
+            void SubmitEvent(PartitionUpdateEvent partitionEvent);
 
             /// <summary>
             /// Queues a batch of incoming external events for processing on this partition.
             /// </summary>
             /// <param name="partitionEvents">The events to process.</param>
-            void SubmitExternalEvents(IList<PartitionEvent> partitionEvents);
+            void SubmitEvents(IList<PartitionEvent> partitionEvents);
 
             /// <summary>
             /// The error handler for this partition.

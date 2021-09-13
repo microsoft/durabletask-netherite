@@ -39,7 +39,7 @@ namespace DurableTask.Netherite
             async Task ExecuteBatch()
             {
                 await partition.State.Prefetch(batch.KeysToPrefetch);
-                partition.SubmitInternalEvent(batch);
+                partition.SubmitEvent(batch);
                 await batch.WhenProcessed.Task;
             }
 

@@ -195,20 +195,20 @@ namespace DurableTask.Netherite
                     switch(t)
                     {
                         case TimerFired timerFired:
-                            this.SubmitInternalEvent(timerFired);
+                            this.SubmitEvent(timerFired);
                             this.WorkItemTraceHelper.TraceTaskMessageSent(this.PartitionId, timerFired.TaskMessage, timerFired.OriginWorkItemId, null, null);
                             break;
                         case PartitionUpdateEvent updateEvent:
-                            this.SubmitInternalEvent(updateEvent);
+                            this.SubmitEvent(updateEvent);
                             break;
                         case PartitionReadEvent readEvent:
-                            this.SubmitInternalEvent(readEvent);
+                            this.SubmitEvent(readEvent);
                             break;
                         case PartitionQueryEvent queryEvent:
-                            this.SubmitInternalEvent(queryEvent);
+                            this.SubmitParallelEvent(queryEvent);
                             break;
                         default:
-                            throw new InvalidCastException("Could not cast to neither PartitionUpdateEvent nor PartitionReadEvent");
+                            throw new InvalidCastException("Could not cast to any appropriate type of event");
                     }
                 }
             }
@@ -240,32 +240,39 @@ namespace DurableTask.Netherite
             this.BatchSender.Submit(loadMonitorEvent);
         }
 
-        public void SubmitInternalEvent(PartitionUpdateEvent updateEvent)
+        public void SubmitEvent(PartitionUpdateEvent updateEvent)
         {
             updateEvent.ReceivedTimestamp = this.CurrentTimeMs;
-            this.State.SubmitInternalEvent(updateEvent);
+            this.State.SubmitEvent(updateEvent);
+            updateEvent.OnSubmit(this);
         }
 
-        public void SubmitInternalEvent(PartitionReadEvent readEvent)
+        public void SubmitEvent(PartitionReadEvent readEvent)
         {
             readEvent.ReceivedTimestamp = this.CurrentTimeMs;
-            this.State.SubmitInternalEvent(readEvent);
+            this.State.SubmitEvent(readEvent);
         }
 
-        public void SubmitInternalEvent(PartitionQueryEvent queryEvent)
+        public void SubmitParallelEvent(PartitionEvent partitionEvent)
         {
-            queryEvent.ReceivedTimestamp = this.CurrentTimeMs;
-            this.State.SubmitInternalEvent(queryEvent);
+            this.Assert(!(partitionEvent is PartitionUpdateEvent));
+            partitionEvent.ReceivedTimestamp = this.CurrentTimeMs;
+            this.State.SubmitParallelEvent(partitionEvent);
         }
 
-        public void SubmitExternalEvents(IList<PartitionEvent> partitionEvents)
+        public void SubmitEvents(IList<PartitionEvent> partitionEvents)
         {
             foreach (PartitionEvent partitionEvent in partitionEvents)
             {
                 partitionEvent.ReceivedTimestamp = this.CurrentTimeMs;
             }
 
-            this.State.SubmitExternalEvents(partitionEvents);
+            this.State.SubmitEvents(partitionEvents);
+
+            foreach (PartitionEvent partitionEvent in partitionEvents)
+            {
+                partitionEvent.OnSubmit(this);
+            }
         }
 
         public void EnqueueActivityWorkItem(ActivityWorkItem item)

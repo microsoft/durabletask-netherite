@@ -192,7 +192,7 @@ namespace DurableTask.Netherite.EventHubs
                     if (batch.Count > 0)
                     {
                         c.NextPacketToReceive = batch[batch.Count - 1].NextInputQueuePosition;
-                        c.Partition.SubmitExternalEvents(batch);
+                        c.Partition.SubmitEvents(batch);
                         this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} received {batchsize} packets, starting with #{seqno}, next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, batch.Count, batch[0].NextInputQueuePosition - 1, c.NextPacketToReceive);
                     }
                 }
@@ -408,7 +408,7 @@ namespace DurableTask.Netherite.EventHubs
                 if (batch.Count > 0)
                 {
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} received batch of {batchsize} packets, starting with #{seqno}, next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, batch.Count, batch[0].NextInputQueuePosition - 1, current.NextPacketToReceive);
-                    current.Partition.SubmitExternalEvents(batch);
+                    current.Partition.SubmitEvents(batch);
                 }
 
                 await this.SaveEventHubsReceiverCheckpoint(context, 600000).ConfigureAwait(false);

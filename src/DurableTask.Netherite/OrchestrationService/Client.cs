@@ -34,6 +34,7 @@ namespace DurableTask.Netherite
         readonly BatchTimer<PendingRequest> ResponseTimeouts;
         readonly ConcurrentDictionary<long, PendingRequest> ResponseWaiters;
         readonly Dictionary<string, MemoryStream> Fragments;
+        readonly Dictionary<long, QueryResponseReceived> QueryResponses;
 
         public static string GetShortId(Guid clientId) => clientId.ToString("N").Substring(0, 7);
 
@@ -56,6 +57,7 @@ namespace DurableTask.Netherite
             this.ResponseTimeouts = new BatchTimer<PendingRequest>(this.shutdownToken, this.Timeout, this.traceHelper.TraceTimerProgress);
             this.ResponseWaiters = new ConcurrentDictionary<long, PendingRequest>();
             this.Fragments = new Dictionary<string, MemoryStream>();
+            this.QueryResponses = new Dictionary<long, QueryResponseReceived>();
             this.ResponseTimeouts.Start("ClientTimer");
             this.workItemStopwatch = new Stopwatch();
             this.workItemStopwatch.Start();
@@ -76,11 +78,39 @@ namespace DurableTask.Netherite
 
         public void Process(ClientEvent clientEvent)
         {
-            if (!(clientEvent is ClientEventFragment fragment))
+            if (clientEvent is QueryResponseReceived queryResponseReceived)
             {
-                this.ProcessInternal(clientEvent);
+                queryResponseReceived.DeserializeOrchestrationStates();
+                bool GotAllResults() => queryResponseReceived.Final == queryResponseReceived.OrchestrationStates.Count;
+
+                if (this.QueryResponses.TryGetValue(queryResponseReceived.RequestId, out QueryResponseReceived prev))
+                {
+                    // combine all received states
+                    prev.OrchestrationStates.AddRange(queryResponseReceived.OrchestrationStates);
+                    queryResponseReceived.OrchestrationStates = prev.OrchestrationStates;
+
+                    // keep the final count, if known
+                    if (prev.Final.HasValue)
+                    {
+                        queryResponseReceived.Final = prev.Final;
+                    }
+
+                    if (GotAllResults())
+                    {
+                        this.QueryResponses.Remove(queryResponseReceived.RequestId);
+                    }
+                }             
+
+                if (GotAllResults())
+                {
+                    this.ProcessInternal(queryResponseReceived);
+                }
+                else
+                {
+                    this.QueryResponses[queryResponseReceived.RequestId] = queryResponseReceived;
+                }
             }
-            else
+            else if (clientEvent is ClientEventFragment fragment)
             {
                 var originalEventString = fragment.OriginalEventId.ToString();
 
@@ -99,6 +129,10 @@ namespace DurableTask.Netherite
 
                     this.ProcessInternal(reassembledEvent);
                 }
+            }
+            else
+            {
+                this.ProcessInternal(clientEvent);
             }
         }
 

@@ -275,7 +275,7 @@ namespace DurableTask.Netherite
         {
             var evtCopy = (BatchProcessed) ((BatchProcessed) evt).Clone();
             evtCopy.PersistFirst = BatchProcessed.PersistFirstStatus.Done;
-            this.Partition.SubmitInternalEvent(evtCopy);
+            this.Partition.SubmitEvent(evtCopy);
         }
 
         public void Process(BatchProcessed evt, EffectTracker effects)
