@@ -12,6 +12,8 @@ namespace PerformanceTests.Periodic
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
+    using Newtonsoft.Json;
+    using System.Net;
 
     /// <summary>
     /// A simple microbenchmark orchestration that some trivial activities in a sequence.
@@ -20,15 +22,33 @@ namespace PerformanceTests.Periodic
     {
         [FunctionName(nameof(Periodic))]
         public static async Task<IActionResult> Run(
-           [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequest req,
+           [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "periodic/{instanceId}/start")] HttpRequest req,
+           string instanceId,
            [DurableClient] IDurableClient client,
            ILogger log)
         {
-            // start the orchestration
-            string orchestrationInstanceId = await client.StartNewAsync(nameof(PeriodicOrchestration));
+            PeriodicOrchestration.Input input;
 
-            // wait for it to complete and return the result
-            return await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(200));
-        }   
+            try
+            {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                input = JsonConvert.DeserializeObject<PeriodicOrchestration.Input>(requestBody);
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(e.Message) { StatusCode = (int)HttpStatusCode.BadRequest };
+            }
+
+            try
+            {
+                // start the orchestration
+                string orchestrationInstanceId = await client.StartNewAsync(nameof(PeriodicOrchestration), instanceId, input);
+                return new OkObjectResult($"periodic orchestration {instanceId} was started.\n");
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(e.ToString()) { StatusCode = (int)HttpStatusCode.InternalServerError };
+            }
+        }
     }
 }
