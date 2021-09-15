@@ -180,7 +180,7 @@ namespace DurableTask.Netherite.EventHubs
                         reportAsWarning: true));
 
                 // start this partition (which may include waiting for the lease to become available)
-                c.Partition = this.host.AddPartition(this.partitionId, this.sender);
+                c.Partition = this.host.AddPartition(this.partitionId, this.parameters.CreationTimestamp, this.sender);
                 c.NextPacketToReceive = await c.Partition.CreateOrRestoreAsync(c.ErrorHandler, this.parameters.StartPositions[this.partitionId]).ConfigureAwait(false);
 
                 this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} started partition (incarnation {incarnation}), next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, c.Incarnation, c.NextPacketToReceive);

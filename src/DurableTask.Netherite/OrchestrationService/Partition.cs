@@ -26,6 +26,8 @@ namespace DurableTask.Netherite
 
         public uint PartitionId { get; private set; }
         public string TracePrefix { get; private set; }
+        
+        public DateTime TaskhubCreationTimestamp { get; private set; }
         public Func<string, uint> PartitionFunction { get; private set; }
         public Func<uint> NumberPartitions { get; private set; }
         public IPartitionErrorHandler ErrorHandler { get; private set; }
@@ -59,6 +61,7 @@ namespace DurableTask.Netherite
             uint partitionId,
             Func<string, uint> partitionFunction,
             Func<uint> numberPartitions,
+            DateTime taskhubCreationTimestamp,
             TransportAbstraction.ISender batchSender,
             NetheriteOrchestrationServiceSettings settings,
             string storageAccountName,
@@ -71,6 +74,7 @@ namespace DurableTask.Netherite
             this.PartitionId = partitionId;
             this.PartitionFunction = partitionFunction;
             this.NumberPartitions = numberPartitions;
+            this.TaskhubCreationTimestamp = taskhubCreationTimestamp;
             this.BatchSender = batchSender;
             this.Settings = settings;
             this.StorageAccountName = storageAccountName;

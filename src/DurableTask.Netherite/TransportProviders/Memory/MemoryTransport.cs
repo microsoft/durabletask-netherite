@@ -68,7 +68,6 @@ namespace DurableTask.Netherite.Emulated
             this.shutdownTokenSource = new CancellationTokenSource();
 
             this.host.NumberPartitions = this.numberPartitions;
-            var creationTimestamp = DateTime.UtcNow;
             var startPositions = new long[this.numberPartitions];
 
             // create a client
@@ -108,7 +107,7 @@ namespace DurableTask.Netherite.Emulated
             async Task StartPartition(uint partitionId)
             {
                 var partitionSender = new SendWorker(this.shutdownTokenSource.Token);
-                var partition = this.host.AddPartition(partitionId, partitionSender);
+                var partition = this.host.AddPartition(partitionId, new(2020, 1, 1), partitionSender);
                 partitionSender.SetHandler(list => this.SendEvents(partition, list));
                 this.partitionQueues[partitionId] = new MemoryPartitionQueue(partition, this.shutdownTokenSource.Token, this.logger);
                 this.partitions[partitionId] = partition;

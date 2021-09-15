@@ -394,9 +394,9 @@ namespace DurableTask.Netherite
             return this.client;
         }
 
-        TransportAbstraction.IPartition TransportAbstraction.IHost.AddPartition(uint partitionId, TransportAbstraction.ISender batchSender)
+        TransportAbstraction.IPartition TransportAbstraction.IHost.AddPartition(uint partitionId, DateTime taskhubCreationTimestamp, TransportAbstraction.ISender batchSender)
         {
-            var partition = new Partition(this, partitionId, this.GetPartitionId, this.GetNumberPartitions, batchSender, this.Settings, this.StorageAccountName,
+            var partition = new Partition(this, partitionId, this.GetPartitionId, this.GetNumberPartitions, taskhubCreationTimestamp, batchSender, this.Settings, this.StorageAccountName,
                 this.ActivityWorkItemQueue, this.OrchestrationWorkItemQueue, this.LoadPublisher, this.workItemTraceHelper);
 
             return partition;

@@ -43,9 +43,10 @@ namespace DurableTask.Netherite
             /// Places a partition on this host.
             /// </summary>
             /// <param name="partitionId">The partition id.</param>
+            /// <param name="taskhubCreationTimestamp">The creation timestamp of the taskhub.</param>
             /// <param name="batchSender">A sender for passing messages to the transport backend</param>
             /// <returns></returns>
-            IPartition AddPartition(uint partitionId, ISender batchSender);
+            IPartition AddPartition(uint partitionId, DateTime taskhubCreationTimestamp, ISender batchSender);
 
             /// <summary>
             /// Creates a client on this host.

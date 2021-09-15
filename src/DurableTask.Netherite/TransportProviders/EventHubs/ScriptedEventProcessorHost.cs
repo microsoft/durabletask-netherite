@@ -179,14 +179,14 @@ namespace DurableTask.Netherite.EventHubs
                 if (timestep.Action == "restart")
                 {
                     var oldPartitionInstance = this.partitionInstances[partitionId];
-                    var newPartitionInstance = new PartitionInstance((uint) partitionId, oldPartitionInstance.Incarnation + 1, this);
+                    var newPartitionInstance = new PartitionInstance((uint) partitionId, oldPartitionInstance.Incarnation + 1, this.parameters, this);
                     this.partitionInstances[partitionId] = newPartitionInstance;
                     await Task.WhenAll(newPartitionInstance.StartAsync(), oldPartitionInstance.StopAsync());
                 }
                 else if (timestep.Action == "start")
                 {
                     var oldPartitionInstance = this.partitionInstances[partitionId];
-                    var newPartitionInstance = new PartitionInstance((uint)partitionId, (oldPartitionInstance?.Incarnation ?? 0) + 1, this);
+                    var newPartitionInstance = new PartitionInstance((uint)partitionId, (oldPartitionInstance?.Incarnation ?? 0) + 1, this.parameters, this);
                     this.partitionInstances[partitionId] = newPartitionInstance;
                     await newPartitionInstance.StartAsync();
                 }
@@ -217,6 +217,7 @@ namespace DurableTask.Netherite.EventHubs
         {
             readonly uint partitionId;
             readonly ScriptedEventProcessorHost host;
+            readonly TaskhubParameters parameters;
 
             TransportAbstraction.IPartition partition;
             Task partitionEventLoop;
@@ -226,11 +227,12 @@ namespace DurableTask.Netherite.EventHubs
             // Just copied from EventHubsTransport
             const int MaxReceiveBatchSize = 1000; // actual batches are typically much smaller
 
-            public PartitionInstance(uint partitionId, int incarnation, ScriptedEventProcessorHost eventProcessorHost)
+            public PartitionInstance(uint partitionId, int incarnation, TaskhubParameters parameters, ScriptedEventProcessorHost eventProcessorHost)
             {
                 this.partitionId = partitionId;
                 this.Incarnation = incarnation;
                 this.host = eventProcessorHost;
+                this.parameters = parameters;
             }
 
             public int Incarnation { get; }
@@ -245,7 +247,7 @@ namespace DurableTask.Netherite.EventHubs
                     this.host.logger.LogDebug("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) is starting partition", this.host.eventHubPath, this.partitionId, this.Incarnation);
 
                     // start this partition (which may include waiting for the lease to become available)
-                    this.partition = this.host.host.AddPartition(this.partitionId, this.host.sender);
+                    this.partition = this.host.host.AddPartition(this.partitionId, this.parameters.CreationTimestamp, this.host.sender);
 
                     var errorHandler = this.host.host.CreateErrorHandler(this.partitionId);
 
