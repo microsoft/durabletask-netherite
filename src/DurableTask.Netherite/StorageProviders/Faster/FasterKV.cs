@@ -16,6 +16,8 @@ namespace DurableTask.Netherite.Faster
     using DurableTask.Core.Common;
     using FASTER.core;
     using FASTER.indexes.HashValueIndex;
+    using Newtonsoft.Json;
+    using Newtonsoft.Json.Linq;
 
     class FasterKV : TrackedObjectStore
     {
@@ -279,6 +281,33 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        class IterationContinuationToken
+        {
+            public int Position;
+            public JObject FToken;
+
+            public static int DecodePosition(ref string token)
+            {
+                if (token == null)
+                {
+                    return 0;
+                }
+                else
+                {
+                    var iterationToken = JsonConvert.DeserializeObject<IterationContinuationToken>(token);
+                    token = iterationToken.FToken.ToString();
+                    return iterationToken.Position;
+                }
+            }
+            public static void EncodePosition(ref string token, int position)
+            {
+                token = JsonConvert.SerializeObject(new IterationContinuationToken()
+                {
+                    Position = position,
+                    FToken = JsonConvert.DeserializeObject<JObject>(token)
+                });
+            }
+        }
 
         async IAsyncEnumerable<OrchestrationState> QueryIndexAsync(
             PartitionQueryEvent queryEvent,
@@ -299,31 +328,60 @@ namespace DurableTask.Netherite.Faster
                     var prefixLen = is7 ? PredicateKey.InstanceIdPrefixLen7 : PredicateKey.InstanceIdPrefixLen4;
                     await foreach (var orcState in queryPredicate(predicate, new PredicateKey(instanceQuery.InstanceIdPrefix, prefixLen)).ConfigureAwait(false))
                     {
-                        yield return orcState;
                         totalcount++;
+                        yield return orcState;
                     }
                 }
                 else if (instanceQuery.CreatedTimeFrom.HasValue || instanceQuery.CreatedTimeTo.HasValue)
                 {
                     var createdTimeTo = instanceQuery.CreatedTimeTo ?? DateTime.UtcNow;
-                    var createdTimeFrom = instanceQuery.CreatedTimeFrom ?? createdTimeTo.AddDays(-7);   // TODO Some default so we don't have to iterate from the first possible date
-                    for (var dt = createdTimeFrom; dt <= createdTimeTo; dt += PredicateKey.DateBinInterval)
+                    var createdTimeFrom = instanceQuery.CreatedTimeFrom ?? this.partition.TaskhubCreationTimestamp - TimeSpan.FromMinutes(5);
+
+                    int position = IterationContinuationToken.DecodePosition(ref continuationToken);
+                    DateTime currentBucket() => createdTimeFrom + (position * PredicateKey.DateBinInterval);
+                    
+                    for (; currentBucket() <= createdTimeTo; position++)
                     {
-                        await foreach (var orcState in queryPredicate(this.CreatedTimePredicate, new PredicateKey(dt)).ConfigureAwait(false))
+                        await foreach (var orcState in queryPredicate(this.CreatedTimePredicate, new PredicateKey(currentBucket())).ConfigureAwait(false))
                         {
-                            yield return orcState;
                             totalcount++;
+                            yield return orcState;
+                        }
+
+                        if (continuationToken != null)
+                        {
+                            IterationContinuationToken.EncodePosition(ref continuationToken, position);
+                            break;
                         }
                     }
                 }
                 else if (instanceQuery.HasRuntimeStatus)
                 {
-                    foreach (var status in instanceQuery.RuntimeStatus)
+                    if (instanceQuery.RuntimeStatus.Length == 1)
                     {
-                        await foreach (var orcState in queryPredicate(this.RuntimeStatusPredicate, new PredicateKey(status)).ConfigureAwait(false))
+                        await foreach (var orcState in queryPredicate(this.RuntimeStatusPredicate, new PredicateKey(instanceQuery.RuntimeStatus[0])).ConfigureAwait(false))
                         {
-                            yield return orcState;
                             totalcount++;
+                            yield return orcState;
+                        }
+                    }
+                    else
+                    {
+                        int position = IterationContinuationToken.DecodePosition(ref continuationToken);
+
+                        for (; position < instanceQuery.RuntimeStatus.Length; position++)
+                        {
+                            await foreach (var orcState in queryPredicate(this.RuntimeStatusPredicate, new PredicateKey(instanceQuery.RuntimeStatus[position])).ConfigureAwait(false))
+                            {
+                                totalcount++;
+                                yield return orcState;
+                            }
+
+                            if (continuationToken != null)
+                            {
+                                IterationContinuationToken.EncodePosition(ref continuationToken, position);
+                                break;
+                            }
                         }
                     }
                 }
@@ -332,8 +390,8 @@ namespace DurableTask.Netherite.Faster
             {
                 await foreach (var orcState in this.ScanOrchestrationStates(effectTracker, queryEvent).ConfigureAwait(false))
                 {
-                    yield return orcState;
                     totalcount++;
+                    yield return orcState;
                 }
             }
 
@@ -390,7 +448,7 @@ namespace DurableTask.Netherite.Faster
 
                     if (totalcount >= queryEvent.PageSize)
                     {
-                        break; // we have already connected enough results to fill the page
+                        yield break; // we have already connected enough results to fill the page
                     }
                 }
                 while (continuationToken != null);
@@ -402,8 +460,6 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                
-
                 // create an individual session for this query so the main session can be used
                 // while the query is progressing.
                 using (var session = this.CreateASession())
