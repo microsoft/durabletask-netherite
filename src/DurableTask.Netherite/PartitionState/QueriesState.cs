@@ -27,7 +27,14 @@ namespace DurableTask.Netherite
             // reissue queries that did not complete prior to crash/recovery
             foreach (var kvp in this.PendingQueries)
             {
-                this.Partition.SubmitParallelEvent(new InstanceQueryEvent(kvp.Value));
+                if (!kvp.Value.HasTimedOut)
+                {
+                    this.Partition.SubmitParallelEvent(new InstanceQueryEvent(kvp.Value));
+                }
+                else
+                {
+                    RecycleToConfirm(this.Partition, kvp.Value);
+                }
             }
         }
 
@@ -68,6 +75,14 @@ namespace DurableTask.Netherite
             }
         }
 
+        static void RecycleToConfirm(Partition partition, ClientRequestEventWithQuery request)
+        {
+            var again = (ClientRequestEventWithQuery)request.Clone();
+            again.NextInputQueuePosition = 0; // this event is no longer considered an external event        
+            again.Phase = ClientRequestEventWithQuery.ProcessingPhase.Confirm;
+            partition.SubmitEvent(again);
+        }
+
         /// <summary>
         /// This event represents the execution of the actual query. It is a read-only
         /// query event.
@@ -102,10 +117,7 @@ namespace DurableTask.Netherite
                 await this.request.OnQueryCompleteAsync(result, partition, this);
 
                 // we now how to recycle the request event again in order to remove it from the list of pending queries
-                var again = (ClientRequestEventWithQuery)this.request.Clone();
-                again.NextInputQueuePosition = 0; // this event is no longer considered an external event        
-                again.Phase = ClientRequestEventWithQuery.ProcessingPhase.Confirm;
-                partition.SubmitEvent(again);
+                RecycleToConfirm(partition, this.request);
             }
         }
     }

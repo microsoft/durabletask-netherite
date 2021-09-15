@@ -27,7 +27,14 @@ namespace DurableTask.Netherite
             // reissue prefetch tasks for what did not complete prior to crash/recovery
             foreach (var kvp in this.PendingPrefetches)
             {
-                this.Partition.SubmitParallelEvent(new InstancePrefetch(kvp.Value));
+                if (!kvp.Value.HasTimedOut)
+                {
+                    this.Partition.SubmitParallelEvent(new InstancePrefetch(kvp.Value));
+                }
+                else
+                {
+                     RecycleToConfirm(this.Partition, kvp.Value);
+                }
             }
         }
 
@@ -56,12 +63,17 @@ namespace DurableTask.Netherite
             {
                 if (this.PendingPrefetches.Remove(clientRequestEvent.EventIdString))
                 {
-                    if (clientRequestEvent.Phase == ClientRequestEventWithPrefetch.ProcessingPhase.ConfirmAndProcess)
-                    {
-                        effects.Add(clientRequestEvent.Target);
-                    }
+                     effects.Add(clientRequestEvent.Target);
                 }
             }
+        }
+
+        static void RecycleToConfirm(Partition partition, ClientRequestEventWithPrefetch request)
+        {
+            var again = (ClientRequestEventWithPrefetch)request.Clone();
+            again.NextInputQueuePosition = 0; // this event is no longer considered an external event
+            again.Phase = ClientRequestEventWithPrefetch.ProcessingPhase.Confirm;
+            partition.SubmitEvent(again);
         }
 
         internal class InstancePrefetch : InternalReadEvent
@@ -88,17 +100,8 @@ namespace DurableTask.Netherite
             public override void OnReadComplete(TrackedObject target, Partition partition)
             {
                 partition.Assert(this.request.Phase == ClientRequestEventWithPrefetch.ProcessingPhase.Read);
-
-                bool requiresProcessing = this.request.OnReadComplete(target, partition);
-
-                var again = (ClientRequestEventWithPrefetch) this.request.Clone();
-
-                again.NextInputQueuePosition = 0; // this event is no longer considered an external event
-
-                again.Phase = requiresProcessing ?
-                    ClientRequestEventWithPrefetch.ProcessingPhase.ConfirmAndProcess : ClientRequestEventWithPrefetch.ProcessingPhase.Confirm;
-                 
-                partition.SubmitEvent(again);
+                this.request.OnReadComplete(target, partition);
+                RecycleToConfirm(partition, this.request);
             }
         }
     }

@@ -37,7 +37,7 @@ namespace DurableTask.Netherite
         public override TrackedObjectKey Target => TrackedObjectKey.Instance(this.InstanceId);
 
 
-        public override bool OnReadComplete(TrackedObject target, Partition partition)
+        public override void OnReadComplete(TrackedObject target, Partition partition)
         {
             // Use this moment of time as the creation timestamp, replacing the original timestamp taken on the client.
             // This is preferrable because it avoids clock synchronization issues (which can result in negative orchestration durations)
@@ -45,8 +45,6 @@ namespace DurableTask.Netherite
             DateTime creationTimestamp = DateTime.UtcNow;
 
             this.ExecutionStartedEvent.Timestamp = creationTimestamp;
-
-            return true;
         }
     }
 }

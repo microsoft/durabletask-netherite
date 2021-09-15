@@ -25,5 +25,8 @@ namespace DurableTask.Netherite
 
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakeClientRequestEventId(this.ClientId, this.RequestId);
+
+        [IgnoreDataMember]
+        public virtual bool HasTimedOut => DateTime.UtcNow > this.TimeoutUtc;
     }
 }

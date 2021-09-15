@@ -17,9 +17,8 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public abstract TrackedObjectKey Target { get; }
 
-        public virtual bool OnReadComplete(TrackedObject target, Partition partition)
+        public virtual void OnReadComplete(TrackedObject target, Partition partition)
         {
-            return true;
         }
 
         [IgnoreDataMember]
@@ -54,7 +53,6 @@ namespace DurableTask.Netherite
         { 
              Read,
              Confirm,
-             ConfirmAndProcess,
         }
     }
 }

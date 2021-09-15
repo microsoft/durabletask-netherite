@@ -17,6 +17,8 @@ namespace DurableTask.Netherite
         [DataMember]
         public int NumberInstancesPurged { get; set; } = 0;
 
+        public override bool HasTimedOut => false; // purge requests don't time out
+
         const int MaxBatchSize = 1000;
 
         public async override Task OnQueryCompleteAsync(
