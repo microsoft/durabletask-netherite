@@ -96,6 +96,7 @@ namespace DurableTask.Netherite
                     if (prev.Final.HasValue)
                     {
                         queryResponseReceived.Final = prev.Final;
+                        queryResponseReceived.ContinuationToken = prev.ContinuationToken;
                     }
 
                     if (GotAllResults())

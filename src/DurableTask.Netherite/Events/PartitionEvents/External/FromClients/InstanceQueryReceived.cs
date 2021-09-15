@@ -48,7 +48,7 @@ namespace DurableTask.Netherite
                 totalcount++;
             }
 
-            partition.Assert(response.OrchestrationStates.Count == evt.PageSizeResult);
+            partition.Assert(totalcount == evt.PageSizeResult);
             response.ContinuationToken = evt.ContinuationTokenResult;
             response.Final = totalcount;
             response.SerializeOrchestrationStates(memoryStream, this.InstanceQuery.FetchInput);
