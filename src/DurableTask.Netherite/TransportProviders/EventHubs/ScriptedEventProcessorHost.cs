@@ -254,7 +254,7 @@ namespace DurableTask.Netherite.EventHubs
 
                     this.partitionEventLoop = Task.Run(() => this.PartitionEventLoop(nextPacketToReceive));
                 }
-                catch(Exception e) when (!Utils.IsFatal(e))
+                catch (Exception e) when (!Utils.IsFatal(e))
                 {
                     this.host.logger.LogError("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) failed to start partition: {exception}", this.host.eventHubPath, this.partitionId, this.Incarnation, e);
                     throw;
@@ -385,7 +385,7 @@ namespace DurableTask.Netherite.EventHubs
                             if (batch.Count > 0 && !this.shutdownSource.IsCancellationRequested)
                             {
                                 this.host.logger.LogDebug("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) received batch of {batchsize} packets, starting with #{seqno}, next expected packet is #{nextSeqno}", this.host.eventHubPath, this.partitionId, this.Incarnation, batch.Count, batch[0].NextInputQueuePosition - 1, nextPacketToReceive);
-                                this.partition.SubmitExternalEvents(batch);
+                                this.partition.SubmitEvents(batch);
                             }
                         }
                     }

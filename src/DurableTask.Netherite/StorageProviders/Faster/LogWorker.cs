@@ -35,7 +35,7 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper = traceHelper;
             this.intakeWorker = new IntakeWorker(cancellationToken, this, partition.TraceHelper);
 
-            this.maxFragmentSize = (1 << this.blobManager.EventLogSettings(partition.Settings.UsePremiumStorage).PageSizeBits) - 64; // faster needs some room for header, 64 bytes is conservative
+            this.maxFragmentSize = (1 << this.blobManager.EventLogSettings(partition.Settings.UseSeparatePageBlobStorage).PageSizeBits) - 64; // faster needs some room for header, 64 bytes is conservative
         }
 
         public const byte first = 0x1;
@@ -90,12 +90,12 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public void SubmitInternalEvent(PartitionEvent evt)
+        public void SubmitEvent(PartitionEvent evt)
         {
             this.intakeWorker.Submit(evt);
         }
 
-        public void SubmitExternalEvents(IList<PartitionEvent> events)
+        public void SubmitEvents(IList<PartitionEvent> events)
         {
             this.intakeWorker.SubmitBatch(events);
         }

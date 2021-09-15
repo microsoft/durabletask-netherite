@@ -98,7 +98,19 @@ namespace DurableTask.Netherite
                 : CloudStorageAccount.Parse(this.Settings.ResolvedStorageConnectionString).Credentials.AccountName;
 
             EtwSource.Log.OrchestrationServiceCreated(this.ServiceInstanceId, this.StorageAccountName, this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
-            this.Logger.LogInformation("NetheriteOrchestrationService created, workerId={workerId}, processorCount={processorCount}, transport={transport}, storage={storage}", Environment.ProcessorCount, this.Settings.WorkerId, this.configuredTransport, this.configuredStorage);
+            this.Logger.LogInformation("NetheriteOrchestrationService created, workerId={workerId}, processorCount={processorCount}, transport={transport}, storage={storage}", this.Settings.WorkerId, Environment.ProcessorCount, this.configuredTransport, this.configuredStorage);
+
+            if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster)
+            {
+                // force dll load here so exceptions are observed early
+                var _ = System.Threading.Channels.Channel.CreateBounded<DateTime>(10);
+
+                // throw descriptive exception if run on 32bit platform
+                if (!Environment.Is64BitProcess)
+                {
+                    throw new NotSupportedException("Netherite backend requires 64bit, but current process is 32bit.");
+                }
+            }
 
             switch (this.configuredTransport)
             {
@@ -117,7 +129,16 @@ namespace DurableTask.Netherite
             this.workItemTraceHelper = new WorkItemTraceHelper(loggerFactory, settings.WorkItemLogLevelLimit, this.StorageAccountName, this.Settings.HubName);
 
             if (this.configuredTransport != TransportConnectionString.TransportChoices.Memory)
-                this.LoadMonitorService = new AzureLoadMonitorTable(settings.ResolvedStorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
+            {
+                if (!string.IsNullOrEmpty(settings.LoadInformationAzureTableName))
+                {
+                    this.LoadMonitorService = new AzureTableLoadMonitor(settings.ResolvedStorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
+                }
+                else
+                {
+                    this.LoadMonitorService = new AzureBlobLoadMonitor(settings.ResolvedStorageConnectionString, settings.HubName);
+                }
+            }
 
             this.workItemStopwatch.Start();
 
@@ -140,13 +161,14 @@ namespace DurableTask.Netherite
         public bool TryGetScalingMonitor(out ScalingMonitor monitor)
         {
             if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster
-                || this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
+                && this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
                 monitor = new ScalingMonitor(
                     this.Settings.ResolvedStorageConnectionString, 
                     this.Settings.ResolvedTransportConnectionString, 
                     this.Settings.LoadInformationAzureTableName, 
                     this.Settings.HubName,
+                    this.TraceScaleRecommendation,
                     this.LoggerFactory.CreateLogger($"{LoggerCategoryName}.Scaling"));
                 return true;
             }
@@ -155,6 +177,11 @@ namespace DurableTask.Netherite
                 monitor = null;
                 return false;
             }
+        }
+
+        void TraceScaleRecommendation(string action, int workerCount, string details)
+        {
+            EtwSource.Log.OrchestrationServiceScaleRecommendation(this.StorageAccountName, this.Settings.HubName, action, workerCount, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
         }
 
         /******************************/
@@ -169,7 +196,7 @@ namespace DurableTask.Netherite
                     return new MemoryStorage(this.Logger);
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.PremiumStorageConnectionName, this.Settings.HubName, this.LoggerFactory);
+                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.ResolvedPageBlobStorageConnectionString, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName, this.LoggerFactory);
 
                 default:
                     throw new NotImplementedException("no such storage choice");
@@ -188,7 +215,11 @@ namespace DurableTask.Netherite
                     break;
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(this.Settings.ResolvedStorageConnectionString, this.Settings.HubName).ConfigureAwait(false);
+                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(
+                        this.Settings.ResolvedStorageConnectionString, 
+                        this.Settings.ResolvedPageBlobStorageConnectionString, 
+                        this.Settings.UseLocalDirectoryForPartitionStorage, 
+                        this.Settings.HubName).ConfigureAwait(false);
                     break;
 
                 default:
@@ -287,12 +318,12 @@ namespace DurableTask.Netherite
         }
 
         /// <inheritdoc />
-        public async Task StopAsync(bool isForced)
+        public async Task StopAsync(bool quickly)
         {
             try
             {
 
-                this.Logger.LogInformation("NetheriteOrchestrationService stopping, workerId={workerId} isForced={isForced}", this.Settings.WorkerId, isForced);
+                this.Logger.LogInformation("NetheriteOrchestrationService stopping, workerId={workerId} quickly={quickly}", this.Settings.WorkerId, quickly);
 
                 if (!this.Settings.KeepServiceRunning && this.serviceShutdownSource != null)
                 {
@@ -300,7 +331,7 @@ namespace DurableTask.Netherite
                     this.serviceShutdownSource.Dispose();
                     this.serviceShutdownSource = null;
 
-                    await this.taskHub.StopAsync(isForced).ConfigureAwait(false);
+                    await this.taskHub.StopAsync().ConfigureAwait(false);
 
                     this.ActivityWorkItemQueue.Dispose();
                     this.OrchestrationWorkItemQueue.Dispose();
@@ -322,7 +353,7 @@ namespace DurableTask.Netherite
         public Task StopAsync() => ((IOrchestrationService)this).StopAsync(false);
 
         /// <inheritdoc/>
-        public void Dispose() => this.taskHub.StopAsync(true);
+        public void Dispose() => this.taskHub.StopAsync();
 
         /// <summary>
         /// Computes the partition for the given instance.
@@ -366,6 +397,11 @@ namespace DurableTask.Netherite
                 this.ActivityWorkItemQueue, this.OrchestrationWorkItemQueue, this.LoadPublisher, this.workItemTraceHelper);
 
             return partition;
+        }
+
+        TransportAbstraction.ILoadMonitor TransportAbstraction.IHost.AddLoadMonitor(Guid taskHubGuid, TransportAbstraction.ISender batchSender)
+        {
+            return new LoadMonitor(this, taskHubGuid, batchSender);
         }
 
         IStorageProvider TransportAbstraction.IHost.StorageProvider => this;
@@ -573,7 +609,7 @@ namespace DurableTask.Netherite
         Task IOrchestrationService.CompleteTaskOrchestrationWorkItemAsync(
             TaskOrchestrationWorkItem workItem,
             OrchestrationRuntimeState newOrchestrationRuntimeState,
-            IList<TaskMessage> outboundMessages,
+            IList<TaskMessage> activityMessages,
             IList<TaskMessage> orchestratorMessages,
             IList<TaskMessage> timerMessages,
             TaskMessage continuedAsNewMessage,
@@ -600,9 +636,9 @@ namespace DurableTask.Netherite
             // we assign sequence numbers to all outgoing messages, to help us track them using unique message ids
             long sequenceNumber = 0;
 
-            if (outboundMessages != null)
+            if (activityMessages != null)
             {
-                foreach(TaskMessage taskMessage in outboundMessages)
+                foreach(TaskMessage taskMessage in activityMessages)
                 {
                     taskMessage.SequenceNumber = sequenceNumber++;
                 }
@@ -659,7 +695,7 @@ namespace DurableTask.Netherite
             }  
 
             // if this orchestration is not done, and extended sessions are enabled, we keep the work item so we can reuse the execution cursor
-            bool cacheWorkItemForReuse = partition.Settings.ExtendedSessionsEnabled && state.OrchestrationStatus == OrchestrationStatus.Running;
+            bool cacheWorkItemForReuse = partition.Settings.CacheOrchestrationCursors && state.OrchestrationStatus == OrchestrationStatus.Running;
 
             BatchProcessed batchProcessedEvent = new BatchProcessed()
             {
@@ -673,7 +709,7 @@ namespace DurableTask.Netherite
                 PackPartitionTaskMessages = partition.Settings.PackPartitionTaskMessages,
                 PersistFirst = partition.Settings.PersistStepsFirst ? BatchProcessed.PersistFirstStatus.Required : BatchProcessed.PersistFirstStatus.NotRequired,
                 State = state,
-                ActivityMessages = (List<TaskMessage>)outboundMessages,
+                ActivityMessages = (List<TaskMessage>)activityMessages,
                 LocalMessages = localMessages,
                 RemoteMessages = remoteMessages,
                 TimerMessages = (List<TaskMessage>)timerMessages,
@@ -687,10 +723,18 @@ namespace DurableTask.Netherite
                 workItem.InstanceId,
                 batchProcessedEvent.State.OrchestrationStatus,
                 latencyMs,
-                WorkItemTraceHelper.FormatMessageIdList(batchProcessedEvent.TracedTaskMessages));
- 
-            partition.SubmitInternalEvent(batchProcessedEvent);
-            
+                sequenceNumber);
+
+             partition.SubmitEvent(batchProcessedEvent);
+
+            if (this.workItemTraceHelper.TraceTaskMessages)
+            {
+                foreach (var taskMessage in batchProcessedEvent.LoopBackMessages())
+                {
+                    this.workItemTraceHelper.TraceTaskMessageSent(partition.PartitionId, taskMessage, messageBatch.WorkItemId, null, null);
+                }
+            }           
+
             return Task.CompletedTask;
         }
 
@@ -787,6 +831,7 @@ namespace DurableTask.Netherite
                 OriginPartitionId = activityWorkItem.OriginPartition,
                 ReportedLoad = this.ActivityWorkItemQueue.Load,
                 Timestamp = DateTime.UtcNow,
+                LatencyMs = latencyMs,
                 Response = responseMessage,
             };
 
@@ -813,11 +858,12 @@ namespace DurableTask.Netherite
                 activityWorkItem.TaskMessage.OrchestrationInstance.InstanceId,
                 WorkItemTraceHelper.ActivityStatus.Completed,
                 latencyMs,
-                WorkItemTraceHelper.FormatMessageId(responseMessage, activityWorkItem.WorkItemId));
+                1);
 
             try
             {
-                partition.SubmitInternalEvent(activityCompletedEvent);
+                partition.SubmitEvent(activityCompletedEvent);
+                this.workItemTraceHelper.TraceTaskMessageSent(partition.PartitionId, activityCompletedEvent.Response, activityWorkItem.WorkItemId, null, null);
             }
             catch (OperationCanceledException e)
             {

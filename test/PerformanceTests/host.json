@@ -2,34 +2,24 @@
   "version": "2.0",
   "logging": {
     "logLevel": {
-      "default": "Warning",
+      // ------ NOTE: 
+      // The log levels in this section 
+      // - determine what is displayed in the console when running func.exe locally
+      // - determine what is stored and billed by Application Insights
+      // But they do not fully control the logging:
+      // - have no effect on what is collected by internal analytics
+      // - have no effect on what is traced to the console when running in a container
+      // - have no effect on what is shown in the Live Metrics side panel in the portal
 
-      // ------ NOTE: the log levels in this section affect some, but NOT ALL consumers
-      // - limits what gets displayed in the func.exe console (which is extremely costly)
-      // - limits what gets stored in application insights
-      // - does not limit what is collected by ETW
-      // - does not limit what is traced to console
-      // - does not limit what is shown in Live Metrics side panel
+      // ---- Per-invocation framework-generated logging
+      //"Host.Triggers.DurableTask": "Information", // use this setting if you need analytics in the portal
+      "Host.Triggers.DurableTask": "Warning", // use this setting otherwise
 
-      // ---- the triggers below can be enabled to get specific host tracing
-      "Host": "Information",
-      //"Host.Aggregator": "Trace",
-      //"Host.Results": "Error",
-      //"Host.Triggers.DurableTask": "Information",
+      // ---- Per-invocation application-generated logging
+      //"Function": "Information", // use this setting for small-scale debugging only
+      "Function": "Warning", // use this setting when running perf tests
 
-      // ---- the triggers below can be enabled to get information on specific functions
-      "Function": "Warning",
-      //"Function.HelloCities": "Information",
-      //"Function.HelloSequence": "Information",
-      //"Function.Producer": "Warning",
-      //"Function.Consumer": "Warning",
-      //"Function.Completion": "Warning",
-      //"Function.Mapper": "Warning",
-      //"Function.Reducer": "Warning",
-      //"Function.Summary": "Warning",
-      //"Function.Wordcount": "Warning",
-
-      // --- the levels below are used to control the Netherite tracing
+      // --- the levels below are used to control the Netherite tracing.
       "DurableTask.Netherite": "Information",
       "DurableTask.Netherite.FasterStorage": "Warning",
       "DurableTask.Netherite.EventHubsTransport": "Warning",
@@ -50,8 +40,7 @@
 
       "hubName": "perftests",
 
-      "extendedSessionsEnabled": "true", // important for cache locality
-      "UseGracefulShutdown": true, // important to avoid lengthy waits for lease expiration
+      "UseGracefulShutdown": true, // helps to avoid lengthy waits for lease expiration
 
       "maxConcurrentActivityFunctions": "100",
       "maxConcurrentOrchestratorFunctions": "100",
@@ -59,6 +48,7 @@
       "storageProvider": {
 
         "type": "Netherite",
+        // "type": "AzureStorage",
 
         "StorageConnectionName": "AzureWebJobsStorage",
         "EventHubsConnectionName": "EventHubsConnection",
@@ -66,35 +56,41 @@
         "TakeStateCheckpointWhenStoppingPartition": "true",
         "MaxNumberBytesBetweenCheckpoints": "20000000",
         "MaxNumberEventsBetweenCheckpoints": "10000",
-        "MaxTimeMsBetweenCheckpoints": "60000",
+        "IdleCheckpointFrequencyMs": "60000",
+        "PackPartitionTaskMessages": 100,
 
         "PartitionCount": 12,
 
-        // set this to true to use the PSF support in Faster
+        // set this to false to force replay on each orchestration step
+        "CacheOrchestrationCursors": true,
+
+        // set this to true to use the PSF support in Faster. Will soon be obsolete.
         "UsePSFQueries": "false",
 
-        // set this to true to bypass Faster and instead use Azure blobs for the object store
+        // set this to true to bypass Faster and instead use Azure blobs for the object store. Not for production use.
         "UseAlternateObjectStore": "false",
 
         // set this to "true" to disable all speculation
         "PersistStepsFirst": false,
 
-        // How many TaskMessages to pack into a single event
-        "PackPartitionTaskMessages": 100,
-
-        // can set this to "Scripted" to control the scenario with a partition script
+        // set this to "Scripted" to control the scenario with a partition script
+        // or to "ClientOnly" to run only the client
         "PartitionManagement": "EventProcessorHost",
 
-        // this controls what log information is produced by the various components
-        // it limits production of the events, and thus can be used to prevent overheads
-        // even when some consumers (e.g. Application Insights) are configured to trace information at the lowest level
+        // set this to "Local" to disable the global activity distribution algorithm
+        // options: "Local", "Static", "Locavore"
+        "ActivityScheduler": "Locavore",
+
+        // The log level limits below control the production of log events by the various components.
+        // it limits production, not just consumption, of the events, so it can be used to prevent overheads.
+        // "Debug" is a reasonable setting, as it allows troubleshooting without impacting perf too much.
         "LogLevelLimit": "Debug",
         "StorageLogLevelLimit": "Debug",
         "TransportLogLevelLimit": "Debug",
         "EventLogLevelLimit": "Debug",
         "WorkItemLogLevelLimit": "Debug",
 
-        // the following can be used to split and direct trace output to additional specific sinks
+        // the following can be used to collectd and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context
         "TraceToConsole": false,
         "TraceToBlob": false

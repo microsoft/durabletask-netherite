@@ -41,21 +41,21 @@ namespace DurableTask.Netherite.Faster
                 this.etwLogInformation?.FasterStoreCreated(this.account, this.taskHub, this.partitionId, inputQueuePosition, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
-        public void FasterCheckpointStarted(Guid checkpointId, string reason, string storeStats, long commitLogPosition, long inputQueuePosition)
+        public void FasterCheckpointStarted(Guid checkpointId, string details, string storeStats, long commitLogPosition, long inputQueuePosition)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
-                this.logger.LogInformation("Part{partition:D2} Started Checkpoint {checkpointId}, reason={reason}, storeStats={storeStats}, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition}", this.partitionId, checkpointId, reason, storeStats, commitLogPosition, inputQueuePosition);
-                this.etwLogInformation?.FasterCheckpointStarted(this.account, this.taskHub, this.partitionId, checkpointId, reason, storeStats, commitLogPosition, inputQueuePosition, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.logger.LogInformation("Part{partition:D2} Started Checkpoint {checkpointId}, details={details}, storeStats={storeStats}, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition}", this.partitionId, checkpointId, details, storeStats, commitLogPosition, inputQueuePosition);
+                this.etwLogInformation?.FasterCheckpointStarted(this.account, this.taskHub, this.partitionId, checkpointId, details, storeStats, commitLogPosition, inputQueuePosition, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
-        public void FasterCheckpointPersisted(Guid checkpointId, string reason, long commitLogPosition, long inputQueuePosition, long latencyMs)
+        public void FasterCheckpointPersisted(Guid checkpointId, string details, long commitLogPosition, long inputQueuePosition, long latencyMs)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
-                this.logger.LogInformation("Part{partition:D2} Persisted Checkpoint {checkpointId}, reason={reason}, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition} latencyMs={latencyMs}", this.partitionId, checkpointId, reason, commitLogPosition, inputQueuePosition, latencyMs);
-                this.etwLogInformation?.FasterCheckpointPersisted(this.account, this.taskHub, this.partitionId, checkpointId, reason, commitLogPosition, inputQueuePosition, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.logger.LogInformation("Part{partition:D2} Persisted Checkpoint {checkpointId}, details={details}, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition} latencyMs={latencyMs}", this.partitionId, checkpointId, details, commitLogPosition, inputQueuePosition, latencyMs);
+                this.etwLogInformation?.FasterCheckpointPersisted(this.account, this.taskHub, this.partitionId, checkpointId, details, commitLogPosition, inputQueuePosition, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
 
             if (latencyMs > 10000)
@@ -158,7 +158,7 @@ namespace DurableTask.Netherite.Faster
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
-                this.logger.LogInformation("Part{partition:D2} PartitionLease renewed after {elapsedSeconds:F2}s timing={timing:F2}s", this.partitionId, elapsedSeconds, timing);
+                this.logger.LogDebug("Part{partition:D2} PartitionLease renewed after {elapsedSeconds:F2}s timing={timing:F2}s", this.partitionId, elapsedSeconds, timing);
                 this.etwLogDebug?.FasterLeaseRenewed(this.account, this.taskHub, this.partitionId, elapsedSeconds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }

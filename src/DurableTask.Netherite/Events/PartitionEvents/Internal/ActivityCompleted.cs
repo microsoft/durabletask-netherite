@@ -21,6 +21,9 @@ namespace DurableTask.Netherite
         public DateTime Timestamp { get; set; }
 
         [DataMember]
+        public double LatencyMs { get; set; }
+
+        [DataMember]
         public uint OriginPartitionId { get; set; }
 
         [DataMember]
@@ -31,15 +34,6 @@ namespace DurableTask.Netherite
 
         [IgnoreDataMember]
         public string WorkItemId => ActivitiesState.GetWorkItemId(this.PartitionId, this.ActivityId);
-
-        [IgnoreDataMember]
-        public override IEnumerable<(TaskMessage,string)> TracedTaskMessages
-        {
-            get
-            {
-                yield return (this.Response, this.WorkItemId);
-            }
-        }
 
         public override void DetermineEffects(EffectTracker effects)
         {

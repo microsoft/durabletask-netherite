@@ -42,7 +42,6 @@ namespace DurableTask.Netherite
             QueryEvent
         }
 
-
         public bool IsTracingAtMostDetailedLevel => this.logLevelLimit == LogLevel.Trace;
 
         public void TraceEventProcessed(long commitLogPosition, PartitionEvent evt, EventCategory category, double startedTimestamp, double finishedTimestamp, bool replaying)
@@ -163,20 +162,22 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TracePartitionOffloadDecision(int reportedLocalLoad, int pending, int backlog, int remotes, string reportedRemotes)
+        public void TracePartitionOffloadDecision(int reportedLocalLoad, int pending, int backlog, int remotes, OffloadDecision offloadDecision)
         {
-            if (this.logLevelLimit <= LogLevel.Warning)
+            if (this.logLevelLimit <= LogLevel.Information)
             {
-                if (this.logLevelLimit <= LogLevel.Warning)
+                string distribution = string.Join(",", offloadDecision.ActivitiesToTransfer.Select(kvp => kvp.Value.Count.ToString()));
+
+                if (this.logger.IsEnabled(LogLevel.Information))
                 {
                     (long commitLogPosition, string eventId) = EventTraceContext.Current;
 
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
-                    this.logger.LogWarning("Part{partition:D2}{prefix} Offload decision reportedLocalLoad={reportedLocalLoad} pending={pending} backlog={backlog} remotes={remotes} reportedRemotes={reportedRemotes}",
-                        this.partitionId, prefix, reportedLocalLoad, pending, backlog, remotes, reportedRemotes);
-
-                    this.etw?.PartitionOffloadDecision(this.account, this.taskHub, this.partitionId, commitLogPosition, eventId, reportedLocalLoad, pending, backlog, remotes, reportedRemotes, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                    this.logger.LogWarning("Part{partition:D2}{prefix} Offload decision reportedLocalLoad={reportedLocalLoad} pending={pending} backlog={backlog} remotes={remotes} distribution={distribution}",
+                        this.partitionId, prefix, reportedLocalLoad, pending, backlog, remotes, distribution);
                 }
+                 
+                this.etw?.PartitionOffloadDecision(this.account, this.taskHub, this.partitionId, offloadDecision.EventIdString, reportedLocalLoad, pending, backlog, remotes, distribution, TraceUtils.AppName, TraceUtils.ExtensionVersion);       
             }
         }
 

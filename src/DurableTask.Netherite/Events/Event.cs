@@ -47,7 +47,6 @@ namespace DurableTask.Netherite
 
         public static IEnumerable<Type> KnownTypes()
         {
-            yield return typeof(ClientEventFragment);
             yield return typeof(CreationResponseReceived);
             yield return typeof(DeletionResponseReceived);
             yield return typeof(HistoryResponseReceived);
@@ -55,6 +54,9 @@ namespace DurableTask.Netherite
             yield return typeof(QueryResponseReceived);
             yield return typeof(StateResponseReceived);
             yield return typeof(WaitResponseReceived);
+            yield return typeof(ClientEventFragment);
+            yield return typeof(PartitionEventFragment);
+            yield return typeof(LoadInformationReceived);
             yield return typeof(ClientTaskMessagesReceived);
             yield return typeof(CreationRequestReceived);
             yield return typeof(DeletionRequestReceived);
@@ -63,16 +65,17 @@ namespace DurableTask.Netherite
             yield return typeof(PurgeRequestReceived);
             yield return typeof(StateRequestReceived);
             yield return typeof(WaitRequestReceived);
-            yield return typeof(ActivityCompleted);
-            yield return typeof(BatchProcessed);
-            yield return typeof(SendConfirmed);
-            yield return typeof(TimerFired);
-            yield return typeof(ActivityOffloadReceived);
+            yield return typeof(TransferCommandReceived);
+            yield return typeof(SolicitationReceived);
+            yield return typeof(ActivityTransferReceived);
             yield return typeof(RemoteActivityResultReceived);
             yield return typeof(TaskMessagesReceived);
+            yield return typeof(ActivityCompleted);
+            yield return typeof(BatchProcessed);
             yield return typeof(OffloadDecision);
             yield return typeof(PurgeBatchIssued);
-            yield return typeof(PartitionEventFragment);
+            yield return typeof(SendConfirmed);
+            yield return typeof(TimerFired);
         }
 
         public bool SafeToRetryFailedSend()

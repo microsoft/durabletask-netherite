@@ -55,9 +55,9 @@ namespace DurableTask.Netherite.Tests
             await this.worker.StartAsync();
         }
 
-        public Task StopAsync(bool isForced)
+        public Task StopAsync(bool quickly)
         {
-            return this.worker.StopAsync(isForced);
+            return this.worker.StopAsync(quickly);
         }
 
         public void AddAutoStartOrchestrator(Type type)

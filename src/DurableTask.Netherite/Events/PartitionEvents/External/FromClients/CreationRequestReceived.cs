@@ -34,16 +34,6 @@ namespace DurableTask.Netherite
         public string InstanceId => this.ExecutionStartedEvent.OrchestrationInstance.InstanceId;
 
         [IgnoreDataMember]
-        public override IEnumerable<(TaskMessage,string)> TracedTaskMessages
-        {
-            get
-            {
-                yield return (this.TaskMessage, this.WorkItemId);
-            }
-        }
-
-
-        [IgnoreDataMember]
         public override TrackedObjectKey Target => TrackedObjectKey.Instance(this.InstanceId);
 
 

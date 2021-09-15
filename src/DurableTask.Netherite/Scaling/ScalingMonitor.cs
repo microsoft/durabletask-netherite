@@ -7,6 +7,7 @@ namespace DurableTask.Netherite.Scaling
     using System.Collections;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Runtime.Serialization;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
@@ -23,10 +24,9 @@ namespace DurableTask.Netherite.Scaling
         readonly string partitionLoadTableName;
         readonly string taskHubName;
         readonly TransportConnectionString.TransportChoices configuredTransport;
+        readonly Action<string, int, string> recommendationTracer;
 
-        readonly AzureLoadMonitorTable table;
-
-        Metrics? CachedMetrics;
+        readonly ILoadMonitorService loadMonitor;
 
         /// <summary>
         /// The name of the taskhub.
@@ -50,6 +50,7 @@ namespace DurableTask.Netherite.Scaling
             string eventHubsConnectionString, 
             string partitionLoadTableName, 
             string taskHubName,
+            Action<string,int,string> recommendationTracer,
             ILogger logger)
         {
             this.storageConnectionString = storageConnectionString;
@@ -57,36 +58,49 @@ namespace DurableTask.Netherite.Scaling
             this.partitionLoadTableName = partitionLoadTableName;
             this.taskHubName = taskHubName;
             this.Logger = logger;
+            this.recommendationTracer = recommendationTracer;
 
             TransportConnectionString.Parse(eventHubsConnectionString, out _, out this.configuredTransport);
 
-            this.table = new AzureLoadMonitorTable(storageConnectionString, partitionLoadTableName, taskHubName);
+            if (!string.IsNullOrEmpty(partitionLoadTableName))
+            {
+                this.loadMonitor = new AzureTableLoadMonitor(storageConnectionString, partitionLoadTableName, taskHubName);
+            }
+            else
+            {
+                this.loadMonitor = new AzureBlobLoadMonitor(storageConnectionString, taskHubName);
+            }
         }
 
         /// <summary>
         /// The metrics that are collected prior to making a scaling decision
         /// </summary>
+        [DataContract]
         public struct Metrics
         {
             /// <summary>
             ///  the most recent load information published for each partition
             /// </summary>
+            [DataMember]
             public Dictionary<uint, PartitionLoadInfo> LoadInformation { get; set; }
 
             /// <summary>
             /// A reason why the taskhub is not idle, or null if it is idle
             /// </summary>
+            [DataMember]
             public string Busy { get; set; }
 
             /// <summary>
             /// Whether the taskhub is idle
             /// </summary>
+            [IgnoreDataMember]
             public bool TaskHubIsIdle => string.IsNullOrEmpty(this.Busy);
 
             /// <summary>
             /// The time at which the metrics were collected
             /// </summary>
-            public DateTime Timestamp;
+            [DataMember]
+            public DateTime Timestamp { get; set; }
         }
 
         /// <summary>
@@ -96,21 +110,15 @@ namespace DurableTask.Netherite.Scaling
         public async Task<Metrics> CollectMetrics()
         {
             DateTime now = DateTime.UtcNow;
-
-            if (this.CachedMetrics.HasValue && now - this.CachedMetrics.Value.Timestamp < TimeSpan.FromSeconds(1.5))
-            {
-                return this.CachedMetrics.Value;
-            }
-
-            var loadInformation = await this.table.QueryAsync(CancellationToken.None).ConfigureAwait(false);
+            var loadInformation = await this.loadMonitor.QueryAsync(CancellationToken.None).ConfigureAwait(false);
             var busy = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
 
-            return (this.CachedMetrics = new Metrics()
-            { 
+            return new Metrics()
+            {
                 LoadInformation = loadInformation,
                 Busy = busy,
                 Timestamp = now,
-            }).Value;
+            };
         }
 
         /// <summary>
@@ -119,65 +127,88 @@ namespace DurableTask.Netherite.Scaling
         /// <returns></returns>
         public ScaleRecommendation GetScaleRecommendation(int workerCount, Metrics metrics)
         {
-            if (workerCount == 0 && !metrics.TaskHubIsIdle)
+            var recommendation = DetermineRecommendation();
+
+            this.Logger.LogInformation(
+                "Netherite autoscaler recommends: {scaleRecommendation} from: {workerCount} because: {reason}",
+                recommendation.Action.ToString(), workerCount, recommendation.Reason);
+
+            this.recommendationTracer(recommendation.Action.ToString(), workerCount, recommendation.Reason);
+
+            return recommendation;
+
+            ScaleRecommendation DetermineRecommendation()
             {
-                return new ScaleRecommendation(ScaleAction.AddWorker, keepWorkersAlive: true, reason: metrics.Busy);
-            }
+                if (workerCount == 0 && !metrics.TaskHubIsIdle)
+                {
+                    return new ScaleRecommendation(ScaleAction.AddWorker, keepWorkersAlive: true, reason: metrics.Busy);
+                }
 
-            if (metrics.TaskHubIsIdle)
-            {
-                return new ScaleRecommendation(
-                    scaleAction: workerCount > 0 ? ScaleAction.RemoveWorker : ScaleAction.None,
-                    keepWorkersAlive: false,
-                    reason: "Task hub is idle");
-            }
-
-            int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
-
-            if (workerCount < numberOfSlowPartitions)
-            {
-                // scale up to the number of busy partitions
-                var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
-                return new ScaleRecommendation(
-                    ScaleAction.AddWorker,
-                    keepWorkersAlive: true,
-                    reason: $"High latency in partition {partition.Key}: {partition.Value.LatencyTrend}");
-            }
-
-            int numberOfNonIdlePartitions = metrics.LoadInformation.Values.Count(info => ! PartitionLoadInfo.IsLongIdle(info.LatencyTrend));
-
-            if (workerCount > numberOfNonIdlePartitions)
-            {
-                // scale down to the number of non-idle partitions.
-                return new ScaleRecommendation(
-                    ScaleAction.RemoveWorker,
-                    keepWorkersAlive: true,
-                    reason: $"One or more partitions are idle");
-            }
-
-            // If all queues are operating efficiently, it can be hard to know if we need to reduce the worker count.
-            // We want to avoid the case where a constant trickle of load after a big scale-out prevents scaling back in.
-            // We also want to avoid scaling in unnecessarily when we've reached optimal scale-out. To balance these
-            // goals, we check for low latencies and vote to scale down 10% of the time when we see this. The thought is
-            // that it's a slow scale-in that will get automatically corrected once latencies start increasing again.
-            if (workerCount > 1 && (new Random()).Next(8) == 0)
-            {
-                bool allPartitionsAreFast = !metrics.LoadInformation.Values.Any(
-                    info => info.LatencyTrend.Length == PartitionLoadInfo.LatencyTrendLength 
-                        && info.LatencyTrend.Any(c => c == PartitionLoadInfo.MediumLatency || c == PartitionLoadInfo.HighLatency));
-
-                if (allPartitionsAreFast)
+                if (metrics.TaskHubIsIdle)
                 {
                     return new ScaleRecommendation(
-                           ScaleAction.RemoveWorker,
-                           keepWorkersAlive: true,
-                           reason: $"All partitions are fast");
+                        scaleAction: workerCount > 0 ? ScaleAction.RemoveWorker : ScaleAction.None,
+                        keepWorkersAlive: false,
+                        reason: "Task hub is idle");
                 }
-            }
 
-            // Load exists, but none of our scale filters were triggered, so we assume that the current worker
-            // assignments are close to ideal for the current workload.
-            return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: $"Partition latencies are healthy");
+                int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.MediumLatency);
+
+                if (workerCount < numberOfSlowPartitions)
+                {
+                    // scale up to the number of busy partitions
+                    var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.MediumLatency);
+                    return new ScaleRecommendation(
+                        ScaleAction.AddWorker,
+                        keepWorkersAlive: true,
+                        reason: $"Significant latency in {numberOfSlowPartitions} partitions");
+                }
+
+                int backlog = metrics.LoadInformation.Where(info => info.Value.IsLoaded()).Sum(info => info.Value.Activities);
+
+                if (backlog > 0 && workerCount < metrics.LoadInformation.Count)
+                {
+                    return new ScaleRecommendation(
+                        ScaleAction.AddWorker,
+                        keepWorkersAlive: true,
+                        reason: $"Backlog of {backlog} activities");
+                }
+
+                int numberOfNonIdlePartitions = metrics.LoadInformation.Values.Count(info => !PartitionLoadInfo.IsLongIdle(info.LatencyTrend));
+
+                if (workerCount > numberOfNonIdlePartitions)
+                {
+                    // scale down to the number of non-idle partitions.
+                    return new ScaleRecommendation(
+                        ScaleAction.RemoveWorker,
+                        keepWorkersAlive: true,
+                        reason: $"One or more partitions are idle");
+                }
+
+                // If all queues are operating efficiently, it can be hard to know if we need to reduce the worker count.
+                // We want to avoid the case where a constant trickle of load after a big scale-out prevents scaling back in.
+                // We also want to avoid scaling in unnecessarily when we've reached optimal scale-out. To balance these
+                // goals, we check for low latencies and vote to scale down 10% of the time when we see this. The thought is
+                // that it's a slow scale-in that will get automatically corrected once latencies start increasing again.
+                if (workerCount > 1 && (new Random()).Next(8) == 0)
+                {
+                    bool allPartitionsAreFast = !metrics.LoadInformation.Values.Any(
+                        info => info.LatencyTrend.Length == PartitionLoadInfo.LatencyTrendLength
+                            && info.LatencyTrend.Any(c => c == PartitionLoadInfo.MediumLatency || c == PartitionLoadInfo.HighLatency));
+
+                    if (allPartitionsAreFast)
+                    {
+                        return new ScaleRecommendation(
+                               ScaleAction.RemoveWorker,
+                               keepWorkersAlive: true,
+                               reason: $"All partitions are fast");
+                    }
+                }
+
+                // Load exists, but none of our scale filters were triggered, so we assume that the current worker
+                // assignments are close to ideal for the current workload.
+                return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: $"Partition latencies are healthy");
+            }
         }
 
         public async Task<string> TaskHubIsIdleAsync(Dictionary<uint, PartitionLoadInfo> loadInformation)
@@ -199,7 +230,7 @@ namespace DurableTask.Netherite.Scaling
 
             if (this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
-                positions = await EventHubs.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
+                (positions,_,_) = await EventHubs.EventHubsConnections.GetPartitionInfo(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
 
                 for (uint i = 0; i < positions.Length; i++)
                 {

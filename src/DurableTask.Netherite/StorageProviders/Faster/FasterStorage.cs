@@ -14,9 +14,8 @@ namespace DurableTask.Netherite.Faster
 
     class FasterStorage : IPartitionState
     {
-        // if used as a "azure storage connection string", causes Faster to use local file storage instead
-        public const string LocalFileStorageConnectionString = "UseLocalFileStorage";
         readonly CloudStorageAccount storageAccount;
+        readonly string localFileDirectory;
         readonly CloudStorageAccount pageBlobStorageAccount;
         readonly string taskHubName;
         readonly ILogger logger;
@@ -32,15 +31,19 @@ namespace DurableTask.Netherite.Faster
 
         internal FasterTraceHelper TraceHelper { get; private set; }
 
-        public FasterStorage(string connectionString, string premiumStorageConnectionString, string taskHubName, ILoggerFactory loggerFactory)
+        public FasterStorage(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, ILoggerFactory loggerFactory)
         {
-            if (connectionString != LocalFileStorageConnectionString)
+            if (!string.IsNullOrEmpty(localFileDirectory))
             {
+                this.localFileDirectory = localFileDirectory;
+            }
+            else
+            { 
                 this.storageAccount = CloudStorageAccount.Parse(connectionString);
             }
-            if (!string.IsNullOrEmpty(premiumStorageConnectionString))
+            if (pageBlobConnectionString != connectionString && !string.IsNullOrEmpty(pageBlobConnectionString))
             {
-                this.pageBlobStorageAccount = CloudStorageAccount.Parse(premiumStorageConnectionString);
+                this.pageBlobStorageAccount = CloudStorageAccount.Parse(pageBlobConnectionString);
             }
             else
             {
@@ -50,10 +53,11 @@ namespace DurableTask.Netherite.Faster
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
         }
 
-        public static Task DeleteTaskhubStorageAsync(string connectionString, string taskHubName)
+        public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName)
         {
-            var storageAccount = (connectionString != LocalFileStorageConnectionString) ? CloudStorageAccount.Parse(connectionString) : null;
-            return BlobManager.DeleteTaskhubStorageAsync(storageAccount, taskHubName);
+            var storageAccount = string.IsNullOrEmpty(connectionString) ? null : CloudStorageAccount.Parse(connectionString);
+            var pageBlobAccount = string.IsNullOrEmpty(pageBlobConnectionString) ? storageAccount : CloudStorageAccount.Parse(pageBlobConnectionString);
+            return BlobManager.DeleteTaskhubStorageAsync(storageAccount, pageBlobAccount, localFileDirectory, taskHubName);
         }
 
         public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, long firstInputQueuePosition)
@@ -61,15 +65,12 @@ namespace DurableTask.Netherite.Faster
             this.partition = partition;
             this.terminationToken = errorHandler.Token;
 
-#if FASTER_SUPPORTS_PSF
-            int psfCount = partition.Settings.UsePSFQueries ? FasterKV.PSFCount : 0;
-#else
             int psfCount = 0;
-#endif
 
             this.blobManager = new BlobManager(
                 this.storageAccount,
                 this.pageBlobStorageAccount,
+                this.localFileDirectory,
                 this.taskHubName,
                 this.logger,
                 this.partition.Settings.StorageLogLevelLimit,
@@ -141,6 +142,10 @@ namespace DurableTask.Netherite.Faster
 
                     this.TraceHelper.FasterCheckpointLoaded(this.storeWorker.CommitLogPosition, this.storeWorker.InputQueuePosition, this.store.StoreStats.Get(), stopwatch.ElapsedMilliseconds);
                 }
+                catch(OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
+                {
+                    throw; // normal if recovery was canceled
+                }
                 catch (Exception e)
                 {
                     this.TraceHelper.FasterStorageError("loading checkpoint", e);
@@ -158,6 +163,10 @@ namespace DurableTask.Netherite.Faster
                         // replay log as the store checkpoint lags behind the log
                         await this.storeWorker.ReplayCommitLog(this.logWorker).ConfigureAwait(false);
                     }
+                }
+                catch (OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
+                {
+                    throw; // normal if recovery was canceled
                 }
                 catch (Exception e)
                 {
@@ -202,14 +211,19 @@ namespace DurableTask.Netherite.Faster
             await this.blobManager.StopAsync().ConfigureAwait(false);
         }
 
-        public void SubmitExternalEvents(IList<PartitionEvent> evts)
+        public void SubmitEvents(IList<PartitionEvent> evts)
         {
-            this.logWorker.SubmitExternalEvents(evts);
+            this.logWorker.SubmitEvents(evts);
         }
 
-        public void SubmitInternalEvent(PartitionEvent evt)
+        public void SubmitEvent(PartitionEvent evt)
         {
-            this.logWorker.SubmitInternalEvent(evt);
+            this.logWorker.SubmitEvent(evt);
+        }
+
+        public void SubmitParallelEvent(PartitionEvent evt)
+        {
+            this.storeWorker.ProcessInParallel(evt);
         }
 
         public Task Prefetch(IEnumerable<TrackedObjectKey> keys)

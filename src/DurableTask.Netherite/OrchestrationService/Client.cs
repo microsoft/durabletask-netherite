@@ -34,6 +34,7 @@ namespace DurableTask.Netherite
         readonly BatchTimer<PendingRequest> ResponseTimeouts;
         readonly ConcurrentDictionary<long, PendingRequest> ResponseWaiters;
         readonly Dictionary<string, MemoryStream> Fragments;
+        readonly Dictionary<long, QueryResponseReceived> QueryResponses;
 
         public static string GetShortId(Guid clientId) => clientId.ToString("N").Substring(0, 7);
 
@@ -56,6 +57,7 @@ namespace DurableTask.Netherite
             this.ResponseTimeouts = new BatchTimer<PendingRequest>(this.shutdownToken, this.Timeout, this.traceHelper.TraceTimerProgress);
             this.ResponseWaiters = new ConcurrentDictionary<long, PendingRequest>();
             this.Fragments = new Dictionary<string, MemoryStream>();
+            this.QueryResponses = new Dictionary<long, QueryResponseReceived>();
             this.ResponseTimeouts.Start("ClientTimer");
             this.workItemStopwatch = new Stopwatch();
             this.workItemStopwatch.Start();
@@ -76,11 +78,39 @@ namespace DurableTask.Netherite
 
         public void Process(ClientEvent clientEvent)
         {
-            if (!(clientEvent is ClientEventFragment fragment))
+            if (clientEvent is QueryResponseReceived queryResponseReceived)
             {
-                this.ProcessInternal(clientEvent);
+                queryResponseReceived.DeserializeOrchestrationStates();
+                bool GotAllResults() => queryResponseReceived.Final == queryResponseReceived.OrchestrationStates.Count;
+
+                if (this.QueryResponses.TryGetValue(queryResponseReceived.RequestId, out QueryResponseReceived prev))
+                {
+                    // combine all received states
+                    prev.OrchestrationStates.AddRange(queryResponseReceived.OrchestrationStates);
+                    queryResponseReceived.OrchestrationStates = prev.OrchestrationStates;
+
+                    // keep the final count, if known
+                    if (prev.Final.HasValue)
+                    {
+                        queryResponseReceived.Final = prev.Final;
+                    }
+
+                    if (GotAllResults())
+                    {
+                        this.QueryResponses.Remove(queryResponseReceived.RequestId);
+                    }
+                }             
+
+                if (GotAllResults())
+                {
+                    this.ProcessInternal(queryResponseReceived);
+                }
+                else
+                {
+                    this.QueryResponses[queryResponseReceived.RequestId] = queryResponseReceived;
+                }
             }
-            else
+            else if (clientEvent is ClientEventFragment fragment)
             {
                 var originalEventString = fragment.OriginalEventId.ToString();
 
@@ -99,6 +129,10 @@ namespace DurableTask.Netherite
 
                     this.ProcessInternal(reassembledEvent);
                 }
+            }
+            else
+            {
+                this.ProcessInternal(clientEvent);
             }
         }
 
@@ -144,7 +178,7 @@ namespace DurableTask.Netherite
         internal class PendingRequest : TransportAbstraction.IDurabilityOrExceptionListener
         {
             readonly long requestId;
-            readonly EventId eventId;
+            readonly EventId partitionEventId;
             readonly uint partitionId;
             readonly Client client;
             readonly (DateTime due, int id) timeoutKey;
@@ -158,11 +192,11 @@ namespace DurableTask.Netherite
 
             public string RequestId => $"{Client.GetShortId(this.client.ClientId)}-{this.requestId}"; // matches EventId
 
-            public PendingRequest(long requestId, EventId eventId, uint partitionId, Client client, DateTime due, int timeoutId)
+            public PendingRequest(long requestId, EventId partitionEventId, uint partitionId, Client client, DateTime due, int timeoutId)
             {
                 this.requestId = requestId;
                 this.partitionId = partitionId;
-                this.eventId = eventId;
+                this.partitionEventId = partitionEventId;
                 this.client = client;
                 this.timeoutKey = (due, timeoutId);
                 this.continuation = new TaskCompletionSource<ClientEvent>();
@@ -182,14 +216,22 @@ namespace DurableTask.Netherite
                     // we create a separate trace message for each destination partition
                     foreach (var group in request.TaskMessages.GroupBy((message) => message.OrchestrationInstance.InstanceId))
                     {
+                        double delay = this.client.workItemStopwatch.Elapsed.TotalMilliseconds - this.startTime;
+                        string workItemId = request.WorkItemId;
+
                         this.client.workItemTraceHelper.TraceWorkItemCompleted(
                             request.PartitionId,
                             WorkItemTraceHelper.WorkItemType.Client,
-                            request.WorkItemId,
+                            workItemId,
                             group.Key,
                             WorkItemTraceHelper.ClientStatus.Send,
-                            this.client.workItemStopwatch.Elapsed.TotalMilliseconds - this.startTime,
-                            WorkItemTraceHelper.FormatMessageIdList(group.Select((message) => (message, request.WorkItemId))));
+                            delay,
+                            request.TaskMessages.Length);
+
+                        foreach (var message in request.TaskMessages)
+                        {
+                            this.client.workItemTraceHelper.TraceTaskMessageSent(request.PartitionId, message, workItemId, null, delay);
+                        }
                     }
 
                     // this request is considered completed at the time of durability
@@ -202,14 +244,19 @@ namespace DurableTask.Netherite
                 }
                 else if (evt is CreationRequestReceived creationRequestReceived)
                 {
+                    double delay = this.client.workItemStopwatch.Elapsed.TotalMilliseconds - this.startTime;
+                    string workItemId = creationRequestReceived.WorkItemId;
+
                     this.client.workItemTraceHelper.TraceWorkItemCompleted(
                         creationRequestReceived.PartitionId,
                         WorkItemTraceHelper.WorkItemType.Client,
-                        creationRequestReceived.WorkItemId,
+                        workItemId,
                         creationRequestReceived.InstanceId,
                         WorkItemTraceHelper.ClientStatus.Create,
-                        this.client.workItemStopwatch.Elapsed.TotalMilliseconds - this.startTime,
-                        WorkItemTraceHelper.FormatMessageIdList(creationRequestReceived.TracedTaskMessages));
+                        delay,
+                        1);
+
+                    this.client.workItemTraceHelper.TraceTaskMessageSent(creationRequestReceived.PartitionId, creationRequestReceived.TaskMessage, workItemId, null, delay);
                 }
             }
 
@@ -252,7 +299,7 @@ namespace DurableTask.Netherite
                 this.client.traceHelper.TraceTimerProgress($"firing ({this.timeoutKey.due:o},{this.timeoutKey.id})");
                 if (this.client.ResponseWaiters.TryRemove(this.requestId, out var pendingRequest))
                 {
-                    this.client.traceHelper.TraceRequestTimeout(pendingRequest.eventId, pendingRequest.partitionId);
+                    this.client.traceHelper.TraceRequestTimeout(pendingRequest.partitionEventId, pendingRequest.partitionId);
                     this.continuation.TrySetException(timeoutException);
                 }
             }

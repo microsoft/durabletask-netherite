@@ -27,7 +27,7 @@ namespace DurableTask.Netherite
             // reissue queries that did not complete prior to crash/recovery
             foreach (var kvp in this.PendingQueries)
             {
-                this.Partition.SubmitInternalEvent(new InstanceQueryEvent(kvp.Value));
+                this.Partition.SubmitParallelEvent(new InstanceQueryEvent(kvp.Value));
             }
         }
 
@@ -46,16 +46,8 @@ namespace DurableTask.Netherite
             if (clientRequestEvent.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query)
             {           
                 this.Partition.Assert(!this.PendingQueries.ContainsKey(clientRequestEvent.EventIdString));
-
-                // Issue a read request that fetches the instance state.
-                // We have to buffer this request in the pending list so we can recover it.
-
+                // Buffer this request in the pending list so we can recover it.
                 this.PendingQueries.Add(clientRequestEvent.EventIdString, clientRequestEvent);
-
-                if (!effects.IsReplaying)
-                {
-                    this.Partition.SubmitInternalEvent(new InstanceQueryEvent(clientRequestEvent));
-                }
             }
             else 
             {
@@ -109,7 +101,7 @@ namespace DurableTask.Netherite
                 var again = (ClientRequestEventWithQuery)this.request.Clone();
                 again.NextInputQueuePosition = 0; // this event is no longer considered an external event        
                 again.Phase = ClientRequestEventWithQuery.ProcessingPhase.Confirm;
-                partition.SubmitInternalEvent(again);
+                partition.SubmitEvent(again);
             }
         }
     }

@@ -33,7 +33,7 @@ namespace DurableTask.Netherite.Faster
         long lastCheckpointedInputQueuePosition;
         long lastCheckpointedCommitLogPosition;
         long numberEventsSinceLastCheckpoint;
-        long timeOfNextCheckpoint;
+        long timeOfNextIdleCheckpoint;
 
         // periodic load publishing
         PartitionLoadInfo loadInfo;
@@ -101,7 +101,7 @@ namespace DurableTask.Netherite.Faster
             this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
             this.lastCheckpointedInputQueuePosition = this.InputQueuePosition;
             this.numberEventsSinceLastCheckpoint = 0;
-            this.ScheduleNextCheckpointTime();
+            this.ScheduleNextIdleCheckpointTime();
         }
 
         internal async ValueTask TakeFullCheckpointAsync(string reason)
@@ -128,7 +128,7 @@ namespace DurableTask.Netherite.Faster
                 this.traceHelper.FasterProgress($"Checkpoint skipped: {reason}");
             }
 
-            this.ScheduleNextCheckpointTime();
+            this.ScheduleNextIdleCheckpointTime();
         }
 
         public async Task CancelAndShutdown()
@@ -211,7 +211,7 @@ namespace DurableTask.Netherite.Faster
             None,
             CommitLogBytes,
             EventCount,
-            TimeElapsed
+            Idle
         }
 
         bool CheckpointDue(out CheckpointTrigger trigger)
@@ -232,23 +232,40 @@ namespace DurableTask.Netherite.Faster
             }
             else if (
                 (this.numberEventsSinceLastCheckpoint > 0 || inputQueuePositionLag > 0)
-                && DateTime.UtcNow.Ticks > this.timeOfNextCheckpoint)
+                && DateTime.UtcNow.Ticks > this.timeOfNextIdleCheckpoint
+                && this.loadInfo.IsBusy() == null)
             {
-                trigger = CheckpointTrigger.TimeElapsed;
+                trigger = CheckpointTrigger.Idle;
             }
              
             return trigger != CheckpointTrigger.None;
         }
 
-        void ScheduleNextCheckpointTime()
+        public void ProcessInParallel(PartitionEvent partitionEvent)
         {
-            // to avoid all partitions taking snapshots at the same time, align to a partition-based spot
-            var period = this.partition.Settings.MaxTimeMsBetweenCheckpoints * TimeSpan.TicksPerMillisecond;
-            var offset = (this.partition.PartitionId * period / this.partition.NumberPartitions());
-            var maxTime = DateTime.UtcNow.Ticks + period;
-            this.timeOfNextCheckpoint = (((maxTime - offset) / period) * period) + offset;
+            switch (partitionEvent)
+            {
+                case PartitionReadEvent readEvent:
+                    // todo: actually use a parallel session worker for prefetches
+                    this.Submit(partitionEvent);
+                    break;
+
+                case PartitionQueryEvent queryEvent:
+                    // async queries execute on their own task and their own session
+                    Task ignored = Task.Run(() => this.store.QueryAsync(queryEvent, this.effectTracker));
+                    break;
+            }
         }
 
+        void ScheduleNextIdleCheckpointTime()
+        {
+            var period = this.partition.Settings.IdleCheckpointFrequencyMs * TimeSpan.TicksPerMillisecond;
+            // to avoid all partitions taking snapshots at the same time, align to a partition-based spot between 0.5 and 1.5 of the period
+            var earliest = DateTime.UtcNow.Ticks + period/2;
+            var offset = (this.partition.PartitionId * period / this.partition.NumberPartitions());
+            this.timeOfNextIdleCheckpoint = earliest + offset;
+        }
+        
         protected override async Task Process(IList<PartitionEvent> batch)
         {
             try
@@ -274,14 +291,8 @@ namespace DurableTask.Netherite.Faster
                             break;
 
                         case PartitionReadEvent readEvent:
-                            readEvent.OnReadIssued(this.partition);
                             // async reads may either complete immediately (on cache hit) or later (on cache miss) when CompletePending() is called
                             this.store.ReadAsync(readEvent, this.effectTracker);
-                            break;
-
-                        case PartitionQueryEvent queryEvent:
-                            // async queries execute on their own task and their own session
-                            Task ignored = Task.Run(() => this.store.QueryAsync(queryEvent, this.effectTracker));
                             break;
 
                         default:
@@ -315,7 +326,7 @@ namespace DurableTask.Netherite.Faster
                             = await this.pendingStoreCheckpoint.ConfigureAwait(false); // observe exceptions here
                         this.pendingStoreCheckpoint = null;
                         this.pendingCheckpointTrigger = CheckpointTrigger.None;
-                        this.ScheduleNextCheckpointTime();
+                        this.ScheduleNextIdleCheckpointTime();
                     }
                 }
                 else if (this.pendingIndexCheckpoint != null)
@@ -347,13 +358,18 @@ namespace DurableTask.Netherite.Faster
                     await this.PublishPartitionLoad().ConfigureAwait(false);
                 }
 
-                if (this.lastCheckpointedCommitLogPosition == this.CommitLogPosition 
-                    && this.lastCheckpointedInputQueuePosition == this.InputQueuePosition
-                    && this.LogWorker.LastCommittedInputQueuePosition <= this.InputQueuePosition)
+                if (ActivityScheduling.RequiresLoadMonitor(this.partition.Settings.ActivityScheduler))
                 {
-                    // since there were no changes since the last snapshot 
-                    // we can pretend that it was taken just now
-                    this.ScheduleNextCheckpointTime();
+                    var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker).ConfigureAwait(false)) as ActivitiesState;
+                    activitiesState.CollectLoadMonitorInformation();
+                }
+                if (this.loadInfo.IsBusy() != null
+                     || (this.lastCheckpointedCommitLogPosition == this.CommitLogPosition 
+                         && this.lastCheckpointedInputQueuePosition == this.InputQueuePosition
+                         && this.LogWorker.LastCommittedInputQueuePosition <= this.InputQueuePosition))
+                {
+                    // the partition is not idle, or nothing has changed, so we do delay the time for the nex idle checkpoint
+                    this.ScheduleNextIdleCheckpointTime();
                 }
 
                 // make sure to complete ready read requests, or notify this worker

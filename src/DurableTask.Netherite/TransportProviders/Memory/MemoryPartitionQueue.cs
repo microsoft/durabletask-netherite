@@ -44,7 +44,7 @@ namespace DurableTask.Netherite.Emulated
             {
                 evt.ReceivedTimestamp = this.partition.CurrentTimeMs;
 
-                this.partition.SubmitExternalEvents(new PartitionEvent[] { evt });
+                this.partition.SubmitEvents(new PartitionEvent[] { evt });
             }
             catch (System.Threading.Tasks.TaskCanceledException)
             {

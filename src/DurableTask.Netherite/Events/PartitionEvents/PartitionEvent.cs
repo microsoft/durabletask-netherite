@@ -28,13 +28,10 @@ namespace DurableTask.Netherite
         public double ReceivedTimestamp { get; set; }
 
         [IgnoreDataMember]
-        public double ReadyToSendTimestamp { get; set; }
-
-        [IgnoreDataMember]
-        public double SentTimestamp { get; set; }
-
-        [IgnoreDataMember]
         public double IssuedTimestamp { get; set; }
+
+        // some events trigger some processing immediately upon receive (e.g. prefetches or queries)
+        public virtual void OnSubmit(Partition partition) { }
 
         // make a copy of an event so we run it through the pipeline a second time
         public PartitionEvent Clone()
@@ -46,9 +43,7 @@ namespace DurableTask.Netherite
             evt.Serialized = default;
             evt.NextInputQueuePosition = 0;
 
-            // clear the timestamps that will be overwritten
-            evt.ReadyToSendTimestamp = 0;
-            evt.SentTimestamp = 0;
+            // clear the timestamp
             evt.IssuedTimestamp = 0;
 
             return evt;

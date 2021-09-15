@@ -1,0 +1,61 @@
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      // ------ NOTE: 
+      // The log levels in this section 
+      // - determine what is displayed in the console when running func.exe locally
+      // - determine what is stored and billed by Application Insights
+      // But they do not fully control the logging:
+      // - have no effect on what is collected by internal analytics
+      // - have no effect on what is traced to the console when running in a container
+      // - have no effect on what is shown in the Live Metrics side panel in the portal
+
+      // ---- Per-invocation framework-generated logging
+      //"Host.Triggers.DurableTask": "Information", // use this setting if you need analytics in the portal
+      "Host.Triggers.DurableTask": "Warning", // use this setting otherwise
+
+      // ---- Per-invocation application-generated logging
+      //"Function": "Information", // use this setting for small-scale debugging only
+      "Function": "Warning", // use this setting when running perf tests
+
+      // --- the levels below are used to control the Netherite tracing.
+      "DurableTask.Netherite": "Warning",
+      "DurableTask.Netherite.FasterStorage": "Warning",
+      "DurableTask.Netherite.EventHubsTransport": "Warning",
+      "DurableTask.Netherite.Events": "Warning",
+      "DurableTask.Netherite.WorkItems": "Warning"
+    }
+  },
+  "extensions": {
+    "http": {
+      "routePrefix": ""
+    },
+    "durableTask": {
+
+      "hubName": "perftests",
+
+      "UseGracefulShutdown": true, // helps to avoid lengthy waits for lease expiration
+
+      "storageProvider": {
+
+        "type": "Netherite",
+
+        // The log level limits below control the production of log events by the various components.
+        // it limits production, not just consumption, of the events, so it can be used to prevent overheads.
+        // "Debug" is a reasonable setting, as it allows troubleshooting without impacting perf too much.
+        "LogLevelLimit": "Debug",
+        "StorageLogLevelLimit": "Debug",
+        "TransportLogLevelLimit": "Debug",
+        "EventLogLevelLimit": "Debug",
+        "WorkItemLogLevelLimit": "Debug",
+
+        // the following can be used to collect and direct trace output to additional specific sinks
+        // which is useful in a testing and debugging context
+        "TraceToConsole": false,
+        "TraceToBlob": false
+      }
+    }
+  }
+}
+    

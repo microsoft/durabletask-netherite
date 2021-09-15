@@ -55,7 +55,8 @@ namespace DurableTask.Netherite
         public int PartitionCount { get; set; } = 12;
 
         /// <summary>
-        /// The name to use for the Azure table with the load information
+        /// Optionally, a name for an Azure Table to use for publishing load information. If set to null or empty,
+        /// then Azure blobs are used instead.
         /// </summary>
         public string LoadInformationAzureTableName { get; set; } = "DurableTaskPartitions";
 
@@ -90,10 +91,15 @@ namespace DurableTask.Netherite
         public PartitionManagementOptions PartitionManagement { get; set; } = PartitionManagementOptions.EventProcessorHost;
 
         /// <summary>
-        /// Gets or sets a flag indicating whether to enable caching of execution cursors to avoid replay.
-        /// Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
+        /// Gets or sets the activity scheduler option
         /// </summary>
-        public bool ExtendedSessionsEnabled { get; set; } = true;
+        [JsonConverter(typeof(StringEnumConverter))]
+        public ActivitySchedulerOptions ActivityScheduler { get; set; } = ActivitySchedulerOptions.Locavore;
+
+        /// <summary>
+        /// Gets or sets a flag indicating whether to enable caching of execution cursors to avoid replay.
+        /// </summary>
+        public bool CacheOrchestrationCursors { get; set; } = true;
 
         /// <summary>
         /// Whether we should carry over unexecuted raised events to the next iteration of an orchestration on ContinueAsNew.
@@ -131,12 +137,13 @@ namespace DurableTask.Netherite
         /// <summary>
         /// A limit on how long to wait between state checkpoints, in milliseconds. The default is 60s.
         /// </summary>
-        public long MaxTimeMsBetweenCheckpoints { get; set; } = 60 * 1000;
+        public long IdleCheckpointFrequencyMs { get; set; } = 60 * 1000;
 
         /// <summary>
-        /// Whether to use the Faster PSF support for handling queries.
+        /// Set this to a local file path to make FASTER use local files instead of blobs. Currently,
+        /// this makes sense only for local testing and debugging.
         /// </summary>
-        public bool UsePSFQueries { get; set; } = true;
+        public string UseLocalDirectoryForPartitionStorage { get; set; } = null;
 
         /// <summary>
         /// Whether to use the alternate object store implementation.
@@ -144,7 +151,7 @@ namespace DurableTask.Netherite
         public bool UseAlternateObjectStore { get; set; } = false;
 
         /// <summary>
-        /// Forces steps to pe persisted before applying their effects, thus disabling all speculation.
+        /// Forces steps to pe persisted before applying their effects, disabling all pipelining.
         /// </summary>
         public bool PersistStepsFirst { get; set; } = false;
 
@@ -154,12 +161,18 @@ namespace DurableTask.Netherite
         public int PackPartitionTaskMessages { get; set; } = 100;
 
         /// <summary>
-        /// Gets or sets the name used for resolving the premium Azure storage connection string, if used.
+        /// A name for resolving a storage connection string to be used specifically for the page blobs, or null if page blobs are to be stored in the default account.
         /// </summary>
-        public string PremiumStorageConnectionName { get; set; } = null;
+        public string PageBlobStorageConnectionName { get; set; } = null;
+
+        /// <summary>
+        /// The resolved page blob storage connection string, or null if page blobs are to be stored in the default account. Is never serialized or deserialized.
+        /// </summary>
+        [JsonIgnore]
+        public string ResolvedPageBlobStorageConnectionString { get; set; }
 
         [JsonIgnore]
-        internal bool UsePremiumStorage => !string.IsNullOrEmpty(this.PremiumStorageConnectionName);
+        internal bool UseSeparatePageBlobStorage => !string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString);
 
         /// <summary>
         /// A lower limit on the severity level of trace events emitted by the transport layer.
@@ -214,6 +227,17 @@ namespace DurableTask.Netherite
                 if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
                 {
                     throw new InvalidOperationException($"Could not resolve {nameof(this.StorageConnectionName)}:{this.StorageConnectionName} for Netherite storage provider.");
+                }
+            }
+
+            if (string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString)
+                && !string.IsNullOrEmpty(this.PageBlobStorageConnectionName))
+            {
+                this.ResolvedPageBlobStorageConnectionString = connectionStringResolver(this.PageBlobStorageConnectionName);
+
+                if (string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString))
+                {
+                    throw new InvalidOperationException($"Could not resolve {nameof(this.PageBlobStorageConnectionName)}:{this.PageBlobStorageConnectionName} for Netherite storage provider.");
                 }
             }
 

@@ -6,41 +6,49 @@ namespace DurableTask.Netherite.Scaling
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Runtime.Serialization;
     using System.Text;
 
     /// <summary>
     /// Reported load information about a specific partition.
     /// </summary>
+    [DataContract]
     public class PartitionLoadInfo
     {
         /// <summary>
         /// The number of orchestration work items waiting to be processed.
         /// </summary>
+        [DataMember]
         public int WorkItems { get; set; }
 
         /// <summary>
         /// The number of activities that are waiting to be processed.
         /// </summary>
+        [DataMember]
         public int Activities { get; set; }
 
         /// <summary>
         /// The number of timers that are waiting to fire.
         /// </summary>
+        [DataMember]
         public int Timers { get; set; }
 
         /// <summary>
         /// The number of client requests waiting to be processed.
         /// </summary>
+        [DataMember]
         public int Requests { get; set; }
 
         /// <summary>
         /// The number of work items that have messages waiting to be sent.
         /// </summary>
+        [DataMember]
         public int Outbox { get; set; }
 
         /// <summary>
         /// The next time on which to wake up.
         /// </summary>
+        [DataMember]
         public DateTime? Wakeup { get; set; }
 
         /// <summary>
@@ -69,7 +77,7 @@ namespace DurableTask.Netherite.Scaling
                 return $"has {this.Outbox} unsent messages";
             }
 
-            if (this.Wakeup.HasValue && this.Wakeup.Value < DateTime.UtcNow + TimeSpan.FromSeconds(10))
+            if (this.Wakeup.HasValue && this.Wakeup.Value < DateTime.UtcNow + TimeSpan.FromSeconds(20))
             {
                 return $"has timer waking up at {this.Wakeup.Value}";
             }
@@ -80,26 +88,31 @@ namespace DurableTask.Netherite.Scaling
         /// <summary>
         /// The input queue position of this partition, which is  the next expected EventHubs sequence number.
         /// </summary>
+        [DataMember]
         public long InputQueuePosition { get; set; }
 
         /// <summary>
         /// The commit log position of this partition.
         /// </summary>
+        [DataMember]
         public long CommitLogPosition { get; set; }
 
         /// <summary>
         /// The worker id of the host that is currently running this partition.
         /// </summary>
+        [DataMember]
         public string WorkerId { get; set; }
 
         /// <summary>
         /// A string encoding of the latency trend.
         /// </summary>
+        [DataMember]
         public string LatencyTrend { get; set; }
 
         /// <summary>
         /// Percentage of message batches that miss in the cache.
         /// </summary>
+        [DataMember]
         public double MissRate { get; set; }
 
         /// <summary>
@@ -136,6 +149,15 @@ namespace DurableTask.Netherite.Scaling
         /// Whether a latency trend indicates the partition has been idle for a long time
         /// </summary>
         public static bool IsLongIdle(string latencyTrend) => latencyTrend.Count() == LatencyTrendLength && latencyTrend.All(c => c == Idle);
+
+        /// <summary>
+        /// Whether a latency trend indicates that a partition is experiencing significant load
+        /// </summary>
+        public bool IsLoaded()
+        {
+            var last = this.LatencyTrend.LastOrDefault();
+            return (last == MediumLatency || last == HighLatency);
+        }
 
         /// <summary>
         /// Copy the load info for the next measuring interval

@@ -107,7 +107,11 @@ namespace DurableTask.Netherite
             {
                 // A session for this instance already exists, so a work item is in progress already.
                 // We don't need to schedule a work item because we'll notice the new messages when it completes.
-                this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));
+
+                if (!isReplaying)
+                {
+                    this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));
+                }
 
                 session.Batch.Add((message, originWorkItemId));
             }
@@ -121,7 +125,11 @@ namespace DurableTask.Netherite
                     ForceNewExecution = forceNewExecution,
                 };
 
-                this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));
+                if (!isReplaying)
+                {
+                    this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));
+                }
+
                 session.Batch.Add((message, originWorkItemId));
 
                 if (!isReplaying) // during replay, we don't start work items until end of recovery
@@ -143,7 +151,11 @@ namespace DurableTask.Netherite
                 // when the previous work item completes.
                 foreach(var message in messages)
                 {
-                    this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));                  
+                    if (!isReplaying)
+                    {
+                        this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));
+                    }
+
                     session.Batch.Add((message, originWorkItemId));
                 }
             }
@@ -173,7 +185,11 @@ namespace DurableTask.Netherite
 
                 foreach (var message in messages)
                 {
-                    this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));
+                    if (!isReplaying)
+                    {
+                        this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, message, originWorkItemId, this.GetSessionPosition(session));
+                    }
+
                     session.Batch.Add((message, originWorkItemId));
                 }
 
@@ -259,7 +275,7 @@ namespace DurableTask.Netherite
         {
             var evtCopy = (BatchProcessed) ((BatchProcessed) evt).Clone();
             evtCopy.PersistFirst = BatchProcessed.PersistFirstStatus.Done;
-            this.Partition.SubmitInternalEvent(evtCopy);
+            this.Partition.SubmitEvent(evtCopy);
         }
 
         public void Process(BatchProcessed evt, EffectTracker effects)

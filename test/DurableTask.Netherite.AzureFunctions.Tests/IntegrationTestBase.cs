@@ -7,6 +7,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Linq;
+    using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Netherite.AzureFunctions.Tests.Logging;
     using Microsoft.Azure.WebJobs;
@@ -31,14 +32,31 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             this.typeLocator = new TestFunctionTypeLocator();
             this.settingsResolver = new TestSettingsResolver();
 
+            this.settingsResolver.AddSetting("Storage", Environment.GetEnvironmentVariable(Netherite.Tests.TestConstants.StorageConnectionName));
+
             this.functionsHost = new HostBuilder()
                 .ConfigureLogging(
                     loggingBuilder =>
                     {
                         loggingBuilder.AddProvider(this.logProvider);
-                        loggingBuilder.SetMinimumLevel(LogLevel.Information);
+                        loggingBuilder.SetMinimumLevel(LogLevel.Trace);
                     })
-                .ConfigureWebJobs(webJobsBuilder => webJobsBuilder.AddDurableTask())
+                .ConfigureWebJobs(
+                    webJobsBuilder =>
+                    {
+                        webJobsBuilder.AddDurableTask(options =>
+                        {
+                            options.StorageProvider["type"] = NetheriteProviderFactory.ProviderName;
+
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.LogLevelLimit)] = LogLevel.Trace.ToString();
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.StorageLogLevelLimit)] = LogLevel.Trace.ToString();
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.TransportLogLevelLimit)] = LogLevel.Trace.ToString();
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.EventLogLevelLimit)] = LogLevel.Trace.ToString();
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.WorkItemLogLevelLimit)] = LogLevel.Trace.ToString();
+
+                            options.HubName = $"testhub{Guid.NewGuid():N}";
+                        });
+                    })
                 .ConfigureServices(
                     services =>
                     {
@@ -96,6 +114,18 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             DurableOrchestrationStatus status = await client.WaitForCompletionAsync(instanceId, timeout);
             Assert.NotNull(status);
             return status;
+        }
+
+        protected async Task<OrchestrationStatusQueryResult> GetInstancesAsync(OrchestrationStatusQueryCondition condition)
+        {
+            IDurableClient client = await this.GetDurableClientAsync();
+            return await client.ListInstancesAsync(condition, CancellationToken.None);
+        }
+
+        protected async Task<PurgeHistoryResult> PurgeAllAsync()
+        {
+            IDurableClient client = await this.GetDurableClientAsync();
+            return await client.PurgeInstanceHistoryAsync(default, default, null);
         }
 
         async Task<IDurableClient> GetDurableClientAsync()
