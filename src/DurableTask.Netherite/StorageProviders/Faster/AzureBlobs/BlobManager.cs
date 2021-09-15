@@ -1058,7 +1058,7 @@ namespace DurableTask.Netherite.Faster
 
         internal async Task PersistSingletonsAsync(byte[] singletons, Guid guid)
         {
-            if (this.UseLocalFilesForTestingAndDebugging)
+            if (this.UseLocalFiles)
             {
                 var path = Path.Combine(this.LocalCheckpointDirectoryPath, this.GetSingletonsSnapshotBlobName(guid));
                 await File.WriteAllBytesAsync(path, singletons);
@@ -1085,7 +1085,7 @@ namespace DurableTask.Netherite.Faster
 
         internal async Task<Stream> RecoverSingletonsAsync()
         {
-            if (this.UseLocalFilesForTestingAndDebugging)
+            if (this.UseLocalFiles)
             {
                 var path = Path.Combine(this.LocalCheckpointDirectoryPath, this.GetSingletonsSnapshotBlobName(this.CheckpointInfo.LogToken));
                 var stream = File.OpenRead(path);

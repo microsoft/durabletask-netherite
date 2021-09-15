@@ -72,8 +72,11 @@ namespace DurableTask.Netherite.Faster
         ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> CreateASession()
             => this.fht.NewSession<EffectTracker, TrackedObject, object>(new Functions(this.partition, this.StoreStats));
 
-        public override void InitMainSession() 
-            => this.mainSession = this.CreateASession();
+        public override void InitMainSession()
+        {
+            this.singletons = new TrackedObject[TrackedObjectKey.NumberSingletonTypes];
+            this.mainSession = this.CreateASession();
+        }
 
         public override async Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync()
         {
