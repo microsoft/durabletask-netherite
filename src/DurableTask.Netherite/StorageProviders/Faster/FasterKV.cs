@@ -8,7 +8,6 @@ namespace DurableTask.Netherite.Faster
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
-    using System.Linq;
     using System.Threading;
     using System.Threading.Channels;
     using System.Threading.Tasks;
@@ -408,6 +407,31 @@ namespace DurableTask.Netherite.Faster
                     OnStreamEnded = (unusedPredicate, unusedIndex) => false,
                 };
 
+                OrchestrationState getInstanceState(object value)
+                {
+                    if (value is byte[] serialized)
+                    {
+                        return ((InstanceState)Serializer.DeserializeTrackedObject(serialized))?.OrchestrationState;
+                    }
+                    else
+                    {
+                        return ((InstanceState)(TrackedObject)value)?.OrchestrationState;
+                    }
+                }
+
+                (bool recordOk, bool endSegment) recordPredicate(QueryRecord<Key, Value> queryRecord)
+                {
+                    OrchestrationState state = getInstanceState(queryRecord.ValueRef.Val);
+                    if (state != null && instanceQuery.Matches(state))
+                    {
+                        return (true, totalcount >= queryEvent.PageSize);
+                    }
+                    else
+                    {
+                        return (false, false);
+                    }
+                }
+
                 int segmentSize = queryEvent.PageSize ?? 500;
                 do
                 {
@@ -416,35 +440,18 @@ namespace DurableTask.Netherite.Faster
                         queryKey,
                         continuationToken,
                         segmentSize,
-                        querySettings).ConfigureAwait(false);
+                        querySettings,
+                        recordPredicate).ConfigureAwait(false);
 
                     int segmentcount = 0;
                     foreach (var queryRecord in segment)
                     {
                         segmentcount++;
-                        if (queryRecord.ValueRef.Val is byte[] serialized)
-                        {
-                            var state = ((InstanceState)Serializer.DeserializeTrackedObject(serialized))?.OrchestrationState;
-                            if (state != null && instanceQuery.Matches(state))
-                            {
-                                if (!instanceQuery.FetchInput)
-                                {
-                                    state.Input = null;
-                                }
-                                yield return state;
-                            }
-                        }
-                        else
-                        {
-                            var state = ((InstanceState)(TrackedObject)queryRecord.ValueRef.Val)?.OrchestrationState;
-                            if (state != null && instanceQuery.Matches(state))
-                            {
-                                yield return state;
-                            }
-                        }
+                        OrchestrationState state = getInstanceState(queryRecord.ValueRef.Val);
+                        yield return state;
                         queryRecord.Dispose();
                     }
-                    continuationToken = (segmentcount < segmentSize) ? null : segment.ContinuationToken;
+                    continuationToken = segment.IsQueryComplete ? null : segment.ContinuationToken;
 
                     if (totalcount >= queryEvent.PageSize)
                     {
