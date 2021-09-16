@@ -25,7 +25,7 @@ namespace PerformanceTests
     {
         [FunctionName(nameof(HelloCities))]
         public async static Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "hellocities")] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Function, "post", Route = "hellocities")] HttpRequest req,
             [DurableClient] IDurableClient client)
         {
             string orchestrationInstanceId = await client.StartNewAsync(nameof(HelloSequence));
