@@ -6,9 +6,9 @@
 Write-Host "Using parameters specified in settings.ps1."
 
 # always edit this parameter before running the scripts
-$name = "testnetheritescripts"
+$name = "globally-unique-lowercase-alphanumeric-name-with-no-dashes"
 
-# review these parameters before running the scripts
+# REVIEW THESE PARAMETERS BEFORE RUNNING THE SCRIPT
 $location = "westeurope"
 $storageSku = "Standard_LRS"
 

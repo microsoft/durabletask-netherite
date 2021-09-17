@@ -1,16 +1,10 @@
 #!/usr/bin/pwsh
 
-# review these parameters before running the script
-param (
-	$Plan = "EP1", 
-	$MinNodes = "1", 
-	$MaxNodes = "20", 
-	$Runtime = "python",
-	$RuntimeVersion = "3.8",
-	$OsType = "Linux"
-)
+#
+# The language-specific parameters are set in the corresponding scripts following the naming convention create-function-app-language.ps1 
+#
 
-# read the parameters
+# read the gneric parameters
 . ./settings.ps1
 
 # look up the eventhubs namespace connection string
@@ -20,21 +14,21 @@ if (-not ((az functionapp list -g $groupName --query "[].name" | ConvertFrom-Jso
 	Write-Host "Creating $Plan Function App..."
 	
 	if ($OsType -eq "Windows") {
-		Write-Host "plan in Windows variant..."
+		Write-Host "in Windows variant..."
 		az functionapp plan create --resource-group  $groupName --name  $functionAppName --location $location --sku $Plan
 	}
 	else {
-		Write-Host "plan in Linux variant..."
+		Write-Host "in Linux variant..."
 		az functionapp plan create --resource-group  $groupName --name  $functionAppName --location $location --sku $Plan --is-linux true
 	}
 	
 
 	if ($Runtime -eq "dotnet") {
-		Write-Host "app for .NET"
+		Write-Host "for .NET"
 		az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 3 --runtime $Runtime --os-type $OsType
 	}
 	else {
-		Write-Host "app for $Runtime"
+		Write-Host "for $Runtime"
 		az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 3 --runtime $Runtime --runtime-version $RuntimeVersion --os-type $OsType		
 	}
 	

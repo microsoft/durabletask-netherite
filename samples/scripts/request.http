@@ -2,5 +2,5 @@
 ### Start Orchestrator Function via HTTP for Python and NodeJS 
 POST http://localhost:7071/api/orchestrators/DurableFunctionsNetheriteOrchestrator
 
-### Start Orchestrator Function via HTPP for .NET Core
+### Start Orchestrator Function via HTTP for .NET Core
 POST http://localhost:7071/api/hellocities
