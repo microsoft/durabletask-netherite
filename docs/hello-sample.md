@@ -1,6 +1,6 @@
 # Running the 'Hello' Samples
 
-In order to speed up your first experience with Netherite we provide some samples that serve this goal. They are also a great resource for understanding how Durable Functions and Netherite work. They are also excellent starting point for creating your own projects.
+In order to speed up your first experience with Netherite we provide some samples that serve this goal. They are also a great resource for understanding how Durable Functions and Netherite work. In addition you can use them as a starting point for creating your own projects.
 
 All samples are in the folder [/samples/](https://github.com/microsoft/durabletask-netherite/tree/main/samples/). We provide samples for the following languages:
 
@@ -18,17 +18,19 @@ First, make sure you have the following installed on your machine:
 
 1. [.NET Core SDK 3.1](https://dotnet.microsoft.com/download/dotnet-core/3.1) or later. You can run `dotnet --list-runtimes` to check what is installed.
 
-2. [Azure Functions Core Tools 3.x](https://docs.microsoft.com/en-us/azure/azure-functions/functions-run-local?tabs=windows%2Ccsharp%2Cbash) or later. You can run `func --version` to check what is installed.
+2. [Azure Functions Core Tools 3.x](https://docs.microsoft.com/azure/azure-functions/functions-run-local?tabs=windows%2Ccsharp%2Cbash) or later. You can run `func --version` to check what is installed.
 
-3. [The Azure CLI 2.18.0](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) or later. You can run `az --version` to check what is installed.
+3. [PowerShell 7.1](https://docs.microsoft.com/powershell/scripting/install/installing-powershell?view=powershell-7.1) or later. You can check what is installed with `pwsh --version`. PowerShell is easy to install or update via `dotnet tool install --global PowerShell` or `dotnet tool install --global PowerShell`, respectively.
 
-4. [PowerShell 7.1](https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell?view=powershell-7.1) or later. You can check what is installed with `pwsh --version`. PowerShell is easy to install or update via `dotnet tool install --global PowerShell` or `dotnet tool install --global PowerShell`, respectively.
+4. [Azurite 3.x](https://github.com/Azure/Azurite) as storage emulator for the local execution. You can run `azurite --version` to check what is installed.
 
-5. [Azurite 3.x](https://github.com/Azure/Azurite) as storage emulator for the local execution. You can run `azurite --version` to check what is installed.
+5. [The Azure CLI 2.18.0](https://docs.microsoft.com/cli/azure/install-azure-cli) or later. You can run `az --version` to check what is installed.
 
 6. [An Azure subscription](https://azure.microsoft.com/free/search/), to allocate and deploy the required resources.
 
 To execute the REST calls we recommend to use the [RESTClient for VSCode](https://marketplace.visualstudio.com/items?itemName=humao.rest-client).
+
+📝 **Remark:** You can execute Durable Functions with Netherite local-only without an Azure subscription. In that case you are fine with installing the prerequisites 1. - 4.
 
 ### Language-Specific Prerequisites
 
@@ -64,13 +66,13 @@ The build process depends on the language you want to use. The following section
 
 The folder [/samples/Hello_Netherite_with_DotNetCore](https://github.com/microsoft/durabletask-netherite/tree/main/samples/Hello_Netherite_with_DotNetCore) contains the files for the Durable Function App in C#.
 
-The main files amd folders are:
+The main files and folders are:
 
 - the single file of code, `HelloCities.cs`, which defines three functions: a trigger, an orchestration, and an activity.
 - the configuration file `host.json` which contains settings.
 - the configuration file `local.settings.json` which contains settings for local execution.
 
-Additionally, the folder contains PowerShell scripts (files ending in `*.ps1`) that make it easy to run amd deploy the Function using automated CLI commands. These scripts are optional. You can perform all the steps in these scripts manually, using the Azure CLI or the Azure Portal.
+Additionally, the folder contains PowerShell scripts (files ending in `*.ps1`) that make it easy to run and deploy the Function using automated CLI commands. These scripts are optional. You can perform all the steps in these scripts manually, using the Azure CLI or the Azure Portal.
 
 To build, open a command shell in that directory and type
 
@@ -82,7 +84,7 @@ dotnet build
 
 The folder [/samples/Hello_Netherite_with_TypeScript](https://github.com/microsoft/durabletask-netherite/tree/main/samples/Hello_Netherite_with_TypeScript) contains the files for the Durable Function App in TypeScript.
 
-The main files amd folders are:
+The main files and folders are:
 
 - the folders containing the code (`*.ts`) and configuration (`function.json`) of the three functions: the trigger (`DurableFunctionsNetheriteStarter`), the orchestrator (`DurableFunctionsNetheriteOrchestrator`), and the activity (`HelloCityNetherite`).
 - the configuration file `host.json` which contains settings.
@@ -91,7 +93,7 @@ The main files amd folders are:
 - the `package.json` file containing the metadata of the project and the dependencies
 - the `tsconfig.json` file containing the compiler options for TypeScript
 
-Additionally, the folder contains PowerShell scripts (files ending in `*.ps1`) that make it easy to run amd deploy the Function using automated CLI commands. These scripts are optional. You can perform all the steps in these scripts manually, using the Azure CLI or the Azure Portal.
+Additionally, the folder contains PowerShell scripts (files ending in `*.ps1`) that make it easy to run and deploy the Function using automated CLI commands. These scripts are optional. You can perform all the steps in these scripts manually, using the Azure CLI or the Azure Portal.
 
 To build, open a command shell in that directory and type
 
@@ -107,7 +109,7 @@ npm run build
 
 The folder [/samples/Hello_Netherite_with_TypeScript](https://github.com/microsoft/durabletask-netherite/tree/main/samples/Hello_Netherite_with_TypeScript) contains the files for the Durable Function App in Python.
 
-The main files amd folders are:
+The main files and folders are:
 
 - the folders containing the code (`*.py`) and configuration (`function.json`) of the three functions: the trigger (`DurableFunctionsNetheriteStarter`), the orchestrator (`DurableFunctionsNetheriteOrchestrator`), and the activity (`HelloCityNetherite`).
 - the configuration file `host.json` which contains settings.
@@ -115,7 +117,7 @@ The main files amd folders are:
 - the `extensions.csproj` file that defines the needed extension for Durable Functions and Netherite as we cannot rely on the Extension Bundle mechanism.
 - the `requirements.txt` file containing the dependencies
 
-Additionally, the folder contains PowerShell scripts (files ending in `*.ps1`) that make it easy to run amd deploy the Function using automated CLI commands. These scripts are optional. You can perform all the steps in these scripts manually, using the Azure CLI or the Azure Portal.
+Additionally, the folder contains PowerShell scripts (files ending in `*.ps1`) that make it easy to run and deploy the Function using automated CLI commands. These scripts are optional. You can perform all the steps in these scripts manually, using the Azure CLI or the Azure Portal.
 
 To build, open a command shell in that directory and type
 
