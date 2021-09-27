@@ -27,9 +27,10 @@ namespace PerformanceTests.Sequence
             ILogger logger)
         {
             Sequence.Input input = context.GetInput<Sequence.Input>();
+            input.InstanceId = context.InstanceId;
             await context.CallActivityAsync(nameof(SequenceTaskStart), input);
             input = await context.WaitForExternalEvent<Sequence.Input>("completed");
-            var result = $"blob-triggered sequence {context.InstanceId} completed in {input.Duration}s\n";
+            var result = $"blob sequence {context.InstanceId} completed in {input.Duration}s\n";
             logger.LogWarning(result);
             return result;
         }
@@ -38,23 +39,24 @@ namespace PerformanceTests.Sequence
         [FunctionName(nameof(SequenceTaskStart))]
         public static async Task SequenceTaskStart(
             [ActivityTrigger] IDurableActivityContext context,
-            [Blob("tasks/step/0")] CloudBlobDirectory directory,
+            [Blob("blobtriggers/blobs")] CloudBlobDirectory directory,
             ILogger logger)
         {
             Sequence.Input input = context.GetInput<Sequence.Input>();
-            var blob = directory.GetBlockBlobReference(context.InstanceId);
+            await directory.Container.CreateIfNotExistsAsync();
             string content = JsonConvert.SerializeObject(input);
-            await blob.Container.CreateIfNotExistsAsync();
+            var blob = directory.GetBlockBlobReference(Guid.NewGuid().ToString());
             await blob.UploadTextAsync(content);
+            logger.LogWarning($"blob sequence {context.InstanceId} started.");
         }
 
         [Disable]
         [FunctionName(nameof(BlobSequenceTask1))]
         public static async Task BlobSequenceTask1(
-           [BlobTrigger("tasks/step/{iteration}/{instanceId}")] Stream inputStream,
-           [Blob("tasks/step")] CloudBlobDirectory directory,
+           [BlobTrigger("blobtriggers/blobs/{blobname}")] Stream inputStream,
+           [Blob("blobtriggers/blobs")] CloudBlobDirectory directory,
            [DurableClient] IDurableClient client,
-           string instanceId,
+           string blobname,
            ILogger logger)
         {
             Sequence.Input input;
@@ -62,19 +64,21 @@ namespace PerformanceTests.Sequence
             using (var streamReader = new StreamReader(inputStream))
                 input = JsonConvert.DeserializeObject<Sequence.Input>(await streamReader.ReadToEndAsync());
 
-            input = Sequence.RunTask(input, logger, instanceId);
+            logger.LogWarning($"blob sequence {input.InstanceId} step {input.Position} triggered.");
+
+            input = Sequence.RunTask(input, logger, input.InstanceId);
 
             if (input.Position < input.Length)
             {
                 // write the blob to trigger the next task
                 string content = JsonConvert.SerializeObject(input);
-                var blob = directory.GetBlockBlobReference($"{input.Position}/{instanceId}");
+                var blob = directory.GetBlockBlobReference(Guid.NewGuid().ToString());
                 await blob.UploadTextAsync(content);
             }
             else
             {
                 // notify the waiting orchestrator
-                await client.RaiseEventAsync(instanceId, "completed", input);
+                await client.RaiseEventAsync(input.InstanceId, "completed", input);
             }
         }
     }
