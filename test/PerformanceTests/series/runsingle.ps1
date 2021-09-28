@@ -15,6 +15,7 @@ param (
 	$DelayAfterRun = 15,
 	$Tag="neth",
 	$HubName="perftests",
+	$MaxA="",
 	$ResultsFile="./results.csv",
 	$DeployCode=$true,
 	$DeleteAfterTests=$false,
@@ -27,7 +28,7 @@ if ($PrintColumnNames)
 }
 
 # deploy to a premium plan
-. ./scripts/deploy.ps1 -Settings $Settings -Plan $Plan -MinNodes $NumNodes -MaxNodes $NumNodes -Configuration $Configuration -HostConfigurationFile "./series/host.$tag.json" -HubName $HubName -DeployCode $DeployCode
+. ./scripts/deploy.ps1 -Settings $Settings -Plan $Plan -MinNodes $NumNodes -MaxNodes $NumNodes -Configuration $Configuration -HostConfigurationFile "./series/host.$tag.json" -HubName $HubName -MaxA $MaxA -DeployCode $DeployCode
 
 # update the eventhubs scale
 Write-Host "Configuring EventHubs for $ThroughputUnits TU"

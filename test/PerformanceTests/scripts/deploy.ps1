@@ -6,7 +6,8 @@ param (
 	$MaxNodes="20", 
 	$Configuration="Release",
 	$HostConfigurationFile="./host.json",
-	$HubName="perftests",
+	$HubName="",
+	$MaxA="",
 	$DeployCode=$true
 )
 
@@ -18,7 +19,16 @@ if ($DeployCode)
     Write-Host Building $Configuration Configuration...
     dotnet build -c $Configuration
 	$hostconf = (Get-Content $HostConfigurationFile | ConvertFrom-Json -Depth 32)
-	$hostconf.extensions.durableTask.hubName = $HubName
+
+	if (-not ($HubName -eq ""))
+	{
+	    $hostconf.extensions.durableTask.hubName = $HubName
+	}
+	if (-not ($MaxA -eq ""))
+	{
+	    $hostconf.extensions.durableTask | Add-Member -NotePropertyName "maxConcurrentActivityFunctions" -NotePropertyValue $MaxA
+	}
+
 	$hostconf | ConvertTo-Json -depth 32 | set-content "./bin/$Configuration/netcoreapp3.1/host.json"
 }
 
