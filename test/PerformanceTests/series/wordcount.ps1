@@ -23,17 +23,17 @@ if ($RunEP1)
     #. ./scripts/deploy.ps1 -Plan EP1 -MinNodes 1 -MaxNodes 1 -DeployCode $false
 	#Start-Sleep -Seconds 60
 
-	./series/runsingle -Tag azst-12  -HubName A11 -Plan EP1 -NumNodes 1 -WaitForDeploy 15 -Orchestration "WordCount" -Data "3x10" -ResultsFile $ResultsFile -DelayAfterRun 20 -ThroughputUnits 1
-	./series/runsingle -Tag neth     -HubName L11 -Plan EP1 -NumNodes 1 -WaitForDeploy 50 -Orchestration "WordCount" -Data "3x10" -ResultsFile $ResultsFile -DelayAfterRun 60 -ThroughputUnits $tu
+	./series/runsingle -Tag azst-12  -HubName A11 -Plan EP1 -NumNodes 1 -WaitForDeploy 15 -Orchestration "WordCount" -Data "5x10" -ResultsFile $ResultsFile -DelayAfterRun 20 -ThroughputUnits 1
+	./series/runsingle -Tag neth     -HubName L11 -Plan EP1 -NumNodes 1 -WaitForDeploy 50 -Orchestration "WordCount" -Data "10x10" -ResultsFile $ResultsFile -DelayAfterRun 60 -ThroughputUnits $tu
 
-	./series/runsingle -Tag azst-12  -HubName A12 -Plan EP1 -NumNodes 4 -WaitForDeploy 50 -Orchestration "WordCount" -Data "4x10" -ResultsFile $ResultsFile -DelayAfterRun 20 -ThroughputUnits 1
-	./series/runsingle -Tag neth     -HubName L12 -Plan EP1 -NumNodes 4 -WaitForDeploy 80 -Orchestration "WordCount" -Data "4x10" -ResultsFile $ResultsFile -DelayAfterRun 60 -ThroughputUnits $tu
+	./series/runsingle -Tag azst-12  -HubName A12 -Plan EP1 -NumNodes 4 -WaitForDeploy 50 -Orchestration "WordCount" -Data "10x10" -ResultsFile $ResultsFile -DelayAfterRun 20 -ThroughputUnits 1
+	./series/runsingle -Tag neth     -HubName L12 -Plan EP1 -NumNodes 4 -WaitForDeploy 80 -Orchestration "WordCount" -Data "20x10" -ResultsFile $ResultsFile -DelayAfterRun 60 -ThroughputUnits $tu
 
-	./series/runsingle -Tag azst-12 -HubName A13 -Plan EP1 -NumNodes 8 -WaitForDeploy 50 -Orchestration "WordCount" -Data "8x20" -ResultsFile $ResultsFile -DelayAfterRun 20 -ThroughputUnits 1
-	./series/runsingle -Tag neth    -HubName L13 -Plan EP1 -NumNodes 8 -WaitForDeploy 80 -Orchestration "WordCount" -Data "8x20" -ResultsFile $ResultsFile -DelayAfterRun 60 -ThroughputUnits $tu
+	./series/runsingle -Tag azst-12 -HubName A13 -Plan EP1 -NumNodes 8 -WaitForDeploy 50 -Orchestration "WordCount" -Data "15x20" -ResultsFile $ResultsFile -DelayAfterRun 20 -ThroughputUnits 1
+	./series/runsingle -Tag neth    -HubName L13 -Plan EP1 -NumNodes 8 -WaitForDeploy 80 -Orchestration "WordCount" -Data "30x20" -ResultsFile $ResultsFile -DelayAfterRun 60 -ThroughputUnits $tu
 
-	./series/runsingle -Tag azst-12 -HubName A14 -Plan EP1 -NumNodes 12 -WaitForDeploy 50 -Orchestration "WordCount" -Data "12x20" -ResultsFile $ResultsFile -DelayAfterRun 20 -ThroughputUnits 1
-	./series/runsingle -Tag neth    -HubName L14 -Plan EP1 -NumNodes 12 -WaitForDeploy 80 -Orchestration "WordCount" -Data "12x20" -ResultsFile $ResultsFile -DelayAfterRun 60 -ThroughputUnits $tu -DeleteAfterTests $true
+	./series/runsingle -Tag azst-12 -HubName A14 -Plan EP1 -NumNodes 12 -WaitForDeploy 50 -Orchestration "WordCount" -Data "20x20" -ResultsFile $ResultsFile -DelayAfterRun 20 -ThroughputUnits 1
+	./series/runsingle -Tag neth    -HubName L14 -Plan EP1 -NumNodes 12 -WaitForDeploy 80 -Orchestration "WordCount" -Data "40x20" -ResultsFile $ResultsFile -DelayAfterRun 60 -ThroughputUnits $tu -DeleteAfterTests $true
 
 	Start-Sleep -Seconds $DelayAfterDelete
 }
