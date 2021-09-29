@@ -36,7 +36,6 @@ if (-not ((az functionapp list -g $groupName --query "[].name"| ConvertFrom-Json
 {
 	# look up connection strings
 	$eventHubsConnectionString = (az eventhubs namespace authorization-rule keys list --resource-group $groupName --namespace-name $namespaceName --name RootManageSharedAccessKey | ConvertFrom-Json).primaryConnectionString
-	$corpusConnectionString = (az storage account show-connection-string --name gutenbergcorpus --resource-group corpus | ConvertFrom-Json).connectionString
 
 	Write-Host "Creating $Plan Function App..."
 	az functionapp plan create --resource-group  $groupName --name  $functionAppName --location $location --sku $Plan

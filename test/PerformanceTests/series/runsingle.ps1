@@ -44,8 +44,17 @@ for($i = 0; $i -lt $NumReps; $i++)
 	$starttime = (Get-Date).ToUniversalTime().ToString("o")
 
 	Write-Host "Starting $Orchestration -d $Data..."
-	$result = (curl.exe --max-time 300 https://$functionAppName.azurewebsites.net/$Orchestration -d $Data | ConvertFrom-Json)
-    Write-Host "RESULT=$result"
+	$reply = (curl.exe --max-time 300 https://$functionAppName.azurewebsites.net/$Orchestration -d $Data)
+	try
+	{
+		$result = ($reply | ConvertFrom-Json -depth 10)
+		Write-Host "RESULT=$result"
+	}
+	catch
+	{
+		Write-Host "ERROR: Could not parse reply: $reply"
+	}
+
 
 	Add-Content -path $ResultsFile -value "$Plan,$NumNodes,$Tag,$Orchestration/$Data,$ThroughputUnits,$starttime,$i,$($result.size),$($result.elapsedSeconds)"
 

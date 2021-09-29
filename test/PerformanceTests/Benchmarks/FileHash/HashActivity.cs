@@ -21,10 +21,8 @@ namespace PerformanceTests.FileHash
         {
             char[] separators = { ' ', '\n', '<', '>', '=', '\"', '\'', '/', '\\', '(', ')', '\t', '{', '}', '[', ']', ',', '.', ':', ';' };
 
-            // setup connection to the blob storage
-            string connectionString = Environment.GetEnvironmentVariable("CorpusConnection");
-            CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
-            CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
+            // setup connection to the corpus with the text files 
+            CloudBlobClient serviceClient = new CloudBlobClient(new Uri(@"https://gutenbergcorpus.blob.core.windows.net"));
 
             // download the book from blob storage
             var input = context.GetInput<(string book, int multiplier)>();

@@ -60,10 +60,8 @@ namespace PerformanceTests.WordCount
                         Stopwatch s = new Stopwatch();
                         s.Start();
 
-                        // setup connection to the blob storage
-                        string connectionString = Environment.GetEnvironmentVariable("CorpusConnection");
-                        CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
-                        CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
+                        // setup connection to the corpus with the text files 
+                        CloudBlobClient serviceClient = new CloudBlobClient(new Uri(@"https://gutenbergcorpus.blob.core.windows.net"));
 
                         // download the book from blob storage
                         string book = context.GetInput<string>();

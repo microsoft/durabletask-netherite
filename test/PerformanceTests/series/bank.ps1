@@ -19,6 +19,10 @@ if ($PrintColumnNames)
 
 if ($RunEP1)
 {
+    # EP1 apps appear to not be immediately ready for deployment after they are created. So we create it first and then wait a minute.
+    . ./scripts/deploy.ps1 -Plan EP1 -MinNodes 1 -MaxNodes 1 -DeployCode $false
+	Start-Sleep -Seconds 60
+
 	./series/runmany -Tag azst-12    -HubName A11 -Plan EP1 -NumNodes 1 -WaitForDeploy 120 -Orchestration BankTransaction -NumOrchestrations 1000 -PortionSize 0 -DelayAfterRun 120 -ResultsFile $ResultsFile -ThroughputUnits 1
  	./series/runmany -Tag neth-12    -HubName L11 -Plan EP1 -NumNodes 1 -WaitForDeploy 50 -Orchestration BankTransaction -NumOrchestrations 1000 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
