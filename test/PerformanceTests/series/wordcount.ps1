@@ -2,8 +2,8 @@
 param (
 	$ResultsFile="./wordcount.csv",
 	$PrintColumnNames=$true,
-    $RunEP1=$true,
-	$RunEP2=$false,
+    $RunEP1=$false,
+	$RunEP2=$true,
 	$RunEP3=$false,
 	$DelayAfterDelete=200,
 	$tu=20
@@ -40,7 +40,7 @@ if ($RunEP1)
 
 if ($RunEP2)
 {
-	./series/runsingle -Tag azst-12 -   HubName A21 -Plan EP2 -NumNodes 1 -WaitForDeploy 15 -Orchestration "WordCount" -Data "5x10" -ResultsFile $ResultsFile -ThroughputUnits 1
+	./series/runsingle -Tag azst-12    -HubName A21 -Plan EP2 -NumNodes 1 -WaitForDeploy 15 -Orchestration "WordCount" -Data "5x10" -ResultsFile $ResultsFile -ThroughputUnits 1
  	./series/runsingle -Tag neth       -HubName L21 -Plan EP2 -NumNodes 1 -WaitForDeploy 50 -Orchestration "WordCount" -Data "5x10" -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 	./series/runsingle -Tag azst-12    -HubName A22 -Plan EP2 -NumNodes 4 -WaitForDeploy 50 -Orchestration "WordCount" -Data "8x10" -ResultsFile $ResultsFile -ThroughputUnits 1
