@@ -10,7 +10,6 @@ param (
 # look up the two connection strings and assign them to the respective environment variables
 $Env:AzureWebJobsStorage = (az storage account show-connection-string --name $storageName --resource-group $groupName | ConvertFrom-Json).connectionString
 $Env:EventHubsConnection = (az eventhubs namespace authorization-rule keys list --resource-group $groupName --namespace-name $namespaceName --name RootManageSharedAccessKey | ConvertFrom-Json).primaryConnectionString
-$Env:CorpusConnection = (az storage account show-connection-string --name gutenbergcorpus --resource-group corpus | ConvertFrom-Json).connectionString
 
 # enter the directory with the binaries 
 Push-Location -Path bin/$Configuration/netcoreapp3.1  

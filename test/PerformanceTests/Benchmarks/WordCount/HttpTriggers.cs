@@ -18,6 +18,7 @@ namespace PerformanceTests.WordCount
     using Microsoft.Azure.Storage.Blob;
     using DurableTask.Netherite.Faster;
     using System.Net.Http;
+    using System.Net;
 
     /// <summary>
     /// Defines the REST operations for the word count test.
@@ -29,23 +30,14 @@ namespace PerformanceTests.WordCount
            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "wordcount")] HttpRequest req,
            [DurableClient] IDurableClient client,
            ILogger log)
-        {
-            log.LogWarning($"request is {req}");
-            var queryParameters = req.Query;
-
-            // get mapper and reducer count from shape parameter
-            string shape = req.Query["shape"];
+        {           
+            // Get the mapper and reducer count from the shape
+            string shape = await new StreamReader(req.Body).ReadToEndAsync();
             string[] counts = shape.Split('x');
             int mapperCount, reducerCount;
 
-            // Get the number of books to process
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            int maxBooks = int.Parse(requestBody);
-
-            // setup connection to the blob storage 
-            string connectionString = Environment.GetEnvironmentVariable("CorpusConnection");
-            CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
-            CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
+            // setup connection to the corpus with the text files 
+            CloudBlobClient serviceClient = new CloudBlobClient(new Uri(@"https://gutenbergcorpus.blob.core.windows.net"));       
             CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
             CloudBlobDirectory blobDirectory = blobContainer.GetDirectoryReference($"Gutenberg/txt");
 
@@ -54,7 +46,10 @@ namespace PerformanceTests.WordCount
 
             if (!(counts.Length == 2 && int.TryParse(counts[0], out mapperCount) && int.TryParse(counts[1], out reducerCount)))
             {
-                return new BadRequestObjectResult("Please specify the mapper count and reducer count in the query parameters,  e.g. &shape=10x10");
+                return new JsonResult(new { message = "Please specify the mapper count and reducer count in the query parameters,  e.g. &shape=10x10" })
+                {
+                    StatusCode = (int)HttpStatusCode.BadRequest
+                };
             }
 
             // ----- PHASE 1 ----------
@@ -66,7 +61,10 @@ namespace PerformanceTests.WordCount
                     && objectResult.Value is HttpResponseMessage responseMessage
                     && responseMessage.StatusCode == System.Net.HttpStatusCode.OK))
             {
-                return (ActionResult)new OkObjectResult($"Initialization orchestration timed out.\n");
+                return new JsonResult(new { message = "Initialization orchestration timed out." })
+                {
+                    StatusCode = (int)HttpStatusCode.InternalServerError
+                };
             }
 
             // ----- PHASE 2 ----------
@@ -77,10 +75,10 @@ namespace PerformanceTests.WordCount
             foreach (var book in books)
             {
                 log.LogWarning($"The book name is {((CloudBlockBlob)book).Name}");
-                int mapper = bookCount++ % mapperCount;
+                int mapper = bookCount++;
                 var _ = client.SignalEntityAsync(Mapper.GetEntityId(mapper), nameof(Mapper.Ops.Item), ((CloudBlockBlob)book).Name);
                 
-                if (bookCount == maxBooks)
+                if (bookCount == mapperCount)
                 {
                     log.LogWarning($"Processed {bookCount} books, exiting");
                     break;
@@ -112,16 +110,19 @@ namespace PerformanceTests.WordCount
 
             if (topWords == null)
             {
-                return (ActionResult)new OkObjectResult($"Timed out.\n");
+                return new JsonResult(new { message = "Test timed out." })
+                {
+                    StatusCode = (int)HttpStatusCode.InternalServerError
+                };
             }
             else
             {
-                return (ActionResult)new OkObjectResult(new {
+                return new JsonResult(new {
                     bookCount,
                     size,
                     elapsedSeconds,
                     throughput,
-                    topWords
+                    //topWords,
                 });              
             }
         }

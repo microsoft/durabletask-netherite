@@ -23,17 +23,17 @@ if ($RunEP1)
     . ./scripts/deploy.ps1 -Plan EP1 -MinNodes 1 -MaxNodes 1 -DeployCode $false
 	Start-Sleep -Seconds 60
 
- 	./series/runsingle -Tag neth       -HubName L11 -Plan EP1 -NumNodes 1 -WaitForDeploy 50 -Orchestration CollisionSearch/divide-and-conquer -Data 100 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits $tu
 	./series/runsingle -Tag azst-12    -HubName A11 -Plan EP1 -NumNodes 1 -WaitForDeploy 120 -Orchestration CollisionSearch/divide-and-conquer -Data 100 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits 1
+ 	./series/runsingle -Tag neth       -HubName L11 -Plan EP1 -NumNodes 1 -WaitForDeploy 50 -Orchestration CollisionSearch/divide-and-conquer -Data 100 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits $tu
 
-	./series/runsingle -Tag neth       -HubName L12 -Plan EP1 -NumNodes 4 -WaitForDeploy 80 -Orchestration CollisionSearch/divide-and-conquer -Data 200 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits $tu
 	./series/runsingle -Tag azst-12    -HubName A12 -Plan EP1 -NumNodes 4 -WaitForDeploy 50 -Orchestration CollisionSearch/divide-and-conquer -Data 200 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits 1
+	./series/runsingle -Tag neth       -HubName L12 -Plan EP1 -NumNodes 4 -WaitForDeploy 80 -Orchestration CollisionSearch/divide-and-conquer -Data 200 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits $tu
 
-	./series/runsingle -Tag neth       -HubName L13 -Plan EP1 -NumNodes 8 -WaitForDeploy 80 -Orchestration CollisionSearch/divide-and-conquer -Data 300 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits $tu
 	./series/runsingle -Tag azst-12    -HubName A13 -Plan EP1 -NumNodes 8 -WaitForDeploy 50 -Orchestration CollisionSearch/divide-and-conquer -Data 300 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits 1
+	./series/runsingle -Tag neth       -HubName L13 -Plan EP1 -NumNodes 8 -WaitForDeploy 80 -Orchestration CollisionSearch/divide-and-conquer -Data 300 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits $tu
 
-	./series/runsingle -Tag neth       -HubName L14 -Plan EP1 -NumNodes 12 -WaitForDeploy 80 -Orchestration CollisionSearch/divide-and-conquer -Data 400 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits $tu -DeleteAfterTests $true
 	./series/runsingle -Tag azst-12    -HubName A14 -Plan EP1 -NumNodes 12 -WaitForDeploy 50 -Orchestration CollisionSearch/divide-and-conquer -Data 400 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits 1
+	./series/runsingle -Tag neth       -HubName L14 -Plan EP1 -NumNodes 12 -WaitForDeploy 80 -Orchestration CollisionSearch/divide-and-conquer -Data 400 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits $tu -DeleteAfterTests $true
 
 	Start-Sleep -Seconds $DelayAfterDelete
 }
