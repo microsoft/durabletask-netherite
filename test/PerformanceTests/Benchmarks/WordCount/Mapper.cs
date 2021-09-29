@@ -70,6 +70,9 @@ namespace PerformanceTests.WordCount
                         string doc = await blob.DownloadTextAsync();
 
                         string[] words = doc.Split(separators, StringSplitOptions.RemoveEmptyEntries);
+
+                        int wordsCounted = 0; 
+
                         foreach (var word in words)
                         {
                             int hash = word.GetHashCode();
@@ -79,9 +82,17 @@ namespace PerformanceTests.WordCount
                             }
                             int reducerNumber = hash % reducerCount;
                             context.SignalEntity(Reducer.GetEntityId(reducerNumber), nameof(Reducer.Ops.Inc), word);
+
+                            // some books are very large, causing extreme load imbalance when the overall number of books is small.
+                            // for the sake of benchmarking, we limit the words counted in each book to 5000.
+                            if (++wordsCounted == 5000)
+                            {
+                                break;
+                            }
                         }
+
                         s.Stop();
-                        log.LogWarning($"{context.EntityId}: Downloaded and processed {words.Length} words in {s.Elapsed.TotalSeconds:F3}s from {book}");
+                        log.LogWarning($"{context.EntityId}: Downloaded {words.Length} words, and counted {wordsCounted} of them, in {s.Elapsed.TotalSeconds:F3}s from {book}");
                         
                         log.LogWarning($"{context.EntityId}: Sending end signal to reducers.");
                         for (int i = 0; i < reducerCount; i++)
