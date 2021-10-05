@@ -126,7 +126,7 @@ namespace DurableTask.Netherite.AzureFunctions
                 var key = new DurableClientAttribute()
                 {
                     TaskHub = settings.HubName,
-                    ConnectionName = settings.ResolvedStorageConnectionString,
+                    ConnectionName = settings.StorageConnectionName,
                 };
  
                 this.defaultProvider = this.cachedProviders.GetOrAdd(key, _ =>
@@ -145,7 +145,7 @@ namespace DurableTask.Netherite.AzureFunctions
             var settings = this.GetNetheriteOrchestrationServiceSettings(attribute.TaskHub);
 
             if (string.Equals(this.defaultProvider.Settings.HubName, settings.HubName, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(this.defaultProvider.Settings.ResolvedStorageConnectionString, settings.ResolvedStorageConnectionString, StringComparison.OrdinalIgnoreCase))
+                 string.Equals(this.defaultProvider.Settings.StorageConnectionName, settings.StorageConnectionName, StringComparison.OrdinalIgnoreCase))
             {
                 return this.defaultProvider;
             }
@@ -153,7 +153,7 @@ namespace DurableTask.Netherite.AzureFunctions
             DurableClientAttribute key = new DurableClientAttribute()
             {
                 TaskHub = settings.HubName,
-                ConnectionName = settings.ResolvedStorageConnectionString,
+                ConnectionName = settings.StorageConnectionName,
             };
 
             return this.cachedProviders.GetOrAdd(key, _ =>

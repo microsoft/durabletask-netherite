@@ -93,8 +93,8 @@ namespace DurableTask.Netherite
             TransportConnectionString.Parse(this.Settings.ResolvedTransportConnectionString, out this.configuredStorage, out this.configuredTransport);
             this.Logger = loggerFactory.CreateLogger(LoggerCategoryName);
             this.LoggerFactory = loggerFactory;
-            this.StorageAccountName = this.configuredTransport == TransportConnectionString.TransportChoices.Memory
-                ? this.Settings.ResolvedStorageConnectionString
+            this.StorageAccountName = this.configuredStorage == TransportConnectionString.StorageChoices.Memory
+                ? "Memory"
                 : CloudStorageAccount.Parse(this.Settings.ResolvedStorageConnectionString).Credentials.AccountName;
 
             EtwSource.Log.OrchestrationServiceCreated(this.ServiceInstanceId, this.StorageAccountName, this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
