@@ -76,7 +76,7 @@ namespace DurableTask.Netherite.Faster
             {
                 await this.blobManager.FindCheckpointsAsync();
                 this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
-                await this.fht.RecoverAsync(numPagesToPreload: 0);
+                await this.fht.RecoverAsync();
                 this.mainSession = this.CreateASession();
                 return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition);
             }
