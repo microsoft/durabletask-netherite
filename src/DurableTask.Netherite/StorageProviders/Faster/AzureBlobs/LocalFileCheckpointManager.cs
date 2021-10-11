@@ -48,8 +48,8 @@ namespace DurableTask.Netherite.Faster
         byte[] ICheckpointManager.GetIndexCheckpointMetadata(Guid indexToken)
             => this.localCheckpointManager.GetIndexCheckpointMetadata(indexToken);
 
-        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken, DeltaLog deltaLog)
-            => this.localCheckpointManager.GetLogCheckpointMetadata(logToken, deltaLog);
+        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken, DeltaLog deltaLog, bool scanDelta, long recoverTo)
+            => this.localCheckpointManager.GetLogCheckpointMetadata(logToken, deltaLog, scanDelta, recoverTo);
 
         IDevice ICheckpointManager.GetIndexDevice(Guid indexToken)
             => this.localCheckpointManager.GetIndexDevice(indexToken);
@@ -76,6 +76,9 @@ namespace DurableTask.Netherite.Faster
             var logToken = this.checkpointInfo.LogToken;
             yield return logToken;
         }
+
+        void ICheckpointManager.Purge(Guid guid)
+            => this.localCheckpointManager.Purge(guid);
 
         void ICheckpointManager.PurgeAll()
             => this.localCheckpointManager.PurgeAll();

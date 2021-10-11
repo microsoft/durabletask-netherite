@@ -48,8 +48,8 @@ namespace DurableTask.Netherite.Faster
         byte[] ICheckpointManager.GetIndexCheckpointMetadata(Guid indexToken)
             => this.blobManager.GetIndexCheckpointMetadata(indexToken, this.groupOrdinal);
 
-        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken, DeltaLog deltaLog)
-            => this.blobManager.GetLogCheckpointMetadata(logToken, this.groupOrdinal, deltaLog);
+        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken, DeltaLog deltaLog, bool scanDelta, long recoverTo)
+            => this.blobManager.GetLogCheckpointMetadata(logToken, this.groupOrdinal, deltaLog, scanDelta, recoverTo);
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
@@ -62,6 +62,8 @@ namespace DurableTask.Netherite.Faster
             var logToken = this.blobManager.PsfCheckpointInfos[this.groupOrdinal].LogToken;
             yield return logToken;
         }
+
+        public void Purge(Guid guid) { /* TODO */ }
 
         public void PurgeAll() { /* TODO */ }
 
