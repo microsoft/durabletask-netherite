@@ -808,6 +808,18 @@ namespace DurableTask.Netherite.Faster
             public void RMWCompletionCallback(ref Key key, ref EffectTracker input, object ctx, Status status) { }
             public void UpsertCompletionCallback(ref Key key, ref Value value, object ctx) { }
             public void DeleteCompletionCallback(ref Key key, object ctx) { }
+
+            // We do not need to lock records, because writes and non-query reads are single-session, and query reads can only race on instance states which are immutable
+            public bool SupportsLocking => false;   
+
+            public void Lock(ref RecordInfo recordInfo, ref Key key, ref Value value, LockType lockType, ref long lockContext)
+            {
+            }
+
+            public bool Unlock(ref RecordInfo recordInfo, ref Key key, ref Value value, LockType lockType, long lockContext)
+            {
+                return true;
+            }
         }
     }
 }

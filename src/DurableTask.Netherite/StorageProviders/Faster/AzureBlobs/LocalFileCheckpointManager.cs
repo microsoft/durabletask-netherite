@@ -39,11 +39,17 @@ namespace DurableTask.Netherite.Faster
             this.localCheckpointManager.CommitLogCheckpoint(logToken, commitMetadata);
             this.checkpointInfo.LogToken = logToken;
         }
+
+        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
+        {
+            throw new NotImplementedException("incremental checkpointing is not implemented");
+        }
+
         byte[] ICheckpointManager.GetIndexCheckpointMetadata(Guid indexToken)
             => this.localCheckpointManager.GetIndexCheckpointMetadata(indexToken);
 
-        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken)
-                 => this.localCheckpointManager.GetLogCheckpointMetadata(logToken);
+        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken, DeltaLog deltaLog)
+            => this.localCheckpointManager.GetLogCheckpointMetadata(logToken, deltaLog);
 
         IDevice ICheckpointManager.GetIndexDevice(Guid indexToken)
             => this.localCheckpointManager.GetIndexDevice(indexToken);
@@ -53,6 +59,9 @@ namespace DurableTask.Netherite.Faster
 
         IDevice ICheckpointManager.GetSnapshotObjectLogDevice(Guid token)
             => this.localCheckpointManager.GetSnapshotObjectLogDevice(token);
+
+        IDevice ICheckpointManager.GetDeltaLogDevice(Guid token)
+           => this.localCheckpointManager.GetDeltaLogDevice(token);
 
         internal string GetLatestCheckpointJson() => File.ReadAllText(this.checkpointCompletedFilename); 
 
@@ -70,6 +79,9 @@ namespace DurableTask.Netherite.Faster
 
         void ICheckpointManager.PurgeAll()
             => this.localCheckpointManager.PurgeAll();
+
+        public void OnRecovery(Guid indexToken, Guid logToken)
+            => this.localCheckpointManager.OnRecovery(indexToken, logToken);
 
         void IDisposable.Dispose()
             => this.localCheckpointManager.Dispose();
