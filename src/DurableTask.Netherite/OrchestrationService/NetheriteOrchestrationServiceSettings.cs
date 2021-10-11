@@ -217,8 +217,8 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Validates the settings, throwing exceptions if there are issues.
         /// </summary>
-        /// <param name="connectionStringResolver">The connection string resolver.</param>
-        public void Validate(Func<string,string> connectionStringResolver)
+        /// <param name="nameResolver">The resolver for environment variables.</param>
+        public void Validate(Func<string,string> nameResolver)
         {
             if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
             {
@@ -227,7 +227,7 @@ namespace DurableTask.Netherite
                     throw new InvalidOperationException($"Must specify {nameof(this.StorageConnectionName)} for Netherite storage provider.");
                 }
 
-                this.ResolvedStorageConnectionString = connectionStringResolver(this.StorageConnectionName);
+                this.ResolvedStorageConnectionString = nameResolver(this.StorageConnectionName);
 
                 if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
                 {
@@ -238,7 +238,7 @@ namespace DurableTask.Netherite
             if (string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString)
                 && !string.IsNullOrEmpty(this.PageBlobStorageConnectionName))
             {
-                this.ResolvedPageBlobStorageConnectionString = connectionStringResolver(this.PageBlobStorageConnectionName);
+                this.ResolvedPageBlobStorageConnectionString = nameResolver(this.PageBlobStorageConnectionName);
 
                 if (string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString))
                 {
@@ -259,7 +259,7 @@ namespace DurableTask.Netherite
                 }
                 else
                 {
-                    this.ResolvedTransportConnectionString = connectionStringResolver(this.EventHubsConnectionName);
+                    this.ResolvedTransportConnectionString = nameResolver(this.EventHubsConnectionName);
 
                     if (string.IsNullOrEmpty(this.ResolvedTransportConnectionString))
                     {

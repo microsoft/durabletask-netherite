@@ -9,6 +9,7 @@ namespace DurableTask.Netherite.AzureFunctions
     using System.Threading;
     using DurableTask.Core;
     using DurableTask.Netherite;
+    using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Azure.WebJobs.Host.Executors;
     using Microsoft.Extensions.Logging;
@@ -21,7 +22,7 @@ namespace DurableTask.Netherite.AzureFunctions
             = new ConcurrentDictionary<DurableClientAttribute, NetheriteProvider>();
 
         readonly DurableTaskOptions options;
-        readonly IConnectionStringResolver connectionStringResolver;
+        readonly INameResolver nameResolver;
         readonly IHostIdProvider hostIdProvider;
 
         readonly bool inConsumption;
@@ -45,13 +46,15 @@ namespace DurableTask.Netherite.AzureFunctions
             ILoggerFactory loggerFactory,
             IConnectionStringResolver connectionStringResolver,
             IHostIdProvider hostIdProvider,
+            INameResolver nameResolver,
 #pragma warning disable CS0612 // Type or member is obsolete
             IPlatformInformationService platformInfo)
 #pragma warning restore CS0612 // Type or member is obsolete
         {
             this.options = extensionOptions?.Value ?? throw new ArgumentNullException(nameof(extensionOptions));
             this.loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
-            this.connectionStringResolver = connectionStringResolver ?? throw new ArgumentNullException(nameof(connectionStringResolver));
+            this.nameResolver = nameResolver ?? throw new ArgumentNullException(nameof(nameResolver));
+
             this.hostIdProvider = hostIdProvider;
             this.inConsumption = platformInfo.InConsumption();
 
@@ -100,7 +103,13 @@ namespace DurableTask.Netherite.AzureFunctions
                 eventSourcedSettings.HubName = taskHubNameOverride;
             }
 
-            eventSourcedSettings.Validate((name) => this.connectionStringResolver.Resolve(name));
+            string runtimeLanguage = this.nameResolver.Resolve("FUNCTIONS_WORKER_RUNTIME");
+            if (runtimeLanguage != null && !string.Equals(runtimeLanguage, "dotnet", StringComparison.OrdinalIgnoreCase))
+            {
+                eventSourcedSettings.CacheOrchestrationCursors = false; // cannot resume orchestrations in the middle
+            }
+
+            eventSourcedSettings.Validate((name) => this.nameResolver.Resolve(name));
 
             if (this.TraceToConsole || this.TraceToBlob)
             {
