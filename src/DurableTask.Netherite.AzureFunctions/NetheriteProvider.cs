@@ -29,7 +29,7 @@ namespace DurableTask.Netherite.AzureFunctions
         public NetheriteProvider(
             NetheriteOrchestrationService service,
             NetheriteOrchestrationServiceSettings settings)
-            : base("Netherite", service, service, settings.ResolvedStorageConnectionString)
+            : base("Netherite", service, service, settings.StorageConnectionName)
         {
             this.Service = service;
             this.Settings = settings;
