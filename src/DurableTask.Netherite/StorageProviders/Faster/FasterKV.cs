@@ -457,9 +457,10 @@ namespace DurableTask.Netherite.Faster
             void RunScan()
             {
                 using var _ = EventTraceContext.MakeContext(0, queryId);
+                using var session = this.CreateASession();
 
                 // get the unique set of keys appearing in the log and emit them
-                using var iter1 = this.fht.Iterate();
+                using var iter1 = session.Iterate();
 
                 Stopwatch stopwatch = new Stopwatch();
                 stopwatch.Start();
@@ -683,7 +684,7 @@ namespace DurableTask.Netherite.Faster
                 this.stats = stats;
             }
 
-            public void InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value)
+            public void InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output)
             {
                 var trackedObject = TrackedObjectKey.Factory(key.Val);
                 this.stats.Create++;
@@ -693,7 +694,7 @@ namespace DurableTask.Netherite.Faster
                 this.stats.Modify++;
             }
 
-            public bool InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value)
+            public bool InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output)
             {
                 this.partition.Assert(value.Val is TrackedObject);
                 TrackedObject trackedObject = value;
@@ -704,9 +705,9 @@ namespace DurableTask.Netherite.Faster
                 return true;
             }
 
-            public bool NeedCopyUpdate(ref Key key, ref EffectTracker tracker, ref Value value) => true;
+            public bool NeedCopyUpdate(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output) => true;
 
-            public void CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue)
+            public void CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref TrackedObject output)
             {
                 this.stats.Copy++;
 
@@ -805,9 +806,21 @@ namespace DurableTask.Netherite.Faster
             }
 
             public void CheckpointCompletionCallback(string sessionId, CommitPoint commitPoint) { }
-            public void RMWCompletionCallback(ref Key key, ref EffectTracker input, object ctx, Status status) { }
+            public void RMWCompletionCallback(ref Key key, ref EffectTracker input, ref TrackedObject output, object ctx, Status status) { }
             public void UpsertCompletionCallback(ref Key key, ref Value value, object ctx) { }
             public void DeleteCompletionCallback(ref Key key, object ctx) { }
+
+            // We do not need to lock records, because writes and non-query reads are single-session, and query reads can only race on instance states which are immutable
+            public bool SupportsLocking => false;   
+
+            public void Lock(ref RecordInfo recordInfo, ref Key key, ref Value value, LockType lockType, ref long lockContext)
+            {
+            }
+
+            public bool Unlock(ref RecordInfo recordInfo, ref Key key, ref Value value, LockType lockType, long lockContext)
+            {
+                return true;
+            }
         }
     }
 }

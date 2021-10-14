@@ -92,7 +92,7 @@ namespace DurableTask.Netherite.Faster
             SegmentSizeBits =
                 useSeparatePageBlobStorage ? 35 // 32 GB
                                            : 32, // 4 GB
-            CopyReadsToTail = true,
+            CopyReadsToTail = CopyReadsToTail.FromReadOnly,
             MemorySizeBits =
                 (numPartitions <= 1) ? 25 : // 32MB
                 (numPartitions <= 2) ? 24 : // 16MB
@@ -160,12 +160,22 @@ namespace DurableTask.Netherite.Faster
 
         public void Dispose()
         {
-            //TODO figure out what is supposed to go here
+            // we do not need to dispose any resources for the commit manager, because any such resources are deleted together with the taskhub
+        }
+
+        public void Purge(Guid token)
+        {
+            throw new NotImplementedException("Purges are handled directly on recovery, not via FASTER");
         }
 
         public void PurgeAll()
         {
-            //TODO figure out what is supposed to go here
+            throw new NotImplementedException("Purges are handled directly on recovery, not via FASTER");
+        }
+
+        public void OnRecovery(Guid indexToken, Guid logToken) 
+        {
+            // we handle cleanup of old checkpoints somewhere else
         }
 
         public CheckpointSettings StoreCheckpointSettings => new CheckpointSettings
@@ -808,11 +818,14 @@ namespace DurableTask.Netherite.Faster
         void ICheckpointManager.CommitLogCheckpoint(Guid logToken, byte[] commitMetadata)
             => this.CommitLogCheckpoint(logToken, commitMetadata, InvalidPsfGroupOrdinal);
 
+        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
+            => this.CommitLogIncrementalCheckpoint(logToken, version, commitMetadata, deltaLog, InvalidPsfGroupOrdinal);
+
         byte[] ICheckpointManager.GetIndexCheckpointMetadata(Guid indexToken)
             => this.GetIndexCheckpointMetadata(indexToken, InvalidPsfGroupOrdinal);
 
-        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken)
-            => this.GetLogCheckpointMetadata(logToken, InvalidPsfGroupOrdinal);
+        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken, DeltaLog deltaLog, bool scanDelta, long recoverTo)
+            => this.GetLogCheckpointMetadata(logToken, InvalidPsfGroupOrdinal, deltaLog, scanDelta, recoverTo);
 
         IDevice ICheckpointManager.GetIndexDevice(Guid indexToken)
             => this.GetIndexDevice(indexToken, InvalidPsfGroupOrdinal);
@@ -822,6 +835,9 @@ namespace DurableTask.Netherite.Faster
 
         IDevice ICheckpointManager.GetSnapshotObjectLogDevice(Guid token)
             => this.GetSnapshotObjectLogDevice(token, InvalidPsfGroupOrdinal);
+
+        IDevice ICheckpointManager.GetDeltaLogDevice(Guid token)
+            => this.GetDeltaLogDevice(token, InvalidPsfGroupOrdinal);
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
@@ -949,6 +965,11 @@ namespace DurableTask.Netherite.Faster
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
+        internal void CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog, int indexOrdinal)
+        {
+            throw new NotImplementedException("incremental checkpointing is not implemented");
+        }
+
         internal byte[] GetIndexCheckpointMetadata(Guid indexToken, int psfGroupOrdinal)
         {
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
@@ -977,7 +998,7 @@ namespace DurableTask.Netherite.Faster
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Returned {result?.Length ?? null} bytes from {tag}, target={metaFileBlob.Name}");
             return result;
         }
-        internal byte[] GetLogCheckpointMetadata(Guid logToken, int psfGroupOrdinal)
+        internal byte[] GetLogCheckpointMetadata(Guid logToken, int psfGroupOrdinal, DeltaLog deltaLog, bool scanDelta, long recoverTo)
         {
             var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCommitMetadata Called on {tag}, logToken={logToken}");
@@ -1049,6 +1070,8 @@ namespace DurableTask.Netherite.Faster
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetSnapshotObjectLogDevice Returned from {tag}, blobDirectory={blockBlobDir} blobName={blobName}");
             return device;
         }
+
+        internal IDevice GetDeltaLogDevice(Guid token, int indexOrdinal) => default;    // TODO
 
         #endregion
 
