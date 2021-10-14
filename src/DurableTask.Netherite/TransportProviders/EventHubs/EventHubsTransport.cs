@@ -39,8 +39,9 @@ namespace DurableTask.Netherite.EventHubs
         byte[] taskhubGuid;
         EventHubsConnections connections;
 
-        Task[] clientReceiveTasks;
+        Task[] clientReceiveLoops;
         Task clientProcessTask;
+        Task[] clientConnectionsEstablished;
 
         CancellationTokenSource shutdownSource;
         readonly CloudBlobContainer cloudBlobContainer;
@@ -201,7 +202,12 @@ namespace DurableTask.Netherite.EventHubs
 
             var clientReceivers = this.connections.CreateClientReceivers(this.ClientId, EventHubsTransport.ClientConsumerGroup);
 
-            this.clientReceiveTasks = Enumerable
+            this.clientConnectionsEstablished = Enumerable
+                .Range(0, EventHubsConnections.NumClientChannels)
+                .Select(i => this.ClientEstablishConnectionAsync(i, clientReceivers[i]))
+                .ToArray();
+       
+            this.clientReceiveLoops = Enumerable
                 .Range(0, EventHubsConnections.NumClientChannels)
                 .Select(i => this.ClientReceiveLoopAsync(i, clientReceivers[i], channel.Writer))
                 .ToArray();
@@ -231,6 +237,10 @@ namespace DurableTask.Netherite.EventHubs
                     await StartPartitionHost().ConfigureAwait(false);
                 }
             }
+
+            // we must wait for the client receive connections to be established before continuing
+            // otherwise, we may miss messages that are sent before the client receiver establishes the receive position
+            await Task.WhenAll(this.clientConnectionsEstablished);
 
             async Task StartPartitionHost()
             {
@@ -375,8 +385,12 @@ namespace DurableTask.Netherite.EventHubs
                 }
             }
 
+            this.traceHelper.LogDebug("Stopping client process loop");
+            await this.clientProcessTask;
+
             this.traceHelper.LogDebug("Closing connections");
             await this.connections.StopAsync().ConfigureAwait(false);
+
             this.traceHelper.LogInformation("EventHubsBackend shutdown completed");
         }
 
@@ -412,46 +426,101 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
+        async Task ClientEstablishConnectionAsync(int index, PartitionReceiver receiver)
+        {
+            try
+            {
+                this.traceHelper.LogDebug("Client{clientId}.ch{index} establishing connection", Client.GetShortId(this.ClientId), index);
+                // receive a dummy packet to establish connection
+                // (the packet, if any, cannot be for this receiver because it is fresh)
+                await receiver.ReceiveAsync(1);
+            }
+            catch (Exception exception)
+            {
+                this.traceHelper.LogError("Client{clientId}.ch{index} could not connect: {exception}", Client.GetShortId(this.ClientId), index, exception);
+                throw;
+            }
+        }
+
         async Task ClientReceiveLoopAsync(int index, PartitionReceiver receiver, ChannelWriter<ClientEvent> channelWriter)
         {
-            byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
-
-            while (!this.shutdownSource.IsCancellationRequested)
+            try
             {
-                IEnumerable<EventData> eventData = await receiver.ReceiveAsync(1000, TimeSpan.FromMinutes(1));
+                byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
+                TimeSpan longPollingInterval = TimeSpan.FromMinutes(1);
 
-                if (eventData != null)
+                await this.clientConnectionsEstablished[index];
+
+                while (!this.shutdownSource.IsCancellationRequested)
                 {
-                    foreach (var ed in eventData)
-                    {
-                        ClientEvent clientEvent = null;
+                    this.traceHelper.LogTrace("Client{clientId}.ch{index} waiting for new packets", Client.GetShortId(this.ClientId), index);
+ 
+                    IEnumerable<EventData> eventData = await receiver.ReceiveAsync(1000, longPollingInterval);
 
-                        try
+                    if (eventData != null)
+                    {
+                        foreach (var ed in eventData)
                         {
-                            this.traceHelper.LogDebug("Client{clientId}/{index} received packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
-                            Packet.Deserialize(ed.Body, out clientEvent, taskHubGuid);
-                            if (clientEvent != null && clientEvent.ClientId == this.ClientId)
+                            this.shutdownSource.Token.ThrowIfCancellationRequested();
+                            ClientEvent clientEvent = null;
+
+                            try
                             {
-                               this.traceHelper.LogTrace("Client{clientId}/{index} receiving event {evt} id={eventId}]", Client.GetShortId(this.ClientId), index, clientEvent, clientEvent.EventIdString);
-                               await channelWriter.WriteAsync(clientEvent);
+                                this.traceHelper.LogDebug("Client{clientId}.ch{index} received packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
+                                Packet.Deserialize(ed.Body, out clientEvent, taskHubGuid);
+                                if (clientEvent != null && clientEvent.ClientId == this.ClientId)
+                                {
+                                    this.traceHelper.LogTrace("Client{clientId}.ch{index} receiving event {evt} id={eventId}]", Client.GetShortId(this.ClientId), index, clientEvent, clientEvent.EventIdString);
+                                    await channelWriter.WriteAsync(clientEvent);
+                                }
+                            }
+                            catch (Exception)
+                            {
+                                this.traceHelper.LogError("Client{clientId}.ch{index} could not deserialize packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
                             }
                         }
-                        catch (Exception)
-                        {
-                            this.traceHelper.LogError("Client{clientId}/{index} could not deserialize packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
-                            throw;
-                        }
+                    }
+                    else
+                    {
+                        this.traceHelper.LogTrace("Client{clientId}.ch{index} no new packets for last {longPollingInterval}", Client.GetShortId(this.ClientId), index, longPollingInterval);
                     }
                 }
+            }
+            catch (OperationCanceledException) when (this.shutdownSource.IsCancellationRequested)
+            {
+                // normal during shutdown
+            }
+            catch (Exception exception)
+            {
+                this.traceHelper.LogError("Client{clientId}.ch{index} event processing exception: {exception}", Client.GetShortId(this.ClientId), index, exception);
+            }
+            finally
+            {
+                this.traceHelper.LogInformation("Client{clientId}.ch{index} event processing terminated", Client.GetShortId(this.ClientId), index);
             }
         }
 
         async Task ClientProcessLoopAsync(ChannelReader<ClientEvent> channelReader)
-        {           
-            while (!this.shutdownSource.IsCancellationRequested)
+        {
+            try
             {
-                var clientEvent = await channelReader.ReadAsync(this.shutdownSource.Token);
-                this.client.Process(clientEvent);
+                while (!this.shutdownSource.IsCancellationRequested)
+                {
+                    var clientEvent = await channelReader.ReadAsync(this.shutdownSource.Token);
+                    this.client.Process(clientEvent);
+                }
+            }
+            catch(OperationCanceledException) when (this.shutdownSource.IsCancellationRequested)
+            {
+                // normal during shutdown
+            }
+            catch(Exception exception)
+            {
+                this.traceHelper.LogError("Client{clientId} event processing exception: {exception}", Client.GetShortId(this.ClientId), exception);
+            }
+            finally
+            {
+                this.traceHelper.LogInformation("Client{clientId} event processing terminated", Client.GetShortId(this.ClientId));
             }
         }
 
