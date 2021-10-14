@@ -90,13 +90,13 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        async Task<bool> ITaskHub.ExistsAsync()
+        async Task<bool> ExistsAsync()
         {
             var parameters = await this.TryLoadExistingTaskhubAsync().ConfigureAwait(false);
             return (parameters != null && parameters.TaskhubName == this.settings.HubName);
         }
 
-        async Task<bool> ITaskHub.CreateIfNotExistsAsync()
+        async Task<bool> CreateIfNotExistsAsync()
         {
             await this.cloudBlobContainer.CreateIfNotExistsAsync().ConfigureAwait(false);
 
@@ -153,7 +153,7 @@ namespace DurableTask.Netherite.EventHubs
             return true;
         }
 
-        async Task ITaskHub.DeleteAsync()
+        async Task DeleteAsync()
         {
             if (await this.taskhubParameters.ExistsAsync().ConfigureAwait(false))
             {
@@ -164,7 +164,7 @@ namespace DurableTask.Netherite.EventHubs
             await this.host.StorageProvider.DeleteAllPartitionStatesAsync().ConfigureAwait(false);
         }
 
-        async Task ITaskHub.StartAsync()
+        async Task StartAsync()
         {
             this.shutdownSource = new CancellationTokenSource();
 
@@ -351,7 +351,7 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        async Task ITaskHub.StopAsync()
+        async Task StopAsync()
         {
             this.traceHelper.LogInformation("Shutting down EventHubsBackend");
             this.shutdownSource.Cancel(); // initiates shutdown of client and of all partitions
@@ -452,6 +452,83 @@ namespace DurableTask.Netherite.EventHubs
             {
                 var clientEvent = await channelReader.ReadAsync(this.shutdownSource.Token);
                 this.client.Process(clientEvent);
+            }
+        }
+
+        async Task<bool> ITaskHub.ExistsAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.ExistsAsync called");
+                bool result = await this.ExistsAsync();
+                this.traceHelper.LogDebug("ITaskHub.ExistsAsync returned {result}", result);
+                return result;
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.ExistsAsync failed with exception: {exception}", e);
+                throw;
+            }
+        }
+
+        async Task<bool> ITaskHub.CreateIfNotExistsAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.CreateIfNotExistsAsync called");
+                bool result = await this.CreateIfNotExistsAsync();
+                this.traceHelper.LogDebug("ITaskHub.CreateIfNotExistsAsync returned {result}", result);
+                return result;
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.CreateIfNotExistsAsync failed with exception: {exception}", e);
+                throw;
+            }
+        }
+
+        async Task ITaskHub.DeleteAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.DeleteAsync called");
+                await this.DeleteAsync();
+                this.traceHelper.LogDebug("ITaskHub.DeleteAsync returned");
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.DeleteAsync failed with exception: {exception}", e);
+                throw;
+            }
+        }
+
+        async Task ITaskHub.StartAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.StartAsync called");
+                await this.StartAsync();
+                this.traceHelper.LogDebug("ITaskHub.StartAsync returned");
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.StartAsync failed with exception: {exception}", e);
+                throw;
+            }
+        }
+
+        async Task ITaskHub.StopAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.StopAsync called");
+                await this.StopAsync();
+                this.traceHelper.LogDebug("ITaskHub.StopAsync returned");
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.StopAsync failed with exception: {exception}", e);
+                throw;
             }
         }
     }
