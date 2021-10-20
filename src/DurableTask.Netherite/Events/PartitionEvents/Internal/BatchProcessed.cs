@@ -63,6 +63,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.PersistFirst == PersistFirstStatus.Done ? this.WorkItemId + "P" : this.WorkItemId);
 
+        [IgnoreDataMember]
+        public override string TracedInstanceId => this.InstanceId;
+
         IEnumerable<TrackedObjectKey> IRequiresPrefetch.KeysToPrefetch
         {
             get
@@ -112,9 +115,6 @@ namespace DurableTask.Netherite
                 s.Append(' ');
                 s.Append(this.State.OrchestrationStatus);
             }
-
-            s.Append(' ');
-            s.Append(this.InstanceId);
         }
     }
 }

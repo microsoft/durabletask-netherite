@@ -22,10 +22,7 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey? Prefetch => TrackedObjectKey.History(this.InstanceId);
 
-        protected override void ExtraTraceInformation(StringBuilder s)
-        {
-            s.Append(' ');
-            s.Append(this.InstanceId);
-        }
+        [IgnoreDataMember]
+        public override string TracedInstanceId => this.InstanceId;
     }
 }

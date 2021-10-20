@@ -69,9 +69,8 @@ namespace DurableTask.Netherite
         internal WorkItemQueue<OrchestrationWorkItem> OrchestrationWorkItemQueue { get; private set; }
         internal LoadPublisher LoadPublisher { get; private set; }
 
-        internal Guid ServiceInstanceId { get; } = Guid.NewGuid();
-        internal ILogger Logger { get; }
         internal ILoggerFactory LoggerFactory { get; }
+        internal OrchestrationServiceTraceHelper TraceHelper { get; private set; }
 
         /// <inheritdoc/>
         public override string ToString()
@@ -89,68 +88,76 @@ namespace DurableTask.Netherite
         /// </summary>
         public NetheriteOrchestrationService(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory)
         {
-            this.Settings = settings;
-            TransportConnectionString.Parse(this.Settings.ResolvedTransportConnectionString, out this.configuredStorage, out this.configuredTransport);
-            this.Logger = loggerFactory.CreateLogger(LoggerCategoryName);
             this.LoggerFactory = loggerFactory;
-            this.StorageAccountName = this.configuredStorage == TransportConnectionString.StorageChoices.Memory
-                ? "Memory"
-                : CloudStorageAccount.Parse(this.Settings.ResolvedStorageConnectionString).Credentials.AccountName;
-
-            EtwSource.Log.OrchestrationServiceCreated(this.ServiceInstanceId, this.StorageAccountName, this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
-            this.Logger.LogInformation("NetheriteOrchestrationService created, workerId={workerId}, processorCount={processorCount}, transport={transport}, storage={storage}", this.Settings.WorkerId, Environment.ProcessorCount, this.configuredTransport, this.configuredStorage);
-
-            if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster)
+            this.Settings = settings;
+            this.TraceHelper = new OrchestrationServiceTraceHelper(loggerFactory, settings.LogLevelLimit, settings.WorkerId, settings.HubName);
+            this.workItemTraceHelper = new WorkItemTraceHelper(loggerFactory, settings.WorkItemLogLevelLimit, settings.HubName);
+           
+            try
             {
-                // force dll load here so exceptions are observed early
-                var _ = System.Threading.Channels.Channel.CreateBounded<DateTime>(10);
+                this.TraceHelper.TraceProgress("Reading configuration for transport and storage providers");
+                TransportConnectionString.Parse(this.Settings.ResolvedTransportConnectionString, out this.configuredStorage, out this.configuredTransport);
+                this.StorageAccountName = this.configuredStorage == TransportConnectionString.StorageChoices.Memory
+                    ? "Memory"
+                    : CloudStorageAccount.Parse(this.Settings.ResolvedStorageConnectionString).Credentials.AccountName;
+                
+                // set the account name in the trace helpers
+                this.TraceHelper.StorageAccountName = this.workItemTraceHelper.StorageAccountName = this.StorageAccountName;
 
-                // throw descriptive exception if run on 32bit platform
-                if (!Environment.Is64BitProcess)
+                this.TraceHelper.TraceCreated(Environment.ProcessorCount, this.configuredTransport, this.configuredStorage);
+
+                if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster)
                 {
-                    throw new NotSupportedException("Netherite backend requires 64bit, but current process is 32bit.");
-                }
-            }
+                    // force dll load here so exceptions are observed early
+                    var _ = System.Threading.Channels.Channel.CreateBounded<DateTime>(10);
 
-            switch (this.configuredTransport)
+                    // throw descriptive exception if run on 32bit platform
+                    if (!Environment.Is64BitProcess)
+                    {
+                        throw new NotSupportedException("Netherite backend requires 64bit, but current process is 32bit.");
+                    }
+                }
+
+                switch (this.configuredTransport)
+                {
+                    case TransportConnectionString.TransportChoices.Memory:
+                        this.taskHub = new Emulated.MemoryTransport(this, settings, this.TraceHelper.Logger);
+                        break;
+
+                    case TransportConnectionString.TransportChoices.EventHubs:
+                        this.taskHub = new EventHubs.EventHubsTransport(this, settings, loggerFactory);
+                        break;
+
+                    default:
+                        throw new NotImplementedException("no such transport choice");
+                }
+
+
+                if (this.configuredTransport != TransportConnectionString.TransportChoices.Memory)
+                {
+                    this.TraceHelper.TraceProgress("Creating LoadMonitor Service");
+                    if (!string.IsNullOrEmpty(settings.LoadInformationAzureTableName))
+                    {
+                        this.LoadMonitorService = new AzureTableLoadMonitor(settings.ResolvedStorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
+                    }
+                    else
+                    {
+                        this.LoadMonitorService = new AzureBlobLoadMonitor(settings.ResolvedStorageConnectionString, settings.HubName);
+                    }
+                }
+
+                this.workItemStopwatch.Start();
+
+                this.TraceHelper.TraceProgress(
+                    $"Configured trace generation limits: general={settings.LogLevelLimit} , transport={settings.TransportLogLevelLimit}, storage={settings.StorageLogLevelLimit}, "
+                    + $"events={settings.EventLogLevelLimit}; workitems={settings.WorkItemLogLevelLimit}; etwEnabled={EtwSource.Log.IsEnabled()}; "
+                    + $"core.IsTraceEnabled={DurableTask.Core.Tracing.DefaultEventSource.Log.IsTraceEnabled}");
+            }
+            catch (Exception e) when (!Utils.IsFatal(e))
             {
-                case TransportConnectionString.TransportChoices.Memory:
-                    this.taskHub = new Emulated.MemoryTransport(this, settings, this.Logger);
-                    break;
-
-                case TransportConnectionString.TransportChoices.EventHubs:
-                    this.taskHub = new EventHubs.EventHubsTransport(this, settings, loggerFactory);
-                    break;
-
-                default:
-                    throw new NotImplementedException("no such transport choice");
+                this.TraceHelper.TraceError("Could not create NetheriteOrchestrationService", e);
+                throw;
             }
-
-            this.workItemTraceHelper = new WorkItemTraceHelper(loggerFactory, settings.WorkItemLogLevelLimit, this.StorageAccountName, this.Settings.HubName);
-
-            if (this.configuredTransport != TransportConnectionString.TransportChoices.Memory)
-            {
-                if (!string.IsNullOrEmpty(settings.LoadInformationAzureTableName))
-                {
-                    this.LoadMonitorService = new AzureTableLoadMonitor(settings.ResolvedStorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
-                }
-                else
-                {
-                    this.LoadMonitorService = new AzureBlobLoadMonitor(settings.ResolvedStorageConnectionString, settings.HubName);
-                }
-            }
-
-            this.workItemStopwatch.Start();
-
-            this.Logger.LogInformation(
-                "trace generation limits: general={general} , transport={transport}, storage={storage}, events={events}; workitems={workitems}; etwEnabled={etwEnabled}; core.IsTraceEnabled={core}",
-                settings.LogLevelLimit,
-                settings.TransportLogLevelLimit,
-                settings.StorageLogLevelLimit,
-                settings.EventLogLevelLimit,
-                settings.WorkItemLogLevelLimit,
-                EtwSource.Log.IsEnabled(),
-                DurableTask.Core.Tracing.DefaultEventSource.Log.IsTraceEnabled);
         }
 
         /// <summary>
@@ -168,8 +175,7 @@ namespace DurableTask.Netherite
                     this.Settings.ResolvedTransportConnectionString, 
                     this.Settings.LoadInformationAzureTableName, 
                     this.Settings.HubName,
-                    this.TraceScaleRecommendation,
-                    this.LoggerFactory.CreateLogger($"{LoggerCategoryName}.Scaling"));
+                    this.TraceHelper.TraceScaleRecommendation);
                 return true;
             }
             else
@@ -179,10 +185,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        void TraceScaleRecommendation(string action, int workerCount, string details)
-        {
-            EtwSource.Log.OrchestrationServiceScaleRecommendation(this.StorageAccountName, this.Settings.HubName, action, workerCount, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
-        }
+       
 
         /******************************/
         // storage provider
@@ -193,7 +196,7 @@ namespace DurableTask.Netherite
             switch (this.configuredStorage)
             {
                 case TransportConnectionString.StorageChoices.Memory:
-                    return new MemoryStorage(this.Logger);
+                    return new MemoryStorage(this.TraceHelper.Logger);
 
                 case TransportConnectionString.StorageChoices.Faster:
                     return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.ResolvedPageBlobStorageConnectionString, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName, this.LoggerFactory);
@@ -277,10 +280,11 @@ namespace DurableTask.Netherite
                 if (this.serviceShutdownSource != null)
                 {
                     // we left the service running. No need to start it again.
+                    this.TraceHelper.TraceProgress("Reusing");
                     return;
                 }
 
-                this.Logger.LogInformation("NetheriteOrchestrationService is starting on workerId={workerId}", this.Settings.WorkerId);
+                this.TraceHelper.TraceProgress("Starting");
 
                 this.serviceShutdownSource = new CancellationTokenSource();
 
@@ -288,30 +292,43 @@ namespace DurableTask.Netherite
                 this.OrchestrationWorkItemQueue = new WorkItemQueue<OrchestrationWorkItem>();
 
                 LeaseTimer.Instance.DelayWarning = (int delay) =>
-                    this.Logger.LogWarning("NetheriteOrchestrationService lease timer on workerId={workerId} is running {delay}s behind schedule", this.Settings.WorkerId, delay);
+                    this.TraceHelper.TraceWarning($"Lease timer is running {delay}s behind schedule");
 
                 if (!(this.LoadMonitorService is null))
-                    this.LoadPublisher = new LoadPublisher(this.LoadMonitorService, CancellationToken.None, this.Logger);
+                {
+                    this.TraceHelper.TraceProgress("Starting Load Publisher");
+                    this.LoadPublisher = new LoadPublisher(this.LoadMonitorService, CancellationToken.None, this.TraceHelper);
+                }
 
-                await this.taskHub.StartAsync().ConfigureAwait(false);
+                this.TraceHelper.TraceProgress("Starting TaskHub");
+                await this.taskHub.StartAsync();
 
                 if (this.Settings.PartitionCount != this.NumberPartitions)
                 {
-                    this.Logger.LogWarning("NetheriteOrchestrationService is ignoring configuration setting partitionCount={specifiedPartitions} because existing TaskHub has {actualPartitions} partitions", this.Settings.PartitionCount, this.NumberPartitions);
+                    this.TraceHelper.TraceWarning($"Ignoring configuration setting partitionCount={this.Settings.PartitionCount} because existing TaskHub has {this.NumberPartitions} partitions");
                 }
 
                 System.Diagnostics.Debug.Assert(this.client != null, "Backend should have added client");
+
+                this.TraceHelper.TraceProgress($"Started partitionCount={this.NumberPartitions}");
             }
             catch (Exception e) when (!Utils.IsFatal(e))
             {
                 this.startupException = e;
-                string message = $"NetheriteOrchestrationService failed to start: {e.Message}";
-                EtwSource.Log.OrchestrationServiceError(this.StorageAccountName, message, e.ToString(), this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
-                this.Logger.LogError("NetheriteOrchestrationService failed to start: {exception}", e);
 
-                this.serviceShutdownSource.Cancel();
-                this.serviceShutdownSource.Dispose();
-                this.serviceShutdownSource = null;
+                this.TraceHelper.TraceError($"Failed to start: {e.Message}", e);
+
+                // invoke cancellation so that any partially-started partitions and event loops are terminated
+                try
+                {
+                    this.serviceShutdownSource.Cancel();
+                    this.serviceShutdownSource.Dispose();
+                    this.serviceShutdownSource = null;
+                }
+                catch(Exception shutdownException)
+                {
+                    this.TraceHelper.TraceError($"Exception while shutting down service: {shutdownException.Message}", shutdownException);
+                }
 
                 throw;
             }
@@ -322,8 +339,7 @@ namespace DurableTask.Netherite
         {
             try
             {
-
-                this.Logger.LogInformation("NetheriteOrchestrationService stopping, workerId={workerId} quickly={quickly}", this.Settings.WorkerId, quickly);
+                this.TraceHelper.TraceProgress($"Stopping quickly={quickly}");
 
                 if (!this.Settings.KeepServiceRunning && this.serviceShutdownSource != null)
                 {
@@ -331,21 +347,22 @@ namespace DurableTask.Netherite
                     this.serviceShutdownSource.Dispose();
                     this.serviceShutdownSource = null;
 
-                    await this.taskHub.StopAsync().ConfigureAwait(false);
+                    await this.taskHub.StopAsync();
 
                     this.ActivityWorkItemQueue.Dispose();
                     this.OrchestrationWorkItemQueue.Dispose();
-
-                    this.Logger.LogInformation("NetheriteOrchestrationService stopped, workerId={workerId}", this.Settings.WorkerId);
-                    EtwSource.Log.OrchestrationServiceStopped(this.ServiceInstanceId, this.StorageAccountName, this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
+
+                this.TraceHelper.TraceProgress("Stopped cleanly");
             }
             catch (Exception e) when (!Utils.IsFatal(e))
             {
-                string message = $"NetheriteOrchestrationService failed to shut down: {e.Message}";
-                EtwSource.Log.OrchestrationServiceError(this.StorageAccountName, message, e.ToString(), this.Settings.HubName, this.Settings.WorkerId, TraceUtils.AppName, TraceUtils.ExtensionVersion);
-                this.Logger.LogError("NetheriteOrchestrationService failed to shut down: {exception}", e);
+                this.TraceHelper.TraceError($"Failed to stop cleanly: {e.Message}", e);
                 throw;
+            }
+            finally
+            {
+                this.TraceHelper.TraceStopped();
             }
         }
 
@@ -408,7 +425,7 @@ namespace DurableTask.Netherite
 
         IPartitionErrorHandler TransportAbstraction.IHost.CreateErrorHandler(uint partitionId)
         {
-            return new PartitionErrorHandler((int) partitionId, this.Logger, this.Settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName);
+            return new PartitionErrorHandler((int) partitionId, this.TraceHelper.Logger, this.Settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName);
         }
 
         /******************************/

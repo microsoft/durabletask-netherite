@@ -32,10 +32,12 @@ namespace DurableTask.Netherite
 
         [IgnoreDataMember]
         public string InstanceId => this.ExecutionStartedEvent.OrchestrationInstance.InstanceId;
+ 
+        [IgnoreDataMember]
+        public override string TracedInstanceId => this.InstanceId;
 
         [IgnoreDataMember]
         public override TrackedObjectKey Target => TrackedObjectKey.Instance(this.InstanceId);
-
 
         public override bool OnReadComplete(TrackedObject target, Partition partition)
         {

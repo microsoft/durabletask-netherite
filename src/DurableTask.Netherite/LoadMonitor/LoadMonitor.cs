@@ -69,7 +69,7 @@ namespace DurableTask.Netherite
             TransportAbstraction.ISender batchSender)
         {
             this.host = host;
-            this.traceHelper = new LoadMonitorTraceHelper(host.Logger, host.Settings.LogLevelLimit, host.StorageAccountName, host.Settings.HubName);
+            this.traceHelper = new LoadMonitorTraceHelper(host.TraceHelper.Logger, host.Settings.LogLevelLimit, host.StorageAccountName, host.Settings.HubName);
             this.BatchSender = batchSender;
             this.LoadInfo = new SortedDictionary<uint, Info>();
             this.PendingOnSource = new List<TransferCommandReceived>();

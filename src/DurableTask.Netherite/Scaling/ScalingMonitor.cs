@@ -50,14 +50,12 @@ namespace DurableTask.Netherite.Scaling
             string eventHubsConnectionString, 
             string partitionLoadTableName, 
             string taskHubName,
-            Action<string,int,string> recommendationTracer,
-            ILogger logger)
+            Action<string, int, string> recommendationTracer)
         {
             this.storageConnectionString = storageConnectionString;
             this.eventHubsConnectionString = eventHubsConnectionString;
             this.partitionLoadTableName = partitionLoadTableName;
             this.taskHubName = taskHubName;
-            this.Logger = logger;
             this.recommendationTracer = recommendationTracer;
 
             TransportConnectionString.Parse(eventHubsConnectionString, out _, out this.configuredTransport);
@@ -129,11 +127,7 @@ namespace DurableTask.Netherite.Scaling
         {
             var recommendation = DetermineRecommendation();
 
-            this.Logger.LogInformation(
-                "Netherite autoscaler recommends: {scaleRecommendation} from: {workerCount} because: {reason}",
-                recommendation.Action.ToString(), workerCount, recommendation.Reason);
-
-            this.recommendationTracer(recommendation.Action.ToString(), workerCount, recommendation.Reason);
+            this.recommendationTracer?.Invoke(recommendation.Action.ToString(), workerCount, recommendation.Reason);
 
             return recommendation;
 
