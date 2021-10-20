@@ -77,7 +77,7 @@ namespace DurableTask.Netherite
             this.ActivityWorkItemQueue = activityWorkItemQueue;
             this.OrchestrationWorkItemQueue = orchestrationWorkItemQueue;
             this.LoadPublisher = loadPublisher;
-            this.TraceHelper = new PartitionTraceHelper(host.Logger, settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName, this.PartitionId);
+            this.TraceHelper = new PartitionTraceHelper(host.TraceHelper.Logger, settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName, this.PartitionId);
             this.EventTraceHelper = new EventTraceHelper(host.LoggerFactory, settings.EventLogLevelLimit, this);
             this.WorkItemTraceHelper = workItemTraceHelper;
             this.stopwatch.Start();
