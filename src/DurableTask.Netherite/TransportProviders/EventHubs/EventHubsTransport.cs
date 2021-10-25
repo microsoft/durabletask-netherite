@@ -14,6 +14,7 @@ namespace DurableTask.Netherite.EventHubs
     using Microsoft.Azure.Storage.Blob;
     using Newtonsoft.Json;
     using DurableTask.Netherite.Faster;
+    using DurableTask.Netherite.ScalingLogic;
 
     /// <summary>
     /// The EventHubs transport implementation.

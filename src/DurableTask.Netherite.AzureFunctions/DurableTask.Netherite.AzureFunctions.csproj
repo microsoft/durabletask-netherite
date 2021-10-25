@@ -44,6 +44,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\ScalingMonitor\DurableTask.Netherite.ScalingLogic.csproj" />
     <ProjectReference Include="..\DurableTask.Netherite\DurableTask.Netherite.csproj" />
   </ItemGroup>
   

@@ -7,7 +7,7 @@ namespace DurableTask.Netherite
     using System.Collections.Generic;
     using System.Text;
     using DurableTask.Core;
-    using DurableTask.Netherite.Scaling;
+    using DurableTask.Netherite.ScalingLogic;
     using Microsoft.Extensions.Logging;
 
     class PartitionTraceHelper

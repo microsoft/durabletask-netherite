@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.Scaling
+namespace DurableTask.Netherite.ScalingLogic
 {
     using System;
     using System.Collections;
@@ -11,7 +11,9 @@ namespace DurableTask.Netherite.Scaling
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
+    using DurableTask.Netherite;
     using DurableTask.Netherite.EventHubs;
+    using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Logging;
 
     /// <summary>
@@ -201,10 +203,11 @@ namespace DurableTask.Netherite.Scaling
             // does not match the latest queue position
 
             long[] positions;
+             string[] PartitionHubs = { "partitions" }; // EventHubsTransport.PartitionHubs (used in line 209)
 
             if (this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
-                (positions,_,_) = await EventHubs.EventHubsConnections.GetPartitionInfo(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
+                (positions, _, _) = await GetPartitionInfo(this.eventHubsConnectionString, PartitionHubs).ConfigureAwait(false);
 
                 for (uint i = 0; i < positions.Length; i++)
                 {
@@ -232,6 +235,103 @@ namespace DurableTask.Netherite.Scaling
 
             // we have concluded that there are no pending work items, timers, or unprocessed input queue entries
             return null;
-        }  
+        }
+
+        public static async Task<(long[], DateTime[], string)> GetPartitionInfo(string connectionString, string[] partitionHubs)
+        {
+            var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0]);
+            await connections.GetPartitionInformationAsync();
+
+            var numberPartitions = connections.partitionPartitions.Count;
+
+            var positions = new long[numberPartitions];
+
+            var infoTasks = connections.partitionPartitions
+                .Select(x => x.client.GetPartitionRuntimeInformationAsync(x.id)).ToList();
+
+            await Task.WhenAll(infoTasks);
+
+            for (int i = 0; i < numberPartitions; i++)
+            {
+                var queueInfo = await infoTasks[i].ConfigureAwait(false);
+                positions[i] = queueInfo.LastEnqueuedSequenceNumber + 1;
+            }
+
+            await connections.StopAsync();
+
+            return (positions, connections.CreationTimestamps, connections.Endpoint);
+        }
+    }
+
+    public class EventHubsConnections
+    {
+        readonly string connectionString;
+        readonly string[] partitionHubs;
+        readonly string[] clientHubs;
+
+        List<EventHubClient> partitionClients;
+
+        public readonly List<(EventHubClient client, string id)> partitionPartitions = new List<(EventHubClient client, string id)>();
+
+        public string Endpoint { get; private set; }
+
+        public DateTime[] CreationTimestamps { get; private set; }
+
+        public EventHubsConnections(
+            string connectionString,
+            string[] partitionHubs,
+            string[] clientHubs)
+        {
+            this.connectionString = connectionString;
+            this.partitionHubs = partitionHubs;
+            this.clientHubs = clientHubs;
+        }
+
+        public async Task GetPartitionInformationAsync()
+        {
+            // create partition clients
+            this.partitionClients = new List<EventHubClient>();
+            for (int i = 0; i < this.partitionHubs.Length; i++)
+            {
+                var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
+                {
+                    EntityPath = this.partitionHubs[i]
+                };
+                var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+                this.partitionClients.Add(client);
+                this.Endpoint = connectionStringBuilder.Endpoint.ToString();
+            }
+
+            // in parallel, get runtime infos for all the hubs
+            var partitionInfos = this.partitionClients.Select((ehClient) => ehClient.GetRuntimeInformationAsync()).ToList();
+            await Task.WhenAll(partitionInfos);
+
+            this.CreationTimestamps = partitionInfos.Select(t => t.Result.CreatedAt).ToArray();
+
+            // create a flat list of partition partitions
+            for (int i = 0; i < this.partitionHubs.Length; i++)
+            {
+                foreach (var id in partitionInfos[i].Result.PartitionIds)
+                {
+                    this.partitionPartitions.Add((this.partitionClients[i], id));
+                }
+            }
+        }
+
+        public async Task StopAsync()
+        {
+            IEnumerable<EventHubClient> Clients()
+            {
+                if (this.partitionClients != null)
+                {
+                    foreach (var client in this.partitionClients)
+                    {
+                        yield return client;
+                    }
+                }
+            }
+
+            await Task.WhenAll(Clients().Select(client => client.CloseAsync()).ToList());
+        }
     }
 }

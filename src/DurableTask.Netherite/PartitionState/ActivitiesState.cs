@@ -13,7 +13,7 @@ namespace DurableTask.Netherite
     using System.Threading.Tasks;
     using DurableTask.Core;
     using DurableTask.Core.History;
-    using DurableTask.Netherite.Scaling;
+    using DurableTask.Netherite.ScalingLogic;
     using Dynamitey;
 
     [DataContract]

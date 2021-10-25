@@ -14,7 +14,7 @@ namespace DurableTask.Netherite.AzureFunctions
     using DurableTask.Core;
     using DurableTask.Core.Common;
     using DurableTask.Netherite;
-    using DurableTask.Netherite.Scaling;
+    using DurableTask.Netherite.ScalingLogic;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Azure.WebJobs.Host.Scale;
     using Microsoft.Extensions.Logging;

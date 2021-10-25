@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.Scaling
+namespace DurableTask.Netherite.ScalingLogic
 {
     using Microsoft.Azure.Cosmos.Table;
     using System;
@@ -11,7 +11,7 @@ namespace DurableTask.Netherite.Scaling
     using System.Threading;
     using System.Threading.Tasks;
 
-    class AzureTableLoadMonitor : ILoadMonitorService
+    public class AzureTableLoadMonitor : ILoadMonitorService
     {
         readonly CloudTable table;
         readonly string taskHubName;

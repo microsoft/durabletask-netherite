@@ -8,6 +8,7 @@ namespace DurableTask.Netherite.Scaling
     using System.Collections.Generic;
     using System.Threading;
     using System.Threading.Tasks;
+    using DurableTask.Netherite.ScalingLogic;
 
     class LoadPublisher : BatchWorker<(uint, PartitionLoadInfo)>
     {

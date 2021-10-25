@@ -5,6 +5,7 @@ namespace DurableTask.Netherite
 {
     using System;
     using DurableTask.Core;
+    using DurableTask.Netherite.ScalingLogic;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Converters;

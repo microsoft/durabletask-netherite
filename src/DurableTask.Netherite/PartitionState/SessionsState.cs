@@ -10,7 +10,7 @@ namespace DurableTask.Netherite
     using System.Runtime.Serialization;
     using DurableTask.Core;
     using DurableTask.Core.History;
-    using DurableTask.Netherite.Scaling;
+    using DurableTask.Netherite.ScalingLogic;
 
     [DataContract]
     class SessionsState : TrackedObject, TransportAbstraction.IDurabilityListener

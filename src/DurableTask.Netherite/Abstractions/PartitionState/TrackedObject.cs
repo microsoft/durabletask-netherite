@@ -3,7 +3,7 @@
 
 namespace DurableTask.Netherite
 {
-    using DurableTask.Netherite.Scaling;
+    using DurableTask.Netherite.ScalingLogic;
     using System;
     using System.Collections.Generic;
     using System.Runtime.Serialization;

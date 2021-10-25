@@ -10,7 +10,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
     using DurableTask.Core.Common;
     using DurableTask.Core.History;
-    using DurableTask.Netherite.Scaling;
+    using DurableTask.Netherite.ScalingLogic;
 
     [DataContract]
     class TimersState : TrackedObject

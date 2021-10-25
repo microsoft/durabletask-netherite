@@ -54,5 +54,9 @@
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.*" PrivateAssets="All" />
     <PackageReference Include="System.Threading.Channels" Version="4.7.1" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <ProjectReference Include="..\..\ScalingMonitor\DurableTask.Netherite.ScalingLogic.csproj" />
+  </ItemGroup>
 
 </Project>

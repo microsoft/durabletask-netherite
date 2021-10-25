@@ -32,6 +32,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{AB95
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ScaleMonitor", "test\ScaleMonitor\ScaleMonitor.csproj", "{2F4D331C-62E4-47E8-852E-163166944DF8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DurableTask.Netherite.ScalingLogic", "ScalingMonitor\DurableTask.Netherite.ScalingLogic.csproj", "{169BCAF0-5742-440D-AB57-813C95427E82}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -66,6 +68,10 @@ Global
 		{2F4D331C-62E4-47E8-852E-163166944DF8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2F4D331C-62E4-47E8-852E-163166944DF8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2F4D331C-62E4-47E8-852E-163166944DF8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{169BCAF0-5742-440D-AB57-813C95427E82}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{169BCAF0-5742-440D-AB57-813C95427E82}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{169BCAF0-5742-440D-AB57-813C95427E82}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{169BCAF0-5742-440D-AB57-813C95427E82}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -78,6 +84,7 @@ Global
 		{DD1E1B3F-4FA2-4F3A-9AE1-6B2A0B864AAF} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
 		{654DA6B4-2E2F-4386-BB9F-7CE5A13998DE} = {AB958467-9236-402E-833C-B8DE4841AB9F}
 		{2F4D331C-62E4-47E8-852E-163166944DF8} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
+		{169BCAF0-5742-440D-AB57-813C95427E82} = {D33AB157-04B9-4BAD-B580-C3C87C17828C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {238A9613-5411-41CF-BDEC-168CCD5C03FB}

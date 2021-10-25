@@ -1,9 +1,8 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.Scaling
+namespace DurableTask.Netherite.ScalingLogic
 {
-    using DurableTask.Netherite.Faster;
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
     using Newtonsoft.Json;
@@ -14,7 +13,7 @@ namespace DurableTask.Netherite.Scaling
     using System.Threading;
     using System.Threading.Tasks;
 
-    class AzureBlobLoadMonitor : ILoadMonitorService
+    public class AzureBlobLoadMonitor : ILoadMonitorService
     {
         readonly string taskHubName;
         readonly CloudBlobContainer blobContainer;
@@ -25,12 +24,14 @@ namespace DurableTask.Netherite.Scaling
         {
             var cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
             CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
-            string containerName = BlobManager.GetContainerName(taskHubName);
+            string containerName = GetContainerName(taskHubName);
             this.blobContainer = serviceClient.GetContainerReference(containerName);
             this.taskHubName = taskHubName;
         }
 
         public TimeSpan PublishInterval => TimeSpan.FromSeconds(10);
+
+        public static string GetContainerName(string taskHubName) => taskHubName.ToLowerInvariant() + "-storage";
 
         public Task DeleteIfExistsAsync(CancellationToken cancellationToken)
         {

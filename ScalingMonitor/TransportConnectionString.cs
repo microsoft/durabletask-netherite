@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite
+namespace DurableTask.Netherite.ScalingLogic
 {
     using System;
     using System.Collections.Generic;

@@ -8,6 +8,7 @@ namespace DurableTask.Netherite.Emulated
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Extensions.Logging;
+    using DurableTask.Netherite.ScalingLogic;
 
     /// <summary>
     /// An transport provider that emulates all the communication queues in memory. Meant for testing 
