@@ -322,3 +322,17 @@ To delete all the Azure resources, execute the script `delete.ps1` and make sure
 If you just want to clear the taskhub, but not delete the resources, you can run the script `clear.ps`. It deletes the containers in the Azure Blob Storage. You should stop the function app before doing so.
 
 Note that after you do this, you cannot restart the app for some time, because Azure Storage blob containers are unavailable after deletion for some time (~ 30-60 seconds).
+
+## Walk Through on YouTube 🎥
+
+If you want to follow along migrating a Durable Function from Azure Storage to Netherite, we recommend the YouTube video [Migrate your Durable Function to Netherite](https://youtu.be/GRcHeZkmVcM). Using *TypeScript* for the demo the video covers the following steps:
+
+| Step | Content                                                                                                 | Link to chapter of video
+|---   |---                                                                                                      | ---
+| 1    | Introduction and local setup of Durable Function                                                        | [Link](https://www.youtube.com/watch?v=GRcHeZkmVcM&t=0s)
+| 2    | Migration of Durable Function configuration to Netherite and local validation of the new configuration  | [Link](https://www.youtube.com/watch?v=GRcHeZkmVcM&t=299s)
+| 3    | Setup of Azure resources (Event Hub and Azure Storage) and hybrid validation of the setup               | [Link](https://www.youtube.com/watch?v=GRcHeZkmVcM&t=1019s)
+| 4    | Deployment of Azure Durable Function and execution on Azure                                             | [Link](https://www.youtube.com/watch?v=GRcHeZkmVcM&t=1596s)
+| 5    | Cleanup of Azure resources                                                                              | [Link](https://www.youtube.com/watch?v=GRcHeZkmVcM&t=2266s)
+
+>> 🔎  The video uses the Netherite extension in version 0.5.0-alpha. By the time you will watch this video, there might be a newer version available. The migration procedure *per se* should remain the same.
