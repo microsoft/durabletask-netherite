@@ -48,15 +48,47 @@ namespace DurableTask.Netherite.Tests
         public async Task CreateThenRestore()
         {
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            settings.ResolvedTransportConnectionString = "MemoryF";
             settings.PartitionManagement = PartitionManagementOptions.Scripted;
             settings.PartitionCount = 1;
             settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
-            var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-            await service.CreateAsync();
-            await service.StartAsync();
-            var host = (TransportAbstraction.IHost)service;
-            Assert.Equal(1u, service.NumberPartitions);
-            await service.StopAsync();
+
+            var orchestrationType = typeof(ScenarioTests.Orchestrations.SayHelloInline);
+
+            {
+                // start the service 
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                await service.CreateAsync();
+                await service.StartAsync();
+                var host = (TransportAbstraction.IHost)service;
+                Assert.Equal(1u, service.NumberPartitions);
+                var worker = new TaskHubWorker(service);
+                var client = new TaskHubClient(service);
+                worker.AddTaskOrchestrations(orchestrationType);
+                await worker.StartAsync();
+
+                // do orchestration
+                var instance = await client.CreateOrchestrationInstanceAsync(orchestrationType, "0", "0");
+                await client.WaitForOrchestrationAsync(instance, TimeSpan.FromSeconds(20));
+
+                // stop the service
+                await service.StopAsync();
+            }
+            {
+                // start the service 
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                await service.CreateAsync();
+                await service.StartAsync();
+                var host = (TransportAbstraction.IHost)service;
+                Assert.Equal(1u, service.NumberPartitions);
+                var client = new TaskHubClient(service);
+
+                var orchestrationState = await client.GetOrchestrationStateAsync("0");
+                Assert.Equal(OrchestrationStatus.Completed, orchestrationState.OrchestrationStatus);
+
+                // stop the service
+                await service.StopAsync();
+            }
         }
     }
 

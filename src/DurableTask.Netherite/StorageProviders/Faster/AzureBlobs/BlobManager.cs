@@ -842,7 +842,7 @@ namespace DurableTask.Netherite.Faster
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
             var indexToken = this.CheckpointInfo.IndexToken;
-            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetLogCheckpointTokens returned logToken={indexToken}");
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCheckpointTokens returned indexToken={indexToken}");
             yield return indexToken;
         }
 
