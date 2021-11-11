@@ -49,7 +49,6 @@ namespace DurableTask.Netherite.Tests
         {
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             settings.ResolvedTransportConnectionString = "MemoryF";
-            settings.PartitionManagement = PartitionManagementOptions.Scripted;
             settings.PartitionCount = 1;
             settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
 
