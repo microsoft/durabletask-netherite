@@ -694,6 +694,8 @@ namespace DurableTask.Netherite.Faster
 
         (string, string) GetObjectLogSnapshotBlobName(Guid token) => ($"cpr-checkpoints/{token}", "snapshot.obj.dat");
 
+        (string, string) GetDeltaLogSnapshotBlobName(Guid token) => ($"cpr-checkpoints/{token}", "snapshot.delta.dat");
+
         #endregion
 
         #region ILogCommitManager
@@ -842,7 +844,7 @@ namespace DurableTask.Netherite.Faster
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
             var indexToken = this.CheckpointInfo.IndexToken;
-            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetLogCheckpointTokens returned logToken={indexToken}");
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetIndexCheckpointTokens returned indexToken={indexToken}");
             yield return indexToken;
         }
 
@@ -1071,7 +1073,17 @@ namespace DurableTask.Netherite.Faster
             return device;
         }
 
-        internal IDevice GetDeltaLogDevice(Guid token, int indexOrdinal) => default;    // TODO
+        internal IDevice GetDeltaLogDevice(Guid token, int psfGroupOrdinal)
+        {
+            var (isPsf, tag) = this.IsPsfOrPrimary(psfGroupOrdinal);
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetDeltaLogDevice Called on {tag}, token={token}");
+            var (path, blobName) = this.GetDeltaLogSnapshotBlobName(token);
+            this.GetPartitionDirectories(isPsf, psfGroupOrdinal, path, out var blockBlobDir, out var pageBlobDir);
+            var device = new AzureStorageDevice(blobName, blockBlobDir, pageBlobDir, this, false); // we don't need a lease since the token provides isolation
+            device.StartAsync().Wait();
+            this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.GetDeltaLogDevice Returned from {tag}, blobDirectory={blockBlobDir} blobName={blobName}");
+            return device;
+        }
 
         #endregion
 
