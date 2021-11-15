@@ -70,7 +70,7 @@
         // set this to true to bypass Faster and instead use Azure blobs for the object store. Not for production use.
         "UseAlternateObjectStore": "false",
 
-        // set this to "true" to disable all speculation
+        // set this to "true" to disable all pipelining
         "PersistStepsFirst": false,
 
         // set this to "Scripted" to control the scenario with a partition script

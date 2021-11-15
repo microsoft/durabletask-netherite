@@ -1,0 +1,50 @@
+{
+  "version": "2.0",
+  "functionTimeout": "02:00:00", // needs to be high enough so that the entire test can run as a single entity operation
+  "logging": {
+    "logLevel": {
+
+      "Host.Triggers.DurableTask": "Warning",
+      "Function": "Warning",
+      "Function.FixedRateGenerator": "Information",
+
+      "DurableTask.Netherite": "Warning",
+      "DurableTask.Netherite.FasterStorage": "Warning",
+      "DurableTask.Netherite.EventHubsTransport": "Warning",
+      "DurableTask.Netherite.Events": "Warning",
+      "DurableTask.Netherite.WorkItems": "Warning"
+    },
+    "applicationInsights": {
+      "sampling": {
+        "isEnabled": true,
+        "excludedTypes": "Request"
+      }
+    }
+  },
+  "extensions": {
+    "http": {
+      "routePrefix": ""
+    },
+    "durableTask": {
+
+      "hubName": "loadgenerator",
+
+      "storageProvider": {
+
+        "type": "Netherite",
+
+        "PartitionCount": 10,
+
+        "LogLevelLimit": "Debug",
+        "StorageLogLevelLimit": "Debug",
+        "TransportLogLevelLimit": "Debug",
+        "EventLogLevelLimit": "Debug",
+        "WorkItemLogLevelLimit": "Debug",
+
+        "TraceToConsole": false,
+        "TraceToBlob": false
+      }
+    }
+  }
+}
+    

@@ -63,7 +63,7 @@ namespace PerformanceTests
             /// <summary>
             /// The result returned by the orchestration.
             /// </summary>
-            public string Result { get; set; }
+            public JToken Result { get; set; }
 
             /// <summary>
             /// The UTC time at which the orchestration started.
@@ -119,8 +119,9 @@ namespace PerformanceTests
                         starttime = state.CreatedTime;
                         endtime = state.LastUpdatedTime;
                     }
-                    response = new OkObjectResult(new Response {
-                        Result = (string)JToken.Parse(await stringContent.ReadAsStringAsync()),
+                    string content = await stringContent.ReadAsStringAsync();
+                    response = new JsonResult(new Response {
+                        Result = JToken.Parse(content),
                         Time = endtime, 
                         Duration = (endtime - starttime).TotalMilliseconds 
                     });

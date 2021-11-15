@@ -2,10 +2,10 @@
 Write-Host "Using parameters specified in settings.ps1."
 
 # always edit this parameter before running the scripts
-$name="globally-unique-alphanumeric-name-with-no-dashes"
+$name="sbloadgenerator7924"
 
 # review these parameters before running the scripts
-$location="eastus"
+$location="westus2"
 $storageSku="Standard_LRS"
 
 # optionally, customize the following parameters
@@ -18,6 +18,7 @@ $planName=$name
 
 if (($name -eq "globally-unique-lowercase-alphanumeric-name-with-no-dashes")) 
 {
-	throw "You must edit the 'name' parameter in settings.ps1 before using this script"
+	Write-Error "You have to edit the 'name' parameter in settings.ps1 before using this script"
+	exit
 }
 

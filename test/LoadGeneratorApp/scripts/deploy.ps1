@@ -2,12 +2,11 @@
 param (
     $Settings="./settings.ps1",
 	$Plan="EP2", 
-	$MinNodes="1", 
-	$MaxNodes="20", 
+	$MinNodes="10", 
+	$MaxNodes="10", 
 	$Configuration="Release",
 	$HostConfigurationFile="./host.json",
-	$HubName="",
-	$MaxA="",
+	$HubName="loadgenerator",
 	$DeployCode=$true
 )
 
@@ -19,16 +18,7 @@ if ($DeployCode)
     Write-Host Building $Configuration Configuration...
     dotnet build -c $Configuration
 	$hostconf = (Get-Content $HostConfigurationFile | ConvertFrom-Json -Depth 32)
-
-	if (-not ($HubName -eq ""))
-	{
-	    $hostconf.extensions.durableTask.hubName = $HubName
-	}
-	if (-not ($MaxA -eq ""))
-	{
-	    $hostconf.extensions.durableTask | Add-Member -NotePropertyName "maxConcurrentActivityFunctions" -NotePropertyValue $MaxA
-	}
-
+	$hostconf.extensions.durableTask.hubName = $HubName
 	$hostconf | ConvertTo-Json -depth 32 | set-content "./bin/$Configuration/netcoreapp3.1/host.json"
 }
 
@@ -36,13 +26,14 @@ if (-not ((az functionapp list -g $groupName --query "[].name"| ConvertFrom-Json
 {
 	# look up connection strings
 	$eventHubsConnectionString = (az eventhubs namespace authorization-rule keys list --resource-group $groupName --namespace-name $namespaceName --name RootManageSharedAccessKey | ConvertFrom-Json).primaryConnectionString
+	$resultsConnectionString = $env:ResultsConnection
 
 	Write-Host "Creating $Plan Function App..."
 	az functionapp plan create --resource-group  $groupName --name  $functionAppName --location $location --sku $Plan
 	az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 3
     az functionapp config set -n $functionAppName -g $groupName --use-32bit-worker-process false
     az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EventHubsConnection=$eventHubsConnectionString
-    az functionapp config appsettings set -n $functionAppName -g  $groupName --settings CorpusConnection=$corpusConnectionString
+    az functionapp config appsettings set -n $functionAppName -g  $groupName --settings ResultsConnection=$resultsConnectionString
 }
 else
 {
