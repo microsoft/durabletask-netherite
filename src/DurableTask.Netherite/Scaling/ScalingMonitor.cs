@@ -24,6 +24,7 @@ namespace DurableTask.Netherite.Scaling
         readonly string partitionLoadTableName;
         readonly string taskHubName;
         readonly TransportConnectionString.TransportChoices configuredTransport;
+        readonly Action<string, int, string> recommendationTracer;
 
         readonly ILoadMonitorService loadMonitor;
 
@@ -49,13 +50,13 @@ namespace DurableTask.Netherite.Scaling
             string eventHubsConnectionString, 
             string partitionLoadTableName, 
             string taskHubName,
-            ILogger logger)
+            Action<string, int, string> recommendationTracer)
         {
             this.storageConnectionString = storageConnectionString;
             this.eventHubsConnectionString = eventHubsConnectionString;
             this.partitionLoadTableName = partitionLoadTableName;
             this.taskHubName = taskHubName;
-            this.Logger = logger;
+            this.recommendationTracer = recommendationTracer;
 
             TransportConnectionString.Parse(eventHubsConnectionString, out _, out this.configuredTransport);
 
@@ -124,65 +125,84 @@ namespace DurableTask.Netherite.Scaling
         /// <returns></returns>
         public ScaleRecommendation GetScaleRecommendation(int workerCount, Metrics metrics)
         {
-            if (workerCount == 0 && !metrics.TaskHubIsIdle)
+            var recommendation = DetermineRecommendation();
+
+            this.recommendationTracer?.Invoke(recommendation.Action.ToString(), workerCount, recommendation.Reason);
+
+            return recommendation;
+
+            ScaleRecommendation DetermineRecommendation()
             {
-                return new ScaleRecommendation(ScaleAction.AddWorker, keepWorkersAlive: true, reason: metrics.Busy);
-            }
+                if (workerCount == 0 && !metrics.TaskHubIsIdle)
+                {
+                    return new ScaleRecommendation(ScaleAction.AddWorker, keepWorkersAlive: true, reason: metrics.Busy);
+                }
 
-            if (metrics.TaskHubIsIdle)
-            {
-                return new ScaleRecommendation(
-                    scaleAction: workerCount > 0 ? ScaleAction.RemoveWorker : ScaleAction.None,
-                    keepWorkersAlive: false,
-                    reason: "Task hub is idle");
-            }
-
-            int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
-
-            if (workerCount < numberOfSlowPartitions)
-            {
-                // scale up to the number of busy partitions
-                var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.HighLatency);
-                return new ScaleRecommendation(
-                    ScaleAction.AddWorker,
-                    keepWorkersAlive: true,
-                    reason: $"High latency in partition {partition.Key}: {partition.Value.LatencyTrend}");
-            }
-
-            int numberOfNonIdlePartitions = metrics.LoadInformation.Values.Count(info => ! PartitionLoadInfo.IsLongIdle(info.LatencyTrend));
-
-            if (workerCount > numberOfNonIdlePartitions)
-            {
-                // scale down to the number of non-idle partitions.
-                return new ScaleRecommendation(
-                    ScaleAction.RemoveWorker,
-                    keepWorkersAlive: true,
-                    reason: $"One or more partitions are idle");
-            }
-
-            // If all queues are operating efficiently, it can be hard to know if we need to reduce the worker count.
-            // We want to avoid the case where a constant trickle of load after a big scale-out prevents scaling back in.
-            // We also want to avoid scaling in unnecessarily when we've reached optimal scale-out. To balance these
-            // goals, we check for low latencies and vote to scale down 10% of the time when we see this. The thought is
-            // that it's a slow scale-in that will get automatically corrected once latencies start increasing again.
-            if (workerCount > 1 && (new Random()).Next(8) == 0)
-            {
-                bool allPartitionsAreFast = !metrics.LoadInformation.Values.Any(
-                    info => info.LatencyTrend.Length == PartitionLoadInfo.LatencyTrendLength 
-                        && info.LatencyTrend.Any(c => c == PartitionLoadInfo.MediumLatency || c == PartitionLoadInfo.HighLatency));
-
-                if (allPartitionsAreFast)
+                if (metrics.TaskHubIsIdle)
                 {
                     return new ScaleRecommendation(
-                           ScaleAction.RemoveWorker,
-                           keepWorkersAlive: true,
-                           reason: $"All partitions are fast");
+                        scaleAction: workerCount > 0 ? ScaleAction.RemoveWorker : ScaleAction.None,
+                        keepWorkersAlive: false,
+                        reason: "Task hub is idle");
                 }
-            }
 
-            // Load exists, but none of our scale filters were triggered, so we assume that the current worker
-            // assignments are close to ideal for the current workload.
-            return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: $"Partition latencies are healthy");
+                int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.MediumLatency);
+
+                if (workerCount < numberOfSlowPartitions)
+                {
+                    // scale up to the number of busy partitions
+                    var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.MediumLatency);
+                    return new ScaleRecommendation(
+                        ScaleAction.AddWorker,
+                        keepWorkersAlive: true,
+                        reason: $"Significant latency in {numberOfSlowPartitions} partitions");
+                }
+
+                int backlog = metrics.LoadInformation.Where(info => info.Value.IsLoaded()).Sum(info => info.Value.Activities);
+
+                if (backlog > 0 && workerCount < metrics.LoadInformation.Count)
+                {
+                    return new ScaleRecommendation(
+                        ScaleAction.AddWorker,
+                        keepWorkersAlive: true,
+                        reason: $"Backlog of {backlog} activities");
+                }
+
+                int numberOfNonIdlePartitions = metrics.LoadInformation.Values.Count(info => !PartitionLoadInfo.IsLongIdle(info.LatencyTrend));
+
+                if (workerCount > numberOfNonIdlePartitions)
+                {
+                    // scale down to the number of non-idle partitions.
+                    return new ScaleRecommendation(
+                        ScaleAction.RemoveWorker,
+                        keepWorkersAlive: true,
+                        reason: $"One or more partitions are idle");
+                }
+
+                // If all queues are operating efficiently, it can be hard to know if we need to reduce the worker count.
+                // We want to avoid the case where a constant trickle of load after a big scale-out prevents scaling back in.
+                // We also want to avoid scaling in unnecessarily when we've reached optimal scale-out. To balance these
+                // goals, we check for low latencies and vote to scale down 10% of the time when we see this. The thought is
+                // that it's a slow scale-in that will get automatically corrected once latencies start increasing again.
+                if (workerCount > 1 && (new Random()).Next(8) == 0)
+                {
+                    bool allPartitionsAreFast = !metrics.LoadInformation.Values.Any(
+                        info => info.LatencyTrend.Length == PartitionLoadInfo.LatencyTrendLength
+                            && info.LatencyTrend.Any(c => c == PartitionLoadInfo.MediumLatency || c == PartitionLoadInfo.HighLatency));
+
+                    if (allPartitionsAreFast)
+                    {
+                        return new ScaleRecommendation(
+                               ScaleAction.RemoveWorker,
+                               keepWorkersAlive: true,
+                               reason: $"All partitions are fast");
+                    }
+                }
+
+                // Load exists, but none of our scale filters were triggered, so we assume that the current worker
+                // assignments are close to ideal for the current workload.
+                return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: $"Partition latencies are healthy");
+            }
         }
 
         public async Task<string> TaskHubIsIdleAsync(Dictionary<uint, PartitionLoadInfo> loadInformation)

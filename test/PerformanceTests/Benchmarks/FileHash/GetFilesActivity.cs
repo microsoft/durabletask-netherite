@@ -21,11 +21,8 @@ namespace PerformanceTests.FileHash
         [FunctionName(nameof(GetFilesActivity))]
         public static Task<List<string>> Run([ActivityTrigger] IDurableActivityContext context, ILogger log)
         {
-
-            // setup connection to the blob storage 
-            string connectionString = Environment.GetEnvironmentVariable("CorpusConnection");
-            CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
-            CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
+            // setup connection to the corpus with the text files 
+            CloudBlobClient serviceClient = new CloudBlobClient(new Uri(@"https://gutenbergcorpus.blob.core.windows.net")); 
             CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
             CloudBlobDirectory blobDirectory = blobContainer.GetDirectoryReference($"Gutenberg/txt");
 
@@ -33,7 +30,6 @@ namespace PerformanceTests.FileHash
             List<IListBlobItem> books = blobDirectory.ListBlobs().ToList();
             List<string> bookNames = books.Select(x => ((CloudBlockBlob)x).Name).ToList();
             log.LogWarning($"{bookNames.Count} books in total");
-
             return Task.FromResult(bookNames);
         }
     }

@@ -36,15 +36,19 @@ namespace DurableTask.Netherite
                 switch (evt.ReassembledEvent)
                 {
                     case PartitionUpdateEvent updateEvent:
+                        if (!effects.IsReplaying)
+                        {
+                            updateEvent.OnSubmit(this.Partition);
+                        }
                         updateEvent.DetermineEffects(effects);
                         break;
 
                     case PartitionReadEvent readEvent:
-                        this.Partition.SubmitInternalEvent(readEvent);
+                        this.Partition.SubmitEvent(readEvent);
                         break;
 
                     case PartitionQueryEvent queryEvent:
-                        this.Partition.SubmitInternalEvent(queryEvent);
+                        this.Partition.SubmitParallelEvent(queryEvent);
                         break;
 
                     default:

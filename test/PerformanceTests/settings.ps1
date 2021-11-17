@@ -18,7 +18,6 @@ $planName=$name
 
 if (($name -eq "globally-unique-lowercase-alphanumeric-name-with-no-dashes")) 
 {
-	Write-Error "You have to edit the 'name' parameter in settings.ps1 before using this script"
-	exit
+	throw "You must edit the 'name' parameter in settings.ps1 before using this script"
 }
 

@@ -34,7 +34,7 @@ namespace DurableTask.Netherite
         }
         public CancellationToken Termination => CancellationToken.None;
 
-        public void SubmitInternalEvent(PartitionEvent entry)
+        public void SubmitEvent(PartitionEvent entry)
         {
             if (entry is PartitionUpdateEvent updateEvent)
             {
@@ -44,7 +44,12 @@ namespace DurableTask.Netherite
             base.Submit(entry);
         }
 
-        public void SubmitExternalEvents(IList<PartitionEvent> entries)
+        public void SubmitParallelEvent(PartitionEvent entry)
+        {
+            base.Submit(entry);
+        }
+
+        public void SubmitEvents(IList<PartitionEvent> entries)
         {
             foreach (var entry in entries)
             {
@@ -140,7 +145,6 @@ namespace DurableTask.Netherite
                                     break;
 
                                 case PartitionReadEvent readEvent:
-                                    readEvent.OnReadIssued(this.partition);
                                     if (readEvent.Prefetch.HasValue)
                                     {
                                         var prefetchTarget = this.GetOrAdd(readEvent.Prefetch.Value);

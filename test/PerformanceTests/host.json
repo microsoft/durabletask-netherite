@@ -70,7 +70,7 @@
         // set this to true to bypass Faster and instead use Azure blobs for the object store. Not for production use.
         "UseAlternateObjectStore": "false",
 
-        // set this to "true" to disable all speculation
+        // set this to "true" to disable all pipelining
         "PersistStepsFirst": false,
 
         // set this to "Scripted" to control the scenario with a partition script
@@ -78,7 +78,8 @@
         "PartitionManagement": "EventProcessorHost",
 
         // set this to "Local" to disable the global activity distribution algorithm
-        "ActivityScheduler": "PeriodicOffload",
+        // options: "Local", "Static", "Locavore"
+        "ActivityScheduler": "Locavore",
 
         // The log level limits below control the production of log events by the various components.
         // it limits production, not just consumption, of the events, so it can be used to prevent overheads.

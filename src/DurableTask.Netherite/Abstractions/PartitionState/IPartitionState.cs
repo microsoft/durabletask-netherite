@@ -37,18 +37,25 @@ namespace DurableTask.Netherite
         Task CleanShutdown(bool takeFinalCheckpoint);
 
         /// <summary>
-        /// Queues an internal event (originating on this same partition)
-        /// for processing on this partition.
+        /// Queues a read or update event 
+        /// for in-order processing on this partition.
         /// </summary>
         /// <param name="evt">The event to process.</param>
-        void SubmitInternalEvent(PartitionEvent evt);
+        void SubmitEvent(PartitionEvent evt);
 
         /// <summary>
-        /// Queues external events (originating on clients or other partitions)
-        /// for processing on this partition.
+        /// Queues a list of read or update events
+        /// for in-order processing on this partition.
         /// </summary>
         /// <param name="evt">The collection of events to process.</param>
-        void SubmitExternalEvents(IList<PartitionEvent> evt);
+        void SubmitEvents(IList<PartitionEvent> evt);
+
+        /// <summary>
+        /// Launches a read or query event 
+        /// for immediate processing on this partition, bypassing the queue
+        /// </summary>
+        /// <param name="evt">The event to process.</param>
+        void SubmitParallelEvent(PartitionEvent evt);
 
         /// <summary>
         /// Prefetches the supplied keys.

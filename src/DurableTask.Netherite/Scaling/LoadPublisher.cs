@@ -12,16 +12,16 @@ namespace DurableTask.Netherite.Scaling
     class LoadPublisher : BatchWorker<(uint, PartitionLoadInfo)>
     {
         readonly ILoadMonitorService service;
-        readonly ILogger logger;
+        readonly OrchestrationServiceTraceHelper traceHelper;
 
         // we are pushing the aggregated load information on a somewhat slower interval
         public static TimeSpan AggregatePublishInterval = TimeSpan.FromSeconds(2);
         readonly CancellationTokenSource cancelWait = new CancellationTokenSource();
 
-        public LoadPublisher(ILoadMonitorService service, CancellationToken token, ILogger logger) : base(nameof(LoadPublisher), false, int.MaxValue, token, null)
+        public LoadPublisher(ILoadMonitorService service, CancellationToken token, OrchestrationServiceTraceHelper traceHelper) : base(nameof(LoadPublisher), false, int.MaxValue, token, null)
         {
             this.service = service;
-            this.logger = logger;
+            this.traceHelper = traceHelper;
             this.cancelWait = new CancellationTokenSource();
         }
 
@@ -53,7 +53,7 @@ namespace DurableTask.Netherite.Scaling
                 catch (Exception exception)
                 {
                     // we swallow exceptions so we can tolerate temporary Azure storage errors
-                    this.logger.LogWarning("LoadPublisher failed: {exception}", exception);
+                    this.traceHelper.TraceError("LoadPublisher failed", exception);
                 }
             }
 

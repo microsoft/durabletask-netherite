@@ -17,28 +17,30 @@ namespace PerformanceTests.FileHash
     public static class HashActivity
     {
         [FunctionName(nameof(HashActivity))]
-        public static async Task<int> Run([ActivityTrigger] IDurableActivityContext context)
+        public static async Task<long> Run([ActivityTrigger] IDurableActivityContext context)
         {
             char[] separators = { ' ', '\n', '<', '>', '=', '\"', '\'', '/', '\\', '(', ')', '\t', '{', '}', '[', ']', ',', '.', ':', ';' };
 
-            // setup connection to the blob storage
-            string connectionString = Environment.GetEnvironmentVariable("CorpusConnection");
-            CloudStorageAccount cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
-            CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
+            // setup connection to the corpus with the text files 
+            CloudBlobClient serviceClient = new CloudBlobClient(new Uri(@"https://gutenbergcorpus.blob.core.windows.net"));
 
             // download the book from blob storage
-            string book = context.GetInput<string>();
+            var input = context.GetInput<(string book, int multiplier)>();
             CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
-            CloudBlockBlob blob = blobContainer.GetBlockBlobReference(book);
+            CloudBlockBlob blob = blobContainer.GetBlockBlobReference(input.book);
             string doc = await blob.DownloadTextAsync();
 
-            // Hash the book content 1000 times
-            int wordCount = 0;
+            long wordCount = 0;
             string[] words = doc.Split(separators, StringSplitOptions.RemoveEmptyEntries);
-            foreach (string word in words)
-            {
-                int _ = word.GetHashCode();
-                wordCount++;
+
+            // randomly scale up the work to create unbalanced work between activities
+            for (int i = 0; i < input.multiplier; i++)
+            { 
+                foreach (string word in words)
+                {
+                    int v = word.GetHashCode();
+                    wordCount++;
+                }
             }
 
             // return the number of words hashed

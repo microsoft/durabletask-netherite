@@ -13,8 +13,9 @@ param (
 	$Orchestration="CollisionSearch/divide-and-conquer",
 	$Data="1000",
 	$DelayAfterRun = 15,
-	$Tag="neth-12-ls",
+	$Tag="neth",
 	$HubName="perftests",
+	$MaxA="",
 	$ResultsFile="./results.csv",
 	$DeployCode=$true,
 	$DeleteAfterTests=$false,
@@ -27,7 +28,7 @@ if ($PrintColumnNames)
 }
 
 # deploy to a premium plan
-. ./scripts/deploy.ps1 -Settings $Settings -Plan $Plan -MinNodes $NumNodes -MaxNodes $NumNodes -Configuration $Configuration -HostConfigurationFile "./series/host.$tag.json" -HubName $HubName -DeployCode $DeployCode
+. ./scripts/deploy.ps1 -Settings $Settings -Plan $Plan -MinNodes $NumNodes -MaxNodes $NumNodes -Configuration $Configuration -HostConfigurationFile "./series/host.$tag.json" -HubName $HubName -MaxA $MaxA -DeployCode $DeployCode
 
 # update the eventhubs scale
 Write-Host "Configuring EventHubs for $ThroughputUnits TU"
@@ -43,8 +44,17 @@ for($i = 0; $i -lt $NumReps; $i++)
 	$starttime = (Get-Date).ToUniversalTime().ToString("o")
 
 	Write-Host "Starting $Orchestration -d $Data..."
-	$result = (curl.exe --max-time 300 https://$functionAppName.azurewebsites.net/$Orchestration -d $Data | ConvertFrom-Json)
-    Write-Host "RESULT=$result"
+	$reply = (curl.exe --max-time 300 https://$functionAppName.azurewebsites.net/$Orchestration -d $Data)
+	try
+	{
+		$result = ($reply | ConvertFrom-Json -depth 10)
+		Write-Host "RESULT=$result"
+	}
+	catch
+	{
+		Write-Host "ERROR: Could not parse reply: $reply"
+	}
+
 
 	Add-Content -path $ResultsFile -value "$Plan,$NumNodes,$Tag,$Orchestration/$Data,$ThroughputUnits,$starttime,$i,$($result.size),$($result.elapsedSeconds)"
 

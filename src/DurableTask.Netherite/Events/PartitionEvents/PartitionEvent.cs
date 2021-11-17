@@ -30,6 +30,15 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public double IssuedTimestamp { get; set; }
 
+        /// <summary>
+        /// For tracing purposes. Subclasses can override this to provide the instance id.
+        /// </summary>
+        [IgnoreDataMember]
+        public virtual string TracedInstanceId => string.Empty;
+
+        // some events trigger some processing immediately upon receive (e.g. prefetches or queries)
+        public virtual void OnSubmit(Partition partition) { }
+
         // make a copy of an event so we run it through the pipeline a second time
         public PartitionEvent Clone()
         {

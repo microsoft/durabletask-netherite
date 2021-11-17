@@ -9,6 +9,7 @@ namespace DurableTask.Netherite.AzureFunctions
     using System.Threading;
     using DurableTask.Core;
     using DurableTask.Netherite;
+    using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Azure.WebJobs.Host.Executors;
     using Microsoft.Extensions.Logging;
@@ -20,10 +21,12 @@ namespace DurableTask.Netherite.AzureFunctions
         readonly ConcurrentDictionary<DurableClientAttribute, NetheriteProvider> cachedProviders
             = new ConcurrentDictionary<DurableClientAttribute, NetheriteProvider>();
 
-        readonly DurableTaskOptions extensionOptions;
-        readonly IConnectionStringResolver connectionStringResolver;
+        readonly DurableTaskOptions options;
+        readonly INameResolver nameResolver;
         readonly IHostIdProvider hostIdProvider;
 
+        readonly bool inConsumption;
+        
         // the following are boolean options that can be specified in host.json,
         // but are not passed on to the backend
         public bool TraceToConsole { get; }
@@ -42,14 +45,20 @@ namespace DurableTask.Netherite.AzureFunctions
             IOptions<DurableTaskOptions> extensionOptions,
             ILoggerFactory loggerFactory,
             IConnectionStringResolver connectionStringResolver,
-            IHostIdProvider hostIdProvider)
+            IHostIdProvider hostIdProvider,
+            INameResolver nameResolver,
+#pragma warning disable CS0612 // Type or member is obsolete
+            IPlatformInformation platformInfo)
+#pragma warning restore CS0612 // Type or member is obsolete
         {
-            this.extensionOptions = extensionOptions?.Value ?? throw new ArgumentNullException(nameof(extensionOptions));
+            this.options = extensionOptions?.Value ?? throw new ArgumentNullException(nameof(extensionOptions));
             this.loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
-            this.connectionStringResolver = connectionStringResolver ?? throw new ArgumentNullException(nameof(connectionStringResolver));
-            this.hostIdProvider = hostIdProvider;
+            this.nameResolver = nameResolver ?? throw new ArgumentNullException(nameof(nameResolver));
 
-            bool ReadBooleanSetting(string name) => this.extensionOptions.StorageProvider.TryGetValue(name, out object objValue)
+            this.hostIdProvider = hostIdProvider;
+            this.inConsumption = platformInfo.IsInConsumptionPlan();
+
+            bool ReadBooleanSetting(string name) => this.options.StorageProvider.TryGetValue(name, out object objValue)
                 && objValue is string stringValue && bool.TryParse(stringValue, out bool boolValue) && boolValue;
 
             this.TraceToConsole = ReadBooleanSetting(nameof(this.TraceToConsole));
@@ -63,9 +72,18 @@ namespace DurableTask.Netherite.AzureFunctions
             // override DTFx defaults to the defaults we want to use in DF
             eventSourcedSettings.ThrowExceptionOnInvalidDedupeStatus = true;
 
+            // The consumption plan has different performance characteristics so we provide
+            // different defaults for key configuration values.
+            int maxConcurrentOrchestratorsDefault = this.inConsumption ? 5 : 10 * Environment.ProcessorCount;
+            int maxConcurrentActivitiesDefault = this.inConsumption ? 20 : 25 * Environment.ProcessorCount;
+
+            // The following defaults are only applied if the customer did not explicitely set them on `host.json`
+            this.options.MaxConcurrentOrchestratorFunctions = this.options.MaxConcurrentOrchestratorFunctions ?? maxConcurrentOrchestratorsDefault;
+            this.options.MaxConcurrentActivityFunctions = this.options.MaxConcurrentActivityFunctions ?? maxConcurrentActivitiesDefault;
+
             // copy all applicable fields from both the options and the storageProvider options
-            JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.extensionOptions), eventSourcedSettings);
-            JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.extensionOptions.StorageProvider), eventSourcedSettings);
+            JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options), eventSourcedSettings);
+            JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options.StorageProvider), eventSourcedSettings);
  
             // if worker id is specified in environment, it overrides the configured setting
             string workerId = Environment.GetEnvironmentVariable("WorkerId");
@@ -78,14 +96,20 @@ namespace DurableTask.Netherite.AzureFunctions
                 eventSourcedSettings.WorkerId = workerId;
             }
 
-            eventSourcedSettings.HubName = this.extensionOptions.HubName;
+            eventSourcedSettings.HubName = this.options.HubName;
 
             if (taskHubNameOverride != null)
             {
                 eventSourcedSettings.HubName = taskHubNameOverride;
             }
 
-            eventSourcedSettings.Validate((name) => this.connectionStringResolver.Resolve(name));
+            string runtimeLanguage = this.nameResolver.Resolve("FUNCTIONS_WORKER_RUNTIME");
+            if (runtimeLanguage != null && !string.Equals(runtimeLanguage, "dotnet", StringComparison.OrdinalIgnoreCase))
+            {
+                eventSourcedSettings.CacheOrchestrationCursors = false; // cannot resume orchestrations in the middle
+            }
+
+            eventSourcedSettings.Validate((name) => this.nameResolver.Resolve(name));
 
             if (this.TraceToConsole || this.TraceToBlob)
             {
@@ -111,7 +135,7 @@ namespace DurableTask.Netherite.AzureFunctions
                 var key = new DurableClientAttribute()
                 {
                     TaskHub = settings.HubName,
-                    ConnectionName = settings.ResolvedStorageConnectionString,
+                    ConnectionName = settings.StorageConnectionName,
                 };
  
                 this.defaultProvider = this.cachedProviders.GetOrAdd(key, _ =>
@@ -130,7 +154,7 @@ namespace DurableTask.Netherite.AzureFunctions
             var settings = this.GetNetheriteOrchestrationServiceSettings(attribute.TaskHub);
 
             if (string.Equals(this.defaultProvider.Settings.HubName, settings.HubName, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(this.defaultProvider.Settings.ResolvedStorageConnectionString, settings.ResolvedStorageConnectionString, StringComparison.OrdinalIgnoreCase))
+                 string.Equals(this.defaultProvider.Settings.StorageConnectionName, settings.StorageConnectionName, StringComparison.OrdinalIgnoreCase))
             {
                 return this.defaultProvider;
             }
@@ -138,7 +162,7 @@ namespace DurableTask.Netherite.AzureFunctions
             DurableClientAttribute key = new DurableClientAttribute()
             {
                 TaskHub = settings.HubName,
-                ConnectionName = settings.ResolvedStorageConnectionString,
+                ConnectionName = settings.StorageConnectionName,
             };
 
             return this.cachedProviders.GetOrAdd(key, _ =>

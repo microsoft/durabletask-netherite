@@ -18,8 +18,46 @@ namespace DurableTask.Netherite
         Local,
 
         /// <summary>
-        /// Activities are scheduled locally if possible, but backlog is offloaded periodically.
+        /// Activities in the local backlog are immediately evenly offloaded to other partitions
         /// </summary>
-        PeriodicOffload,
+        Static,
+
+        /// <summary>
+        /// Activities are load balanced with a global load monitor that issues transfer commands
+        /// </summary>
+        Locavore,
+    }
+
+    public static class ActivityScheduling
+    {
+        public static bool RequiresLoadMonitor(ActivitySchedulerOptions options)
+        {
+            switch (options)
+            {
+                case ActivitySchedulerOptions.Local:
+                case ActivitySchedulerOptions.Static:
+                    return false;
+                case ActivitySchedulerOptions.Locavore:
+                    return true;
+                default:
+                    throw new NotImplementedException("missing switch case");
+            }
+        }
+
+        public static bool RequiresPeriodicOffloadDecision(ActivitySchedulerOptions options)
+        {
+            switch (options)
+            {
+                case ActivitySchedulerOptions.Local:
+                case ActivitySchedulerOptions.Locavore:
+                    return false;
+                case ActivitySchedulerOptions.Static:
+                    return true;
+                default:
+                    throw new NotImplementedException("missing switch case");
+            }
+        }
+
+        
     }
 }

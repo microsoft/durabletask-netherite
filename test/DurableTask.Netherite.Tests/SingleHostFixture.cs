@@ -10,20 +10,25 @@ namespace DurableTask.Netherite.Tests
     using System.Text;
     using Xunit.Abstractions;
 
-    public class TestFixture : IDisposable
+    /// <summary>
+    /// A test fixture that starts the host before the tests start, and shuts it down after all the tests complete.
+    /// </summary>
+    public class SingleHostFixture : IDisposable
     {
         readonly TestTraceListener traceListener;
         readonly XunitLoggerProvider loggerProvider;
         internal TestOrchestrationHost Host { get; private set; }
         internal ILoggerFactory LoggerFactory { get; private set; }
 
-        public TestFixture()
+        public SingleHostFixture()
         {
             this.LoggerFactory = new LoggerFactory();
             this.loggerProvider = new XunitLoggerProvider();
             this.LoggerFactory.AddProvider(this.loggerProvider);
             TestConstants.ValidateEnvironment();
-            this.Host = TestConstants.GetTestOrchestrationHost(this.LoggerFactory);
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
+            this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
             this.Host.StartAsync().Wait();
             this.traceListener = new TestTraceListener();
             Trace.Listeners.Add(this.traceListener);

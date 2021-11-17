@@ -42,7 +42,6 @@ namespace DurableTask.Netherite
             QueryEvent
         }
 
-
         public bool IsTracingAtMostDetailedLevel => this.logLevelLimit == LogLevel.Trace;
 
         public void TraceEventProcessed(long commitLogPosition, PartitionEvent evt, EventCategory category, double startedTimestamp, double finishedTimestamp, bool replaying)
@@ -57,17 +56,18 @@ namespace DurableTask.Netherite
                 if (this.logger.IsEnabled(LogLevel.Information))
                 {
                     var details = string.Format($"{(replaying ? "Replayed" : "Processed")} {(evt.NextInputQueuePosition > 0 ? "external" : "internal")} {category}");
-                    this.logger.LogInformation("Part{partition:D2}.{commitLogPosition:D10} {details} {event} eventId={eventId} pos=({nextCommitLogPosition},{nextInputQueuePosition}) latency=({queueLatencyMs:F0}, {fetchLatencyMs:F0}, {latencyMs:F0})", this.partitionId, commitLogPosition, details, evt, evt.EventIdString, nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs);
+                    this.logger.LogInformation("Part{partition:D2}.{commitLogPosition:D10} {details} {event} eventId={eventId} instanceId={instanceId} pos=({nextCommitLogPosition},{nextInputQueuePosition}) latency=({queueLatencyMs:F0}, {fetchLatencyMs:F0}, {latencyMs:F0})", this.partitionId, commitLogPosition, details, evt, evt.EventIdString, evt.TracedInstanceId, nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs);
                 }
 
-                this.etw?.PartitionEventProcessed(this.account, this.taskHub, this.partitionId, commitLogPosition, category.ToString(), evt.EventIdString, evt.ToString(), nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs, replaying, TraceUtils.AppName, TraceUtils.ExtensionVersion) ;
+                this.etw?.PartitionEventProcessed(this.account, this.taskHub, this.partitionId, commitLogPosition, category.ToString(), evt.EventIdString, evt.ToString(), evt.TracedInstanceId ?? string.Empty, nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs, replaying, TraceUtils.AppName, TraceUtils.ExtensionVersion) ;
             }
         }
 
         public void TraceInstanceUpdate(
-            string workItemId, 
+            string partitionEventId, 
             string instanceId, 
-            string executionId, 
+            string executionId,
+            OrchestrationStatus runtimeStatus, 
             int totalEventCount, 
             List<HistoryEvent> newEvents, 
             int episode)
@@ -121,15 +121,15 @@ namespace DurableTask.Netherite
                     (long commitLogPosition, string eventId) = EventTraceContext.Current;
 
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
-                    this.logger.LogDebug("Part{partition:D2}{prefix} Updated instance instanceId={instanceId} executionId={executionId} workItemId={workItemId} numNewEvents={numNewEvents} totalEventCount={totalEventCount} eventNames={eventNames} eventType={eventType} episode={episode}",
-                        this.partitionId, prefix, instanceId, executionId, workItemId, numNewEvents, totalEventCount, eventNames, eventType, episode);
+                    this.logger.LogDebug("Part{partition:D2}{prefix} Updated instance instanceId={instanceId} executionId={executionId} partitionEventId={partitionEventId} runtimeStatus={runtimeStatus} numNewEvents={numNewEvents} totalEventCount={totalEventCount} eventNames={eventNames} eventType={eventType} episode={episode}",
+                        this.partitionId, prefix, instanceId, executionId, partitionEventId, runtimeStatus, numNewEvents, totalEventCount, eventNames, eventType, episode);
                 }
 
-                this.etw?.InstanceUpdated(this.account, this.taskHub, this.partitionId, instanceId, executionId, workItemId, numNewEvents, totalEventCount, eventNames, eventType, episode, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.InstanceUpdated(this.account, this.taskHub, this.partitionId, instanceId, executionId, partitionEventId, runtimeStatus.ToString(), numNewEvents, totalEventCount, eventNames, eventType, episode, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
-        public void TraceFetchedInstanceStatus(PartitionReadEvent evt, string instanceId, string executionId, string status, double latencyMs)
+        public void TraceFetchedInstanceStatus(PartitionReadEvent evt, string instanceId, string executionId, string runtimeStatus, double latencyMs)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
@@ -138,11 +138,11 @@ namespace DurableTask.Netherite
                     (long commitLogPosition, string eventId) = EventTraceContext.Current;
 
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
-                    this.logger.LogDebug("Part{partition:D2}{prefix} Fetched instance status instanceId={instanceId} executionId={executionId} status={status} eventId={eventId} latencyMs={latencyMs:F0}",
-                        this.partitionId, prefix, instanceId, executionId, status, evt.EventIdString, latencyMs);
+                    this.logger.LogDebug("Part{partition:D2}{prefix} Fetched instance status instanceId={instanceId} executionId={executionId} runtimeStatus={runtimeStatus} eventId={eventId} latencyMs={latencyMs:F0}",
+                        this.partitionId, prefix, instanceId, executionId, runtimeStatus, evt.EventIdString, latencyMs);
                 }
 
-                this.etw?.InstanceStatusFetched(this.account, this.taskHub, this.partitionId, instanceId, executionId, status, evt.EventIdString, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.InstanceStatusFetched(this.account, this.taskHub, this.partitionId, instanceId, executionId, runtimeStatus, evt.EventIdString, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -163,20 +163,22 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TracePartitionOffloadDecision(int reportedLocalLoad, int pending, int backlog, int remotes, string reportedRemotes)
+        public void TracePartitionOffloadDecision(int reportedLocalLoad, int pending, int backlog, int remotes, OffloadDecision offloadDecision)
         {
-            if (this.logLevelLimit <= LogLevel.Warning)
+            if (this.logLevelLimit <= LogLevel.Information)
             {
-                if (this.logLevelLimit <= LogLevel.Warning)
+                string distribution = string.Join(",", offloadDecision.ActivitiesToTransfer.Select(kvp => kvp.Value.Count.ToString()));
+
+                if (this.logger.IsEnabled(LogLevel.Information))
                 {
                     (long commitLogPosition, string eventId) = EventTraceContext.Current;
 
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
-                    this.logger.LogWarning("Part{partition:D2}{prefix} Offload decision reportedLocalLoad={reportedLocalLoad} pending={pending} backlog={backlog} remotes={remotes} reportedRemotes={reportedRemotes}",
-                        this.partitionId, prefix, reportedLocalLoad, pending, backlog, remotes, reportedRemotes);
-
-                    this.etw?.PartitionOffloadDecision(this.account, this.taskHub, this.partitionId, commitLogPosition, eventId, reportedLocalLoad, pending, backlog, remotes, reportedRemotes, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                    this.logger.LogWarning("Part{partition:D2}{prefix} Offload decision reportedLocalLoad={reportedLocalLoad} pending={pending} backlog={backlog} remotes={remotes} distribution={distribution}",
+                        this.partitionId, prefix, reportedLocalLoad, pending, backlog, remotes, distribution);
                 }
+                 
+                this.etw?.PartitionOffloadDecision(this.account, this.taskHub, this.partitionId, offloadDecision.EventIdString, reportedLocalLoad, pending, backlog, remotes, distribution, TraceUtils.AppName, TraceUtils.ExtensionVersion);       
             }
         }
 

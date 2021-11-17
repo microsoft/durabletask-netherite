@@ -24,7 +24,7 @@ namespace DurableTask.Netherite
         readonly Stopwatch stopwatch;
         protected string Name { get; }
         protected readonly CancellationToken cancellationToken;
-        readonly PartitionTraceHelper traceHelper;
+        readonly IBatchWorkerTraceHelper traceHelper;
 
         volatile int state;
         const int IDLE = 0;
@@ -39,7 +39,7 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Constructor including a cancellation token.
         /// </summary>
-        public BatchWorker(string name, bool startSuspended, int maxBatchSize, CancellationToken cancellationToken, PartitionTraceHelper traceHelper)
+        public BatchWorker(string name, bool startSuspended, int maxBatchSize, CancellationToken cancellationToken, IBatchWorkerTraceHelper traceHelper)
         {
             this.Name = name;
             this.cancellationToken = cancellationToken;
@@ -48,6 +48,8 @@ namespace DurableTask.Netherite
             this.stopwatch = new Stopwatch();
             this.traceHelper = traceHelper;
         }
+
+        public bool IsIdle => (this.state == IDLE);
 
         protected Action<string> Tracer { get; set; } = null;
 
@@ -145,7 +147,7 @@ namespace DurableTask.Netherite
 
                 if (previousBatch.HasValue && previousBatch.Value > 0)
                 {
-                    this.traceHelper?.BatchWorkerProgress(this.Name, previousBatch.Value, this.stopwatch.Elapsed.TotalMilliseconds, nextBatch);
+                    this.traceHelper?.TraceBatchWorkerProgress(this.Name, previousBatch.Value, this.stopwatch.Elapsed.TotalMilliseconds, nextBatch);
                 }
 
                 if (!nextBatch.HasValue)
@@ -261,5 +263,13 @@ namespace DurableTask.Netherite
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// interface for supporting the same kind of tracing by all the batch workers
+    /// </summary>
+    public interface IBatchWorkerTraceHelper
+    {
+        public void TraceBatchWorkerProgress(string worker, int batchSize, double elapsedMilliseconds, int? nextBatch);
     }
 }

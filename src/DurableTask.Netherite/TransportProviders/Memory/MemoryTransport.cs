@@ -21,10 +21,14 @@ namespace DurableTask.Netherite.Emulated
         readonly uint numberPartitions;
         readonly ILogger logger;
 
+        Task startupTask;
+
         Dictionary<Guid, IMemoryQueue<ClientEvent>> clientQueues;
         IMemoryQueue<PartitionEvent>[] partitionQueues;
+        IMemoryQueue<LoadMonitorEvent> loadMonitorQueue;
         TransportAbstraction.IClient client;
         TransportAbstraction.IPartition[] partitions;
+        TransportAbstraction.ILoadMonitor loadMonitor;
         CancellationTokenSource shutdownTokenSource;
 
         static readonly TimeSpan simulatedDelay = TimeSpan.FromMilliseconds(1);
@@ -77,9 +81,18 @@ namespace DurableTask.Netherite.Emulated
             this.clientQueues[clientId] = clientQueue;
             clientSender.SetHandler(list => this.SendEvents(this.client, list));
 
+            // create a load monitor
+            if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
+            {
+                var loadMonitorSender = new SendWorker(this.shutdownTokenSource.Token);
+                this.loadMonitor = this.host.AddLoadMonitor(default, loadMonitorSender);
+                this.loadMonitorQueue = new MemoryLoadMonitorQueue(this.loadMonitor, this.shutdownTokenSource.Token, this.logger);
+                loadMonitorSender.SetHandler(list => this.SendEvents(this.loadMonitor, list));
+            }
+
             // we finish the (possibly lengthy) partition loading asynchronously so it is possible to receive 
             // stop signals before partitions are fully recovered
-            var backgroundStartupTask = this.FinishStartup(this.shutdownTokenSource.Token, clientQueue);
+            this.startupTask = this.FinishStartup(this.shutdownTokenSource.Token, clientQueue);
 
             return Task.CompletedTask;
         }
@@ -121,6 +134,15 @@ namespace DurableTask.Netherite.Emulated
             {
                 this.shutdownTokenSource.Cancel();
                 this.shutdownTokenSource = null;
+
+                try
+                {
+                    await (this.startupTask ?? Task.CompletedTask);
+                }
+                catch(OperationCanceledException)
+                {
+                    // normal if shut down during startup
+                }
 
                 await this.client.StopAsync().ConfigureAwait(false);
 
@@ -165,6 +187,21 @@ namespace DurableTask.Netherite.Emulated
             }
         }
 
+        void SendEvents(TransportAbstraction.ILoadMonitor loadMonitor, IEnumerable<Event> events)
+        {
+            try
+            {
+                this.SendEvents(events, null);
+            }
+            catch (TaskCanceledException)
+            {
+                // this is normal during shutdown
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         void SendEvents(IEnumerable<Event> events, uint? sendingPartition)
         {
             foreach (var evt in events)
@@ -179,6 +216,10 @@ namespace DurableTask.Netherite.Emulated
                 else if (evt is PartitionEvent partitionEvent)
                 {
                     this.partitionQueues[partitionEvent.PartitionId].Send(partitionEvent);
+                }
+                else if (evt is LoadMonitorEvent loadMonitorEvent)
+                {
+                    this.loadMonitorQueue.Send(loadMonitorEvent);
                 }
             }
         }

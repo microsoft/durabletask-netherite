@@ -19,34 +19,24 @@ namespace PerformanceTests.FileHash
     {
 
         [FunctionName(nameof(FileOrchestration))]
-        public static async Task<int> Run([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
+        public static async Task<double> Run([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
         {
             // get the input
             int numFiles = context.GetInput<int>();
 
             var books = await context.CallActivityAsync<List<string>>(nameof(GetFilesActivity), null);
 
-            int fileCount = 0;
-            var results = new List<Task<int>>();
+            var results = new List<Task<long>>();
+            System.Random random = new System.Random(0);
 
-            foreach (var book in books)
+            for (int i = 0; i < numFiles; i++)
             {
-                Task<int> wordCount = context.CallActivityAsync<int>(nameof(HashActivity), book);
-                log.LogWarning($"Processing {book}");
-
-                results.Add(wordCount);
-                fileCount++;
-
-                if (fileCount == numFiles)
-                {
-                    log.LogWarning($"Processed {fileCount} files, exiting");
-                    break;
-                }
+                (string book, int multiplier) input = (books[i % books.Count], random.Next(20, 50));
+                results.Add(context.CallActivityAsync<long>(nameof(HashActivity), input));
             }
 
-            // This might overflow
             await Task.WhenAll(results);
-            int sum = results.Sum(t => t.Result);
+            double sum = (double)results.Sum(t => t.Result) / 1000000;
             return sum;
         }
     }

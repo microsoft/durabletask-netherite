@@ -211,14 +211,19 @@ namespace DurableTask.Netherite.Faster
             await this.blobManager.StopAsync().ConfigureAwait(false);
         }
 
-        public void SubmitExternalEvents(IList<PartitionEvent> evts)
+        public void SubmitEvents(IList<PartitionEvent> evts)
         {
-            this.logWorker.SubmitExternalEvents(evts);
+            this.logWorker.SubmitEvents(evts);
         }
 
-        public void SubmitInternalEvent(PartitionEvent evt)
+        public void SubmitEvent(PartitionEvent evt)
         {
-            this.logWorker.SubmitInternalEvent(evt);
+            this.logWorker.SubmitEvent(evt);
+        }
+
+        public void SubmitParallelEvent(PartitionEvent evt)
+        {
+            this.storeWorker.ProcessInParallel(evt);
         }
 
         public Task Prefetch(IEnumerable<TrackedObjectKey> keys)

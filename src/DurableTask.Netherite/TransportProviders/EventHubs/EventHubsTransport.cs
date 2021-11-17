@@ -14,6 +14,8 @@ namespace DurableTask.Netherite.EventHubs
     using Microsoft.Azure.Storage.Blob;
     using Newtonsoft.Json;
     using DurableTask.Netherite.Faster;
+    using System.Linq;
+    using System.Threading.Channels;
 
     /// <summary>
     /// The EventHubs transport implementation.
@@ -30,13 +32,17 @@ namespace DurableTask.Netherite.EventHubs
         readonly EventHubsTraceHelper traceHelper;
 
         EventProcessorHost eventProcessorHost;
+        EventProcessorHost loadMonitorHost;
         TransportAbstraction.IClient client;
 
         TaskhubParameters parameters;
         byte[] taskhubGuid;
         EventHubsConnections connections;
 
-        Task clientEventLoopTask = Task.CompletedTask;
+        Task[] clientReceiveLoops;
+        Task clientProcessTask;
+        Task[] clientConnectionsEstablished;
+
         CancellationTokenSource shutdownSource;
         readonly CloudBlobContainer cloudBlobContainer;
         readonly CloudBlockBlob taskhubParameters;
@@ -64,8 +70,10 @@ namespace DurableTask.Netherite.EventHubs
         // these are hardcoded now but we may turn them into settings
         public static string[] PartitionHubs = { "partitions" };
         public static string[] ClientHubs = { "clients0", "clients1", "clients2", "clients3" };
+        public static string  LoadMonitorHub = "loadmonitor";
         public static string PartitionConsumerGroup = "$Default";
         public static string ClientConsumerGroup = "$Default";
+        public static string LoadMonitorConsumerGroup = "$Default";
 
         static string GetContainerName(string taskHubName) => taskHubName.ToLowerInvariant() + "-storage";
 
@@ -83,19 +91,23 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        async Task<bool> ITaskHub.ExistsAsync()
+        async Task<bool> ExistsAsync()
         {
             var parameters = await this.TryLoadExistingTaskhubAsync().ConfigureAwait(false);
             return (parameters != null && parameters.TaskhubName == this.settings.HubName);
         }
 
-        async Task<bool> ITaskHub.CreateIfNotExistsAsync()
+        async Task<bool> CreateIfNotExistsAsync()
         {
             await this.cloudBlobContainer.CreateIfNotExistsAsync().ConfigureAwait(false);
 
             // ensure the task hubs exist, creating them if necessary
             var tasks = new List<Task>();
             tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, PartitionHubs[0], this.settings.PartitionCount));
+            if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
+            {
+                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, LoadMonitorHub, 1));
+            }
             foreach (string taskhub in ClientHubs)
             {
                 tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 32));
@@ -142,7 +154,7 @@ namespace DurableTask.Netherite.EventHubs
             return true;
         }
 
-        async Task ITaskHub.DeleteAsync()
+        async Task DeleteAsync()
         {
             if (await this.taskhubParameters.ExistsAsync().ConfigureAwait(false))
             {
@@ -153,7 +165,7 @@ namespace DurableTask.Netherite.EventHubs
             await this.host.StorageProvider.DeleteAllPartitionStatesAsync().ConfigureAwait(false);
         }
 
-        async Task ITaskHub.StartAsync()
+        async Task StartAsync()
         {
             this.shutdownSource = new CancellationTokenSource();
 
@@ -173,7 +185,7 @@ namespace DurableTask.Netherite.EventHubs
 
             this.host.NumberPartitions = (uint)this.parameters.StartPositions.Length;
            
-            this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs)
+            this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs, LoadMonitorHub)
             {
                 Host = host,
                 TraceHelper = this.traceHelper,
@@ -183,7 +195,24 @@ namespace DurableTask.Netherite.EventHubs
 
             this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
 
-            this.clientEventLoopTask = Task.Run(this.ClientEventLoop);
+            var channel = Channel.CreateBounded<ClientEvent>(new BoundedChannelOptions(500) {
+                SingleReader = true, 
+                AllowSynchronousContinuations = true 
+            });
+
+            var clientReceivers = this.connections.CreateClientReceivers(this.ClientId, EventHubsTransport.ClientConsumerGroup);
+
+            this.clientConnectionsEstablished = Enumerable
+                .Range(0, EventHubsConnections.NumClientChannels)
+                .Select(i => this.ClientEstablishConnectionAsync(i, clientReceivers[i]))
+                .ToArray();
+       
+            this.clientReceiveLoops = Enumerable
+                .Range(0, EventHubsConnections.NumClientChannels)
+                .Select(i => this.ClientReceiveLoopAsync(i, clientReceivers[i], channel.Writer))
+                .ToArray();
+
+            this.clientProcessTask = this.ClientProcessLoopAsync(channel.Reader);
 
             if (PartitionHubs.Length > 1)
             {
@@ -196,62 +225,143 @@ namespace DurableTask.Netherite.EventHubs
             }
 
             string partitionsHub = PartitionHubs[0];
-
-            switch (this.settings.PartitionManagement)
+            
+            if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
-                case PartitionManagementOptions.EventProcessorHost:
+                if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
+                {
+                    await Task.WhenAll(StartPartitionHost(), StartLoadMonitorHost()).ConfigureAwait(false);
+                }
+                else
+                {
+                    await StartPartitionHost().ConfigureAwait(false);
+                }
+            }
+
+            // we must wait for the client receive connections to be established before continuing
+            // otherwise, we may miss messages that are sent before the client receiver establishes the receive position
+            await Task.WhenAll(this.clientConnectionsEstablished);
+
+            async Task StartPartitionHost()
+            {
+                if (this.settings.PartitionManagement != PartitionManagementOptions.Scripted)
+                {
+                    this.traceHelper.LogInformation("Registering Partition Host with EventHubs");
+
+                    this.eventProcessorHost = new EventProcessorHost(
+                        Guid.NewGuid().ToString(),
+                        partitionsHub,
+                        EventHubsTransport.PartitionConsumerGroup,
+                        this.settings.ResolvedTransportConnectionString,
+                        this.settings.ResolvedStorageConnectionString,
+                        this.cloudBlobContainer.Name);
+
+                    var processorOptions = new EventProcessorOptions()
                     {
-                        this.traceHelper.LogInformation("Registering EventProcessorHost with EventHubs");
+                        InitialOffsetProvider = (s) => EventPosition.FromSequenceNumber(this.parameters.StartPositions[int.Parse(s)] - 1),
+                        MaxBatchSize = 300,
+                        PrefetchCount = 500,
+                    };
 
-                        this.eventProcessorHost = new EventProcessorHost(
-                                partitionsHub,
-                                EventHubsTransport.PartitionConsumerGroup,
-                                this.settings.ResolvedTransportConnectionString,
-                                this.settings.ResolvedStorageConnectionString,
-                                this.cloudBlobContainer.Name);
+                    await this.eventProcessorHost.RegisterEventProcessorFactoryAsync(
+                        new PartitionEventProcessorFactory(this), 
+                        processorOptions).ConfigureAwait(false);
+                }
+                else
+                {
+                    this.traceHelper.LogInformation($"Starting scripted partition host");
+                    this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
+                            partitionsHub,
+                            EventHubsTransport.PartitionConsumerGroup,
+                            this.settings.ResolvedTransportConnectionString,
+                            this.settings.ResolvedStorageConnectionString,
+                            this.cloudBlobContainer.Name,
+                            this.host,
+                            this,
+                            this.connections,
+                            this.parameters,
+                            this.settings,
+                            this.traceHelper,
+                            this.settings.WorkerId);
 
-                        var processorOptions = new EventProcessorOptions()
-                        {
-                            InitialOffsetProvider = (s) => EventPosition.FromSequenceNumber(this.parameters.StartPositions[int.Parse(s)] - 1),
-                            MaxBatchSize = 300,
-                            PrefetchCount = 500,
-                        };
+                    var thread = new Thread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript));
+                    thread.Name = "ScriptedEventProcessorHost";
+                    thread.Start();
+                }
+            }
 
-                        await this.eventProcessorHost.RegisterEventProcessorFactoryAsync(this, processorOptions).ConfigureAwait(false);
-                        break;
-                    }
+            async Task StartLoadMonitorHost()
+            {
+                this.traceHelper.LogInformation("Registering LoadMonitor Host with EventHubs");
 
-                case PartitionManagementOptions.Scripted:
-                    {
-                        this.traceHelper.LogInformation($"Starting scripted partition host");
-                        this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
-                                partitionsHub,
-                                EventHubsTransport.PartitionConsumerGroup,
-                                this.settings.ResolvedTransportConnectionString,
-                                this.settings.ResolvedStorageConnectionString,
-                                this.cloudBlobContainer.Name,
-                                this.host,
-                                this,
-                                this.connections,
-                                this.parameters,
-                                this.settings,
-                                this.traceHelper,
-                                this.settings.WorkerId);
+                this.loadMonitorHost = new EventProcessorHost(
+                        Guid.NewGuid().ToString(),
+                        LoadMonitorHub,
+                        LoadMonitorConsumerGroup,
+                        this.settings.ResolvedTransportConnectionString,
+                        this.settings.ResolvedStorageConnectionString,
+                        this.cloudBlobContainer.Name,
+                        LoadMonitorHub);
 
-                        var thread = new Thread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript));
-                        thread.Name = "ScriptedEventProcessorHost";
-                        thread.Start();
-                        break;
-                    }
+                var processorOptions = new EventProcessorOptions()
+                {
+                    InitialOffsetProvider = (s) => EventPosition.FromEnqueuedTime(DateTime.UtcNow - TimeSpan.FromSeconds(30)),
+                    MaxBatchSize = 500,
+                    PrefetchCount = 500,
+                };
 
-                case PartitionManagementOptions.ClientOnly:
-                    {
-                        break;
-                    }
+                await this.loadMonitorHost.RegisterEventProcessorFactoryAsync(
+                    new LoadMonitorEventProcessorFactory(this), 
+                    processorOptions).ConfigureAwait(false);
             }
         }
 
-        async Task ITaskHub.StopAsync()
+        class PartitionEventProcessorFactory : IEventProcessorFactory
+        {
+            readonly EventHubsTransport transport;
+
+            public PartitionEventProcessorFactory(EventHubsTransport transport)
+            {
+                this.transport = transport;
+            }
+
+            public IEventProcessor CreateEventProcessor(PartitionContext context)
+            {
+                return new EventHubsProcessor(
+                    this.transport.host,
+                    this.transport,
+                    this.transport.parameters,
+                    context,
+                    this.transport.settings,
+                    this.transport,
+                    this.transport.traceHelper,
+                    this.transport.shutdownSource.Token);
+            }
+        }
+
+        class LoadMonitorEventProcessorFactory : IEventProcessorFactory
+        {
+            readonly EventHubsTransport transport;
+
+            public LoadMonitorEventProcessorFactory(EventHubsTransport transport)
+            {
+                this.transport = transport;
+            }
+
+            public IEventProcessor CreateEventProcessor(PartitionContext context)
+            {
+                return new LoadMonitorProcessor(
+                    this.transport.host,
+                    this.transport,
+                    this.transport.parameters,
+                    context,
+                    this.transport.settings,
+                    this.transport.traceHelper,
+                    this.transport.shutdownSource.Token);
+            }
+        }
+
+        async Task StopAsync()
         {
             this.traceHelper.LogInformation("Shutting down EventHubsBackend");
             this.shutdownSource.Cancel(); // initiates shutdown of client and of all partitions
@@ -259,36 +369,34 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper.LogDebug("Stopping client");
             await this.client.StopAsync().ConfigureAwait(false);
 
-            switch (this.settings.PartitionManagement)
+            if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
-                case PartitionManagementOptions.EventProcessorHost:
-                    {
-                        this.traceHelper.LogDebug("Unregistering event processor host");
-                        await this.eventProcessorHost.UnregisterEventProcessorAsync().ConfigureAwait(false);
-                        break;
-                    }
-
-                case PartitionManagementOptions.Scripted:
-                    {
-                        this.traceHelper.LogDebug("Stopping event processor host");
-                        await this.scriptedEventProcessorHost.StopAsync();
-                        break;
-                    }
-
-                case PartitionManagementOptions.ClientOnly:
-                    {
-                        break;
-                    }
+                if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
+                {
+                    this.traceHelper.LogDebug("Stopping partition and loadmonitor hosts");
+                    await Task.WhenAll(
+                      this.eventProcessorHost.UnregisterEventProcessorAsync(),
+                      this.loadMonitorHost.UnregisterEventProcessorAsync()).ConfigureAwait(false);
+                }
+                else
+                {
+                    this.traceHelper.LogDebug("Stopping partition host");
+                    await this.eventProcessorHost.UnregisterEventProcessorAsync().ConfigureAwait(false);
+                }
             }
+
+            this.traceHelper.LogDebug("Stopping client process loop");
+            await this.clientProcessTask;
 
             this.traceHelper.LogDebug("Closing connections");
             await this.connections.StopAsync().ConfigureAwait(false);
+
             this.traceHelper.LogInformation("EventHubsBackend shutdown completed");
         }
 
         IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
         {
-            var processor = new EventHubsProcessor(this.host, this, this.parameters, partitionContext, this.settings, this.traceHelper, this.shutdownSource.Token);
+            var processor = new EventHubsProcessor(this.host, this, this.parameters, partitionContext, this.settings, this, this.traceHelper, this.shutdownSource.Token);
             return processor;
         }
 
@@ -308,55 +416,188 @@ namespace DurableTask.Netherite.EventHubs
                     partitionSender.Submit(partitionEvent);
                     break;
 
+                case LoadMonitorEvent loadMonitorEvent:
+                    var loadMonitorSender = this.connections.GetLoadMonitorSender(this.taskhubGuid);
+                    loadMonitorSender.Submit(loadMonitorEvent);
+                    break;
+
                 default:
-                    throw new InvalidCastException("could not cast to neither PartitionReadEvent nor PartitionUpdateEvent");
+                    throw new InvalidCastException($"unknown type of event: {evt.GetType().FullName}");
             }
         }
 
-        async Task ClientEventLoop()
+        async Task ClientEstablishConnectionAsync(int index, PartitionReceiver receiver)
         {
-            var clientReceiver = this.connections.CreateClientReceiver(this.ClientId, EventHubsTransport.ClientConsumerGroup);
-            var receivedEvents = new List<ClientEvent>();
-
-            byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
-
-            while (!this.shutdownSource.IsCancellationRequested)
+            try
             {
-                IEnumerable<EventData> eventData = await clientReceiver.ReceiveAsync(1000, TimeSpan.FromMinutes(1)).ConfigureAwait(false);
+                this.traceHelper.LogDebug("Client{clientId}.ch{index} establishing connection", Client.GetShortId(this.ClientId), index);
+                // receive a dummy packet to establish connection
+                // (the packet, if any, cannot be for this receiver because it is fresh)
+                await receiver.ReceiveAsync(1);
+            }
+            catch (Exception exception)
+            {
+                this.traceHelper.LogError("Client{clientId}.ch{index} could not connect: {exception}", Client.GetShortId(this.ClientId), index, exception);
+                throw;
+            }
+        }
 
-                if (eventData != null)
+        async Task ClientReceiveLoopAsync(int index, PartitionReceiver receiver, ChannelWriter<ClientEvent> channelWriter)
+        {
+            try
+            {
+                byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
+                TimeSpan longPollingInterval = TimeSpan.FromMinutes(1);
+
+                await this.clientConnectionsEstablished[index];
+
+                while (!this.shutdownSource.IsCancellationRequested)
                 {
-                    foreach (var ed in eventData)
+                    this.traceHelper.LogTrace("Client{clientId}.ch{index} waiting for new packets", Client.GetShortId(this.ClientId), index);
+ 
+                    IEnumerable<EventData> eventData = await receiver.ReceiveAsync(1000, longPollingInterval);
+
+                    if (eventData != null)
                     {
-                        ClientEvent clientEvent = null;
-
-                        try
+                        foreach (var ed in eventData)
                         {
-                            Packet.Deserialize(ed.Body, out clientEvent, taskHubGuid);
+                            this.shutdownSource.Token.ThrowIfCancellationRequested();
+                            ClientEvent clientEvent = null;
 
-                            if (clientEvent != null && clientEvent.ClientId == this.ClientId)
+                            try
                             {
-                                receivedEvents.Add(clientEvent);
+                                this.traceHelper.LogDebug("Client{clientId}.ch{index} received packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
+                                Packet.Deserialize(ed.Body, out clientEvent, taskHubGuid);
+                                if (clientEvent != null && clientEvent.ClientId == this.ClientId)
+                                {
+                                    this.traceHelper.LogTrace("Client{clientId}.ch{index} receiving event {evt} id={eventId}]", Client.GetShortId(this.ClientId), index, clientEvent, clientEvent.EventIdString);
+                                    await channelWriter.WriteAsync(clientEvent);
+                                }
+                            }
+                            catch (Exception)
+                            {
+                                this.traceHelper.LogError("Client{clientId}.ch{index} could not deserialize packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
                             }
                         }
-                        catch (Exception)
-                        {
-                            this.traceHelper.LogError("EventProcessor for Client{clientId} could not deserialize packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), ed.SystemProperties.SequenceNumber, ed.Body.Count);
-                            throw;
-                        }
-                        this.traceHelper.LogDebug("EventProcessor for Client{clientId} received packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), ed.SystemProperties.SequenceNumber, ed.Body.Count);
-
                     }
-
-                    if (receivedEvents.Count > 0)
+                    else
                     {
-                        foreach (var evt in receivedEvents)
-                        {
-                            this.client.Process(evt);
-                        }
-                        receivedEvents.Clear();
+                        this.traceHelper.LogTrace("Client{clientId}.ch{index} no new packets for last {longPollingInterval}", Client.GetShortId(this.ClientId), index, longPollingInterval);
                     }
                 }
+            }
+            catch (OperationCanceledException) when (this.shutdownSource.IsCancellationRequested)
+            {
+                // normal during shutdown
+            }
+            catch (Exception exception)
+            {
+                this.traceHelper.LogError("Client{clientId}.ch{index} event processing exception: {exception}", Client.GetShortId(this.ClientId), index, exception);
+            }
+            finally
+            {
+                this.traceHelper.LogInformation("Client{clientId}.ch{index} event processing terminated", Client.GetShortId(this.ClientId), index);
+            }
+        }
+
+        async Task ClientProcessLoopAsync(ChannelReader<ClientEvent> channelReader)
+        {
+            try
+            {
+                while (!this.shutdownSource.IsCancellationRequested)
+                {
+                    var clientEvent = await channelReader.ReadAsync(this.shutdownSource.Token);
+                    this.client.Process(clientEvent);
+                }
+            }
+            catch(OperationCanceledException) when (this.shutdownSource.IsCancellationRequested)
+            {
+                // normal during shutdown
+            }
+            catch(Exception exception)
+            {
+                this.traceHelper.LogError("Client{clientId} event processing exception: {exception}", Client.GetShortId(this.ClientId), exception);
+            }
+            finally
+            {
+                this.traceHelper.LogInformation("Client{clientId} event processing terminated", Client.GetShortId(this.ClientId));
+            }
+        }
+
+        async Task<bool> ITaskHub.ExistsAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.ExistsAsync called");
+                bool result = await this.ExistsAsync();
+                this.traceHelper.LogDebug("ITaskHub.ExistsAsync returned {result}", result);
+                return result;
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.ExistsAsync failed with exception: {exception}", e);
+                throw;
+            }
+        }
+
+        async Task<bool> ITaskHub.CreateIfNotExistsAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.CreateIfNotExistsAsync called");
+                bool result = await this.CreateIfNotExistsAsync();
+                this.traceHelper.LogDebug("ITaskHub.CreateIfNotExistsAsync returned {result}", result);
+                return result;
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.CreateIfNotExistsAsync failed with exception: {exception}", e);
+                throw;
+            }
+        }
+
+        async Task ITaskHub.DeleteAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.DeleteAsync called");
+                await this.DeleteAsync();
+                this.traceHelper.LogDebug("ITaskHub.DeleteAsync returned");
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.DeleteAsync failed with exception: {exception}", e);
+                throw;
+            }
+        }
+
+        async Task ITaskHub.StartAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.StartAsync called");
+                await this.StartAsync();
+                this.traceHelper.LogDebug("ITaskHub.StartAsync returned");
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.StartAsync failed with exception: {exception}", e);
+                throw;
+            }
+        }
+
+        async Task ITaskHub.StopAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.StopAsync called");
+                await this.StopAsync();
+                this.traceHelper.LogDebug("ITaskHub.StopAsync returned");
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.StopAsync failed with exception: {exception}", e);
+                throw;
             }
         }
     }

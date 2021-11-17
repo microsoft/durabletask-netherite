@@ -43,6 +43,7 @@ namespace PerformanceTests.Sequence
             string content = JsonConvert.SerializeObject(input);
             await queue.CreateIfNotExistsAsync();
             await queue.AddMessageAsync(new CloudQueueMessage(content));
+            logger.LogWarning($"queue sequence {context.InstanceId} started.");
         }
 
         [Disable]
@@ -54,6 +55,8 @@ namespace PerformanceTests.Sequence
            ILogger logger)
         {
             Sequence.Input input = JsonConvert.DeserializeObject<Sequence.Input>(serialized);
+
+            logger.LogWarning($"queue sequence {input.InstanceId} step {input.Position} triggered.");
 
             input = Sequence.RunTask(input, logger, input.InstanceId);
 

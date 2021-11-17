@@ -74,11 +74,13 @@ namespace DurableTask.Netherite
             if (!effects.IsReplaying)
             {
                 this.Partition.EventTraceHelper.TraceInstanceUpdate(
-                    evt.WorkItemId,
+                    evt.EventIdString,
                     evt.State.OrchestrationInstance.InstanceId,
                     evt.State.OrchestrationInstance.ExecutionId,
+                    evt.State.OrchestrationStatus,
                     this.History.Count,
-                    evt.NewEvents, this.Episode);
+                    evt.NewEvents, 
+                    this.Episode);
 
                 // if present, we keep the work item so we can reuse the execution cursor
                 this.CachedOrchestrationWorkItem = evt.WorkItemForReuse;

@@ -29,7 +29,7 @@ namespace DurableTask.Netherite.AzureFunctions
         public NetheriteProvider(
             NetheriteOrchestrationService service,
             NetheriteOrchestrationServiceSettings settings)
-            : base("Netherite", service, service, settings.ResolvedStorageConnectionString)
+            : base("Netherite", service, service, settings.StorageConnectionName)
         {
             this.Service = service;
             this.Settings = settings;
@@ -232,10 +232,6 @@ namespace DurableTask.Netherite.AzureFunctions
                         scaleStatus.Vote = ScaleVote.None;
                         break;
                 }
-
-                this.scalingMonitor.Logger.LogInformation(
-                    "Netherite autoscaler recommends: {scaleRecommendation} from: {workerCount} because: {reason}",
-                    scaleStatus.Vote.ToString(), workerCount, recommendation.Reason);
 
                 return scaleStatus;
             }

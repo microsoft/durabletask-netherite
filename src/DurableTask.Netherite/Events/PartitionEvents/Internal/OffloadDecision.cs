@@ -15,15 +15,11 @@ namespace DurableTask.Netherite
         public DateTime Timestamp { get; set; }
 
         [IgnoreDataMember]
-        public uint DestinationPartitionId { get; set; }
+        public SortedDictionary<uint, List<(TaskMessage,string)>> ActivitiesToTransfer { get; set; }
 
         [IgnoreDataMember]
-        public List<(TaskMessage,string)> OffloadedActivities { get; set; }
-
-        public static string GetWorkItemId(uint partition, DateTime timestamp) => $"{partition:D2}F{timestamp:o}";
-
-        [IgnoreDataMember]
-        public override EventId EventId => EventId.MakePartitionInternalEventId(GetWorkItemId(this.PartitionId, this.Timestamp));
+        public override EventId EventId => 
+            EventId.MakePartitionInternalEventId($"{this.PartitionId:D2}F{this.Timestamp:o}");
 
         public override void DetermineEffects(EffectTracker effects)
         {

@@ -30,6 +30,9 @@ namespace DurableTask.Netherite.Faster
         void ICheckpointManager.CommitLogCheckpoint(Guid logToken, byte[] commitMetadata)
             => this.blobManager.CommitLogCheckpoint(logToken, commitMetadata, this.groupOrdinal);
 
+        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
+            => this.blobManager.CommitLogIncrementalCheckpoint(logToken, version, commitMetadata, deltaLog, this.groupOrdinal);
+
         IDevice ICheckpointManager.GetIndexDevice(Guid indexToken)
             => this.blobManager.GetIndexDevice(indexToken, this.groupOrdinal);
 
@@ -39,11 +42,14 @@ namespace DurableTask.Netherite.Faster
         IDevice ICheckpointManager.GetSnapshotObjectLogDevice(Guid token)
             => this.blobManager.GetSnapshotObjectLogDevice(token, this.groupOrdinal);
 
+        IDevice ICheckpointManager.GetDeltaLogDevice(Guid token)
+            => this.blobManager.GetDeltaLogDevice(token, this.groupOrdinal);
+
         byte[] ICheckpointManager.GetIndexCheckpointMetadata(Guid indexToken)
             => this.blobManager.GetIndexCheckpointMetadata(indexToken, this.groupOrdinal);
 
-        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken)
-            => this.blobManager.GetLogCheckpointMetadata(logToken, this.groupOrdinal);
+        byte[] ICheckpointManager.GetLogCheckpointMetadata(Guid logToken, DeltaLog deltaLog, bool scanDelta, long recoverTo)
+            => this.blobManager.GetLogCheckpointMetadata(logToken, this.groupOrdinal, deltaLog, scanDelta, recoverTo);
 
         IEnumerable<Guid> ICheckpointManager.GetIndexCheckpointTokens()
         {
@@ -57,7 +63,12 @@ namespace DurableTask.Netherite.Faster
             yield return logToken;
         }
 
+        public void Purge(Guid guid) { /* TODO */ }
+
         public void PurgeAll() { /* TODO */ }
+
+        public void OnRecovery(Guid indexToken, Guid logToken)
+            => this.blobManager.OnRecovery(indexToken, logToken);
 
         public void Dispose() { }
     }

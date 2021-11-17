@@ -16,11 +16,8 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey ReadTarget => TrackedObjectKey.History(this.InstanceId);
 
-        protected override void ExtraTraceInformation(StringBuilder s)
-        {
-            s.Append(' ');
-            s.Append(this.InstanceId);
-        }
+        [IgnoreDataMember]
+        public override string TracedInstanceId => this.InstanceId;
 
         public override void OnReadComplete(TrackedObject target, Partition partition)
         {

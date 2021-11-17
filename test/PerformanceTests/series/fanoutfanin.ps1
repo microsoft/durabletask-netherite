@@ -1,10 +1,10 @@
 ﻿#!/usr/bin/pwsh
 param (
-	$ResultsFile="./results.csv",
+	$ResultsFile="./fanoutfanin.csv",
 	$PrintColumnNames=$true,
-    $RunEP1=$false,
+    $RunEP1=$true,
 	$RunEP2=$true,
-	$RunEP3=$false,
+	$RunEP3=$true,
 	$DelayAfterDelete=300,
 	$tu=20
 )
@@ -19,17 +19,21 @@ if ($PrintColumnNames)
 
 if ($RunEP1)
 {
-	./series/runmany -Tag azst-12    -HubName A11x -Plan EP1 -NumNodes 1 -WaitForDeploy 120 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 5 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
- 	./series/runmany -Tag neth-12-ls -HubName L11x -Plan EP1 -NumNodes 1 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 25 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
+    # EP1 apps appear to not be immediately ready for deployment after they are created. So we create it first and then wait a minute.
+    . ./scripts/deploy.ps1 -Plan EP1 -MinNodes 1 -MaxNodes 1 -DeployCode $false
+	Start-Sleep -Seconds 60
 
-	./series/runmany -Tag azst-12    -HubName A12x -Plan EP1 -NumNodes 4 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 10 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runmany -Tag neth-12-ls -HubName L12x -Plan EP1 -NumNodes 4 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 50 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runmany -Tag azst-12    -HubName A11 -Plan EP1 -NumNodes 1 -WaitForDeploy 120 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 5 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
+ 	./series/runmany -Tag neth-loc   -HubName L11 -Plan EP1 -NumNodes 1 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 15 -PortionSize 0 -DelayAfterRun 120 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
-	./series/runmany -Tag azst-12    -HubName A13x -Plan EP1 -NumNodes 8 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 20 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runmany -Tag neth-12-ls -HubName L13x -Plan EP1 -NumNodes 8 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 100 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runmany -Tag azst-12    -HubName A12 -Plan EP1 -NumNodes 4 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 10 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
+	./series/runmany -Tag neth-loc   -HubName L12 -Plan EP1 -NumNodes 4 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 50 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
-	./series/runmany -Tag azst-12    -HubName A14x -Plan EP1 -NumNodes 12 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 40 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runmany -Tag neth-12-ls -HubName L14x -Plan EP1 -NumNodes 12 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 200 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
+	./series/runmany -Tag azst-12    -HubName A13 -Plan EP1 -NumNodes 8 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 20 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
+	./series/runmany -Tag neth-loc       -HubName L13 -Plan EP1 -NumNodes 8 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 100 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu
+
+	./series/runmany -Tag azst-12    -HubName A14 -Plan EP1 -NumNodes 12 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 40 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
+	./series/runmany -Tag neth-loc       -HubName L14 -Plan EP1 -NumNodes 12 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 200 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
 
 	Start-Sleep -Seconds $DelayAfterDelete
 }
@@ -37,16 +41,16 @@ if ($RunEP1)
 if ($RunEP2)
 {
 	./series/runmany -Tag azst-12    -HubName A21 -Plan EP2 -NumNodes 1 -WaitForDeploy 120 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 10 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
- 	./series/runmany -Tag neth-12-ls -HubName L21 -Plan EP2 -NumNodes 1 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 50 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
+ 	./series/runmany -Tag neth-loc       -HubName L21 -Plan EP2 -NumNodes 1 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 50 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 	./series/runmany -Tag azst-12    -HubName A22 -Plan EP2 -NumNodes 4 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 20 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runmany -Tag neth-12-ls -HubName L22 -Plan EP2 -NumNodes 4 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 100 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runmany -Tag neth-loc       -HubName L22 -Plan EP2 -NumNodes 4 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 100 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 	./series/runmany -Tag azst-12    -HubName A23 -Plan EP2 -NumNodes 8 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 30 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runmany -Tag neth-12-ls -HubName L23 -Plan EP2 -NumNodes 8 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 200 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runmany -Tag neth-loc       -HubName L23 -Plan EP2 -NumNodes 8 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 200 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 	./series/runmany -Tag azst-12    -HubName A24 -Plan EP2 -NumNodes 12 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 50 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runmany -Tag neth-12-ls -HubName L24 -Plan EP2 -NumNodes 12 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 300 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
+	./series/runmany -Tag neth-loc       -HubName L24 -Plan EP2 -NumNodes 12 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 300 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
 
 	Start-Sleep -Seconds $DelayAfterDelete
 }
@@ -54,16 +58,16 @@ if ($RunEP2)
 if ($RunEP3)
 {
 	./series/runmany -Tag azst-12    -HubName A31 -Plan EP3 -NumNodes 1 -WaitForDeploy 120 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 25 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
- 	./series/runmany -Tag neth-12-ls -HubName L31 -Plan EP3 -NumNodes 1 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 100 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
+ 	./series/runmany -Tag neth-loc       -HubName L31 -Plan EP3 -NumNodes 1 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 100 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 	./series/runmany -Tag azst-12    -HubName A32 -Plan EP3 -NumNodes 4 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 50 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runmany -Tag neth-12-ls -HubName L32 -Plan EP3 -NumNodes 4 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 200 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runmany -Tag neth-loc       -HubName L32 -Plan EP3 -NumNodes 4 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 200 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 	./series/runmany -Tag azst-12    -HubName A33 -Plan EP3 -NumNodes 8 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 100 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runmany -Tag neth-12-ls -HubName L33 -Plan EP3 -NumNodes 8 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 400 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
+	./series/runmany -Tag neth-loc       -HubName L33 -Plan EP3 -NumNodes 8 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 400 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 	./series/runmany -Tag azst-12    -HubName A34 -Plan EP3 -NumNodes 12 -WaitForDeploy 50 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 200 -PortionSize 0 -DelayAfterRun 200 -ResultsFile $ResultsFile -ThroughputUnits 1
-	./series/runmany -Tag neth-12-ls -HubName L34 -Plan EP3 -NumNodes 12 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 1000 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
+	./series/runmany -Tag neth-loc       -HubName L34 -Plan EP3 -NumNodes 12 -WaitForDeploy 80 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 1000 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
 
 	Start-Sleep -Seconds $DelayAfterDelete
 }

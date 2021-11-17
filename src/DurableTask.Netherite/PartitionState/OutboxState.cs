@@ -135,7 +135,7 @@ namespace DurableTask.Netherite
 
                 if (++this.numAcks == this.OutgoingMessages.Count)
                 {
-                    this.Partition.SubmitInternalEvent(new SendConfirmed()
+                    this.Partition.SubmitEvent(new SendConfirmed()
                     {
                         PartitionId = this.Partition.PartitionId,
                         Position = Position,
@@ -159,8 +159,9 @@ namespace DurableTask.Netherite
             {
                 PartitionId = evt.OriginPartitionId,
                 Result = evt.Response,
+                Timestamp = evt.Timestamp,
+                LatencyMs = evt.LatencyMs,
                 ActivityId = evt.ActivityId,
-                ActivitiesQueueSize = evt.ReportedLoad,
             });
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
@@ -243,12 +244,30 @@ namespace DurableTask.Netherite
         public void Process(OffloadDecision evt, EffectTracker effects)
         {
             var batch = new Batch();
-            batch.OutgoingMessages.Add(new ActivityOffloadReceived()
+
+            foreach(var kvp in evt.ActivitiesToTransfer)
             {
-                PartitionId = evt.DestinationPartitionId,
-                OffloadedActivities = evt.OffloadedActivities,
+                batch.OutgoingMessages.Add(new ActivityTransferReceived()
+                {
+                    PartitionId=kvp.Key,
+                    TransferredActivities = kvp.Value,
+                    Timestamp = evt.Timestamp,
+                });
+            }
+
+            this.SendBatchOnceEventIsPersisted(evt, effects, batch);
+        }
+
+        public void Process(TransferCommandReceived evt, EffectTracker effects)
+        {
+            var batch = new Batch();
+            batch.OutgoingMessages.Add(new ActivityTransferReceived()
+            {
+                PartitionId = evt.TransferDestination,
+                TransferredActivities = evt.TransferredActivities,
                 Timestamp = evt.Timestamp,
             });
+
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
     }
