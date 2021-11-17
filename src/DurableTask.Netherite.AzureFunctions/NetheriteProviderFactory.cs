@@ -48,7 +48,7 @@ namespace DurableTask.Netherite.AzureFunctions
             IHostIdProvider hostIdProvider,
             INameResolver nameResolver,
 #pragma warning disable CS0612 // Type or member is obsolete
-            IPlatformInformationService platformInfo)
+            IPlatformInformation platformInfo)
 #pragma warning restore CS0612 // Type or member is obsolete
         {
             this.options = extensionOptions?.Value ?? throw new ArgumentNullException(nameof(extensionOptions));
@@ -56,7 +56,7 @@ namespace DurableTask.Netherite.AzureFunctions
             this.nameResolver = nameResolver ?? throw new ArgumentNullException(nameof(nameResolver));
 
             this.hostIdProvider = hostIdProvider;
-            this.inConsumption = platformInfo.InConsumption();
+            this.inConsumption = platformInfo.IsInConsumptionPlan();
 
             bool ReadBooleanSetting(string name) => this.options.StorageProvider.TryGetValue(name, out object objValue)
                 && objValue is string stringValue && bool.TryParse(stringValue, out bool boolValue) && boolValue;
