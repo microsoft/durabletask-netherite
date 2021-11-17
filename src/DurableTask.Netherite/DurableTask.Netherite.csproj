@@ -25,7 +25,7 @@
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
   <PropertyGroup>
     <MajorVersion>0</MajorVersion>
-	<MinorVersion>5</MinorVersion>
+	<MinorVersion>6</MinorVersion>
 	<PatchVersion>0</PatchVersion>
 	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
     <VersionSuffix>alpha</VersionSuffix>
