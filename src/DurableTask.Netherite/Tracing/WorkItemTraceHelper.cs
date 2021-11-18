@@ -16,9 +16,9 @@ namespace DurableTask.Netherite
     {
         readonly ILogger logger;
         readonly LogLevel logLevelLimit;
-        readonly string account;
         readonly string taskHub;
         readonly EtwSource etw;
+        public string StorageAccountName { private get; set; } = string.Empty;
 
         public static string FormatMessageId(TaskMessage message, string workItem)
             => $"{workItem}M{message.SequenceNumber}";
@@ -74,11 +74,10 @@ namespace DurableTask.Netherite
         }
 
 
-        public WorkItemTraceHelper(ILoggerFactory loggerFactory, LogLevel logLevelLimit, string account, string taskHub)
+        public WorkItemTraceHelper(ILoggerFactory loggerFactory, LogLevel logLevelLimit, string taskHub)
         {
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.WorkItems");
             this.logLevelLimit = logLevelLimit;
-            this.account = account;
             this.taskHub = taskHub;
             this.etw = EtwSource.Log.IsEnabled() ? EtwSource.Log : null;
         }
@@ -93,7 +92,7 @@ namespace DurableTask.Netherite
                         partitionId, workItemType, workItemId, instanceId, executionType, consumedMessageIds);
                 }
 
-                this.etw?.WorkItemQueued(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, executionType, consumedMessageIds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.WorkItemQueued(this.StorageAccountName, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, executionType, consumedMessageIds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -107,7 +106,7 @@ namespace DurableTask.Netherite
                         partitionId, workItemType, workItemId, instanceId, executionType, consumedMessageIds);
                 }
 
-                this.etw?.WorkItemStarted(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, executionType, consumedMessageIds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.WorkItemStarted(this.StorageAccountName, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, executionType, consumedMessageIds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -124,7 +123,7 @@ namespace DurableTask.Netherite
                         partitionId, prefix, workItemType, workItemId, details, instanceId, replacedBy);
                 }
 
-                this.etw?.WorkItemDiscarded(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, details, replacedBy ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.WorkItemDiscarded(this.StorageAccountName, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, details, replacedBy ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -138,7 +137,7 @@ namespace DurableTask.Netherite
                         partitionId, workItemType, workItemId, instanceId, status, latencyMs, producedMessages);
                 }
 
-                this.etw?.WorkItemCompleted(this.account, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, status.ToString(), latencyMs, producedMessages, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.WorkItemCompleted(this.StorageAccountName, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, status.ToString(), latencyMs, producedMessages, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -158,7 +157,7 @@ namespace DurableTask.Netherite
                         partitionId, prefix, messageId, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId, queuePosition);
                 }
 
-                this.etw?.TaskMessageReceived(this.account, this.taskHub, (int)partitionId, commitLogPosition, messageId, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId ?? "", queuePosition, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.TaskMessageReceived(this.StorageAccountName, this.taskHub, (int)partitionId, commitLogPosition, messageId, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId ?? "", queuePosition, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -166,7 +165,6 @@ namespace DurableTask.Netherite
         {
             if (this.logLevelLimit <= LogLevel.Trace)
             {
-
                 string messageId = FormatMessageId(message, workItemId);
                 string persistenceDelayMs = persistenceDelay.HasValue ? persistenceDelay.Value.ToString("F2") : string.Empty;
                 string sendDelayMs = sendDelay.HasValue ? sendDelay.Value.ToString("F2") : string.Empty;
@@ -180,7 +178,7 @@ namespace DurableTask.Netherite
                         partitionId, prefix, messageId, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId, persistenceDelayMs, sendDelayMs);
                 }
 
-                this.etw?.TaskMessageSent(this.account, this.taskHub, (int)partitionId, messageId, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId ?? "", persistenceDelayMs, sendDelayMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.TaskMessageSent(this.StorageAccountName, this.taskHub, (int)partitionId, messageId, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId ?? "", persistenceDelayMs, sendDelayMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
@@ -199,7 +197,7 @@ namespace DurableTask.Netherite
                         partitionId, prefix, messageId, details, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId);
                 }
 
-                this.etw?.TaskMessageDiscarded(this.account, this.taskHub, (int)partitionId, messageId, details, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.TaskMessageDiscarded(this.StorageAccountName, this.taskHub, (int)partitionId, messageId, details, message.Event.EventType.ToString(), TraceUtils.GetTaskEventId(message.Event), message.OrchestrationInstance.InstanceId, message.OrchestrationInstance.ExecutionId ?? "", TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
     }

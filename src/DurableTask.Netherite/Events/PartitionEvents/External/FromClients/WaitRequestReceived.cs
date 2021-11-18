@@ -16,7 +16,11 @@ namespace DurableTask.Netherite
         [DataMember]
         public string ExecutionId { get; set; }
 
+        [IgnoreDataMember]
         public override TrackedObjectKey Target => TrackedObjectKey.Instance(this.InstanceId);
+
+        [IgnoreDataMember]
+        public override string TracedInstanceId => this.InstanceId;
 
         protected override void ExtraTraceInformation(StringBuilder s)
         {

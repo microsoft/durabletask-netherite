@@ -6,7 +6,7 @@ param (
 	$RunEP2=$true,
 	$RunEP3=$true,
 	$DelayAfterDelete=200,
-	$tu=4
+	$tu=5
 )
 
 # read the settings that are common to all scripts

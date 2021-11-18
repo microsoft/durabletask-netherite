@@ -1,7 +1,10 @@
 #!/usr/bin/pwsh
 
 # read the parameters
-. ./settings.ps1
+. ../scripts/settings.ps1
+
+# Build app
+dotnet build
 
 # enter the directory with the debug binaries
 if (-not (Test-Path -Path ./bin/Debug/netcoreapp3.1/bin)) {

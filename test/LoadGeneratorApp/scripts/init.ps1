@@ -1,7 +1,10 @@
 #!/usr/bin/pwsh
+param (
+    $Settings="./settings.ps1"
+)
 
-# import the parameter settings from the file in the same directory
-. ./settings.ps1
+# read the settings that are common to all scripts
+. $Settings
  
 if ((az group exists --name $groupName) -ne "true")
 {

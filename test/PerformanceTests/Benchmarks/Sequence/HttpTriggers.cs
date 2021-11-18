@@ -31,7 +31,7 @@ namespace PerformanceTests.Sequence
             ILogger log)
         {
             TimeSpan timeout = TimeSpan.FromSeconds(200);
-            string orchestrationInstanceId = await client.StartNewAsync(nameof(BlobSequence), null, new Sequence.Input()
+            string orchestrationInstanceId = await client.StartNewAsync(nameof(OrchestratedSequence), null, new Sequence.Input()
             {
                 Length = 10,
                 WorkExponent = 0,
@@ -42,9 +42,9 @@ namespace PerformanceTests.Sequence
         }
 
         [Disable]
-        [FunctionName(nameof(RunTriggerSequence))]
-        public static async Task<IActionResult> RunTriggerSequence(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "RunTriggerSequence")] HttpRequest req,
+        [FunctionName(nameof(RunBlobSequence))]
+        public static async Task<IActionResult> RunBlobSequence(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "RunBlobSequence")] HttpRequest req,
             [DurableClient] IDurableClient client,
             ILogger log)
         {

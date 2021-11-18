@@ -21,6 +21,8 @@ namespace DurableTask.Netherite.Emulated
         readonly uint numberPartitions;
         readonly ILogger logger;
 
+        Task startupTask;
+
         Dictionary<Guid, IMemoryQueue<ClientEvent>> clientQueues;
         IMemoryQueue<PartitionEvent>[] partitionQueues;
         IMemoryQueue<LoadMonitorEvent> loadMonitorQueue;
@@ -90,7 +92,7 @@ namespace DurableTask.Netherite.Emulated
 
             // we finish the (possibly lengthy) partition loading asynchronously so it is possible to receive 
             // stop signals before partitions are fully recovered
-            var backgroundStartupTask = this.FinishStartup(this.shutdownTokenSource.Token, clientQueue);
+            this.startupTask = this.FinishStartup(this.shutdownTokenSource.Token, clientQueue);
 
             return Task.CompletedTask;
         }
@@ -132,6 +134,15 @@ namespace DurableTask.Netherite.Emulated
             {
                 this.shutdownTokenSource.Cancel();
                 this.shutdownTokenSource = null;
+
+                try
+                {
+                    await (this.startupTask ?? Task.CompletedTask);
+                }
+                catch(OperationCanceledException)
+                {
+                    // normal if shut down during startup
+                }
 
                 await this.client.StopAsync().ConfigureAwait(false);
 

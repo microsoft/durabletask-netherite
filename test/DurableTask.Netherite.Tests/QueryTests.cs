@@ -12,7 +12,7 @@ namespace DurableTask.Netherite.Tests
     using System.Linq;
     using System.Collections.Generic;
 
-    using TestTraceListener = DurableTask.Netherite.Tests.TestFixture.TestTraceListener;
+    using TestTraceListener = DurableTask.Netherite.Tests.SingleHostFixture.TestTraceListener;
     using Orchestrations = DurableTask.Netherite.Tests.ScenarioTests.Orchestrations;
     using Microsoft.Extensions.Logging;
     using DurableTask.Netherite;
@@ -20,12 +20,12 @@ namespace DurableTask.Netherite.Tests
 
     // These tests are copied from AzureStorageScenarioTests
     [Collection("NetheriteTests")]
-    public partial class QueryTests : IClassFixture<TestFixture>, IDisposable
+    public partial class QueryTests : IClassFixture<SingleHostFixture>, IDisposable
     {
-        readonly TestFixture fixture;
+        readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
 
-        public QueryTests(TestFixture fixture, ITestOutputHelper outputHelper)
+        public QueryTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
             this.fixture = fixture;
             this.host = fixture.Host;
