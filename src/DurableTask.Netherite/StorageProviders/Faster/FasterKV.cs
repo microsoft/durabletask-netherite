@@ -685,27 +685,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     int count = this.reader.ReadInt32();
                     byte[] bytes = this.reader.ReadBytes(count);
-                    var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
-                    //this.traceHelper.TraceProgress($"Deserialized TrackedObject {trackedObject.Key} size={bytes.Length}");
-                    //if (trackedObject.Key.IsSingleton)
-                    //{
-                    //    this.storeStats.A++;
-                    //    this.storeStats.B += bytes.Length;
-                    //}
-                    //else if (trackedObject is InstanceState i)
-                    //{
-                    //    this.storeStats.C++;
-                    //    this.storeStats.D += bytes.Length;
-                    //    this.storeStats.U.Add(i.InstanceId);
-                    //}
-                    //else if (trackedObject is HistoryState h)
-                    //{
-                    //    this.storeStats.E++;
-                    //    this.storeStats.F += bytes.Length;
-                    //    this.storeStats.UU.Add(h.InstanceId);
-                    //}
-                    obj = new Value { Val = trackedObject };
-                    this.storeStats.Deserialize++;
+                    obj = new Value { Val = bytes };
                 }
 
                 public override void Serialize(ref Value obj)
@@ -750,9 +730,14 @@ namespace DurableTask.Netherite.Faster
 
             public bool InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output)
             {
-                this.partition.Assert(value.Val is TrackedObject);
-                TrackedObject trackedObject = value;
-                trackedObject.SerializationCache = null; // cache is invalidated
+                if (! (value.Val is TrackedObject trackedObject))
+                {
+                    var bytes = (byte[])value.Val;
+                    this.partition.Assert(bytes != null);
+                    trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                    this.stats.Deserialize++;
+                }
+                trackedObject.SerializationCache = null; // cache is invalidated because of update
                 trackedObject.Partition = this.partition;
                 tracker.ProcessEffectOn(trackedObject);
                 this.stats.Modify++;
@@ -763,18 +748,28 @@ namespace DurableTask.Netherite.Faster
 
             public void CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref TrackedObject output)
             {
-                this.stats.Copy++;
 
-                // replace old object with its serialized snapshot
-                this.partition.Assert(oldValue.Val is TrackedObject);
-                TrackedObject trackedObject = oldValue;
-                DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
-                this.stats.Serialize++;
-                oldValue.Val = trackedObject.SerializationCache;
+                if (oldValue.Val is TrackedObject trackedObject)
+                {
+                    // replace old object with its serialized snapshot
+                    DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
+                    this.stats.Serialize++;
+                    oldValue.Val = trackedObject.SerializationCache;
 
-                // keep object as the new object, and apply effect
-                newValue.Val = trackedObject;
-                trackedObject.SerializationCache = null; // cache is invalidated
+                    // keep object as the new object
+                    newValue.Val = trackedObject;
+                    trackedObject.SerializationCache = null; // cache is invalidated
+                    this.stats.Copy++;
+                }
+                else
+                {
+                    // create new object by deserializing old object
+                    var bytes = (byte[]) oldValue.Val;
+                    this.partition.Assert(bytes != null);
+                    trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                    this.stats.Deserialize++;
+                }
+
                 trackedObject.Partition = this.partition;
                 tracker.ProcessEffectOn(trackedObject);
                 this.stats.Modify++;
@@ -788,28 +783,22 @@ namespace DurableTask.Netherite.Faster
                 }
                 else
                 {
-                    var trackedObject = value.Val as TrackedObject;
-                    this.partition.Assert(trackedObject != null);
+                    if (!(value.Val is TrackedObject trackedObject))
+                    {
+                        var bytes = (byte[])value.Val;
+                        this.partition.Assert(bytes != null);
+                        trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                        this.stats.Deserialize++;
+                    }
+
                     trackedObject.Partition = this.partition;
-                    dst = value;
+                    dst = trackedObject;
                     this.stats.Read++;
                 }
             }
-
             public void ConcurrentReader(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject dst)
             {
-                if (tracker == null)
-                {
-                    return; // this is a prefetch, so we don't actually care about the value
-                }
-                else
-                {
-                    var trackedObject = value.Val as TrackedObject;
-                    this.partition.Assert(trackedObject != null);
-                    trackedObject.Partition = this.partition;
-                    dst = value;
-                    this.stats.Read++;
-                }
+                this.SingleReader(ref key, ref tracker, ref value, ref dst);
             }
 
             public void SingleWriter(ref Key key, ref Value src, ref Value dst)
