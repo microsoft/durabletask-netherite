@@ -36,9 +36,11 @@ namespace DurableTask.Netherite.Faster
 
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
+            var logsettings = blobManager.StoreLogSettings(partition.Settings.UseSeparatePageBlobStorage, partition.NumberPartitions());
+
             this.fht = new FasterKV<Key, Value>(
                 BlobManager.HashTableSize,
-                blobManager.StoreLogSettings(partition.Settings.UseSeparatePageBlobStorage, partition.NumberPartitions()),
+                logsettings,
                 blobManager.StoreCheckpointSettings,
                 new SerializerSettings<Key, Value>
                 {
