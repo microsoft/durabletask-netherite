@@ -89,6 +89,114 @@ namespace DurableTask.Netherite.Tests
                 await service.StopAsync();
             }
         }
+
+        /// <summary>
+        /// Create a partition and then restore it.
+        /// </summary>
+        [Fact]
+        public async Task Locality()
+        {
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            settings.ResolvedTransportConnectionString = "MemoryF";
+            settings.PartitionCount = 1;
+            settings.FasterTuningParameters = new Faster.BlobManager.FasterTuningParameters()
+            {  
+                StoreLogPageSizeBits = 10,       // 1 KB
+                StoreLogMemorySizeBits = 14,     // 16 KB, which amounts to about 666 entries
+            };
+
+            // don't take any extra checkpoints
+            settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 *1024 * 1024;
+            settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
+            settings.IdleCheckpointFrequencyMs = (long) TimeSpan.FromDays(1).TotalMilliseconds;
+
+            //settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
+            settings.HubName = $"{TestConstants.TaskHubName}-Locality";
+
+            var orchestrationType = typeof(ScenarioTests.Orchestrations.Hello5);
+            var activityType = typeof(ScenarioTests.Activities.Hello);
+            string InstanceId(int i) => $"Orch{i:D5}";
+            int OrchestrationCount = 500;
+
+            {
+                // start the service 
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                await service.CreateAsync();
+                await service.StartAsync();
+                var host = (TransportAbstraction.IHost)service;
+                Assert.Equal(1u, service.NumberPartitions);
+                var worker = new TaskHubWorker(service);
+                var client = new TaskHubClient(service);
+                worker.AddTaskOrchestrations(orchestrationType);
+                worker.AddTaskActivities(activityType);
+                await worker.StartAsync();
+
+
+                // start all orchestrations
+                {
+                    var tasks = new Task[OrchestrationCount];
+                    for (int i = 0; i < OrchestrationCount; i++)
+                        tasks[i] = client.CreateOrchestrationInstanceAsync(orchestrationType, InstanceId(i), null);
+                    await Task.WhenAll(tasks);
+                }
+
+                // wait for all orchestrations
+                {
+                    var tasks = new Task[OrchestrationCount];
+                    for (int i = 0; i < OrchestrationCount; i++)
+                        tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
+                    await Task.WhenAll(tasks);
+                }
+
+                // stop the service
+                await service.StopAsync();
+            }
+        }
+
+        /// <summary>
+        /// Create a partition and then restore it.
+        /// </summary>
+        [Fact]
+        public async Task Locality2()
+        {
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            settings.ResolvedTransportConnectionString = "MemoryF";
+            settings.PartitionCount = 1;
+
+            // don't take any extra checkpoints
+            settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 * 1024 * 1024;
+            settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
+            settings.IdleCheckpointFrequencyMs = (long)TimeSpan.FromDays(1).TotalMilliseconds;
+
+            //settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
+            settings.HubName = $"{TestConstants.TaskHubName}-Locality";
+
+            var orchestrationType = typeof(ScenarioTests.Orchestrations.Hello5);
+            var activityType = typeof(ScenarioTests.Activities.Hello);
+            string InstanceId(int i) => $"Orch{i:D5}";
+            int OrchestrationCount = 1000;
+
+            {
+                // start the service 
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                await service.CreateAsync();
+                await service.StartAsync();
+                var host = (TransportAbstraction.IHost)service;
+                Assert.Equal(1u, service.NumberPartitions);
+                var client = new TaskHubClient(service);
+
+                // wait for all orchestrations
+                {
+                    var tasks = new Task[OrchestrationCount];
+                    for (int i = 0; i < OrchestrationCount; i++)
+                        tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
+                    await Task.WhenAll(tasks);
+                }
+
+                // stop the service
+                await service.StopAsync();
+            }
+        }
     }
 
 }

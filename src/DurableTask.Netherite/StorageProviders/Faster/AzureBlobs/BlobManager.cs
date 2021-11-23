@@ -70,36 +70,47 @@ namespace DurableTask.Netherite.Faster
         internal const long HashTableSize = 1L << 14; // 16 k buckets, 1 GB
         //internal const long HashTableSize = 1L << 14; // 8 M buckets, 512 GB
 
-        public FasterLogSettings EventLogSettings(bool useSeparatePageBlobStorage) => new FasterLogSettings
+        public class FasterTuningParameters
+        {
+            public int? EventLogPageSizeBits;
+            public int? EventLogSegmentSizeBits;
+            public int? EventLogMemorySizeBits;
+            public int? StoreLogPageSizeBits;
+            public int? StoreLogSegmentSizeBits;
+            public int? StoreLogMemorySizeBits;
+            public double? StoreLogMutableFraction;
+        }
+
+        public FasterLogSettings GetDefaultEventLogSettings(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters) => new FasterLogSettings
         {
             LogDevice = this.EventLogDevice,
             LogCommitManager = this.UseLocalFiles
                 ? new LocalLogCommitManager($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{CommitBlobName}")
                 : (ILogCommitManager)this,
-            PageSizeBits = 21, // 2MB
-            SegmentSizeBits =
-                useSeparatePageBlobStorage ? 35  // 32 GB
-                                           : 30, // 1 GB
-            MemorySizeBits = 22, // 2MB
+            PageSizeBits = tuningParameters?.EventLogPageSizeBits ?? 21, // 2MB
+            SegmentSizeBits = tuningParameters?.EventLogSegmentSizeBits ??
+                (useSeparatePageBlobStorage ? 35  // 32 GB
+                                            : 30), // 1 GB
+            MemorySizeBits = tuningParameters?.EventLogMemorySizeBits ?? 22, // 2MB
         };
 
-        public LogSettings StoreLogSettings(bool useSeparatePageBlobStorage, uint numPartitions) => new LogSettings
+        public LogSettings GetDefaultStoreLogSettings(bool useSeparatePageBlobStorage, uint numPartitions, FasterTuningParameters tuningParameters) => new LogSettings
         {
             LogDevice = this.HybridLogDevice,
             ObjectLogDevice = this.ObjectLogDevice,
-            PageSizeBits = 17, // 128kB
-            MutableFraction = 0.9,
-            SegmentSizeBits =
-                useSeparatePageBlobStorage ? 35 // 32 GB
-                                           : 32, // 4 GB
+            PageSizeBits = tuningParameters?.StoreLogPageSizeBits ?? 17, // 128kB
+            MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
+            SegmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ??
+                (useSeparatePageBlobStorage ? 35   // 32 GB
+                                            : 32), // 4 GB
             CopyReadsToTail = CopyReadsToTail.FromReadOnly,
-            MemorySizeBits =
-                (numPartitions <= 1) ? 25 : // 32MB
+            MemorySizeBits = tuningParameters?.StoreLogMemorySizeBits ?? 
+               ((numPartitions <= 1) ? 25 : // 32MB
                 (numPartitions <= 2) ? 24 : // 16MB
                 (numPartitions <= 4) ? 23 : // 8MB
                 (numPartitions <= 8) ? 22 : // 4MB
                 (numPartitions <= 16) ? 21 : // 2MB
-                                        20, // 1MB         
+                                        20), // 1MB         
         };
 
         static readonly int[] StorageFormatVersion = new int[] {

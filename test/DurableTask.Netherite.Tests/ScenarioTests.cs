@@ -711,6 +711,23 @@ namespace DurableTask.Netherite.Tests
                 }
             }
 
+            [KnownType(typeof(Activities.Hello))]
+            internal class Hello5 : TaskOrchestration<List<string>, string>
+            {
+                public override async Task<List<string>> RunTask(OrchestrationContext context, string input)
+                {
+                    var outputs = new List<string>
+                    {
+                        await context.ScheduleTask<string>(typeof(Activities.Hello), "Tokyo"),
+                        await context.ScheduleTask<string>(typeof(Activities.Hello), "Seattle"),
+                        await context.ScheduleTask<string>(typeof(Activities.Hello), "London"),
+                        await context.ScheduleTask<string>(typeof(Activities.Hello), "Amsterdam"),
+                        await context.ScheduleTask<string>(typeof(Activities.Hello), "Mumbai")
+                    };
+                    return outputs;
+                }
+            }
+
             [KnownType(typeof(Activities.HelloFailActivity))]
             internal class SayHelloWithActivityFail : TaskOrchestration<string, string>
             {
@@ -1395,7 +1412,7 @@ namespace DurableTask.Netherite.Tests
             }
         }
 
-        static class Activities
+        public static class Activities
         {
             internal class HelloFailActivity : TaskActivity<string, string>
             {
