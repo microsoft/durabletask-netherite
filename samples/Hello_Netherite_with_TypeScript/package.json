@@ -12,7 +12,7 @@
     "prune-prod": "npm prune --production"
   },
   "dependencies": {
-    "durable-functions": "^1.5.2"
+    "durable-functions": "^1.5.3"
   },
   "devDependencies": {
     "@azure/functions": "^1.2.3",
