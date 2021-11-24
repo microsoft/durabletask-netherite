@@ -101,7 +101,7 @@ namespace DurableTask.Netherite.Tests
         {
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             settings.PartitionCount = 1;
-            settings.ResolvedTransportConnectionString = "MemoryF";
+            settings.ResolvedTransportConnectionString = "MemoryF"; // don't bother with EventHubs for this test
 
             // use a fresh hubname on every run
             settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
@@ -111,7 +111,7 @@ namespace DurableTask.Netherite.Tests
             settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
             settings.IdleCheckpointFrequencyMs = (long)TimeSpan.FromDays(1).TotalMilliseconds;
 
-            // set the memory size very small so we can force castouts
+            // set the memory size very small so we can force evictions
             settings.FasterTuningParameters = new Faster.BlobManager.FasterTuningParameters()
             {
                 StoreLogPageSizeBits = 10,       // 1 KB

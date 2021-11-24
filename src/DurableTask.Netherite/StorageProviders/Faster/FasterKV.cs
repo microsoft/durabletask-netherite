@@ -719,7 +719,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public class Functions : IAdvancedFunctions<Key, Value, EffectTracker, TrackedObject, object>
+        public class Functions : IFunctions<Key, Value, EffectTracker, TrackedObject, object>
         {
             readonly Partition partition;
             readonly StoreStatistics stats;
