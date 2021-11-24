@@ -21,7 +21,7 @@ namespace DurableTask.Netherite.Tests
         readonly TestTraceListener traceListener;
         readonly ILoggerFactory loggerFactory;
         readonly XunitLoggerProvider provider;
-
+        ITestOutputHelper output;
 
         public FasterPartitionTests(ITestOutputHelper output)
         {
@@ -32,12 +32,14 @@ namespace DurableTask.Netherite.Tests
             Trace.Listeners.Add(this.traceListener);
             this.provider.Output = output;
             this.traceListener.Output = output;
+            this.output = output;
         }
 
         public void Dispose()
         {
             this.provider.Output = null;
             this.traceListener.Output = null;
+            this.output = null;
             Trace.Listeners.Remove(this.traceListener);
         }
 
@@ -97,6 +99,8 @@ namespace DurableTask.Netherite.Tests
         public async Task Locality()
         {
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            var cacheDebugger = new Faster.CacheDebugger();
+
             settings.ResolvedTransportConnectionString = "MemoryF";
             settings.PartitionCount = 1;
             settings.FasterTuningParameters = new Faster.BlobManager.FasterTuningParameters()
@@ -104,6 +108,7 @@ namespace DurableTask.Netherite.Tests
                 StoreLogPageSizeBits = 10,       // 1 KB
                 StoreLogMemorySizeBits = 14,     // 16 KB, which amounts to about 666 entries
             };
+            settings.CacheDebugger = cacheDebugger;
 
             // don't take any extra checkpoints
             settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 *1024 * 1024;
@@ -142,10 +147,28 @@ namespace DurableTask.Netherite.Tests
 
                 // wait for all orchestrations
                 {
+
+                    async Task WaitFor(int i)
+                    {
+                        try
+                        {
+                            await client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
+                        }
+                        catch (Exception e)
+                        {
+                            this.output.WriteLine($"Orchestration {InstanceId(i)} failed with {e.GetType()}: {e.Message}");
+                        }
+                    }
+
                     var tasks = new Task[OrchestrationCount];
                     for (int i = 0; i < OrchestrationCount; i++)
-                        tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
+                        tasks[i] = WaitFor(i);
                     await Task.WhenAll(tasks);
+                }
+
+                foreach (var line in cacheDebugger.Dump())
+                {
+                    this.output.WriteLine(line);
                 }
 
                 // stop the service

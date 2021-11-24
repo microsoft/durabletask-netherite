@@ -23,6 +23,7 @@ namespace DurableTask.Netherite.Faster
         readonly Partition partition;
         readonly BlobManager blobManager;
         readonly CancellationToken terminationToken;
+        readonly CacheDebugger cacheDebugger;
 
         TrackedObject[] singletons;
         Task persistSingletonsTask;
@@ -33,6 +34,7 @@ namespace DurableTask.Netherite.Faster
         {
             this.partition = partition;
             this.blobManager = blobManager;
+            this.cacheDebugger = partition.CacheDebugger;
 
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
@@ -713,15 +715,18 @@ namespace DurableTask.Netherite.Faster
         {
             readonly Partition partition;
             readonly StoreStatistics stats;
+            readonly CacheDebugger cacheDebugger;
 
             public Functions(Partition partition, StoreStatistics stats)
             {
                 this.partition = partition;
                 this.stats = stats;
+                this.cacheDebugger = partition.CacheDebugger;
             }
 
             public void InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output)
             {
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.InitialUpdate);
                 var trackedObject = TrackedObjectKey.Factory(key.Val);
                 this.stats.Create++;
                 trackedObject.Partition = this.partition;
@@ -732,6 +737,7 @@ namespace DurableTask.Netherite.Faster
 
             public bool InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output)
             {
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.InPlaceUpdate);
                 if (! (value.Val is TrackedObject trackedObject))
                 {
                     var bytes = (byte[])value.Val;
@@ -750,29 +756,27 @@ namespace DurableTask.Netherite.Faster
 
             public void CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref TrackedObject output)
             {
-
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.CopyUpdate);
                 if (oldValue.Val is TrackedObject trackedObject)
                 {
                     // replace old object with its serialized snapshot
                     DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
                     this.stats.Serialize++;
                     oldValue.Val = trackedObject.SerializationCache;
-
-                    // keep object as the new object
-                    newValue.Val = trackedObject;
-                    trackedObject.SerializationCache = null; // cache is invalidated
                     this.stats.Copy++;
                 }
                 else
                 {
                     // create new object by deserializing old object
-                    var bytes = (byte[]) oldValue.Val;
+                    var bytes = (byte[])oldValue.Val;
                     this.partition.Assert(bytes != null);
                     trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
                     this.stats.Deserialize++;
                 }
 
+                newValue.Val = trackedObject;
                 trackedObject.Partition = this.partition;
+                trackedObject.SerializationCache = null; // cache is invalidated by the update which is happening below
                 tracker.ProcessEffectOn(trackedObject);
                 this.stats.Modify++;
             }
@@ -781,10 +785,12 @@ namespace DurableTask.Netherite.Faster
             {
                 if (tracker == null)
                 {
+                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.SingleReaderPrefetch);
                     return; // this is a prefetch, so we don't actually care about the value
                 }
                 else
                 {
+                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.SingleReader);
                     if (!(value.Val is TrackedObject trackedObject))
                     {
                         var bytes = (byte[])value.Val;
@@ -800,16 +806,37 @@ namespace DurableTask.Netherite.Faster
             }
             public void ConcurrentReader(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject dst)
             {
-                this.SingleReader(ref key, ref tracker, ref value, ref dst);
+                if (tracker == null)
+                {
+                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ConcurrentReaderPrefetch);
+                    return; // this is a prefetch, so we don't actually care about the value
+                }
+                else
+                {
+                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ConcurrentReader);
+                    if (!(value.Val is TrackedObject trackedObject))
+                    {
+                        var bytes = (byte[])value.Val;
+                        this.partition.Assert(bytes != null);
+                        trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                        this.stats.Deserialize++;
+                    }
+
+                    trackedObject.Partition = this.partition;
+                    dst = trackedObject;
+                    this.stats.Read++;
+                }
             }
 
             public void SingleWriter(ref Key key, ref Value src, ref Value dst)
             {
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.SingleWriter);
                 dst.Val = src.Val;
             }
 
             public bool ConcurrentWriter(ref Key key, ref Value src, ref Value dst)
             {
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ConcurrentWriter);
                 dst.Val = src.Val;
                 return true;
             }

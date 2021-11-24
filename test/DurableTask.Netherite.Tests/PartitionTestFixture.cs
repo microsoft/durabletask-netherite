@@ -14,6 +14,7 @@ namespace DurableTask.Netherite.Tests
     {
         readonly TestTraceListener traceListener;
         readonly XunitLoggerProvider loggerProvider;
+
         internal TestOrchestrationHost Host { get; private set; }
         internal ILoggerFactory LoggerFactory { get; private set; }
 
