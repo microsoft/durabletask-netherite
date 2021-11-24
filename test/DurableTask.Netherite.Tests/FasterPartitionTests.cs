@@ -6,6 +6,7 @@ namespace DurableTask.Netherite.Tests
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Core;
     using DurableTask.Core.History;
@@ -93,36 +94,41 @@ namespace DurableTask.Netherite.Tests
         }
 
         /// <summary>
-        /// Create a partition and then restore it.
+        /// Run a number of orchestrations that requires more memory than available for FASTER
         /// </summary>
         [Fact]
-        public async Task Locality()
+        public async Task LimitedMemory()
         {
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             settings.PartitionCount = 1;
-            settings.FasterTuningParameters = new Faster.BlobManager.FasterTuningParameters()
-            {
-                StoreLogPageSizeBits = 10,       // 1 KB
-                StoreLogMemorySizeBits = 14,     // 16 KB, which amounts to about 666 entries
-            };
-
-            var cacheDebugger = new Faster.CacheDebugger();
-            cacheDebugger.OnError += (message) => { this.output.WriteLine($"CACHEDEBUGGER: {message}"); };
             settings.ResolvedTransportConnectionString = "MemoryF";
-            settings.CacheDebugger = cacheDebugger;
 
-            // don't take any extra checkpoints
+            // use a fresh hubname on every run
+            settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
+
+            // we don't want to take checkpoints in this test, so we set the following checkpoint triggers unattainably high
             settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 * 1024 * 1024;
             settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
             settings.IdleCheckpointFrequencyMs = (long)TimeSpan.FromDays(1).TotalMilliseconds;
 
-            //settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
-            settings.HubName = $"{TestConstants.TaskHubName}-Locality";
+            // set the memory size very small so we can force castouts
+            settings.FasterTuningParameters = new Faster.BlobManager.FasterTuningParameters()
+            {
+                StoreLogPageSizeBits = 10,       // 1 KB
+                StoreLogMemorySizeBits = 12,     // 4 KB, which means only about 166 entries fit into memory
+            };
 
+            // create a cache monitor
+            var cacheDebugger = new Faster.CacheDebugger();
+            var cts = new CancellationTokenSource();
+            cacheDebugger.OnError += (message) => { this.output.WriteLine($"CACHEDEBUGGER: {message}"); cts.Cancel(); };
+            settings.CacheDebugger = cacheDebugger;
+
+            // we use the standard hello orchestration from the samples, which calls 5 activities in sequence
             var orchestrationType = typeof(ScenarioTests.Orchestrations.Hello5);
             var activityType = typeof(ScenarioTests.Activities.Hello);
             string InstanceId(int i) => $"Orch{i:D5}";
-            int OrchestrationCount = 500;
+            int OrchestrationCount = 100; // requires 200 FASTER key-value pairs so it does not fit into memory
 
             {
                 // start the service 
@@ -137,42 +143,54 @@ namespace DurableTask.Netherite.Tests
                 worker.AddTaskActivities(activityType);
                 await worker.StartAsync();
 
-
-                // start all orchestrations
+                try
                 {
-                    var tasks = new Task[OrchestrationCount];
-                    for (int i = 0; i < OrchestrationCount; i++)
-                        tasks[i] = client.CreateOrchestrationInstanceAsync(orchestrationType, InstanceId(i), null);
-                    await Task.WhenAll(tasks);
-                }
-
-                // wait for all orchestrations
-                {
-                    async Task WaitFor(int i)
+                    // start all orchestrations
                     {
-                        try
-                        {
-                            await client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
-                        }
-                        catch (Exception e)
-                        {
-                            this.output.WriteLine($"Orchestration {InstanceId(i)} failed with {e.GetType()}: {e.Message}");
-                        }
+                        var tasks = new Task[OrchestrationCount];
+                        for (int i = 0; i < OrchestrationCount; i++)
+                            tasks[i] = client.CreateOrchestrationInstanceAsync(orchestrationType, InstanceId(i), null);
+
+                        var terminationTask = Task.Delay(TimeSpan.FromMinutes(5), cts.Token);
+                        var completionTask = Task.WhenAll(tasks);
+                        var firstTask = await Task.WhenAny(terminationTask, completionTask);
+                        Assert.Same(completionTask, firstTask);
                     }
 
-                    var tasks = new Task[OrchestrationCount];
-                    for (int i = 0; i < OrchestrationCount; i++)
-                        tasks[i] = WaitFor(i);
-                    await Task.WhenAll(tasks);
-                }
+                    // wait for all orchestrations
+                    {
+                        async Task WaitFor(int i)
+                        {
+                            try
+                            {
+                                await client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
+                            }
+                            catch (Exception e)
+                            {
+                                this.output.WriteLine($"Orchestration {InstanceId(i)} failed with {e.GetType()}: {e.Message}");
+                            }
+                        }
 
-                foreach (var line in cacheDebugger.Dump())
+                        var tasks = new Task[OrchestrationCount];
+                        for (int i = 0; i < OrchestrationCount; i++)
+                            tasks[i] = WaitFor(i);
+
+                        var terminationTask = Task.Delay(TimeSpan.FromMinutes(5), cts.Token);
+                        var completionTask = Task.WhenAll(tasks);
+                        var firstTask = await Task.WhenAny(terminationTask, completionTask);
+                        Assert.Same(completionTask, firstTask);
+                    }
+                }
+                finally
                 {
-                    this.output.WriteLine(line);
-                }
+                    foreach (var line in cacheDebugger.Dump())
+                    {
+                        this.output.WriteLine(line);
+                    }
 
-                // stop the service
-                await service.StopAsync();
+                    // stop the service
+                    await service.StopAsync();
+                }
             }
         }
 
