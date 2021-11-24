@@ -99,21 +99,22 @@ namespace DurableTask.Netherite.Tests
         public async Task Locality()
         {
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
-            var cacheDebugger = new Faster.CacheDebugger();
-
-            settings.ResolvedTransportConnectionString = "MemoryF";
             settings.PartitionCount = 1;
             settings.FasterTuningParameters = new Faster.BlobManager.FasterTuningParameters()
-            {  
+            {
                 StoreLogPageSizeBits = 10,       // 1 KB
                 StoreLogMemorySizeBits = 14,     // 16 KB, which amounts to about 666 entries
             };
+
+            var cacheDebugger = new Faster.CacheDebugger();
+            cacheDebugger.OnError += (message) => { this.output.WriteLine($"CACHEDEBUGGER: {message}"); };
+            settings.ResolvedTransportConnectionString = "MemoryF";
             settings.CacheDebugger = cacheDebugger;
 
             // don't take any extra checkpoints
-            settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 *1024 * 1024;
+            settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 * 1024 * 1024;
             settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
-            settings.IdleCheckpointFrequencyMs = (long) TimeSpan.FromDays(1).TotalMilliseconds;
+            settings.IdleCheckpointFrequencyMs = (long)TimeSpan.FromDays(1).TotalMilliseconds;
 
             //settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
             settings.HubName = $"{TestConstants.TaskHubName}-Locality";
@@ -147,7 +148,6 @@ namespace DurableTask.Netherite.Tests
 
                 // wait for all orchestrations
                 {
-
                     async Task WaitFor(int i)
                     {
                         try

@@ -14,77 +14,169 @@ namespace DurableTask.Netherite.Faster
     /// </summary>
     public class CacheDebugger
     {
-        readonly ConcurrentDictionary<TrackedObjectKey, CacheTrace> CacheTraces = new ConcurrentDictionary<TrackedObjectKey, CacheTrace>();
+        readonly ConcurrentDictionary<TrackedObjectKey, ObjectInfo> Objects = new ConcurrentDictionary<TrackedObjectKey, ObjectInfo>();
 
-        public enum CacheEvent 
-        {   
+        public enum CacheEvent
+        {
             // Faster IFunctions
-            InitialUpdate, 
-            InPlaceUpdate, 
-            CopyUpdate, 
-            SingleReader, 
-            SingleReaderPrefetch, 
-            ConcurrentReader, 
-            ConcurrentReaderPrefetch, 
-            SingleWriter, 
-            ConcurrentWriter, 
-            
-            // Faster serializer
-            Serialize,
-            Deserialize,
+            InitialUpdate,
+            InPlaceUpdate,
+            CopyUpdate,
+            SingleReader,
+            SingleReaderPrefetch,
+            ConcurrentReader,
+            ConcurrentReaderPrefetch,
+            SingleWriter,
+            ConcurrentWriter,
+
+            // Asynchronous Read Processing
+            ReadHit,
+            ReadMiss,
+            ReadMissComplete,
 
             // Hybrid Log events
-            ReadOnly, 
-            Evict 
+            ReadOnly,
+            Evict
         };
 
-        public class CacheTrace
+        public class ObjectInfo
         {
-            public List<Entry> Objects;
+            public object CurrentValue;
+            public List<Entry> CacheEvents;
 
             public override string ToString()
             {
-                return $"Count={this.Objects.Count}";
+                return $"Current={StateDescriptor(this.CurrentValue)} CacheEvents={this.CacheEvents.Count}";
+            }
+        }
+
+        public event Action<string> OnError;
+
+        public static string StateDescriptor(object o)
+        {
+            if (o == null)
+            {
+                return "null";
+            }
+            else if (o is byte[] bytes)
+            {
+                return $"byte[{bytes.Length}]";
+            }
+            else if (o is HistoryState h)
+            {
+                return $"ExecutionId={h.ExecutionId} episode={h.Episode}";
+            }
+            else if (o is InstanceState s)
+            {
+                return $"lastUpdated={s.OrchestrationState.LastUpdatedTime:o}";
+            }
+            else
+            {
+                return "INVALID";
+            }
+        }
+
+        public static bool StateEquals(object o1, object o2)
+        {
+            if (o1 == o2)
+            {
+                return true;
+            }
+            else
+            {
+                return StateDescriptor(o1) == StateDescriptor(o2);
             }
         }
 
         public struct Entry
         {
-            public DateTime Timestamp;
+            public string EventId;
             public CacheEvent CacheEvent;
 
             public override string ToString()
             {
-                return $"{this.Timestamp:o} {this.CacheEvent}";
+                if (string.IsNullOrEmpty(this.EventId))
+                {
+                    return $"{this.CacheEvent}";
+                }
+                else
+                {
+                    return $"{this.CacheEvent}.{this.EventId}";
+                }
             }
         }
 
-        internal void Record(ref TrackedObjectKey key, CacheEvent evt, DateTime? timestamp = null)
+        internal void Record(ref TrackedObjectKey key, CacheEvent evt, string eventId)
         {
             Entry entry = new Entry
             {
-                Timestamp = timestamp ?? DateTime.UtcNow,
+                EventId = eventId,
                 CacheEvent = evt,
             };
-            
-            this.CacheTraces.AddOrUpdate(
+
+            this.Objects.AddOrUpdate(
                 key,
-                key => new CacheTrace()
+                key => new ObjectInfo()
                 {
-                    Objects = new List<Entry>() { entry },
+                    CurrentValue = null,
+                    CacheEvents = new List<Entry>() { entry },
                 },
                 (key, trace) =>
                 {
-                    trace.Objects.Add(entry);
+                    trace.CacheEvents.Add(entry);
                     return trace;
                 });
         }
 
+        internal void ConsistentRead(ref TrackedObjectKey key, TrackedObject obj)
+        {
+            var objectInfo = this.Objects[key];
+
+            if (!StateEquals(objectInfo.CurrentValue, obj))
+            {
+                if (System.Diagnostics.Debugger.IsAttached)
+                {
+                    System.Diagnostics.Debugger.Break();
+                }
+
+                string cacheEvents = string.Join(",", objectInfo.CacheEvents.Select(e => e.ToString()));
+                this.OnError($"Read validation failed: expected={StateDescriptor(objectInfo.CurrentValue)} actual={StateDescriptor(obj)} cacheEvents={cacheEvents}");
+            }
+        }
+
+        internal void ConsistentWrite(ref TrackedObjectKey key, TrackedObject obj)
+        {
+            this.Objects.AddOrUpdate(
+                key,
+                key => new ObjectInfo()
+                {
+                    CurrentValue = obj,
+                    CacheEvents = new List<Entry>(),
+                },
+                (key, trace) =>
+                {
+                    trace.CurrentValue = obj;
+                    return trace;
+                });
+        }
+
+        internal void ConsistentWrite(ref TrackedObjectKey key, object obj)
+        {
+            if (obj is byte[] bytes)
+            {
+                this.ConsistentWrite(ref key, (TrackedObject) DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes));
+            }
+            else
+            {
+                this.ConsistentWrite(ref key, obj as TrackedObject);
+            }
+        }
+
         public IEnumerable<string> Dump()
         {
-            foreach (var kvp in this.CacheTraces)
+            foreach (var kvp in this.Objects)
             {
-                yield return $"{kvp.Key,-25} {string.Join(",", kvp.Value.Objects.Select(e => e.CacheEvent.ToString()))}";
+                yield return $"{kvp.Key,-25} {string.Join(",", kvp.Value.CacheEvents.Select(e => e.ToString()))}";
             }
         }
     }

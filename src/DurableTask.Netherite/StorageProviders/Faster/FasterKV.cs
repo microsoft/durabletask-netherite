@@ -381,12 +381,14 @@ namespace DurableTask.Netherite.Faster
                         case Status.OK:
                             // fast path: we hit in the cache and complete the read
                             this.StoreStats.HitCount++;
+                            this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ReadHit, readEvent.EventIdString);
                             effectTracker.ProcessReadResult(readEvent, key, target);
                             break;
 
                         case Status.PENDING:
                             // slow path: read continuation will be called when complete
                             this.StoreStats.MissCount++;
+                            this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ReadMiss, readEvent.EventIdString);
                             break;
 
                         case Status.ERROR:
@@ -726,18 +728,20 @@ namespace DurableTask.Netherite.Faster
 
             public void InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output)
             {
-                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.InitialUpdate);
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.InitialUpdate, tracker.CurrentEventId);
+                this.cacheDebugger?.ConsistentRead(ref key.Val, null);
                 var trackedObject = TrackedObjectKey.Factory(key.Val);
                 this.stats.Create++;
                 trackedObject.Partition = this.partition;
                 value.Val = trackedObject;
                 tracker.ProcessEffectOn(trackedObject);
+                this.cacheDebugger?.ConsistentWrite(ref key.Val, trackedObject);
                 this.stats.Modify++;
             }
 
             public bool InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output)
             {
-                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.InPlaceUpdate);
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.InPlaceUpdate, tracker.CurrentEventId);
                 if (! (value.Val is TrackedObject trackedObject))
                 {
                     var bytes = (byte[])value.Val;
@@ -747,7 +751,9 @@ namespace DurableTask.Netherite.Faster
                 }
                 trackedObject.SerializationCache = null; // cache is invalidated because of update
                 trackedObject.Partition = this.partition;
+                this.cacheDebugger?.ConsistentRead(ref key.Val, trackedObject);
                 tracker.ProcessEffectOn(trackedObject);
+                this.cacheDebugger?.ConsistentWrite(ref key.Val, trackedObject);
                 this.stats.Modify++;
                 return true;
             }
@@ -756,7 +762,7 @@ namespace DurableTask.Netherite.Faster
 
             public void CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref TrackedObject output)
             {
-                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.CopyUpdate);
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.CopyUpdate, tracker.CurrentEventId);
                 if (oldValue.Val is TrackedObject trackedObject)
                 {
                     // replace old object with its serialized snapshot
@@ -777,7 +783,9 @@ namespace DurableTask.Netherite.Faster
                 newValue.Val = trackedObject;
                 trackedObject.Partition = this.partition;
                 trackedObject.SerializationCache = null; // cache is invalidated by the update which is happening below
+                this.cacheDebugger?.ConsistentRead(ref key.Val, trackedObject);
                 tracker.ProcessEffectOn(trackedObject);
+                this.cacheDebugger?.ConsistentWrite(ref key.Val, trackedObject);
                 this.stats.Modify++;
             }
 
@@ -785,12 +793,12 @@ namespace DurableTask.Netherite.Faster
             {
                 if (tracker == null)
                 {
-                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.SingleReaderPrefetch);
+                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.SingleReaderPrefetch, default);
                     return; // this is a prefetch, so we don't actually care about the value
                 }
                 else
                 {
-                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.SingleReader);
+                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.SingleReader, default);
                     if (!(value.Val is TrackedObject trackedObject))
                     {
                         var bytes = (byte[])value.Val;
@@ -808,12 +816,12 @@ namespace DurableTask.Netherite.Faster
             {
                 if (tracker == null)
                 {
-                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ConcurrentReaderPrefetch);
+                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ConcurrentReaderPrefetch, default);
                     return; // this is a prefetch, so we don't actually care about the value
                 }
                 else
                 {
-                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ConcurrentReader);
+                    this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ConcurrentReader, default);
                     if (!(value.Val is TrackedObject trackedObject))
                     {
                         var bytes = (byte[])value.Val;
@@ -830,13 +838,15 @@ namespace DurableTask.Netherite.Faster
 
             public void SingleWriter(ref Key key, ref Value src, ref Value dst)
             {
-                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.SingleWriter);
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.SingleWriter, default);
+                this.cacheDebugger?.ConsistentWrite(ref key.Val, src.Val);
                 dst.Val = src.Val;
             }
 
             public bool ConcurrentWriter(ref Key key, ref Value src, ref Value dst)
             {
-                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ConcurrentWriter);
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ConcurrentWriter, default);
+                this.cacheDebugger?.ConsistentWrite(ref key.Val, src.Val);
                 dst.Val = src.Val;
                 return true;
             }
@@ -859,10 +869,12 @@ namespace DurableTask.Netherite.Faster
                     switch (status)
                     {
                         case Status.NOTFOUND:
+                            this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ReadMissComplete, partitionReadEvent.EventIdString);
                             tracker.ProcessReadResult(partitionReadEvent, key, null);
                             break;
 
                         case Status.OK:
+                            this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ReadMissComplete, partitionReadEvent.EventIdString);
                             tracker.ProcessReadResult(partitionReadEvent, key, output);
                             break;
 

@@ -44,6 +44,11 @@ namespace DurableTask.Netherite
         public dynamic Effect { get; set; }
 
         /// <summary>
+        /// The event id of the current effect.
+        /// </summary>
+        public string CurrentEventId { get; set; }
+
+        /// <summary>
         /// True if we are replaying this effect during recovery.
         /// Typically, external side effects (such as launching tasks, sending responses, etc.)
         /// are suppressed during replay.
@@ -78,6 +83,7 @@ namespace DurableTask.Netherite
                     this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, this.IsReplaying);
 
                     this.Effect = updateEvent;
+                    this.CurrentEventId = updateEvent.EventIdString;
 
                     // collect the initial list of targets
                     updateEvent.DetermineEffects(this);
@@ -115,6 +121,7 @@ namespace DurableTask.Netherite
                     }
 
                     this.Effect = null;
+                    this.CurrentEventId = null;
                 }
                 catch (OperationCanceledException)
                 {
