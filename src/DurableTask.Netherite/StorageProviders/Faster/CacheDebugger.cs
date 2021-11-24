@@ -8,6 +8,7 @@ namespace DurableTask.Netherite.Faster
     using System.Collections.Generic;
     using System.Linq;
     using System.Text;
+    using FASTER.core;
 
     /// <summary>
     /// Records cache and storage management traces for each object. This class is only used for testing and debugging, as it creates lots of overhead.
@@ -33,81 +34,164 @@ namespace DurableTask.Netherite.Faster
             ReadHit,
             ReadMiss,
             ReadMissComplete,
+
+            // subscriptions to the FASTER log accessor
+            Evict,
+            EvictTombstone,
+            Readonly,
+            ReadonlyTombstone
         };
 
         public class ObjectInfo
         {
             public object CurrentValue;
+            public int CurrentVersion;
             public List<Entry> CacheEvents;
 
             public override string ToString()
             {
-                return $"Current={StateDescriptor(this.CurrentValue)} CacheEvents={this.CacheEvents.Count}";
+                return $"Current=v{this.CurrentVersion} CacheEvents={this.CacheEvents.Count}";
             }
         }
 
         public event Action<string> OnError;
 
-        public static string StateDescriptor(object o)
+        internal void Subscribe(FASTER.core.LogAccessor<FasterKV.Key, FasterKV.Value> log)
         {
-            if (o == null)
+            log.SubscribeEvictions(new EvictionObserver(this));
+            log.Subscribe(new ReadonlyObserver(this));
+        }
+
+        class EvictionObserver : IObserver<IFasterScanIterator<FasterKV.Key, FasterKV.Value>>
+        {
+            readonly CacheDebugger cacheDebugger;
+            public EvictionObserver(CacheDebugger cacheDebugger)
             {
-                return "null";
+                this.cacheDebugger = cacheDebugger;
             }
-            else if (o is byte[] bytes)
+
+            public void OnCompleted() { }
+            public void OnError(Exception error) { }
+
+            public void OnNext(IFasterScanIterator<FasterKV.Key, FasterKV.Value> iterator)
             {
-                return $"byte[{bytes.Length}]";
-            }
-            else if (o is HistoryState h)
-            {
-                return $"ExecutionId={h.ExecutionId} episode={h.Episode}";
-            }
-            else if (o is InstanceState s)
-            {
-                return $"lastUpdated={s.OrchestrationState.LastUpdatedTime:o}";
-            }
-            else
-            {
-                return "INVALID";
+                while (iterator.GetNext(out RecordInfo recordInfo))
+                {
+                    TrackedObjectKey key = iterator.GetKey().Val;
+                    if (!recordInfo.Tombstone)
+                    {
+                        int version = iterator.GetValue().Version;
+                        this.cacheDebugger.Record(ref key, CacheEvent.Evict, version, null);
+                    }
+                    else
+                    {
+                        this.cacheDebugger.Record(ref key, CacheEvent.EvictTombstone, null, null);
+                    }
+                }
             }
         }
 
-        public static bool StateEquals(object o1, object o2)
+        class ReadonlyObserver : IObserver<IFasterScanIterator<FasterKV.Key, FasterKV.Value>>
         {
-            if (o1 == o2)
+            readonly CacheDebugger cacheDebugger;
+            public ReadonlyObserver(CacheDebugger cacheDebugger)
             {
-                return true;
+                this.cacheDebugger = cacheDebugger;
             }
-            else
+
+            public void OnCompleted() { }
+            public void OnError(Exception error) { }
+
+            public void OnNext(IFasterScanIterator<FasterKV.Key, FasterKV.Value> iterator)
             {
-                return StateDescriptor(o1) == StateDescriptor(o2);
+                while (iterator.GetNext(out RecordInfo recordInfo))
+                {
+                    TrackedObjectKey key = iterator.GetKey().Val;
+                    if (!recordInfo.Tombstone)
+                    {
+                        int version = iterator.GetValue().Version;
+                        this.cacheDebugger.Record(ref key, CacheEvent.Readonly, version, null);
+                    }
+                    else
+                    {
+                        this.cacheDebugger.Record(ref key, CacheEvent.ReadonlyTombstone, null, null);
+                    }
+                }
             }
         }
+
+        //public static string StateDescriptor(object o)
+        //{
+        //    if (o == null)
+        //    {
+        //        return "null";
+        //    }
+        //    else if (o is byte[] bytes)
+        //    {
+        //        return $"byte[{bytes.Length}]";
+        //    }
+        //    else if (o is HistoryState h)
+        //    {
+        //        return $"ExecutionId={h.ExecutionId} episode={h.Episode}";
+        //    }
+        //    else if (o is InstanceState s)
+        //    {
+        //        return $"lastUpdated={s.OrchestrationState.LastUpdatedTime:o}";
+        //    }
+        //    else
+        //    {
+        //        return "INVALID";
+        //    }
+        //}
+
+        //public static bool StateEquals(object o1, object o2)
+        //{
+        //    if (o1 == o2)
+        //    {
+        //        return true;
+        //    }
+        //    else
+        //    {
+        //        return StateDescriptor(o1) == StateDescriptor(o2);
+        //    }
+        //}
 
         public struct Entry
         {
             public string EventId;
             public CacheEvent CacheEvent;
+            public int? Version;
 
             public override string ToString()
             {
-                if (string.IsNullOrEmpty(this.EventId))
+                var sb = new StringBuilder();
+
+                sb.Append(this.CacheEvent.ToString());
+
+                if (this.Version != null)
                 {
-                    return $"{this.CacheEvent}";
+                    sb.Append('.');
+                    sb.Append('v');
+                    sb.Append(this.Version.ToString());
                 }
-                else
-                {
-                    return $"{this.CacheEvent}.{this.EventId}";
-                }
+
+                //if (!string.IsNullOrEmpty(this.EventId))
+                //{
+                //    sb.Append('.');
+                //    sb.Append(this.EventId);
+                //}
+
+                return sb.ToString();
             }
         }
 
-        internal void Record(ref TrackedObjectKey key, CacheEvent evt, string eventId)
+        internal void Record(ref TrackedObjectKey key, CacheEvent evt, int? version, string eventId)
         {
             Entry entry = new Entry
             {
                 EventId = eventId,
                 CacheEvent = evt,
+                Version = version,
             };
 
             this.Objects.AddOrUpdate(
@@ -124,11 +208,11 @@ namespace DurableTask.Netherite.Faster
                 });
         }
 
-        internal void ConsistentRead(ref TrackedObjectKey key, TrackedObject obj)
+        internal void ConsistentRead(ref TrackedObjectKey key, TrackedObject obj, int version)
         {
             var objectInfo = this.Objects[key];
 
-            if (!StateEquals(objectInfo.CurrentValue, obj))
+            if (version != objectInfo.CurrentVersion)
             {
                 if (System.Diagnostics.Debugger.IsAttached)
                 {
@@ -136,35 +220,48 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 string cacheEvents = string.Join(",", objectInfo.CacheEvents.Select(e => e.ToString()));
-                this.OnError($"Read validation failed: expected={StateDescriptor(objectInfo.CurrentValue)} actual={StateDescriptor(obj)} cacheEvents={cacheEvents}");
+                this.OnError($"Read validation failed: expected=v{objectInfo.CurrentVersion} actual=v{version} cacheEvents={cacheEvents}");
             }
+
+            //if (!StateEquals(objectInfo.CurrentValue, obj))
+            //{
+            //    if (System.Diagnostics.Debugger.IsAttached)
+            //    {
+            //        System.Diagnostics.Debugger.Break();
+            //    }
+
+            //    string cacheEvents = string.Join(",", objectInfo.CacheEvents.Select(e => e.ToString()));
+            //    this.OnError($"Read validation failed: expected={StateDescriptor(objectInfo.CurrentValue)} actual={StateDescriptor(obj)} cacheEvents={cacheEvents}");
+            //}
         }
 
-        internal void ConsistentWrite(ref TrackedObjectKey key, TrackedObject obj)
+        internal void ConsistentWrite(ref TrackedObjectKey key, TrackedObject obj, int version)
         {
             this.Objects.AddOrUpdate(
                 key,
                 key => new ObjectInfo()
                 {
                     CurrentValue = obj,
+                    CurrentVersion = version,
                     CacheEvents = new List<Entry>(),
                 },
                 (key, trace) =>
                 {
                     trace.CurrentValue = obj;
+                    trace.CurrentVersion = version;
                     return trace;
                 });
         }
 
-        internal void ConsistentWrite(ref TrackedObjectKey key, object obj)
+        internal void ConsistentWrite(ref TrackedObjectKey key, object obj, int version)
         {
             if (obj is byte[] bytes)
             {
-                this.ConsistentWrite(ref key, (TrackedObject) DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes));
+                this.ConsistentWrite(ref key, (TrackedObject) DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes), version);
             }
             else
             {
-                this.ConsistentWrite(ref key, obj as TrackedObject);
+                this.ConsistentWrite(ref key, obj as TrackedObject, version);
             }
         }
 
