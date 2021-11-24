@@ -839,14 +839,12 @@ namespace DurableTask.Netherite.Faster
             public void SingleWriter(ref Key key, ref Value src, ref Value dst)
             {
                 this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.SingleWriter, default);
-                this.cacheDebugger?.ConsistentWrite(ref key.Val, src.Val);
                 dst.Val = src.Val;
             }
 
             public bool ConcurrentWriter(ref Key key, ref Value src, ref Value dst)
             {
                 this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.ConcurrentWriter, default);
-                this.cacheDebugger?.ConsistentWrite(ref key.Val, src.Val);
                 dst.Val = src.Val;
                 return true;
             }

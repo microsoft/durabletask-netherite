@@ -82,6 +82,8 @@ namespace DurableTask.Netherite
                 {
                     this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, this.IsReplaying);
 
+                    this.Partition.Assert(updateEvent != null);
+
                     this.Effect = updateEvent;
                     this.CurrentEventId = updateEvent.EventIdString;
 

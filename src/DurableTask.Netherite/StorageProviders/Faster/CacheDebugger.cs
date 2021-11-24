@@ -33,10 +33,6 @@ namespace DurableTask.Netherite.Faster
             ReadHit,
             ReadMiss,
             ReadMissComplete,
-
-            // Hybrid Log events
-            ReadOnly,
-            Evict
         };
 
         public class ObjectInfo
