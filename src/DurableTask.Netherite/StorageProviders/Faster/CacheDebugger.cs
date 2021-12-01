@@ -56,70 +56,7 @@ namespace DurableTask.Netherite.Faster
 
         public event Action<string> OnError;
 
-        internal void Subscribe(FASTER.core.LogAccessor<FasterKV.Key, FasterKV.Value> log)
-        {
-            log.SubscribeEvictions(new EvictionObserver(this));
-            log.Subscribe(new ReadonlyObserver(this));
-        }
-
-        class EvictionObserver : IObserver<IFasterScanIterator<FasterKV.Key, FasterKV.Value>>
-        {
-            readonly CacheDebugger cacheDebugger;
-            public EvictionObserver(CacheDebugger cacheDebugger)
-            {
-                this.cacheDebugger = cacheDebugger;
-            }
-
-            public void OnCompleted() { }
-            public void OnError(Exception error) { }
-
-            public void OnNext(IFasterScanIterator<FasterKV.Key, FasterKV.Value> iterator)
-            {
-                while (iterator.GetNext(out RecordInfo recordInfo))
-                {
-                    TrackedObjectKey key = iterator.GetKey().Val;
-                    if (!recordInfo.Tombstone)
-                    {
-                        int version = iterator.GetValue().Version;
-                        this.cacheDebugger.Record(ref key, CacheEvent.Evict, version, null);
-                    }
-                    else
-                    {
-                        this.cacheDebugger.Record(ref key, CacheEvent.EvictTombstone, null, null);
-                    }
-                }
-            }
-        }
-
-        class ReadonlyObserver : IObserver<IFasterScanIterator<FasterKV.Key, FasterKV.Value>>
-        {
-            readonly CacheDebugger cacheDebugger;
-            public ReadonlyObserver(CacheDebugger cacheDebugger)
-            {
-                this.cacheDebugger = cacheDebugger;
-            }
-
-            public void OnCompleted() { }
-            public void OnError(Exception error) { }
-
-            public void OnNext(IFasterScanIterator<FasterKV.Key, FasterKV.Value> iterator)
-            {
-                while (iterator.GetNext(out RecordInfo recordInfo))
-                {
-                    TrackedObjectKey key = iterator.GetKey().Val;
-                    if (!recordInfo.Tombstone)
-                    {
-                        int version = iterator.GetValue().Version;
-                        this.cacheDebugger.Record(ref key, CacheEvent.Readonly, version, null);
-                    }
-                    else
-                    {
-                        this.cacheDebugger.Record(ref key, CacheEvent.ReadonlyTombstone, null, null);
-                    }
-                }
-            }
-        }
-
+     
         //public static string StateDescriptor(object o)
         //{
         //    if (o == null)

@@ -49,8 +49,9 @@ namespace DurableTask.Netherite.Faster
                     keySerializer = () => new Key.Serializer(),
                     valueSerializer = () => new Value.Serializer(this.StoreStats, partition.TraceHelper),
                 });
-            
-            this.cacheDebugger?.Subscribe(this.fht.Log);
+
+            this.fht.Log.SubscribeEvictions(new EvictionObserver(this));
+            this.fht.Log.Subscribe(new ReadonlyObserver(this));
 
             this.terminationToken = partition.ErrorHandler.Token;
 
@@ -618,6 +619,64 @@ namespace DurableTask.Netherite.Faster
         //        throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
         //    }
         //}
+
+        class EvictionObserver : IObserver<IFasterScanIterator<Key, Value>>
+        {
+            readonly FasterKV store;
+            public EvictionObserver(FasterKV store)
+            {
+                this.store = store;
+            }
+
+            public void OnCompleted() { }
+            public void OnError(Exception error) { }
+
+            public void OnNext(IFasterScanIterator<Key, Value> iterator)
+            {
+                while (iterator.GetNext(out RecordInfo recordInfo))
+                {
+                    TrackedObjectKey key = iterator.GetKey().Val;
+                    if (!recordInfo.Tombstone)
+                    {
+                        int version = iterator.GetValue().Version;
+                        this.store.cacheDebugger?.Record(ref key, CacheDebugger.CacheEvent.Evict, version, null);
+                    }
+                    else
+                    {
+                        this.store.cacheDebugger?.Record(ref key, CacheDebugger.CacheEvent.EvictTombstone, null, null);
+                    }
+                }
+            }
+        }
+
+        class ReadonlyObserver : IObserver<IFasterScanIterator<Key, Value>>
+        {
+            readonly FasterKV store;
+            public ReadonlyObserver(FasterKV store)
+            {
+                this.store = store;
+            }
+
+            public void OnCompleted() { }
+            public void OnError(Exception error) { }
+
+            public void OnNext(IFasterScanIterator<Key, Value> iterator)
+            {
+                while (iterator.GetNext(out RecordInfo recordInfo))
+                {
+                    TrackedObjectKey key = iterator.GetKey().Val;
+                    if (!recordInfo.Tombstone)
+                    {
+                        int version = iterator.GetValue().Version;
+                        this.store.cacheDebugger?.Record(ref key, CacheDebugger.CacheEvent.Readonly, version, null);
+                    }
+                    else
+                    {
+                        this.store.cacheDebugger?.Record(ref key, CacheDebugger.CacheEvent.ReadonlyTombstone, null, null);
+                    }
+                }
+            }
+        }
 
         public struct Key : IFasterEqualityComparer<Key>
         {
