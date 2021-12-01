@@ -30,7 +30,7 @@ namespace DurableTask.Netherite.Faster
         void ICheckpointManager.CommitLogCheckpoint(Guid logToken, byte[] commitMetadata)
             => this.blobManager.CommitLogCheckpoint(logToken, commitMetadata, this.groupOrdinal);
 
-        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
+        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, long version, byte[] commitMetadata, DeltaLog deltaLog)
             => this.blobManager.CommitLogIncrementalCheckpoint(logToken, version, commitMetadata, deltaLog, this.groupOrdinal);
 
         IDevice ICheckpointManager.GetIndexDevice(Guid indexToken)

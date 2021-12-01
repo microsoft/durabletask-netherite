@@ -85,7 +85,7 @@ namespace DurableTask.Netherite.Faster
         {
             LogDevice = this.EventLogDevice,
             LogCommitManager = this.UseLocalFiles
-                ? new LocalLogCommitManager($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{CommitBlobName}")
+                ? null // TODO: fix this: new LocalLogCommitManager($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{CommitBlobName}")
                 : (ILogCommitManager)this,
             PageSizeBits = tuningParameters?.EventLogPageSizeBits ?? 21, // 2MB
             SegmentSizeBits = tuningParameters?.EventLogSegmentSizeBits ??
@@ -715,7 +715,7 @@ namespace DurableTask.Netherite.Faster
 
         #region ILogCommitManager
 
-        void ILogCommitManager.Commit(long beginAddress, long untilAddress, byte[] commitMetadata)
+        void ILogCommitManager.Commit(long beginAddress, long untilAddress, byte[] commitMetadata, long commitNum)
         {
             this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.Commit Called beginAddress={beginAddress} untilAddress={untilAddress}");
 
@@ -761,6 +761,21 @@ namespace DurableTask.Netherite.Faster
         {
             // we only use a single commit file in this implementation
             yield return 0;
+        }
+
+        void ILogCommitManager.OnRecovery(long commitNum, bool purgeEarlierCommits) 
+        { 
+            // TODO: make sure our use of single commmit is safe
+        }
+
+        void ILogCommitManager.RemoveAllCommits()
+        {
+            // TODO: make sure our use of single commmit is safe
+        }
+
+        void ILogCommitManager.RemoveCommit(long commitNum) 
+        {
+            // TODO: make sure our use of single commmit is safe
         }
 
         byte[] ILogCommitManager.GetCommitMetadata(long commitNum)
@@ -835,7 +850,7 @@ namespace DurableTask.Netherite.Faster
         void ICheckpointManager.CommitLogCheckpoint(Guid logToken, byte[] commitMetadata)
             => this.CommitLogCheckpoint(logToken, commitMetadata, InvalidPsfGroupOrdinal);
 
-        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
+        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, long version, byte[] commitMetadata, DeltaLog deltaLog)
             => this.CommitLogIncrementalCheckpoint(logToken, version, commitMetadata, deltaLog, InvalidPsfGroupOrdinal);
 
         byte[] ICheckpointManager.GetIndexCheckpointMetadata(Guid indexToken)
@@ -982,7 +997,7 @@ namespace DurableTask.Netherite.Faster
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
-        internal void CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog, int indexOrdinal)
+        internal void CommitLogIncrementalCheckpoint(Guid logToken, long version, byte[] commitMetadata, DeltaLog deltaLog, int indexOrdinal)
         {
             throw new NotImplementedException("incremental checkpointing is not implemented");
         }

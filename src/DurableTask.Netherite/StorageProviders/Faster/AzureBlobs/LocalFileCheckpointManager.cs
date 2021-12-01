@@ -40,7 +40,7 @@ namespace DurableTask.Netherite.Faster
             this.checkpointInfo.LogToken = logToken;
         }
 
-        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
+        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, long version, byte[] commitMetadata, DeltaLog deltaLog)
         {
             throw new NotImplementedException("incremental checkpointing is not implemented");
         }

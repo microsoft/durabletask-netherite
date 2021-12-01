@@ -21,14 +21,18 @@ namespace DurableTask.Netherite.Faster
         {
             // Faster IFunctions
             InitialUpdate,
+            PostInitialUpdate,
             InPlaceUpdate,
             CopyUpdate,
+            PostCopyUpdate,
             SingleReader,
             SingleReaderPrefetch,
+            SingleWriter,
             ConcurrentReader,
             ConcurrentReaderPrefetch,
-            SingleWriter,
+            PostSingleWriter,
             ConcurrentWriter,
+            PostSingleDeleter,
 
             // Asynchronous Read Processing
             ReadHit,
