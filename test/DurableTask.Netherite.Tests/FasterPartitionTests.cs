@@ -121,7 +121,11 @@ namespace DurableTask.Netherite.Tests
             // create a cache monitor
             var cacheDebugger = new Faster.CacheDebugger();
             var cts = new CancellationTokenSource();
-            cacheDebugger.OnError += (message) => { this.output.WriteLine($"CACHEDEBUGGER: {message}"); cts.Cancel(); };
+            string reportedProblem = null;
+            cacheDebugger.OnError += (message) => { 
+                this.output.WriteLine($"CACHEDEBUGGER: {message}"); cts.Cancel();
+                reportedProblem = reportedProblem ?? message;
+            };
             settings.CacheDebugger = cacheDebugger;
 
             // we use the standard hello orchestration from the samples, which calls 5 activities in sequence
@@ -154,6 +158,7 @@ namespace DurableTask.Netherite.Tests
                         var terminationTask = Task.Delay(TimeSpan.FromMinutes(5), cts.Token);
                         var completionTask = Task.WhenAll(tasks);
                         var firstTask = await Task.WhenAny(terminationTask, completionTask);
+                        Assert.True(reportedProblem == null, $"CacheDebugger detected storage consistency error: {reportedProblem}");
                         Assert.Same(completionTask, firstTask);
                     }
 
@@ -178,6 +183,7 @@ namespace DurableTask.Netherite.Tests
                         var terminationTask = Task.Delay(TimeSpan.FromMinutes(5), cts.Token);
                         var completionTask = Task.WhenAll(tasks);
                         var firstTask = await Task.WhenAny(terminationTask, completionTask);
+                        Assert.True(reportedProblem == null, $"CacheDebugger detected storage consistency error: {reportedProblem}");
                         Assert.Same(completionTask, firstTask);
                     }
                 }
@@ -197,7 +203,6 @@ namespace DurableTask.Netherite.Tests
         /// <summary>
         /// Create a partition and then restore it.
         /// </summary>
-        [Fact]
         public async Task Locality2()
         {
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
@@ -239,5 +244,4 @@ namespace DurableTask.Netherite.Tests
             }
         }
     }
-
 }
