@@ -741,6 +741,24 @@ namespace DurableTask.Netherite.Faster
             void InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output, ref RecordInfo recordInfo, long address, bool post)
             {
                 this.cacheDebugger?.Record(ref key.Val, post ? CacheDebugger.CacheEvent.PostInitialUpdate : CacheDebugger.CacheEvent.InitialUpdate, 0, tracker.CurrentEventId);
+
+                if (!post)
+                {
+                    this.cacheDebugger?.ConsistentRead(ref key.Val, null, value.Version);
+                    var trackedObject = TrackedObjectKey.Factory(key.Val);
+                    this.stats.Create++;
+                    trackedObject.Partition = this.partition;
+                    value.Val = trackedObject;
+                    tracker.ProcessEffectOn(trackedObject);
+                    value.Version++;
+                    this.cacheDebugger?.ConsistentWrite(ref key.Val, trackedObject, value.Version);
+                    this.stats.Modify++;
+                }
+            }
+
+            void IFunctions<Key, Value, EffectTracker, TrackedObject, object>.InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output, ref RecordInfo recordInfo, long address)
+            {
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.InitialUpdate, 0, tracker.CurrentEventId);
                 this.cacheDebugger?.ConsistentRead(ref key.Val, null, value.Version);
                 var trackedObject = TrackedObjectKey.Factory(key.Val);
                 this.stats.Create++;
@@ -752,11 +770,10 @@ namespace DurableTask.Netherite.Faster
                 this.stats.Modify++;
             }
 
-            void IFunctions<Key, Value, EffectTracker, TrackedObject, object>.InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output, ref RecordInfo recordInfo, long address)
-                => this.InitialUpdater(ref key, ref tracker, ref value, ref output, ref recordInfo, address, false);
-
-            void IFunctions<Key, Value, EffectTracker, TrackedObject, object>.PostInitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output, ref RecordInfo recordInfo, long address)          
-               => this.InitialUpdater(ref key, ref tracker, ref value, ref output, ref recordInfo, address, false);
+            void IFunctions<Key, Value, EffectTracker, TrackedObject, object>.PostInitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output, ref RecordInfo recordInfo, long address)
+            {
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.PostInitialUpdate, value.Version, tracker.CurrentEventId);
+            }
             
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output, ref RecordInfo recordInfo, long address)
             {
@@ -781,9 +798,9 @@ namespace DurableTask.Netherite.Faster
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.NeedCopyUpdate(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output) 
                 => true;
 
-            bool CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref TrackedObject output, ref RecordInfo recordInfo, long address, bool post)
+            void IFunctions<Key, Value, EffectTracker, TrackedObject, object>.CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref TrackedObject output, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(ref key.Val, post ? CacheDebugger.CacheEvent.PostCopyUpdate : CacheDebugger.CacheEvent.CopyUpdate, oldValue.Version, tracker.CurrentEventId);
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.CopyUpdate, oldValue.Version, tracker.CurrentEventId);
                 if (oldValue.Val is TrackedObject trackedObject)
                 {
                     // replace old object with its serialized snapshot
@@ -809,14 +826,13 @@ namespace DurableTask.Netherite.Faster
                 newValue.Version = oldValue.Version + 1;
                 this.cacheDebugger?.ConsistentWrite(ref key.Val, trackedObject, newValue.Version);
                 this.stats.Modify++;
-                return true;
             }
 
-            void IFunctions<Key, Value, EffectTracker, TrackedObject, object>.CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref TrackedObject output, ref RecordInfo recordInfo, long address)
-                => this.CopyUpdater(ref key, ref tracker, ref oldValue, ref newValue, ref output, ref recordInfo, address, false);
-
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.PostCopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref TrackedObject output, ref RecordInfo recordInfo, long address)
-                => this.CopyUpdater(ref key, ref tracker, ref oldValue, ref newValue, ref output, ref recordInfo, address, true);
+            {
+                this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.PostCopyUpdate, newValue.Version, tracker.CurrentEventId);
+                return true;
+            }
 
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.SingleReader(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject dst, ref RecordInfo recordInfo, long address)
             {
@@ -951,6 +967,7 @@ namespace DurableTask.Netherite.Faster
             #region Locking
 
             // We do not need to lock records, because writes and non-query reads are single-session, and query reads can only race on instance states which are immutable
+
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.SupportsLocking
                 => false;
 
