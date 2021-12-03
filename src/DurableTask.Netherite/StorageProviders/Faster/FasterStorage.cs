@@ -19,6 +19,7 @@ namespace DurableTask.Netherite.Faster
         readonly CloudStorageAccount pageBlobStorageAccount;
         readonly string taskHubName;
         readonly ILogger logger;
+        readonly MemoryTracker memoryTracker;
 
         Partition partition;
         BlobManager blobManager;
@@ -30,6 +31,8 @@ namespace DurableTask.Netherite.Faster
         CancellationToken terminationToken;
 
         internal FasterTraceHelper TraceHelper { get; private set; }
+
+        public long TargetMemorySize { get; set; }
 
         public FasterStorage(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, ILoggerFactory loggerFactory)
         {
@@ -51,6 +54,7 @@ namespace DurableTask.Netherite.Faster
             }
             this.taskHubName = taskHubName;
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
+            this.memoryTracker = new MemoryTracker(this);
         }
 
         public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName)
@@ -97,7 +101,7 @@ namespace DurableTask.Netherite.Faster
             else
             {
                 this.TraceHelper.FasterProgress("Creating FasterKV");
-                this.store = new FasterKV(this.partition, this.blobManager);
+                this.store = new FasterKV(this.partition, this.blobManager, this.memoryTracker);
             }
 
             this.TraceHelper.FasterProgress("Creating StoreWorker");

@@ -32,6 +32,9 @@ namespace DurableTask.Netherite
             return $"Instance InstanceId={this.InstanceId} Status={this.OrchestrationState?.OrchestrationStatus}";
         }
 
+        [IgnoreDataMember]
+        public override long EstimatedSize => 50 + this.OrchestrationState?.Size ?? 0;
+
         public void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
             bool filterDuplicate = this.OrchestrationState != null
@@ -58,6 +61,7 @@ namespace DurableTask.Netherite
                     CompletedTime = Core.Common.DateTimeUtils.MinDateTime,
                     ScheduledStartTime = ee.ScheduledStartTime
                 };
+                this.OrchestrationState.Size = DurableTask.Netherite.SizeUtils.GetEstimatedSize(this.OrchestrationState);
 
                 // queue the message in the session, or start a timer if delayed
                 if (!ee.ScheduledStartTime.HasValue)
@@ -88,7 +92,7 @@ namespace DurableTask.Netherite
         {
             // update the state of an orchestration
             this.OrchestrationState = evt.State;
-
+            this.OrchestrationState.Size = DurableTask.Netherite.SizeUtils.GetEstimatedSize(this.OrchestrationState);
             // if the orchestration is complete, notify clients that are waiting for it
             if (this.Waiters != null && WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
             {

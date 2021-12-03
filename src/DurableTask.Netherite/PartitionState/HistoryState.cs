@@ -43,6 +43,9 @@ namespace DurableTask.Netherite
             return $"History InstanceId={this.InstanceId} ExecutionId={this.ExecutionId} Events={this.History.Count}";
         }
 
+        [IgnoreDataMember]
+        public override long EstimatedSize => 50 + DurableTask.Netherite.SizeUtils.GetEstimatedSize(this);
+
         public void Process(BatchProcessed evt, EffectTracker effects)
         {
             // can add events to the history, or replace it with a new history

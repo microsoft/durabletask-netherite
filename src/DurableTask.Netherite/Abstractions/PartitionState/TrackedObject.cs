@@ -54,6 +54,9 @@ namespace DurableTask.Netherite
             }
         }
 
+        [IgnoreDataMember]
+        public virtual long EstimatedSize => 0;
+
         /// <summary>
         /// Is called on all singleton objects once at the very beginning
         /// </summary>

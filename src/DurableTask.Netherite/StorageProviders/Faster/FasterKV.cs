@@ -24,17 +24,19 @@ namespace DurableTask.Netherite.Faster
         readonly BlobManager blobManager;
         readonly CancellationToken terminationToken;
         readonly CacheDebugger cacheDebugger;
+        readonly MemoryTracker.CacheTracker cacheTracker;
 
         TrackedObject[] singletons;
         Task persistSingletonsTask;
 
         ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> mainSession;
 
-        public FasterKV(Partition partition, BlobManager blobManager)
+        public FasterKV(Partition partition, BlobManager blobManager, MemoryTracker memoryTracker)
         {
             this.partition = partition;
             this.blobManager = blobManager;
-            this.cacheDebugger = partition.CacheDebugger;
+            this.cacheDebugger = partition.Settings.CacheDebugger;
+            this.cacheTracker = memoryTracker.NewCacheTracker(this);
 
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
@@ -52,6 +54,7 @@ namespace DurableTask.Netherite.Faster
 
             this.fht.Log.SubscribeEvictions(new EvictionObserver(this));
             this.fht.Log.Subscribe(new ReadonlyObserver(this));
+            partition.Assert(this.fht.ReadCache == null);
 
             this.terminationToken = partition.ErrorHandler.Token;
 
@@ -64,6 +67,7 @@ namespace DurableTask.Netherite.Faster
                         this.blobManager.HybridLogDevice.Dispose();
                         this.blobManager.ObjectLogDevice.Dispose();
                         this.blobManager.ClosePSFDevices();
+                        this.cacheTracker.Dispose();
                     }
                     catch(Exception e)
                     {
@@ -75,6 +79,20 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
         }
 
+        public void AdjustPageCount(long targetSize, long trackedObjectSize)
+        {
+            long totalSize = trackedObjectSize + this.fht.IndexSize * 64 + this.fht.Log.MemorySizeBytes + this.fht.OverflowBucketCount * 64;
+
+            // Adjust empty page count to drive towards desired memory utilization
+            if (totalSize > targetSize && this.fht.Log.AllocatableMemorySizeBytes >= this.fht.Log.MemorySizeBytes)
+            {
+                this.fht.Log.EmptyPageCount++;
+            }
+            else if (totalSize < targetSize && this.fht.Log.AllocatableMemorySizeBytes <= this.fht.Log.MemorySizeBytes)
+            {
+                this.fht.Log.EmptyPageCount--;
+            }
+        }
 
         ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> CreateASession()
             => this.fht.NewSession<EffectTracker, TrackedObject, object>(new Functions(this.partition, this.StoreStats));
@@ -633,19 +651,23 @@ namespace DurableTask.Netherite.Faster
 
             public void OnNext(IFasterScanIterator<Key, Value> iterator)
             {
-                while (iterator.GetNext(out RecordInfo recordInfo))
+                long size = 0;
+                while (iterator.GetNext(out RecordInfo recordInfo, out Key key, out Value value))
                 {
-                    TrackedObjectKey key = iterator.GetKey().Val;
+                    size += key.Val.EstimatedSize;
                     if (!recordInfo.Tombstone)
                     {
-                        int version = iterator.GetValue().Version;
-                        this.store.cacheDebugger?.Record(ref key, CacheDebugger.CacheEvent.Evict, version, null);
+                        int version = value.Version;
+                        size += value.EstimatedSize;
+                        this.store.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.Evict, version, null);
                     }
                     else
                     {
-                        this.store.cacheDebugger?.Record(ref key, CacheDebugger.CacheEvent.EvictTombstone, null, null);
+                        this.store.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.EvictTombstone, null, null);
                     }
                 }
+
+                this.store.cacheTracker.UpdateTrackedObjectSize(-size);
             }
         }
 
@@ -739,6 +761,11 @@ namespace DurableTask.Netherite.Faster
 
             public override string ToString() => this.Val.ToString();
 
+            public long EstimatedSize => 4 + (
+                this.Val is byte[] bytes ? 4 + bytes.Length :
+                this.Val is TrackedObject o ? o.EstimatedSize :
+                0);
+
             public class Serializer : BinaryObjectSerializer<Value>
             {
                 readonly StoreStatistics storeStats;
@@ -755,7 +782,7 @@ namespace DurableTask.Netherite.Faster
                     int version = this.reader.ReadInt32();
                     int count = this.reader.ReadInt32();
                     byte[] bytes = this.reader.ReadBytes(count);
-                    obj = new Value { Val = bytes };
+                    obj = new Value { Val = bytes, Version = version };
                 }
 
                 public override void Serialize(ref Value obj)
@@ -783,12 +810,13 @@ namespace DurableTask.Netherite.Faster
             readonly Partition partition;
             readonly StoreStatistics stats;
             readonly CacheDebugger cacheDebugger;
+            readonly MemoryTracker.CacheTracker cacheTracker;
 
             public Functions(Partition partition, StoreStatistics stats)
             {
                 this.partition = partition;
                 this.stats = stats;
-                this.cacheDebugger = partition.CacheDebugger;
+                this.cacheDebugger = partition.Settings.CacheDebugger;
             }
 
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.SupportsPostOperations 
@@ -796,24 +824,6 @@ namespace DurableTask.Netherite.Faster
 
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.NeedInitialUpdate(ref Key key, ref EffectTracker input, ref TrackedObject output)
                 => true;
-
-            void InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output, ref RecordInfo recordInfo, long address, bool post)
-            {
-                this.cacheDebugger?.Record(ref key.Val, post ? CacheDebugger.CacheEvent.PostInitialUpdate : CacheDebugger.CacheEvent.InitialUpdate, 0, tracker.CurrentEventId);
-
-                if (!post)
-                {
-                    this.cacheDebugger?.ConsistentRead(ref key.Val, null, value.Version);
-                    var trackedObject = TrackedObjectKey.Factory(key.Val);
-                    this.stats.Create++;
-                    trackedObject.Partition = this.partition;
-                    value.Val = trackedObject;
-                    tracker.ProcessEffectOn(trackedObject);
-                    value.Version++;
-                    this.cacheDebugger?.ConsistentWrite(ref key.Val, trackedObject, value.Version);
-                    this.stats.Modify++;
-                }
-            }
 
             void IFunctions<Key, Value, EffectTracker, TrackedObject, object>.InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output, ref RecordInfo recordInfo, long address)
             {
@@ -832,11 +842,13 @@ namespace DurableTask.Netherite.Faster
             void IFunctions<Key, Value, EffectTracker, TrackedObject, object>.PostInitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output, ref RecordInfo recordInfo, long address)
             {
                 this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.PostInitialUpdate, value.Version, tracker.CurrentEventId);
+                this.cacheTracker.UpdateTrackedObjectSize(value.EstimatedSize);
             }
-            
+
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject output, ref RecordInfo recordInfo, long address)
             {
                 this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.InPlaceUpdate, value.Version, tracker.CurrentEventId);
+                long preSize = value.EstimatedSize;
                 if (! (value.Val is TrackedObject trackedObject))
                 {
                     var bytes = (byte[])value.Val;
@@ -851,6 +863,7 @@ namespace DurableTask.Netherite.Faster
                 value.Version++;
                 this.cacheDebugger?.ConsistentWrite(ref key.Val, trackedObject, value.Version);
                 this.stats.Modify++;
+                this.cacheTracker.UpdateTrackedObjectSize(value.EstimatedSize - preSize);
                 return true;
             }
 
@@ -890,6 +903,7 @@ namespace DurableTask.Netherite.Faster
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.PostCopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref TrackedObject output, ref RecordInfo recordInfo, long address)
             {
                 this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.PostCopyUpdate, newValue.Version, tracker.CurrentEventId);
+                this.cacheTracker.UpdateTrackedObjectSize(newValue.EstimatedSize - oldValue.EstimatedSize);
                 return true;
             }
 
@@ -960,6 +974,7 @@ namespace DurableTask.Netherite.Faster
             void IFunctions<Key, Value, EffectTracker, TrackedObject, object>.PostSingleDeleter(ref Key key, ref RecordInfo recordInfo, long address)
             {
                 this.cacheDebugger?.Record(ref key.Val, CacheDebugger.CacheEvent.PostSingleDeleter, null, default);
+                // TODO figure this out
             }
 
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.ConcurrentWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref TrackedObject output, ref RecordInfo recordInfo, long address)
