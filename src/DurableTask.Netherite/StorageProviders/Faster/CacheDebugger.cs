@@ -39,7 +39,13 @@ namespace DurableTask.Netherite.Faster
             Evict,
             EvictTombstone,
             Readonly,
-            ReadonlyTombstone
+            ReadonlyTombstone,
+
+            // serialization
+            SerializeBytes,
+            SerializeObject,
+            DeserializeBytes,
+            DeserializeObject,
         };
 
         public class ObjectInfo
@@ -81,11 +87,11 @@ namespace DurableTask.Netherite.Faster
                     if (!recordInfo.Tombstone)
                     {
                         int version = iterator.GetValue().Version;
-                        this.cacheDebugger.Record(ref key, CacheEvent.Evict, version, null);
+                        this.cacheDebugger.Record(key, CacheEvent.Evict, version, null);
                     }
                     else
                     {
-                        this.cacheDebugger.Record(ref key, CacheEvent.EvictTombstone, null, null);
+                        this.cacheDebugger.Record(key, CacheEvent.EvictTombstone, null, null);
                     }
                 }
             }
@@ -110,11 +116,11 @@ namespace DurableTask.Netherite.Faster
                     if (!recordInfo.Tombstone)
                     {
                         int version = iterator.GetValue().Version;
-                        this.cacheDebugger.Record(ref key, CacheEvent.Readonly, version, null);
+                        this.cacheDebugger.Record(key, CacheEvent.Readonly, version, null);
                     }
                     else
                     {
-                        this.cacheDebugger.Record(ref key, CacheEvent.ReadonlyTombstone, null, null);
+                        this.cacheDebugger.Record(key, CacheEvent.ReadonlyTombstone, null, null);
                     }
                 }
             }
@@ -185,7 +191,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        internal void Record(ref TrackedObjectKey key, CacheEvent evt, int? version, string eventId)
+        internal void Record(TrackedObjectKey key, CacheEvent evt, int? version, string eventId)
         {
             Entry entry = new Entry
             {
