@@ -8,6 +8,7 @@ namespace DurableTask.Netherite.Faster
     using System.Collections.Generic;
     using System.Linq;
     using System.Text;
+    using System.Threading.Tasks;
     using FASTER.core;
 
     /// <summary>
@@ -32,6 +33,7 @@ namespace DurableTask.Netherite.Faster
             ConcurrentReaderPrefetch,
             PostSingleWriter,
             ConcurrentWriter,
+            ConcurrentDeleter,
             PostSingleDeleter,
 
             // Asynchronous Read Processing
@@ -43,7 +45,13 @@ namespace DurableTask.Netherite.Faster
             Evict,
             EvictTombstone,
             Readonly,
-            ReadonlyTombstone
+            ReadonlyTombstone,
+
+            // serialization
+            SerializeBytes,
+            SerializeObject,
+            DeserializeBytes,
+            DeserializeObject,
         };
 
         public class ObjectInfo
@@ -61,6 +69,20 @@ namespace DurableTask.Netherite.Faster
         public event Action<string> OnError;
 
      
+        public Task CreateTimer(TimeSpan timeSpan)
+        {
+            return Task.Delay(timeSpan);
+        }
+
+        public async ValueTask CheckTiming(Task waitingFor, Task timer, string message)
+        {
+            var first = await Task.WhenAny(waitingFor, timer);
+            if (first == timer)
+            {
+                this.OnError($"timeout: {message}");
+            }
+        }
+
         //public static string StateDescriptor(object o)
         //{
         //    if (o == null)
@@ -126,7 +148,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        internal void Record(ref TrackedObjectKey key, CacheEvent evt, int? version, string eventId)
+        internal void Record(TrackedObjectKey key, CacheEvent evt, int? version, string eventId)
         {
             Entry entry = new Entry
             {
@@ -163,6 +185,8 @@ namespace DurableTask.Netherite.Faster
                 string cacheEvents = string.Join(",", objectInfo.CacheEvents.Select(e => e.ToString()));
                 this.OnError($"Read validation failed: expected=v{objectInfo.CurrentVersion} actual=v{version} cacheEvents={cacheEvents}");
             }
+
+            // Caution: obj can be null if version == 0
 
             //if (!StateEquals(objectInfo.CurrentValue, obj))
             //{
