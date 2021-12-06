@@ -32,6 +32,12 @@ namespace DurableTask.Netherite.Tests
             this.Host.StartAsync().Wait();
             this.traceListener = new TestTraceListener();
             Trace.Listeners.Add(this.traceListener);
+            var cacheDebugger = settings.CacheDebugger = new Faster.CacheDebugger();
+            cacheDebugger.OnError += (message) =>
+            {
+                this.loggerProvider.Output?.WriteLine($"CACHEDEBUGGER: {message}");
+                this.traceListener.Output?.WriteLine($"CACHEDEBUGGER: {message}");
+            };
         }
 
         public void Dispose()

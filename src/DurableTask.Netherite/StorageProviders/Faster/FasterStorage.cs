@@ -55,6 +55,7 @@ namespace DurableTask.Netherite.Faster
             this.taskHubName = taskHubName;
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
             this.memoryTracker = new MemoryTracker(this);
+            this.TargetMemorySize = 1024L * 1024 * 1024 * 1024;
         }
 
         public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName)

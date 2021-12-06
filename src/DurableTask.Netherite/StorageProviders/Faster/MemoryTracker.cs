@@ -35,10 +35,13 @@ namespace DurableTask.Netherite.Faster
 
         public void UpdateTargetSizes()
         {
-            long targetSize = this.fasterStorage.TargetMemorySize / this.stores.Count;
-            foreach(var s in this.stores.Keys)
+            if (this.stores.Count > 0)
             {
-                s.SetTargetSize(targetSize);
+                long targetSize = this.fasterStorage.TargetMemorySize / this.stores.Count;
+                foreach (var s in this.stores.Keys)
+                {
+                    s.SetTargetSize(targetSize);
+                }
             }
         }
 
@@ -74,7 +77,7 @@ namespace DurableTask.Netherite.Faster
             public void SetTargetSize(long newTargetSize)
             {
                 this.TargetSize = newTargetSize;
-                this.store.AdjustPageCount(this.TargetSize, Interlocked.Read(ref this.trackedObjectSize));
+                //this.store.AdjustPageCount(this.TargetSize, Interlocked.Read(ref this.trackedObjectSize));
             }
         }
     }

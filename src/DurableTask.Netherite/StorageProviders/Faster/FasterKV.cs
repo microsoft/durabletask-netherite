@@ -62,12 +62,12 @@ namespace DurableTask.Netherite.Faster
                 () => {
                     try
                     {
+                        this.cacheTracker?.Dispose();
                         this.mainSession?.Dispose();
                         this.fht.Dispose();
                         this.blobManager.HybridLogDevice.Dispose();
                         this.blobManager.ObjectLogDevice.Dispose();
                         this.blobManager.ClosePSFDevices();
-                        this.cacheTracker.Dispose();
                     }
                     catch(Exception e)
                     {
@@ -81,6 +81,11 @@ namespace DurableTask.Netherite.Faster
 
         public void AdjustPageCount(long targetSize, long trackedObjectSize)
         {
+            if (this.fht == null)
+            {
+                return; // this may be called during startup when the store has not been constructed yet
+            }
+
             long totalSize = trackedObjectSize + this.fht.IndexSize * 64 + this.fht.Log.MemorySizeBytes + this.fht.OverflowBucketCount * 64;
 
             // Adjust empty page count to drive towards desired memory utilization
@@ -95,7 +100,7 @@ namespace DurableTask.Netherite.Faster
         }
 
         ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> CreateASession()
-            => this.fht.NewSession<EffectTracker, TrackedObject, object>(new Functions(this.partition, this.StoreStats));
+            => this.fht.NewSession<EffectTracker, TrackedObject, object>(new Functions(this.partition, this.StoreStats, this.cacheTracker));
 
         public override void InitMainSession()
         {
@@ -834,11 +839,12 @@ namespace DurableTask.Netherite.Faster
             readonly CacheDebugger cacheDebugger;
             readonly MemoryTracker.CacheTracker cacheTracker;
 
-            public Functions(Partition partition, StoreStatistics stats)
+            public Functions(Partition partition, StoreStatistics stats, MemoryTracker.CacheTracker cacheTracker)
             {
                 this.partition = partition;
                 this.stats = stats;
                 this.cacheDebugger = partition.Settings.CacheDebugger;
+                this.cacheTracker = cacheTracker;
             }
 
             bool IFunctions<Key, Value, EffectTracker, TrackedObject, object>.SupportsPostOperations 
