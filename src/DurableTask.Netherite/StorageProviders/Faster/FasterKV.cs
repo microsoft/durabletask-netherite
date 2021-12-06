@@ -840,18 +840,25 @@ namespace DurableTask.Netherite.Faster
                     this.cacheDebugger?.Record(key.Val, single ? CacheDebugger.CacheEvent.SingleReader : CacheDebugger.CacheEvent.ConcurrentReader, value.Version, default);
 
                     TrackedObject trackedObject = null;
-                    if (value.Val != null && value.Val is byte[] bytes)
+
+                    if (value.Val != null)
                     {
-                        trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
-                        this.stats.Deserialize++;
-                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, value.Version, default);
-                    }
-                    if (trackedObject != null)
-                    {
+                        if (value.Val is byte[] bytes)
+                        {
+                            trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                            this.stats.Deserialize++;
+                            this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, value.Version, default);
+                        }
+                        else
+                        {
+                            trackedObject = (TrackedObject)value.Val;
+                            this.partition.Assert(trackedObject != null);
+                        }
+
                         trackedObject.Partition = this.partition;
                     }
-                    dst = trackedObject;
 
+                    dst = trackedObject;
                     this.cacheDebugger?.ConsistentRead(ref key.Val, trackedObject, value.Version);
                     this.stats.Read++;
                 }
