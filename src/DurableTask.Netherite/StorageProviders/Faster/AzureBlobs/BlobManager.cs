@@ -754,8 +754,10 @@ namespace DurableTask.Netherite.Faster
                         return (commitMetadata.Length, false);
                     }
                 });
+            
+            this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.Commit Returned");
         }
-    
+
 
         IEnumerable<long> ILogCommitManager.ListCommits()
         {

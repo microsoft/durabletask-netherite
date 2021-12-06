@@ -478,7 +478,15 @@ namespace DurableTask.Netherite.Faster
                 }
                 else
                 {
-                    (await this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken)).Complete();
+                    //var timeoutTask = this.cacheDebugger?.CreateTimer(TimeSpan.FromMinutes(2));
+                    
+                    var rmwAsyncResultTask = this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken);
+                    //await (this.cacheDebugger?.CheckTiming(rmwAsyncResultTask.AsTask(), timeoutTask, $"RMWAsync took too long, suspect hang. key={k}") ?? default);
+                    var rmwAsyncResult = await rmwAsyncResultTask;
+
+                    var rmwAsyncCompleteTask = rmwAsyncResult.CompleteAsync();
+                    //await (this.cacheDebugger?.CheckTiming(rmwAsyncCompleteTask.AsTask(), timeoutTask, $"RmwAsyncResult.CompleteAsync took too long, suspect hang. key={k}") ?? default);
+                    await rmwAsyncCompleteTask;
                 }
             }
             catch (Exception exception)
@@ -711,6 +719,7 @@ namespace DurableTask.Netherite.Faster
                     this.writer.Write(obj.Version);
                     if (obj.Val is byte[] serialized)
                     {
+                        // We did already serialize this object on the last CopyUpdate. So we can just use the byte array.
                         this.writer.Write(serialized.Length);
                         this.writer.Write(serialized);
                         if (this.cacheDebugger != null)
@@ -816,53 +825,44 @@ namespace DurableTask.Netherite.Faster
                 this.partition.Assert(newValue.Val != null);
             }
 
-            public void SingleReader(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject dst)
+            public void Reader(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject dst, bool single)
             {
                 if (tracker == null)
                 {
-                    this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleReaderPrefetch, value.Version, default);
-                    return; // this is a prefetch, so we don't actually care about the value
+                    this.cacheDebugger?.Record(key.Val, single ? CacheDebugger.CacheEvent.SingleReaderPrefetch : CacheDebugger.CacheEvent.ConcurrentReaderPrefetch, value.Version, default);
+
+                    // this is a prefetch, so we don't use the value
+                    // also, we don't check consistency because it may be stale (as not on the main session)
+                    return; 
                 }
                 else
                 {
-                    this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleReader, value.Version, default);
-                    if (!(value.Val is TrackedObject trackedObject))
+                    this.cacheDebugger?.Record(key.Val, single ? CacheDebugger.CacheEvent.SingleReader : CacheDebugger.CacheEvent.ConcurrentReader, value.Version, default);
+
+                    TrackedObject trackedObject = null;
+                    if (value.Val != null && value.Val is byte[] bytes)
                     {
-                        var bytes = (byte[])value.Val;
-                        this.partition.Assert(bytes != null);
                         trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
                         this.stats.Deserialize++;
                         this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, value.Version, default);
                     }
-
-                    trackedObject.Partition = this.partition;
+                    if (trackedObject != null)
+                    {
+                        trackedObject.Partition = this.partition;
+                    }
                     dst = trackedObject;
+
+                    this.cacheDebugger?.ConsistentRead(ref key.Val, trackedObject, value.Version);
                     this.stats.Read++;
                 }
             }
+            public void SingleReader(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject dst)
+            {
+                this.Reader(ref key, ref tracker, ref value, ref dst, true);
+            }
             public void ConcurrentReader(ref Key key, ref EffectTracker tracker, ref Value value, ref TrackedObject dst)
             {
-                if (tracker == null)
-                {
-                    this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.ConcurrentReaderPrefetch, value.Version, default);
-                    return; // this is a prefetch, so we don't actually care about the value
-                }
-                else
-                {
-                    this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.ConcurrentReader, value.Version, default);
-                    if (!(value.Val is TrackedObject trackedObject))
-                    {
-                        var bytes = (byte[])value.Val;
-                        this.partition.Assert(bytes != null);
-                        trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
-                        this.stats.Deserialize++;
-                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, value.Version, default);
-                    }
-
-                    trackedObject.Partition = this.partition;
-                    dst = trackedObject;
-                    this.stats.Read++;
-                }
+                this.Reader(ref key, ref tracker, ref value, ref dst, false);
             }
 
             public void SingleWriter(ref Key key, ref Value src, ref Value dst)

@@ -143,7 +143,7 @@ namespace DurableTask.Netherite.Faster
                 }
             }
 
-            this.BlobManager?.StorageTracer?.FasterStorageProgress($"AzureStorageDevice.StartAsync determined segment range for {this.pageBlobDirectory.Prefix}{this.blobName}: start={this.startSegment} end={this.endSegment}");
+            this.BlobManager?.StorageTracer?.FasterStorageProgress($"AzureStorageDevice.StartAsync Returned, determined segment range for {this.pageBlobDirectory.Prefix}{this.blobName}: start={this.startSegment} end={this.endSegment}");
         }
 
         /// <summary>
