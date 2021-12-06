@@ -39,14 +39,9 @@ namespace DurableTask.Netherite
         public Partition Partition { get; }
 
         /// <summary>
-        /// The effect currently being applied.
-        /// </summary>
-        public dynamic Effect { get; set; }
-
-        /// <summary>
         /// The event id of the current effect.
         /// </summary>
-        public string CurrentEventId { get; set; }
+        public string CurrentEventId => this.currentUpdate?.EventIdString;
 
         /// <summary>
         /// True if we are replaying this effect during recovery.
@@ -55,15 +50,33 @@ namespace DurableTask.Netherite
         /// </summary>
         public bool IsReplaying { get; set; }
 
+        void SetCurrentUpdateEvent(PartitionUpdateEvent updateEvent)
+        {
+            this.effect = this.currentUpdate = updateEvent;
+        }
+
+        PartitionUpdateEvent currentUpdate;
+        dynamic effect;
+
         /// <summary>
         /// Applies the event to the given tracked object, using dynamic dispatch to 
         /// select the correct Process method overload for the event. 
         /// </summary>
-        /// <param name="trackedObject"></param>
+        /// <param name="trackedObject">The tracked object on which the event should be applied.</param>
         /// <remarks>Called by the storage layer when this object calls applyToStore.</remarks>
         public void ProcessEffectOn(dynamic trackedObject)
         {
-            trackedObject.Process(this.Effect, this);
+            this.Partition.Assert(this.currentUpdate != null);
+            try
+            {
+                trackedObject.Process(this.effect, this);
+            }
+            catch (Exception exception) when (!Utils.IsFatal(exception))
+            {
+                // for robustness, we swallow exceptions inside event processing.
+                // It does not mean they are not serious. We still report them as errors.
+                this.Partition.ErrorHandler.HandleError(nameof(ProcessUpdate), $"Encountered exception on {trackedObject} when applying update event {this.currentUpdate}, eventId={this.currentUpdate?.EventId}", exception, false, false);
+            }
         }
 
         public void AddDeletion(TrackedObjectKey key)
@@ -84,8 +97,7 @@ namespace DurableTask.Netherite
 
                     this.Partition.Assert(updateEvent != null);
 
-                    this.Effect = updateEvent;
-                    this.CurrentEventId = updateEvent.EventIdString;
+                    this.SetCurrentUpdateEvent(updateEvent);
 
                     // collect the initial list of targets
                     updateEvent.DetermineEffects(this);
@@ -122,8 +134,7 @@ namespace DurableTask.Netherite
                         this.deletedKeys.Clear();
                     }
 
-                    this.Effect = null;
-                    this.CurrentEventId = null;
+                    this.SetCurrentUpdateEvent(null);
                 }
                 catch (OperationCanceledException)
                 {
