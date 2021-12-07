@@ -25,11 +25,11 @@ namespace DurableTask.Netherite.Tests
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
 
-        public QueryTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
+        public QueryTests(SingleHostFixture fixture, Action<string> output)
         {
             this.fixture = fixture;
             this.host = fixture.Host;
-            this.fixture.SetOutput(outputHelper);
+            this.fixture.SetOutput(output);
 
             // purge all instances prior to each test
             if (! this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
@@ -219,10 +219,12 @@ namespace DurableTask.Netherite.Tests
 
         public NonFixtureQueryTests(ITestOutputHelper outputHelper)
         {
+            Action<string> output = (string message) => outputHelper.WriteLine(message);
+           
             TestConstants.ValidateEnvironment();
-            this.traceListener = new TestTraceListener() { Output = outputHelper };
+            this.traceListener = new TestTraceListener() { Output = output };
             this.loggerFactory = new LoggerFactory();
-            this.provider = new XunitLoggerProvider(outputHelper);
+            this.provider = new XunitLoggerProvider(output);
             this.loggerFactory.AddProvider(this.provider);
             Trace.Listeners.Add(this.traceListener);
         }

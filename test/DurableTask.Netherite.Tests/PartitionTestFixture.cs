@@ -38,7 +38,7 @@ namespace DurableTask.Netherite.Tests
             Trace.Listeners.Remove(this.traceListener);
         }
 
-        public void SetOutput(ITestOutputHelper output)
+        public void SetOutput(Action<string> output)
         {
             this.loggerProvider.Output = output;
             this.traceListener.Output = output;
@@ -52,9 +52,9 @@ namespace DurableTask.Netherite.Tests
 
         internal class TestTraceListener : TraceListener
         {
-            public ITestOutputHelper Output { get; set; }
+            public Action<string> Output { get; set; }
             public override void Write(string message) {  }
-            public override void WriteLine(string message) { this.Output?.WriteLine($"{DateTime.Now:o} {message}"); }
+            public override void WriteLine(string message) { this.Output?.Invoke($"{DateTime.Now:o} {message}"); }
         }
     }
 }

@@ -19,9 +19,10 @@ namespace DurableTask.Netherite.Tests
 
         public OrchestrationServiceTests(ITestOutputHelper outputHelper)
         {
+            Action<string> output = (string message) => outputHelper.WriteLine(message);
             TestConstants.ValidateEnvironment();
             this.loggerFactory = new LoggerFactory();
-            var loggerProvider = new XunitLoggerProvider(outputHelper);
+            var loggerProvider = new XunitLoggerProvider(output);
             this.loggerFactory.AddProvider(loggerProvider);
         }
 

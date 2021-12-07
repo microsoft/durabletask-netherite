@@ -30,9 +30,10 @@ namespace DurableTask.Netherite.Tests
 
         public ScenarioTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
+            Action<string> output = (string message) => outputHelper.WriteLine(message);
             this.fixture = fixture;
             this.host = fixture.Host;
-            fixture.SetOutput(outputHelper);
+            fixture.SetOutput(output);
         }
 
         public void Dispose()
@@ -692,7 +693,7 @@ namespace DurableTask.Netherite.Tests
         }
 
 
-        internal static class Orchestrations
+        public static class Orchestrations
         {
             internal class SayHelloInline : TaskOrchestration<string, string>
             {
@@ -712,7 +713,7 @@ namespace DurableTask.Netherite.Tests
             }
 
             [KnownType(typeof(Activities.Hello))]
-            internal class Hello5 : TaskOrchestration<List<string>, string>
+            public class Hello5 : TaskOrchestration<List<string>, string>
             {
                 public override async Task<List<string>> RunTask(OrchestrationContext context, string input)
                 {
@@ -1513,7 +1514,7 @@ namespace DurableTask.Netherite.Tests
                 }
             }
 
-            internal class Hello : TaskActivity<string, string>
+            public class Hello : TaskActivity<string, string>
             {
                 protected override string Execute(TaskContext context, string input)
                 {
