@@ -157,11 +157,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(222, Account, TaskHub, PartitionId, MessageId, Details, EventType, TaskEventId, InstanceId, ExecutionId, AppName, ExtensionVersion);
         }
 
-        [Event(223, Level = EventLevel.Verbose, Version = 1)]
-        public void WorkItemQueued(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string ExecutionType, string ConsumedMessageIds, string AppName, string ExtensionVersion)
+        [Event(223, Level = EventLevel.Verbose, Version = 2)]
+        public void WorkItemQueued(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string ExecutionType, int historySize, string ConsumedMessageIds, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(223, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, ExecutionType, ConsumedMessageIds, AppName, ExtensionVersion);
+            this.WriteEvent(223, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, ExecutionType, historySize, ConsumedMessageIds, AppName, ExtensionVersion);
         }
 
         [Event(224, Level = EventLevel.Informational, Version = 1)]
