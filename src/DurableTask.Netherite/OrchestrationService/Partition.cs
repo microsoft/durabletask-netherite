@@ -288,6 +288,7 @@ namespace DurableTask.Netherite
                 item.WorkItemId,
                 item.TaskMessage.OrchestrationInstance.InstanceId,
                 item.ExecutionType,
+                0,
                 WorkItemTraceHelper.FormatMessageId(item.TaskMessage, item.OriginWorkItem));
 
             this.ActivityWorkItemQueue.Add(item);
@@ -301,6 +302,7 @@ namespace DurableTask.Netherite
                 item.MessageBatch.WorkItemId,
                 item.InstanceId,
                 item.Type.ToString(),
+                item.HistorySize,
                 WorkItemTraceHelper.FormatMessageIdList(item.MessageBatch.TracedMessages));
 
             this.OrchestrationWorkItemQueue.Add(item);

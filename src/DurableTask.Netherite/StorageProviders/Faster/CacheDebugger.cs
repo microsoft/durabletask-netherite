@@ -20,6 +20,14 @@ namespace DurableTask.Netherite.Faster
 
         public enum CacheEvent
         {
+            // reads and RMWs on the main session
+            StartingRead,
+            PendingRead,
+            CompletedRead,
+            StartingRMW,
+            PendingRMW,
+            CompletedRMW,
+
             // Faster IFunctions
             InitialUpdate,
             PostInitialUpdate,
@@ -36,11 +44,6 @@ namespace DurableTask.Netherite.Faster
             ConcurrentDeleter,
             PostSingleDeleter,
 
-            // Asynchronous Read Processing
-            ReadHit,
-            ReadMiss,
-            ReadMissComplete,
-
             // subscriptions to the FASTER log accessor
             Evict,
             EvictTombstone,
@@ -52,18 +55,22 @@ namespace DurableTask.Netherite.Faster
             SerializeObject,
             DeserializeBytes,
             DeserializeObject,
+
+            // explicit failure
+            Fail,
         };
 
         public class ObjectInfo
         {
-            public object CurrentValue;
             public int CurrentVersion;
             public List<Entry> CacheEvents;
-
+            
             public override string ToString()
             {
                 return $"Current=v{this.CurrentVersion} CacheEvents={this.CacheEvents.Count}";
             }
+
+            public string PrintCacheEvents() => string.Join(",", this.CacheEvents.Select(e => e.ToString()));
         }
 
         public event Action<string> OnError;
@@ -82,42 +89,6 @@ namespace DurableTask.Netherite.Faster
                 this.OnError($"timeout: {message}");
             }
         }
-
-        //public static string StateDescriptor(object o)
-        //{
-        //    if (o == null)
-        //    {
-        //        return "null";
-        //    }
-        //    else if (o is byte[] bytes)
-        //    {
-        //        return $"byte[{bytes.Length}]";
-        //    }
-        //    else if (o is HistoryState h)
-        //    {
-        //        return $"ExecutionId={h.ExecutionId} episode={h.Episode}";
-        //    }
-        //    else if (o is InstanceState s)
-        //    {
-        //        return $"lastUpdated={s.OrchestrationState.LastUpdatedTime:o}";
-        //    }
-        //    else
-        //    {
-        //        return "INVALID";
-        //    }
-        //}
-
-        //public static bool StateEquals(object o1, object o2)
-        //{
-        //    if (o1 == o2)
-        //    {
-        //        return true;
-        //    }
-        //    else
-        //    {
-        //        return StateDescriptor(o1) == StateDescriptor(o2);
-        //    }
-        //}
 
         public struct Entry
         {
@@ -161,7 +132,6 @@ namespace DurableTask.Netherite.Faster
                 key,
                 key => new ObjectInfo()
                 {
-                    CurrentValue = null,
                     CacheEvents = new List<Entry>() { entry },
                 },
                 (key, trace) =>
@@ -171,62 +141,105 @@ namespace DurableTask.Netherite.Faster
                 });
         }
 
-        internal void ConsistentRead(ref TrackedObjectKey key, TrackedObject obj, int version)
+        internal void Fail(string message)
+        {
+            if (System.Diagnostics.Debugger.IsAttached)
+            {
+                System.Diagnostics.Debugger.Break();
+            }
+
+            this.OnError(message);
+        }
+
+        internal void Fail(string message, TrackedObjectKey key)
+        {
+            this.Record(key, CacheEvent.Fail, null, null);
+
+            if (System.Diagnostics.Debugger.IsAttached)
+            {
+                System.Diagnostics.Debugger.Break();
+            }
+
+            var objectInfo = this.Objects[key];
+            this.OnError($"{message} cacheEvents={objectInfo.PrintCacheEvents()}");
+        }
+
+        internal void ValidateObjectVersion(FasterKV.Value val, TrackedObjectKey key)
+        {
+            int? VersionOfObject()
+            {
+                if (val.Val == null)
+                {
+                    return 0;
+                }
+                else if (val.Val is TrackedObject o)
+                {
+                    return o.Version;
+                }
+                else if (val.Val is byte[] bytes)
+                {
+                    return DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes).Version;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+
+            int? versionOfObject = VersionOfObject();
+
+            if (val.Version != versionOfObject)
+            {
+                var objectInfo = this.Objects[key];
+                this.Fail($"incorrect version: reference=v{val.Version} actual=v{versionOfObject} obj={val.Val} cacheEvents={objectInfo.PrintCacheEvents()}");
+            }
+        }
+
+        internal void CheckVersionConsistency(ref TrackedObjectKey key, TrackedObject obj, int? version)
         {
             var objectInfo = this.Objects[key];
 
-            if (version != objectInfo.CurrentVersion)
+            if (version != null && version.Value != objectInfo.CurrentVersion)
             {
-                if (System.Diagnostics.Debugger.IsAttached)
-                {
-                    System.Diagnostics.Debugger.Break();
-                }
-
-                string cacheEvents = string.Join(",", objectInfo.CacheEvents.Select(e => e.ToString()));
-                this.OnError($"Read validation failed: expected=v{objectInfo.CurrentVersion} actual=v{version} cacheEvents={cacheEvents}");
+                this.Fail($"Read validation on version failed: expected=v{objectInfo.CurrentVersion} actual=v{version} obj={obj} cacheEvents={objectInfo.PrintCacheEvents()}");
             }
 
-            // Caution: obj can be null if version == 0
-
-            //if (!StateEquals(objectInfo.CurrentValue, obj))
-            //{
-            //    if (System.Diagnostics.Debugger.IsAttached)
-            //    {
-            //        System.Diagnostics.Debugger.Break();
-            //    }
-
-            //    string cacheEvents = string.Join(",", objectInfo.CacheEvents.Select(e => e.ToString()));
-            //    this.OnError($"Read validation failed: expected={StateDescriptor(objectInfo.CurrentValue)} actual={StateDescriptor(obj)} cacheEvents={cacheEvents}");
-            //}
+            if ((obj?.Version ?? 0) != objectInfo.CurrentVersion)
+            {
+                this.Fail($"Read validation on object failed: expected=v{objectInfo.CurrentVersion} actual=v{obj?.Version ?? 0} obj={obj} cacheEvents={objectInfo.PrintCacheEvents()}");
+            }
         }
 
-        internal void ConsistentWrite(ref TrackedObjectKey key, TrackedObject obj, int version)
+        internal void UpdateReferenceValue(ref TrackedObjectKey key, TrackedObject obj, int version)
         {
             this.Objects.AddOrUpdate(
                 key,
                 key => new ObjectInfo()
                 {
-                    CurrentValue = obj,
                     CurrentVersion = version,
                     CacheEvents = new List<Entry>(),
                 },
                 (key, trace) =>
                 {
-                    trace.CurrentValue = obj;
                     trace.CurrentVersion = version;
                     return trace;
                 });
+
+            if (obj != null)
+            {
+                obj.Version = version;
+            }
         }
 
-        internal void ConsistentWrite(ref TrackedObjectKey key, object obj, int version)
+        internal void UpdateReferenceValue(ref TrackedObjectKey key, object obj, int version)
         {
             if (obj is byte[] bytes)
             {
-                this.ConsistentWrite(ref key, (TrackedObject) DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes), version);
+                this.UpdateReferenceValue(ref key, (TrackedObject) DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes), version);
             }
             else
             {
-                this.ConsistentWrite(ref key, obj as TrackedObject, version);
+                this.UpdateReferenceValue(ref key, obj as TrackedObject, version);
             }
         }
 

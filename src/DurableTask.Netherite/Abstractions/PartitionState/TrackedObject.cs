@@ -33,6 +33,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         internal byte[] SerializationCache { get; set; }
 
+        [DataMember]
+        public int Version { get; set;  } // TODO removve this again
+
         /// <summary>
         /// The collection of all types of tracked objects and polymorphic members of tracked objects. Can be
         /// used by serializers to compute a type map.

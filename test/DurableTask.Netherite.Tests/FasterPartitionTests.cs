@@ -6,6 +6,7 @@ namespace DurableTask.Netherite.Tests
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.IO;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
@@ -23,10 +24,11 @@ namespace DurableTask.Netherite.Tests
         readonly TestTraceListener traceListener;
         readonly ILoggerFactory loggerFactory;
         readonly XunitLoggerProvider provider;
-        ITestOutputHelper output;
+        Action<string> output;
 
-        public FasterPartitionTests(ITestOutputHelper output)
+        public FasterPartitionTests(ITestOutputHelper outputHelper)
         {
+            Action<string> output = (string message) => outputHelper.WriteLine(message);
             this.loggerFactory = new LoggerFactory();
             this.provider = new XunitLoggerProvider();
             this.loggerFactory.AddProvider(this.provider);
@@ -125,7 +127,7 @@ namespace DurableTask.Netherite.Tests
             var cacheDebugger = settings.CacheDebugger = new Faster.CacheDebugger();
             cacheDebugger.OnError += (message) =>
             {
-                this.output?.WriteLine($"CACHEDEBUGGER: {message}");
+                this.output?.Invoke($"CACHEDEBUGGER: {message}");
                 reportedProblem = reportedProblem ?? message;
                 cts.Cancel();
             };
@@ -163,6 +165,7 @@ namespace DurableTask.Netherite.Tests
             }
 
             // wait for all orchestrations to finish executing
+            this.output?.Invoke("waiting for orchestrations to finish executing...");
             try
             {
                 async Task WaitFor(int i)
@@ -173,96 +176,117 @@ namespace DurableTask.Netherite.Tests
                     }
                     catch (Exception e)
                     {
-                        this.output.WriteLine($"Orchestration {InstanceId(i)} failed with {e.GetType()}: {e.Message}");
+                        this.output?.Invoke($"Orchestration {InstanceId(i)} failed with {e.GetType()}: {e.Message}");
                     }
                 }
 
                 var tasks = new Task[OrchestrationCount];
+                var timeout = Debugger.IsAttached ? TimeSpan.FromMinutes(15) : TimeSpan.FromMinutes(3);
                 for (int i = 0; i < OrchestrationCount; i++)
                     tasks[i] = WaitFor(i);
 
-                var timeout = Debugger.IsAttached ? TimeSpan.FromMinutes(60) : TimeSpan.FromMinutes(6);
+                void PrintUnfinished()
+                {
+                    var sb = new StringBuilder();
+                    sb.Append("Waiting for orchestrations:");
+                    for (int i = 0; i < OrchestrationCount; i++)
+                    {
+                        if (!tasks[i].IsCompleted)
+                        {
+                            sb.Append(' ');
+                            sb.Append(InstanceId(i));
+                        }
+                    }
+                    this.output?.Invoke(sb.ToString());
+                }
+
+                void ProgressReportThread()
+                {
+                    Stopwatch elapsed = new Stopwatch();
+                    elapsed.Start();
+
+                    while (elapsed.Elapsed < timeout)
+                    {
+                        Thread.Sleep(10000);
+                        PrintUnfinished();
+                    }
+
+                    cts.Cancel();
+                }
+                var thread = new Thread(ProgressReportThread);
+                thread.Name = "ProgressReportThread";
+                thread.Start();
+
                 var terminationTask = Task.Delay(timeout, cts.Token);
                 var completionTask = Task.WhenAll(tasks);
                 var firstTask = await Task.WhenAny(terminationTask, completionTask);
                 Assert.True(reportedProblem == null, $"CacheDebugger detected problem while executing orchestrations: {reportedProblem}");
 
-                var sb = new StringBuilder();
-                sb.Append("Incomplete or failed orchestrations:");
-                for (int i = 0; i < OrchestrationCount; i++)
-                {
-                    if (!tasks[i].IsCompleted || tasks[i].IsFaulted)
-                    {
-                        sb.Append(' ');
-                        sb.Append(InstanceId(i));
-                    }
-                }
-                this.output.WriteLine(sb.ToString());
+                PrintUnfinished();
 
                 Assert.True(firstTask != terminationTask, $"timed out after {timeout} while executing orchestrations");
-   
+
                 foreach (var line in cacheDebugger.Dump())
                 {
-                    this.output.WriteLine(line);
+                    this.output?.Invoke(line);
                 }
-
             }
             catch (Exception e)
             {
-                this.output.WriteLine($"exception thrown while executing orchestrations: {e}");
+                this.output?.Invoke($"exception thrown while executing orchestrations: {e}");
                 foreach (var line in cacheDebugger.Dump())
                 {
-                    this.output.WriteLine(line);
+                    this.output?.Invoke(line);
                 }
                 throw;
             }
 
             // shut down the service
             await service.StopAsync();
+
+            /// <summary>
+            /// Create a partition and then restore it.
+            /// </summary>
+            //public async Task Locality2()
+            //{
+            //    var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            //    settings.ResolvedTransportConnectionString = "MemoryF";
+            //    settings.PartitionCount = 1;
+
+            //    // don't take any extra checkpoints
+            //    settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 * 1024 * 1024;
+            //    settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
+            //    settings.IdleCheckpointFrequencyMs = (long)TimeSpan.FromDays(1).TotalMilliseconds;
+
+            //    //settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
+            //    settings.HubName = $"{TestConstants.TaskHubName}-Locality";
+
+            //    var orchestrationType = typeof(ScenarioTests.Orchestrations.Hello5);
+            //    var activityType = typeof(ScenarioTests.Activities.Hello);
+            //    string InstanceId(int i) => $"Orch{i:D5}";
+            //    int OrchestrationCount = 1000;
+
+            //    {
+            //        // start the service 
+            //        var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+            //        await service.CreateAsync();
+            //        await service.StartAsync();
+            //        var host = (TransportAbstraction.IHost)service;
+            //        Assert.Equal(1u, service.NumberPartitions);
+            //        var client = new TaskHubClient(service);
+
+            //        // wait for all orchestrations
+            //        {
+            //            var tasks = new Task[OrchestrationCount];
+            //            for (int i = 0; i < OrchestrationCount; i++)
+            //                tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
+            //            await Task.WhenAll(tasks);
+            //        }
+
+            //        // stop the service
+            //        await service.StopAsync();
+            //    }
+            //}
         }
-
-        /// <summary>
-        /// Create a partition and then restore it.
-        /// </summary>
-        //public async Task Locality2()
-        //{
-        //    var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
-        //    settings.ResolvedTransportConnectionString = "MemoryF";
-        //    settings.PartitionCount = 1;
-
-        //    // don't take any extra checkpoints
-        //    settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 * 1024 * 1024;
-        //    settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
-        //    settings.IdleCheckpointFrequencyMs = (long)TimeSpan.FromDays(1).TotalMilliseconds;
-
-        //    //settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
-        //    settings.HubName = $"{TestConstants.TaskHubName}-Locality";
-
-        //    var orchestrationType = typeof(ScenarioTests.Orchestrations.Hello5);
-        //    var activityType = typeof(ScenarioTests.Activities.Hello);
-        //    string InstanceId(int i) => $"Orch{i:D5}";
-        //    int OrchestrationCount = 1000;
-
-        //    {
-        //        // start the service 
-        //        var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-        //        await service.CreateAsync();
-        //        await service.StartAsync();
-        //        var host = (TransportAbstraction.IHost)service;
-        //        Assert.Equal(1u, service.NumberPartitions);
-        //        var client = new TaskHubClient(service);
-
-        //        // wait for all orchestrations
-        //        {
-        //            var tasks = new Task[OrchestrationCount];
-        //            for (int i = 0; i < OrchestrationCount; i++)
-        //                tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
-        //            await Task.WhenAll(tasks);
-        //        }
-
-        //        // stop the service
-        //        await service.StopAsync();
-        //    }
-        //}
     }
 }
