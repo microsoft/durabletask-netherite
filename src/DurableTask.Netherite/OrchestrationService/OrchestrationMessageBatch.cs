@@ -68,6 +68,8 @@ namespace DurableTask.Netherite
 
         public double WaitTimeMs(double now) => (now - this.WaitingSince) ?? 0;
 
+        public override string TracedInstanceId => this.InstanceId;
+
         public override void OnReadComplete(TrackedObject s, Partition partition)
         {
             var historyState = (HistoryState)s;
