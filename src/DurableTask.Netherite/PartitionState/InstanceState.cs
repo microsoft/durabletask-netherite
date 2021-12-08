@@ -32,8 +32,7 @@ namespace DurableTask.Netherite
             return $"Instance InstanceId={this.InstanceId} Status={this.OrchestrationState?.OrchestrationStatus}";
         }
 
-        [IgnoreDataMember]
-        public override long EstimatedSize => 50 + this.OrchestrationState?.Size ?? 0;
+        public override long ComputeEstimatedSize() => 50 + this.OrchestrationState?.Size ?? 0;
 
         public void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {

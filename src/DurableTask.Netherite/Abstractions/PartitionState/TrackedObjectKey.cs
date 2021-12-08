@@ -19,7 +19,7 @@ namespace DurableTask.Netherite
         public TrackedObjectKey(TrackedObjectType objectType) { this.ObjectType = objectType; this.InstanceId = null; }
         public TrackedObjectKey(TrackedObjectType objectType, string instanceId) { this.ObjectType = objectType; this.InstanceId = instanceId; }
 
-        public long EstimatedSize => 16 + (this.InstanceId == null ? 0 : 4 + this.InstanceId.Length);
+        public int EstimatedSize => 16 + (this.InstanceId == null ? 0 : 4 + this.InstanceId.Length);
 
         public enum TrackedObjectType
         {

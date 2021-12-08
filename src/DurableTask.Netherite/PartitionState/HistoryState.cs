@@ -43,8 +43,7 @@ namespace DurableTask.Netherite
             return $"History InstanceId={this.InstanceId} ExecutionId={this.ExecutionId} Events={this.History.Count}";
         }
 
-        [IgnoreDataMember]
-        public override long EstimatedSize => 50 + DurableTask.Netherite.SizeUtils.GetEstimatedSize(this);
+        public override long ComputeEstimatedSize() => 50 + DurableTask.Netherite.SizeUtils.GetEstimatedSize(this);
 
         public void Process(BatchProcessed evt, EffectTracker effects)
         {
