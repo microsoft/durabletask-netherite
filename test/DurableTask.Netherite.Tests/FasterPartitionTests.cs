@@ -16,12 +16,11 @@ namespace DurableTask.Netherite.Tests
     using Newtonsoft.Json;
     using Xunit;
     using Xunit.Abstractions;
-    using static DurableTask.Netherite.Tests.SingleHostFixture;
 
     [Collection("NetheriteTests")]
     public class FasterPartitionTests : IDisposable
     {
-        readonly TestTraceListener traceListener;
+        readonly PartitionTestFixture.TestTraceListener traceListener;
         readonly ILoggerFactory loggerFactory;
         readonly XunitLoggerProvider provider;
         Action<string> output;
@@ -32,7 +31,7 @@ namespace DurableTask.Netherite.Tests
             this.loggerFactory = new LoggerFactory();
             this.provider = new XunitLoggerProvider();
             this.loggerFactory.AddProvider(this.provider);
-            this.traceListener = new TestTraceListener();
+            this.traceListener = new PartitionTestFixture.TestTraceListener();
             Trace.Listeners.Add(this.traceListener);
             this.provider.Output = output;
             this.traceListener.Output = output;

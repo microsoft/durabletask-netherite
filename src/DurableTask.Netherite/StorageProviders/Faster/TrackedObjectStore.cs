@@ -31,6 +31,8 @@ namespace DurableTask.Netherite.Faster
 
         public abstract Task FinalizeCheckpointCompletedAsync(Guid guid);
 
+        public abstract void CheckInvariants();
+
         // perform a query
         public abstract Task QueryAsync(PartitionQueryEvent queryEvent, EffectTracker effectTracker);
 

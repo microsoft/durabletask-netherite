@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite.Tests
 {
+    using DurableTask.Netherite.Faster;
     using Microsoft.Extensions.Logging;
     using System;
     using System.Collections.Generic;
@@ -17,8 +18,12 @@ namespace DurableTask.Netherite.Tests
     {
         readonly TestTraceListener traceListener;
         readonly XunitLoggerProvider loggerProvider;
+        readonly CacheDebugger cacheDebugger;
+
         internal TestOrchestrationHost Host { get; private set; }
         internal ILoggerFactory LoggerFactory { get; private set; }
+
+        string firstError;
 
         public SingleHostFixture()
         {
@@ -32,11 +37,12 @@ namespace DurableTask.Netherite.Tests
             this.Host.StartAsync().Wait();
             this.traceListener = new TestTraceListener();
             Trace.Listeners.Add(this.traceListener);
-            var cacheDebugger = settings.CacheDebugger = new Faster.CacheDebugger();
-            cacheDebugger.OnError += (message) =>
+            this.cacheDebugger = settings.CacheDebugger = new Faster.CacheDebugger();
+            this.cacheDebugger.OnError += (message) =>
             {
                 this.loggerProvider.Output?.Invoke($"CACHEDEBUGGER: {message}");
                 this.traceListener.Output?.Invoke($"CACHEDEBUGGER: {message}");
+                this.firstError ??= message;
             };
         }
 
@@ -46,6 +52,12 @@ namespace DurableTask.Netherite.Tests
             this.Host.StopAsync(false).Wait();
             this.Host.Dispose();
             Trace.Listeners.Remove(this.traceListener);
+        }
+
+        public bool HasError(out string error)
+        {
+            error = this.firstError;
+            return error != null;
         }
 
         public void SetOutput(Action<string> output)

@@ -27,17 +27,27 @@ namespace DurableTask.Netherite.Tests
     {
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
+        readonly Action<string> output;
 
         public ScenarioTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
-            Action<string> output = (string message) => outputHelper.WriteLine(message);
+            this.output = (string message) => outputHelper.WriteLine(message);
+            this.output($"Running pre-test operations on {fixture.GetType().Name}.");
+
             this.fixture = fixture;
             this.host = fixture.Host;
-            fixture.SetOutput(output);
+            fixture.SetOutput(this.output);
+            Assert.False(fixture.HasError(out var error), $"could not start test because of preceding test failure: {error}");
+
+            this.output($"Completed pre-test operations on {fixture.GetType().Name}.");
         }
 
         public void Dispose()
         {
+            this.output($"Running post-test operations on {this.fixture.GetType().Name}.");
+
+            Assert.False(this.fixture.HasError(out var error), $"detected test failure: {error}");
+
             // purge all instances after each test
             // this helps to catch "bad states" (e.g. hung workers) caused by the tests
             if (!this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
@@ -46,6 +56,8 @@ namespace DurableTask.Netherite.Tests
             }
 
             this.fixture.ClearOutput();
+
+            this.output($"Completed post-test operations on {this.fixture.GetType().Name}.");
         }
 
         /// <summary>

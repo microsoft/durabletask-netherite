@@ -56,6 +56,9 @@ namespace DurableTask.Netherite.Faster
             DeserializeBytes,
             DeserializeObject,
 
+            // tracking adjustment
+            TrackSize,
+
             // explicit failure
             Fail,
         };
@@ -64,10 +67,11 @@ namespace DurableTask.Netherite.Faster
         {
             public int CurrentVersion;
             public List<Entry> CacheEvents;
+            public long Size;
             
             public override string ToString()
             {
-                return $"Current=v{this.CurrentVersion} CacheEvents={this.CacheEvents.Count}";
+                return $"Current=v{this.CurrentVersion} Size={this.Size} CacheEvents={this.CacheEvents.Count}";
             }
 
             public string PrintCacheEvents() => string.Join(",", this.CacheEvents.Select(e => e.ToString()));
@@ -75,25 +79,12 @@ namespace DurableTask.Netherite.Faster
 
         public event Action<string> OnError;
 
-        public Task CreateTimer(TimeSpan timeSpan)
-        {
-            return Task.Delay(timeSpan);
-        }
-
-        public async ValueTask CheckTiming(Task waitingFor, Task timer, string message)
-        {
-            var first = await Task.WhenAny(waitingFor, timer);
-            if (first == timer)
-            {
-                this.OnError($"timeout: {message}");
-            }
-        }
-
         public struct Entry
         {
             public string EventId;
             public CacheEvent CacheEvent;
             public int? Version;
+            public long Delta;
 
             public override string ToString()
             {
@@ -106,6 +97,15 @@ namespace DurableTask.Netherite.Faster
                     sb.Append('.');
                     sb.Append('v');
                     sb.Append(this.Version.ToString());
+                }
+
+                if (this.CacheEvent == CacheEvent.TrackSize)
+                {
+                    if (this.Delta >= 0)
+                    {
+                        sb.Append('+');
+                    }
+                    sb.Append(this.Delta);
                 }
 
                 //if (!string.IsNullOrEmpty(this.EventId))
@@ -133,11 +133,48 @@ namespace DurableTask.Netherite.Faster
                 {
                     CacheEvents = new List<Entry>() { entry },
                 },
-                (key, trace) =>
+                (key, info) =>
                 {
-                    trace.CacheEvents.Add(entry);
-                    return trace;
+                    info.CacheEvents.Add(entry);
+                    return info;
                 });
+        }
+
+        internal void TrackSize(TrackedObjectKey key, long delta)
+        {
+            Entry entry = new Entry
+            {          
+                CacheEvent = CacheEvent.TrackSize,
+                Delta = delta,
+            };
+
+            this.Objects.AddOrUpdate(
+               key,
+               key => new ObjectInfo()
+               {
+                   CacheEvents = new List<Entry>() { entry },
+                   Size = delta,
+               },
+               (key, info) =>
+               {
+                   info.CacheEvents.Add(entry);
+                   info.Size += delta;
+                   return info;
+               });
+        }
+
+        internal bool CheckSize(TrackedObjectKey key, long actual, string desc)
+        {
+            long expected = this.Objects[key].Size;
+            if (expected != actual)
+            {
+                this.Fail($"Size tracking is not accurate expected={expected} actual={actual} desc={desc}", key);
+                return false;
+            }
+            else
+            {
+                return true;
+            }
         }
 
         internal void Fail(string message)

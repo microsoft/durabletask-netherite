@@ -12,7 +12,7 @@ namespace DurableTask.Netherite.Faster
     using FASTER.core;
 
     /// <summary>
-    /// Records cache and storage management traces for each object. This class is only used for testing and debugging, as it creates lots of overhead.
+    /// Track memory use by all FASTER caches.
     /// </summary>
     class MemoryTracker
     {
@@ -25,9 +25,9 @@ namespace DurableTask.Netherite.Faster
             this.stores = new ConcurrentDictionary<CacheTracker, CacheTracker>();
         }
 
-        public CacheTracker NewCacheTracker(FasterKV store)
+        public CacheTracker NewCacheTracker(FasterKV store, CacheDebugger cacheDebugger)
         {
-            var cacheTracker = new CacheTracker(this, store);
+            var cacheTracker = new CacheTracker(this, store, cacheDebugger);
             this.stores.TryAdd(cacheTracker, cacheTracker);
             this.UpdateTargetSizes();
             return cacheTracker;
@@ -49,6 +49,7 @@ namespace DurableTask.Netherite.Faster
         {
             readonly MemoryTracker memoryTracker;
             readonly FasterKV store;
+            readonly CacheDebugger cacheDebugger;
 
             long trackedObjectSize;
 
@@ -57,15 +58,24 @@ namespace DurableTask.Netherite.Faster
             public void UpdateTrackedObjectSize(long delta)
             {
                 long trackedObjectSize = Interlocked.Add(ref this.trackedObjectSize, delta);
-                //this.store.AdjustPageCount(this.TargetSize, trackedObjectSize);
+                this.AdjustPageCount(trackedObjectSize);
+            }
+
+            // this version is only called when the cache debugger is attached
+            public void UpdateTrackedObjectSize(long delta, FasterKV.Key key)
+            {
+                long trackedObjectSize = Interlocked.Add(ref this.trackedObjectSize, delta);
+                this.AdjustPageCount(trackedObjectSize);
+                this.cacheDebugger.TrackSize(key, delta);
             }
 
             public long TargetSize { get; set; }
 
-            public CacheTracker(MemoryTracker memoryTracker, FasterKV store)
+            public CacheTracker(MemoryTracker memoryTracker, FasterKV store, CacheDebugger cacheDebugger)
             {
                 this.memoryTracker = memoryTracker;
                 this.store = store;
+                this.cacheDebugger = cacheDebugger;
             }
 
             public void Dispose()
@@ -79,7 +89,12 @@ namespace DurableTask.Netherite.Faster
             public void SetTargetSize(long newTargetSize)
             {
                 this.TargetSize = newTargetSize;
-                //this.store.AdjustPageCount(this.TargetSize, this.TrackedObjectSize);
+                this.AdjustPageCount(this.TrackedObjectSize);
+            }
+
+            void AdjustPageCount(long trackedObjectSize)
+            {
+               // this.store.AdjustPageCount(this.TargetSize, trackedObjectSize);
             }
         }
     }

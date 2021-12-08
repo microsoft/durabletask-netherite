@@ -221,6 +221,11 @@ namespace DurableTask.Netherite.Faster
             return this.RemoveCheckpointIntention(guid);
         }
 
+        public override void CheckInvariants()
+        {
+        }
+
+
         // perform a query
         public override Task QueryAsync(PartitionQueryEvent queryEvent, EffectTracker effectTracker)
         {
