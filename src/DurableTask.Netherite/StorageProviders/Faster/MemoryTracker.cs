@@ -52,10 +52,12 @@ namespace DurableTask.Netherite.Faster
 
             long trackedObjectSize;
 
+            public long TrackedObjectSize => Interlocked.Read(ref this.trackedObjectSize);
+
             public void UpdateTrackedObjectSize(long delta)
             {
                 long trackedObjectSize = Interlocked.Add(ref this.trackedObjectSize, delta);
-                this.store.AdjustPageCount(this.TargetSize, trackedObjectSize);
+                //this.store.AdjustPageCount(this.TargetSize, trackedObjectSize);
             }
 
             public long TargetSize { get; set; }
@@ -77,7 +79,7 @@ namespace DurableTask.Netherite.Faster
             public void SetTargetSize(long newTargetSize)
             {
                 this.TargetSize = newTargetSize;
-                //this.store.AdjustPageCount(this.TargetSize, Interlocked.Read(ref this.trackedObjectSize));
+                //this.store.AdjustPageCount(this.TargetSize, this.TrackedObjectSize);
             }
         }
     }
