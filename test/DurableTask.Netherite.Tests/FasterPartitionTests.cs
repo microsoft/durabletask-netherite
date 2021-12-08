@@ -243,50 +243,139 @@ namespace DurableTask.Netherite.Tests
 
             // shut down the service
             await service.StopAsync();
+        }
+        /// <summary>
+        /// Create a partition and then restore it.
+        /// </summary>
+        [Fact]
+        public async Task CheckSizeTrackerOnRecovery()
+        {
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            settings.PartitionCount = 1;
+            settings.ResolvedTransportConnectionString = "MemoryF"; // don't bother with EventHubs for this test
 
-            /// <summary>
-            /// Create a partition and then restore it.
-            /// </summary>
-            //public async Task Locality2()
-            //{
-            //    var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
-            //    settings.ResolvedTransportConnectionString = "MemoryF";
-            //    settings.PartitionCount = 1;
+            // use a fresh hubname on every run
+            settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
 
-            //    // don't take any extra checkpoints
-            //    settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 * 1024 * 1024;
-            //    settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
-            //    settings.IdleCheckpointFrequencyMs = (long)TimeSpan.FromDays(1).TotalMilliseconds;
+            // we use the standard hello orchestration from the samples, which calls 5 activities in sequence
+            var orchestrationType = typeof(ScenarioTests.Orchestrations.Hello5);
+            var activityType = typeof(ScenarioTests.Activities.Hello);
+            string InstanceId(int i) => $"Orch{i:D5}";
+            int OrchestrationCount = 5;
 
-            //    //settings.HubName = $"{TestConstants.TaskHubName}-{Guid.NewGuid()}";
-            //    settings.HubName = $"{TestConstants.TaskHubName}-Locality";
+            // we use a debugger that stores reference values
+            var cacheDebugger = settings.CacheDebugger = new Faster.CacheDebugger();
+            {
+                // errors in the cache monitor should cancel the test
+                var cts = new CancellationTokenSource();
+                string reportedProblem = null;
+                cacheDebugger.OnError += (message) =>
+                {
+                    this.output?.Invoke($"CACHEDEBUGGER: {message}");
+                    reportedProblem = reportedProblem ?? message;
+                    cts.Cancel();
+                };
 
-            //    var orchestrationType = typeof(ScenarioTests.Orchestrations.Hello5);
-            //    var activityType = typeof(ScenarioTests.Activities.Hello);
-            //    string InstanceId(int i) => $"Orch{i:D5}";
-            //    int OrchestrationCount = 1000;
+                // start the service 
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                await service.CreateAsync();
+                await service.StartAsync();
+                var host = (TransportAbstraction.IHost)service;
+                Assert.Equal(1u, service.NumberPartitions);
+                var worker = new TaskHubWorker(service);
+                var client = new TaskHubClient(service);
+                worker.AddTaskOrchestrations(orchestrationType);
+                worker.AddTaskActivities(activityType);
+                await worker.StartAsync();
 
-            //    {
-            //        // start the service 
-            //        var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-            //        await service.CreateAsync();
-            //        await service.StartAsync();
-            //        var host = (TransportAbstraction.IHost)service;
-            //        Assert.Equal(1u, service.NumberPartitions);
-            //        var client = new TaskHubClient(service);
+                // start all orchestrations
+                {
+                    var tasks = new Task[OrchestrationCount];
+                    for (int i = 0; i < OrchestrationCount; i++)
+                        tasks[i] = client.CreateOrchestrationInstanceAsync(orchestrationType, InstanceId(i), null);
 
-            //        // wait for all orchestrations
-            //        {
-            //            var tasks = new Task[OrchestrationCount];
-            //            for (int i = 0; i < OrchestrationCount; i++)
-            //                tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
-            //            await Task.WhenAll(tasks);
-            //        }
+                    await Task.WhenAll(tasks);
+                    Assert.True(reportedProblem == null, $"CacheDebugger detected problem while starting orchestrations: {reportedProblem}");
+                }
 
-            //        // stop the service
-            //        await service.StopAsync();
-            //    }
-            //}
+                // wait for all orchestrations to finish executing
+                {
+                    async Task WaitFor(int i)
+                    {
+                        try
+                        {
+                            await client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
+                        }
+                        catch (Exception e)
+                        {
+                            this.output?.Invoke($"Orchestration {InstanceId(i)} failed with {e.GetType()}: {e.Message}");
+                        }
+                    }
+
+                    var tasks = new Task[OrchestrationCount];
+                    for (int i = 0; i < OrchestrationCount; i++)
+                        tasks[i] = WaitFor(i);
+                    await Task.WhenAll(tasks);
+                    Assert.True(reportedProblem == null, $"CacheDebugger detected problem while executing orchestrations: {reportedProblem}");
+                }
+
+                this.output?.Invoke("BEFORE SHUTDOWN ------------------------------------");
+                foreach (var line in cacheDebugger.Dump())
+                {
+                    this.output?.Invoke(line);
+                }
+
+                // shut down the service
+                await service.StopAsync();
+            }
+
+            {
+                // errors in the cache monitor should cancel the test
+                var cts = new CancellationTokenSource();
+                string reportedProblem = null;
+                cacheDebugger.OnError += (message) =>
+                {
+                    this.output?.Invoke($"CACHEDEBUGGER: {message}");
+                    reportedProblem = reportedProblem ?? message;
+                    cts.Cancel();
+                };
+
+                // start the service 
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                await service.CreateAsync();
+                await service.StartAsync();
+                var host = (TransportAbstraction.IHost)service;
+                Assert.Equal(1u, service.NumberPartitions);
+                var worker = new TaskHubWorker(service);
+                var client = new TaskHubClient(service);
+                worker.AddTaskOrchestrations(orchestrationType);
+                worker.AddTaskActivities(activityType);
+                await worker.StartAsync();
+
+                this.output?.Invoke("AFTER RECOVERY ------------------------------------");
+                foreach (var line in cacheDebugger.Dump())
+                {
+                    this.output?.Invoke(line);
+                }
+
+                // query the status of all orchestrations
+                {
+                    var tasks = new Task[OrchestrationCount];
+                    for (int i = 0; i < OrchestrationCount; i++)
+                        tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
+                    await Task.WhenAll(tasks);
+                    Assert.True(reportedProblem == null, $"CacheDebugger detected problem while querying orchestration states: {reportedProblem}");
+                }
+
+                this.output?.Invoke("AFTER QUERIES ------------------------------------");
+                foreach (var line in cacheDebugger.Dump())
+                {
+                    this.output?.Invoke(line);
+                }
+
+                // shut down the service
+                await service.StopAsync();
+            }
         }
     }
 }

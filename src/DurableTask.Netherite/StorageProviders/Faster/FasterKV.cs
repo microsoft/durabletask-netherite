@@ -666,6 +666,30 @@ namespace DurableTask.Netherite.Faster
         //    }
         //}
 
+
+        public void ValidateMemoryTracker()
+        {
+            var inMemoryIterator = this.fht.Log.Scan(this.fht.Log.HeadAddress, this.fht.Log.TailAddress);
+            long size = 0;
+            while (inMemoryIterator.GetNext(out RecordInfo recordInfo, out Key key, out Value value))
+            {
+                size += key.Val.EstimatedSize;
+                if (!recordInfo.Tombstone)
+                {
+                   size += value.ComputeEstimatedSize();
+                }
+            }
+
+            long trackedSize = this.cacheTracker.TrackedObjectSize;
+
+            if (trackedSize != size)
+            {
+                this.cacheDebugger?.Fail($"cachetracker size mismatch: expected={trackedSize} actual={size}");
+
+                //this.cacheTracker.UpdateTrackedObjectSize(size - trackedSize);
+            }
+        }
+
         class EvictionObserver : IObserver<IFasterScanIterator<Key, Value>>
         {
             readonly FasterKV store;
