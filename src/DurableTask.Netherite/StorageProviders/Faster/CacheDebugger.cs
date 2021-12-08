@@ -75,7 +75,6 @@ namespace DurableTask.Netherite.Faster
 
         public event Action<string> OnError;
 
-     
         public Task CreateTimer(TimeSpan timeSpan)
         {
             return Task.Delay(timeSpan);
@@ -228,18 +227,6 @@ namespace DurableTask.Netherite.Faster
             if (obj != null)
             {
                 obj.Version = version;
-            }
-        }
-
-        internal void UpdateReferenceValue(ref TrackedObjectKey key, object obj, int version)
-        {
-            if (obj is byte[] bytes)
-            {
-                this.UpdateReferenceValue(ref key, (TrackedObject) DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes), version);
-            }
-            else
-            {
-                this.UpdateReferenceValue(ref key, obj as TrackedObject, version);
             }
         }
 
