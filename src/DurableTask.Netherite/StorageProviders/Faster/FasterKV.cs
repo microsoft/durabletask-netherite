@@ -504,34 +504,52 @@ namespace DurableTask.Netherite.Faster
                 }
                 else
                 {
-                    this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.StartingRMW, null, tracker.CurrentEventId);
+                    int numTries = 3;
+                    while (numTries-- > 0)
+                    {
+                        try
+                        {
+                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.StartingRMW, null, tracker.CurrentEventId);
 
-                    var rmwAsyncResult = await this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken);
+                            var rmwAsyncResult = await this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken);
 
-                    this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.PendingRMW, null, tracker.CurrentEventId);
-                    
-                    // Synchronous version
-                    rmwAsyncResult.Complete();
+                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.PendingRMW, null, tracker.CurrentEventId);
 
-                    this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.CompletedRMW, null, tracker.CurrentEventId);
+                            // Synchronous version
+                            rmwAsyncResult.Complete();
 
-                    // As an alternative, can consider the following asynchronous version
-                    //{
-                    //    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"retrying completion of RMW on {k}");
-                    //    rmwAsyncResult = await rmwAsyncResult.CompleteAsync();
-                    //}
-                    //while (rmwAsyncResult.Status == Status.PENDING)          
+                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.CompletedRMW, null, tracker.CurrentEventId);
+
+                            break;
+
+                            // As an alternative, can consider the following asynchronous version
+                            //{
+                            //    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"retrying completion of RMW on {k}");
+                            //    rmwAsyncResult = await rmwAsyncResult.CompleteAsync();
+                            //}
+                            //while (rmwAsyncResult.Status == Status.PENDING)
+                            //}
+                        }
+                        catch (Exception exception) when (!Utils.IsFatal(exception))
+                        {
+                            if (numTries > 0)
+                            {
+                                await Task.Yield();
+                                continue;
+                            }
+                            else
+                            {
+                                this.cacheDebugger.Fail($"Failed to execute RMW in Faster: {exception}", k);
+                                throw;
+                            }
+                        }
+                    }
                 }
             }
             catch (Exception exception)
                when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
             {
                 throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
-            }
-            catch (Exception exception) when (!Utils.IsFatal(exception))
-            {
-                this.cacheDebugger.Fail($"Failed to execute RMW in Faster: {exception}", k);
-                throw;
             }
         }
 
@@ -685,8 +703,6 @@ namespace DurableTask.Netherite.Faster
             if (trackedSize != size)
             {
                 this.cacheDebugger?.Fail($"cachetracker size mismatch: expected={trackedSize} actual={size}");
-
-                //this.cacheTracker.UpdateTrackedObjectSize(size - trackedSize);
             }
         }
 
