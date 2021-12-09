@@ -56,6 +56,7 @@ namespace DurableTask.Netherite.Faster
             this.fht.Log.SubscribeEvictions(new EvictionObserver(this));
             this.fht.Log.Subscribe(new ReadonlyObserver(this));
             partition.Assert(this.fht.ReadCache == null);
+            this.cacheTracker.Log = this.fht.Log;
 
             this.terminationToken = partition.ErrorHandler.Token;
 
@@ -100,13 +101,16 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> CreateASession()
-            => this.fht.NewSession<EffectTracker, Output, object>(new Functions(this.partition, this, this.cacheTracker));
+        ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> CreateASession(string id)
+        {
+            var functions = new Functions(this.partition, this, this.cacheTracker);
+            return this.fht.NewSession(functions, id);
+        }
 
         public override void InitMainSession()
         {
             this.singletons = new TrackedObject[TrackedObjectKey.NumberSingletonTypes];
-            this.mainSession = this.CreateASession();
+            this.mainSession = this.CreateASession("main");
         }
 
         public override async Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync()
@@ -129,7 +133,7 @@ namespace DurableTask.Netherite.Faster
                 // recover Faster
                 this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
                 await this.fht.RecoverAsync();
-                this.mainSession = this.CreateASession();
+                this.mainSession = this.CreateASession("main");
 
                 return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition);
             }
@@ -269,16 +273,8 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                var instanceQuery = queryEvent.InstanceQuery;
-
-                // create an individual session for this query so the main session can be used
-                // while the query is progressing.
-                using (var session = this.CreateASession())
-                {
-                    var orchestrationStates = this.ScanOrchestrationStates(effectTracker, queryEvent);
-
-                    await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates);
-                }
+                var orchestrationStates = this.ScanOrchestrationStates(effectTracker, queryEvent);
+                await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -315,7 +311,7 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 // these are disposed after the prefetch thread is done
-                using var prefetchSession = this.CreateASession();
+                using var prefetchSession = this.CreateASession($"prefetch-{Guid.NewGuid():N}");
 
                 // for each key, issue a prefetch
                 await foreach (TrackedObjectKey key in keys)
@@ -401,7 +397,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     this.partition.Assert(!key.Val.IsSingleton);
                     Output output = default;
-                    this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.StartingRead, null, readEvent.EventIdString);
+                    this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.StartingRead, null, readEvent.EventIdString, 0);
                     var status = this.mainSession.Read(ref key, ref effectTracker, ref output, readEvent, 0);
                     switch (status)
                     {
@@ -409,7 +405,7 @@ namespace DurableTask.Netherite.Faster
                         case Status.OK:
                             // fast path: we hit in the cache and complete the read
                             this.StoreStats.HitCount++;
-                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, readEvent.EventIdString);
+                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, readEvent.EventIdString, 0);
                             var target = output.Read(this, readEvent.EventIdString);
                             this.cacheDebugger?.CheckVersionConsistency(ref key.Val, target, null);
                             effectTracker.ProcessReadResult(readEvent, key, target);
@@ -418,7 +414,7 @@ namespace DurableTask.Netherite.Faster
                         case Status.PENDING:
                             // slow path: read continuation will be called when complete
                             this.StoreStats.MissCount++;
-                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PendingRead, null, readEvent.EventIdString);
+                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PendingRead, null, readEvent.EventIdString, 0);
                             break;
 
                         case Status.ERROR:
@@ -511,16 +507,16 @@ namespace DurableTask.Netherite.Faster
                     {
                         try
                         {
-                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.StartingRMW, null, tracker.CurrentEventId);
+                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.StartingRMW, null, tracker.CurrentEventId, 0);
 
                             var rmwAsyncResult = await this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken);
 
-                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.PendingRMW, null, tracker.CurrentEventId);
+                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.PendingRMW, null, tracker.CurrentEventId, 0);
 
                             // Synchronous version
                             rmwAsyncResult.Complete();
 
-                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.CompletedRMW, null, tracker.CurrentEventId);
+                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.CompletedRMW, null, tracker.CurrentEventId, 0);
 
                             break;
 
@@ -583,7 +579,7 @@ namespace DurableTask.Netherite.Faster
             void RunScan()
             {
                 using var _ = EventTraceContext.MakeContext(0, queryId);
-                using var session = this.CreateASession();
+                using var session = this.CreateASession($"scan-{Guid.NewGuid():N}");
 
                 // get the unique set of keys appearing in the log and emit them
                 using var iter1 = session.Iterate();
@@ -603,31 +599,28 @@ namespace DurableTask.Netherite.Faster
 
                 ReportProgress();
 
-                while (iter1.GetNext(out RecordInfo recordInfo) && !recordInfo.Tombstone)
+                while (iter1.GetNext(out RecordInfo recordInfo, out Key key, out Value val) && !recordInfo.Tombstone)
                 {
                     if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
                     {
                         ReportProgress();
                     }
 
-                    TrackedObjectKey key = iter1.GetKey().Val;
-                    if (key.ObjectType == TrackedObjectKey.TrackedObjectType.Instance)
+                    if (key.Val.ObjectType == TrackedObjectKey.TrackedObjectType.Instance)
                     {
                         scanned++;
                         //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {key.InstanceId}");
 
                         if (string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
-                            || key.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
+                            || key.Val.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
                         {
                             //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"reading instance {key.InstanceId}");
-
-                            object val = iter1.GetValue().Val;
 
                             //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"read instance {key.InstanceId}, is {(val == null ? "null" : val.GetType().Name)}");
 
                             InstanceState instanceState;
 
-                            if (val is byte[] bytes)
+                            if (val.Val is byte[] bytes)
                             {
                                 instanceState = (InstanceState)Serializer.DeserializeTrackedObject(bytes);
                                 deserialized++;
@@ -646,7 +639,7 @@ namespace DurableTask.Netherite.Faster
                             {
                                 matched++;
 
-                                this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.InstanceId}");
+                                this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.Val.InstanceId}");
 
                                 var task = channel.Writer.WriteAsync(orchestrationState);
 
@@ -690,7 +683,7 @@ namespace DurableTask.Netherite.Faster
         {
             if (this.cacheDebugger != null)
             {
-                this.ValidateMemoryTracker();
+                //this.ValidateMemoryTracker();
             }
         }
 
@@ -729,7 +722,7 @@ namespace DurableTask.Netherite.Faster
                 {
                    delta += value.ComputeEstimatedSize();
                 }
-                Add(key, delta, $"{(recordInfo.Invalid?"I":"")}{(recordInfo.Tombstone ? "T" : "")}{delta}@{inMemoryIterator.CurrentAddress}");
+                Add(key, delta, $"{(recordInfo.Invalid?"I":"")}{(recordInfo.Tombstone ? "T" : "")}{delta}@{inMemoryIterator.CurrentAddress.ToString("x")}");
             }
 
             long trackedSize = this.cacheTracker.TrackedObjectSize;
@@ -761,36 +754,25 @@ namespace DurableTask.Netherite.Faster
             public void OnNext(IFasterScanIterator<Key, Value> iterator)
             {
                 long sumOfDeltas = 0;
-                bool reportEachDeltaIndividually = (this.store.cacheDebugger != null);
 
                 while (iterator.GetNext(out RecordInfo recordInfo, out Key key, out Value value))
                 {
                     long delta;
                     if (!recordInfo.Tombstone)
                     {
-                        this.store.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.Evict, value.Version, null);
+                        this.store.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.Evict, value.Version, null, iterator.CurrentAddress);
                         delta = key.Val.EstimatedSize + value.ComputeEstimatedSize();
                     }
                     else
                     {
-                        this.store.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.EvictTombstone, null, null);
+                        this.store.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.EvictTombstone, null, null, iterator.CurrentAddress);
                         delta = key.Val.EstimatedSize;
                     }
 
-                    if (reportEachDeltaIndividually)
-                    {
-                        this.store.cacheTracker.UpdateTrackedObjectSize(-delta, key);
-                    }
-                    else
-                    {
-                        sumOfDeltas += delta;
-                    }
+                    sumOfDeltas += delta;
                 }
 
-                if (!reportEachDeltaIndividually)
-                {
-                    this.store.cacheTracker.UpdateTrackedObjectSize(-sumOfDeltas);
-                }
+                //this.store.cacheTracker.UpdateTrackedObjectSize(-sumOfDeltas);
             }
         }
 
@@ -811,11 +793,11 @@ namespace DurableTask.Netherite.Faster
                 {
                     if (!recordInfo.Tombstone)
                     {
-                        this.store.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.Readonly, value.Version, null);
+                        this.store.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.Readonly, value.Version, null, iterator.CurrentAddress);
                     }
                     else
                     {
-                        this.store.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.ReadonlyTombstone, null, null);
+                        this.store.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.ReadonlyTombstone, null, null, iterator.CurrentAddress);
                     }
                 }
             }
@@ -909,7 +891,7 @@ namespace DurableTask.Netherite.Faster
                     if (this.cacheDebugger != null)
                     {
                         var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
-                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeBytes, version, null);
+                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeBytes, version, null, 0);
                     }
                 }
 
@@ -924,7 +906,7 @@ namespace DurableTask.Netherite.Faster
                         if (this.cacheDebugger != null)
                         {
                             var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(serialized);
-                            this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeBytes, obj.Version, null);
+                            this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeBytes, obj.Version, null, 0);
                         }
                     }
                     else
@@ -934,7 +916,7 @@ namespace DurableTask.Netherite.Faster
                         this.storeStats.Serialize++;
                         this.writer.Write(trackedObject.SerializationCache.Length);
                         this.writer.Write(trackedObject.SerializationCache);
-                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, obj.Version, null);
+                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, obj.Version, null, 0);
                     }
                 }
             }
@@ -943,7 +925,7 @@ namespace DurableTask.Netherite.Faster
         public struct Output
         {
             public object Val;
-            public long EstimatedSize;
+            //public long EstimatedSize;
 
             public TrackedObject Read(FasterKV store, string eventId)
             {
@@ -961,7 +943,8 @@ namespace DurableTask.Netherite.Faster
                     store.partition.Assert(bytes != null);
                     trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
                     store.StoreStats.Deserialize++;
-                    store.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, null, eventId);
+                    store.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, null, eventId, 0);
+                    trackedObject.Partition = store.partition;
                     return trackedObject;
                 }
             }
@@ -992,7 +975,7 @@ namespace DurableTask.Netherite.Faster
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.InitialUpdate, 0, tracker.CurrentEventId);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.InitialUpdate, 0, tracker.CurrentEventId, address);
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
                 this.cacheDebugger?.CheckVersionConsistency(ref key.Val, null, value.Version);
                 var trackedObject = TrackedObjectKey.Factory(key.Val);
@@ -1009,16 +992,16 @@ namespace DurableTask.Netherite.Faster
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.PostInitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostInitialUpdate, value.Version, tracker.CurrentEventId);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostInitialUpdate, value.Version, tracker.CurrentEventId, address);
                 // we have inserted a new entry at the tail
-                this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + value.ComputeEstimatedSize(), key);
+                //this.cacheTracker?.UpdateTrackedObjectSize(key.Val.EstimatedSize + value.ComputeEstimatedSize(), key, address);
             }
 
             bool IFunctions<Key, Value, EffectTracker, Output, object>.InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.InPlaceUpdate, value.Version, tracker.CurrentEventId);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.InPlaceUpdate, value.Version, tracker.CurrentEventId, address);
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
-                long sizeBeforeUpdate = value.ComputeEstimatedSize();
+                //long sizeBeforeUpdate = value.ComputeEstimatedSize();
                 if (! (value.Val is TrackedObject trackedObject))
                 {
                     var bytes = (byte[])value.Val;
@@ -1026,18 +1009,18 @@ namespace DurableTask.Netherite.Faster
                     trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
                     this.stats.Deserialize++;
                     value.Val = trackedObject;
-                    this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, value.Version, tracker.CurrentEventId);
+                    this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, value.Version, tracker.CurrentEventId, 0);
                 }
                 trackedObject.SerializationCache = null; // cache is invalidated because of update
                 trackedObject.Partition = this.partition;
                 this.cacheDebugger?.CheckVersionConsistency(ref key.Val, trackedObject, value.Version);
                 tracker.ProcessEffectOn(trackedObject);
                 value.Version++;
-                long sizeAfterUpdate = value.ComputeEstimatedSize();
+                //long sizeAfterUpdate = value.ComputeEstimatedSize();
                 this.cacheDebugger?.UpdateReferenceValue(ref key.Val, trackedObject, value.Version);
                 this.stats.Modify++;
                 this.partition.Assert(value.Val != null);
-                this.cacheTracker.UpdateTrackedObjectSize(sizeAfterUpdate - sizeBeforeUpdate, key);
+                //this.cacheTracker?.UpdateTrackedObjectSize(sizeAfterUpdate - sizeBeforeUpdate, key, address);
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
                 return true;
             }
@@ -1047,18 +1030,18 @@ namespace DurableTask.Netherite.Faster
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref Output output, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CopyUpdate, oldValue.Version, tracker.CurrentEventId);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CopyUpdate, oldValue.Version, tracker.CurrentEventId, address);
                 this.cacheDebugger?.ValidateObjectVersion(oldValue, key.Val);
                 if (oldValue.Val is TrackedObject trackedObject)
                 {
                     // replace old object with its serialized snapshot
-                    long oldValueSizeBefore = oldValue.ComputeEstimatedSize();
+                    //long oldValueSizeBefore = oldValue.ComputeEstimatedSize();
                     DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
                     this.stats.Serialize++;
-                    this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, oldValue.Version, null);
+                    this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, oldValue.Version, null, 0);
                     oldValue.Val = trackedObject.SerializationCache;
-                    long oldValueSizeAfter = oldValue.ComputeEstimatedSize();
-                    this.cacheTracker.UpdateTrackedObjectSize(oldValueSizeAfter - oldValueSizeBefore, key);
+                    //long oldValueSizeAfter = oldValue.ComputeEstimatedSize();
+                    //this.cacheTracker?.UpdateTrackedObjectSize(oldValueSizeAfter - oldValueSizeBefore, key, address);
                     this.stats.Copy++;
                 }
                 else
@@ -1068,11 +1051,11 @@ namespace DurableTask.Netherite.Faster
                     this.partition.Assert(bytes != null);
                     trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
                     this.stats.Deserialize++;
-                    this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, oldValue.Version, tracker.CurrentEventId);
+                    trackedObject.Partition = this.partition;
+                    this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, oldValue.Version, tracker.CurrentEventId, 0);
                 }
 
                 newValue.Val = trackedObject;
-                trackedObject.Partition = this.partition;
                 trackedObject.SerializationCache = null; // cache is invalidated by the update which is happening below
                 this.cacheDebugger?.CheckVersionConsistency(ref key.Val, trackedObject, oldValue.Version);
                 tracker.ProcessEffectOn(trackedObject);
@@ -1086,66 +1069,53 @@ namespace DurableTask.Netherite.Faster
 
             bool IFunctions<Key, Value, EffectTracker, Output, object>.PostCopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref Output output, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostCopyUpdate, newValue.Version, tracker.CurrentEventId);
-                this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + newValue.ComputeEstimatedSize(), key);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostCopyUpdate, newValue.Version, tracker.CurrentEventId, address);
+                //this.cacheTracker?.UpdateTrackedObjectSize(key.Val.EstimatedSize + newValue.ComputeEstimatedSize(), key, address);
                 return true;
             }
 
             bool Reader(ref Key key, ref EffectTracker tracker, ref Value value, ref Output dst, ref RecordInfo recordInfo, long address, bool single)
             {
-                if (tracker == null)
+                this.cacheDebugger?.Record(key.Val, single ? CacheDebugger.CacheEvent.SingleReader : CacheDebugger.CacheEvent.ConcurrentReader, value.Version, default, address);
+                this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
+
+                TrackedObject trackedObject = null;
+
+                if (value.Val != null)
                 {
-                    this.cacheDebugger?.Record(key.Val, single ? CacheDebugger.CacheEvent.SingleReaderPrefetch : CacheDebugger.CacheEvent.ConcurrentReaderPrefetch, value.Version, default);
-                    this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
-
-                    // this is a prefetch, so we don't use the value
-                    // also, we don't check consistency because it may be stale (as not on the main session)
-                    return true;
-                }
-                else
-                {
-                    this.cacheDebugger?.Record(key.Val, single ? CacheDebugger.CacheEvent.SingleReader : CacheDebugger.CacheEvent.ConcurrentReader, value.Version, default);
-                    this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
-
-                    TrackedObject trackedObject = null;
-
-                    if (value.Val != null)
+                    if (value.Val is byte[] bytes)
                     {
-                        if (value.Val is byte[] bytes)
+                        if (!single)
                         {
-                            if (!single)
-                            {
-                                this.cacheDebugger?.Fail("Unexpected byte[] state in mutable section");
-                            }
-                            trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
-                            this.stats.Deserialize++;
-                            this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, value.Version, default);
+                            this.cacheDebugger?.Fail("Unexpected byte[] state in mutable section");
                         }
-                        else
-                        {
-                            trackedObject = (TrackedObject)value.Val;
-                            this.partition.Assert(trackedObject != null);
-
-                            if (single)
-                            {
-                                // replace old object with its serialized snapshot
-                                long valueSizeBefore = dst.EstimatedSize = value.ComputeEstimatedSize();
-                                DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
-                                this.stats.Serialize++;
-                                this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, value.Version, null);
-                                value.Val = trackedObject.SerializationCache;
-                                long valueSizeAfter = value.ComputeEstimatedSize();
-                                this.cacheTracker.UpdateTrackedObjectSize(valueSizeAfter - valueSizeBefore, key);
-                                this.stats.Copy++;
-                            }
-                        }
-
+                        trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                        this.stats.Deserialize++;
                         trackedObject.Partition = this.partition;
+                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, value.Version, default, 0);
                     }
+                    else
+                    {
+                        trackedObject = (TrackedObject)value.Val;
+                        this.partition.Assert(trackedObject != null);
 
-                    dst.Val = trackedObject;
-                    this.stats.Read++;
+                        if (single)
+                        {
+                            // replace old object with its serialized snapshot
+                            //long valueSizeBefore = dst.EstimatedSize = value.ComputeEstimatedSize();
+                            DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
+                            this.stats.Serialize++;
+                            this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, value.Version, null, 0);
+                            value.Val = trackedObject.SerializationCache;
+                            //long valueSizeAfter = value.ComputeEstimatedSize();
+                            //this.cacheTracker?.UpdateTrackedObjectSize(valueSizeAfter - valueSizeBefore, key, address);
+                            this.stats.Copy++;
+                        }
+                    }
                 }
+
+                dst.Val = trackedObject;
+                this.stats.Read++;
                 return true;
             }
             bool IFunctions<Key, Value, EffectTracker, Output, object>.SingleReader(ref Key key, ref EffectTracker tracker, ref Value value, ref Output dst, ref RecordInfo recordInfo, long address)
@@ -1160,56 +1130,79 @@ namespace DurableTask.Netherite.Faster
             void IFunctions<Key, Value, EffectTracker, Output, object>.SingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, long address)
             {
                 // This is called when a read copies the value to the tail. 
-                // (in general, it would also be called on upserts but there are no upserts in Netherite).
 
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriter, src.Version, default);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriter, src.Version, default, address);
                 this.cacheDebugger?.ValidateObjectVersion(src, key.Val);
 
-                dst.Val = output.Val;
+                if (output.Val != null)
+                {
+                    // this is called after SingleReader and has a tracked object ready to use
+                    dst.Val = output.Val;
+                }
+                else
+                {
+                    if (src.Val == null)
+                    {
+                        dst.Val = src.Val;
+                    }
+                    else if (src.Val is byte[] bytes)
+                    {
+                        var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                        this.stats.Deserialize++;
+                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, src.Version, null, 0);
+                        trackedObject.Partition = this.partition;
+                        dst.Val = trackedObject;
+                    }
+                    else
+                    {
+                        this.cacheDebugger?.Fail("SingleWriter should not be called with mutable source", key);
+                    }
+                }
                 dst.Version = src.Version;
 
                 // compute the estimated size, or use the cached value from the SingleRead
-                long estimatedSize = (output.EstimatedSize > 0) ? output.EstimatedSize : dst.ComputeEstimatedSize();
-                this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + estimatedSize, key);
+                //long estimatedSize = (output.EstimatedSize > 0) ? output.EstimatedSize : dst.ComputeEstimatedSize();
+                //this.cacheTracker?.UpdateTrackedObjectSize(key.Val.EstimatedSize + estimatedSize, key, address);
 
                 this.cacheDebugger?.ValidateObjectVersion(dst, key.Val);
             }
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriter, src.Version, default);
-                this.cacheDebugger?.Fail("Do not expect PostSingleWriter; there are no upserts", key);
-                this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.ComputeEstimatedSize(), key);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriter, src.Version, default, address);
+
+                if (input != null)
+                    this.cacheDebugger?.Fail("PostSingleWriter should only be called by queries", key);
             }
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleDeleter(ref Key key, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleDeleter, null, default);
-                this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize, key);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleDeleter, null, default, address);
+                //this.cacheTracker?.UpdateTrackedObjectSize(key.Val.EstimatedSize, key, address);
             }
 
             bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.ConcurrentWriter, src.Version, default);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.ConcurrentWriter, src.Version, default, address);
                 this.cacheDebugger?.Fail("Do not expect ConcurrentWriter; all updates are RMW, and SingleWriter is used for CopyToTail", key);
-                long sizeBeforeUpdate = dst.ComputeEstimatedSize();
+                //long sizeBeforeUpdate = dst.ComputeEstimatedSize();
                 dst.Val = src.Val;
                 dst.Version = src.Version;
-                long sizeAfterUpdate = dst.ComputeEstimatedSize();
-                this.cacheTracker.UpdateTrackedObjectSize(sizeAfterUpdate - sizeBeforeUpdate, key);
+                //long sizeAfterUpdate = dst.ComputeEstimatedSize();
+                //this.cacheTracker?.UpdateTrackedObjectSize(sizeAfterUpdate - sizeBeforeUpdate, key, address);
                 return true;
             }
 
             bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentDeleter(ref Key key, ref Value value, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.ConcurrentDeleter, value.Version, default);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.ConcurrentDeleter, value.Version, default, address);
                 long removed = value.ComputeEstimatedSize();
 
                 // If record is marked invalid (failed to insert), dispose key as well
                 if (recordInfo.Invalid)
                     removed += key.Val.EstimatedSize;
-               
-                this.cacheTracker.UpdateTrackedObjectSize(-removed, key);
+
+                //this.cacheTracker?.UpdateTrackedObjectSize(-removed, key, address);
                 return true;
             }
 
@@ -1233,12 +1226,12 @@ namespace DurableTask.Netherite.Faster
                     switch (status)
                     {
                         case Status.NOTFOUND:
-                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, partitionReadEvent.EventIdString);
+                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, partitionReadEvent.EventIdString, recordMetadata.Address);
                             tracker.ProcessReadResult(partitionReadEvent, key, null);
                             break;
 
                         case Status.OK:
-                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, partitionReadEvent.EventIdString);
+                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, partitionReadEvent.EventIdString, recordMetadata.Address);
                             tracker.ProcessReadResult(partitionReadEvent, key, output.Read(this.store, partitionReadEvent.EventIdString));
                             break;
 

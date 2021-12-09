@@ -50,6 +50,7 @@ namespace DurableTask.Netherite.Tests
 
             Assert.False(this.fixture.HasError(out var error), $"detected test failure: {error}");
 
+
             // purge all instances after each test
             // this helps to catch "bad states" (e.g. hung workers) caused by the tests
             if (!this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
@@ -57,6 +58,7 @@ namespace DurableTask.Netherite.Tests
                 throw new TimeoutException("timed out while purging instances after running test");
             }
 
+            this.fixture.DumpCacheDebugger();
             this.fixture.ClearOutput();
 
             this.output($"Completed post-test operations on {this.fixture.GetType().Name}.");

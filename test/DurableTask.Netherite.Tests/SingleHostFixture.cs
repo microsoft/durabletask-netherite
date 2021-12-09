@@ -20,6 +20,7 @@ namespace DurableTask.Netherite.Tests
         readonly XunitLoggerProvider loggerProvider;
         readonly CacheDebugger cacheDebugger;
 
+        Action<string> output;
         internal TestOrchestrationHost Host { get; private set; }
         internal ILoggerFactory LoggerFactory { get; private set; }
 
@@ -46,6 +47,14 @@ namespace DurableTask.Netherite.Tests
             };
         }
 
+        public void DumpCacheDebugger()
+        {
+            foreach (var line in this.cacheDebugger.Dump())
+            {
+                this.output?.Invoke(line);
+            }
+        }
+
         public void Dispose()
         {
             this.ClearOutput();
@@ -62,6 +71,7 @@ namespace DurableTask.Netherite.Tests
 
         public void SetOutput(Action<string> output)
         {
+            this.output = output;
             this.loggerProvider.Output = output;
             this.traceListener.Output = output;
         }
@@ -70,6 +80,7 @@ namespace DurableTask.Netherite.Tests
         {
             this.loggerProvider.Output = null;
             this.traceListener.Output = null;
+            this.output = null;
         }
 
         internal class TestTraceListener : TraceListener

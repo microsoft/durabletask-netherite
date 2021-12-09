@@ -85,6 +85,7 @@ namespace DurableTask.Netherite.Faster
             public CacheEvent CacheEvent;
             public int? Version;
             public long Delta;
+            public long Address;
 
             public override string ToString()
             {
@@ -108,9 +109,15 @@ namespace DurableTask.Netherite.Faster
                     sb.Append(this.Delta);
                 }
 
+                if (this.Address != 0)
+                {
+                    sb.Append('@');
+                    sb.Append(this.Address.ToString("x"));
+                }
+
                 //if (!string.IsNullOrEmpty(this.EventId))
                 //{
-                //    sb.Append('.');
+                //    sb.Append('@');
                 //    sb.Append(this.EventId);
                 //}
 
@@ -118,13 +125,14 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        internal void Record(TrackedObjectKey key, CacheEvent evt, int? version, string eventId)
+        internal void Record(TrackedObjectKey key, CacheEvent evt, int? version, string eventId, long address)
         {
             Entry entry = new Entry
             {
                 EventId = eventId,
                 CacheEvent = evt,
                 Version = version,
+                Address = address,
             };
 
             this.Objects.AddOrUpdate(
@@ -140,12 +148,13 @@ namespace DurableTask.Netherite.Faster
                 });
         }
 
-        internal void TrackSize(TrackedObjectKey key, long delta)
+        internal void TrackSize(TrackedObjectKey key, long delta, long address)
         {
             Entry entry = new Entry
             {          
                 CacheEvent = CacheEvent.TrackSize,
                 Delta = delta,
+                Address = address,
             };
 
             this.Objects.AddOrUpdate(
@@ -189,7 +198,7 @@ namespace DurableTask.Netherite.Faster
 
         internal void Fail(string message, TrackedObjectKey key)
         {
-            this.Record(key, CacheEvent.Fail, null, null);
+            this.Record(key, CacheEvent.Fail, null, null, 0);
 
             if (System.Diagnostics.Debugger.IsAttached)
             {

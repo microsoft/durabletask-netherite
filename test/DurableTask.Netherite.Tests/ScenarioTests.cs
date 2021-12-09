@@ -55,6 +55,7 @@ namespace DurableTask.Netherite.Tests
                 throw new TimeoutException("timed out while purging instances after running test");
             }
 
+            this.fixture.DumpCacheDebugger();
             this.fixture.ClearOutput();
 
             this.output($"Completed post-test operations on {this.fixture.GetType().Name}.");

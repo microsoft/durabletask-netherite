@@ -28,9 +28,14 @@ namespace DurableTask.Netherite
         public static long GetEstimatedSize(OrchestrationState state)
         {
             //DateTime CompletedTime;
-            return state == null ? 0 : 112
-                + (state.Status?.Length ?? 0 + state.Output?.Length ?? 0 + state.Name?.Length ?? 0 + state.Input?.Length ?? 0 + (state.Version?.Length ?? 0)) * 2
-                + GetEstimatedSize(state.OrchestrationInstance) + GetEstimatedSize(state.ParentInstance);
+            long sum = 0;
+            if (state != null)
+            {
+                sum += 120;
+                sum += 2 * ((state.Status?.Length ?? 0) + (state.Output?.Length ?? 0) + (state.Name?.Length ?? 0) + (state.Input?.Length ?? 0) + (state.Version?.Length ?? 0));
+                sum += GetEstimatedSize(state.OrchestrationInstance) + GetEstimatedSize(state.ParentInstance);
+            }
+            return sum;
         }
 
         public static long GetEstimatedSize(HistoryState state)
