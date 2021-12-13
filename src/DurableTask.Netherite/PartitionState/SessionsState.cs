@@ -314,32 +314,33 @@ namespace DurableTask.Netherite
                 return;
             };
 
-            if (evt.ActivityMessages?.Count > 0)
+            if (!evt.NotExecutable)
             {
-                effects.Add(TrackedObjectKey.Activities);
-            }
 
-            if (evt.TimerMessages?.Count > 0)
-            {
-                effects.Add(TrackedObjectKey.Timers);
-            }
-
-            if (evt.RemoteMessages?.Count > 0)
-            {
-                effects.Add(TrackedObjectKey.Outbox);
-            }
-
-            // deliver orchestrator messages destined for this partition directly to the relevant session(s)
-            if (evt.LocalMessages?.Count > 0)
-            {
-                foreach (var group in evt.LocalMessages.GroupBy(tm => tm.OrchestrationInstance.InstanceId))
+                if (evt.ActivityMessages?.Count > 0)
                 {
-                    this.AddMessagesToSession(group.Key, evt.WorkItemId, group, effects.IsReplaying);
+                    effects.Add(TrackedObjectKey.Activities);
                 }
-            }
 
-            if (evt.State != null)
-            {
+                if (evt.TimerMessages?.Count > 0)
+                {
+                    effects.Add(TrackedObjectKey.Timers);
+                }
+
+                if (evt.RemoteMessages?.Count > 0)
+                {
+                    effects.Add(TrackedObjectKey.Outbox);
+                }
+
+                // deliver orchestrator messages destined for this partition directly to the relevant session(s)
+                if (evt.LocalMessages?.Count > 0)
+                {
+                    foreach (var group in evt.LocalMessages.GroupBy(tm => tm.OrchestrationInstance.InstanceId))
+                    {
+                        this.AddMessagesToSession(group.Key, evt.WorkItemId, group, effects.IsReplaying);
+                    }
+                }
+
                 effects.Add(TrackedObjectKey.Instance(evt.InstanceId));
                 effects.Add(TrackedObjectKey.History(evt.InstanceId));
             }

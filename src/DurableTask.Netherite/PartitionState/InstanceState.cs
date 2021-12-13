@@ -54,7 +54,7 @@ namespace DurableTask.Netherite
                     Input = ee.Input,
                     Tags = ee.Tags,
                     CreatedTime = ee.Timestamp,
-                    LastUpdatedTime = DateTime.UtcNow,
+                    LastUpdatedTime = ee.Timestamp,
                     CompletedTime = Core.Common.DateTimeUtils.MinDateTime,
                     ScheduledStartTime = ee.ScheduledStartTime
                 };
@@ -86,9 +86,52 @@ namespace DurableTask.Netherite
 
         public void Process(BatchProcessed evt, EffectTracker effects)
         {
-            // update the state of an orchestration
-            this.OrchestrationState = evt.State;
+            // update the current orchestration state based on the new events
+            this.OrchestrationState = UpdateOrchestrationState(this.OrchestrationState, evt.NewEvents);
 
+            if (evt.CustomStatusUpdated)
+            {
+                this.OrchestrationState.Status = evt.CustomStatus;
+            }
+
+            this.OrchestrationState.LastUpdatedTime = evt.Timestamp;
+
+            if (evt.State != null)
+            {
+                this.Partition.Assert(
+                (
+                    evt.State.Version,
+                    evt.State.Status,
+                    evt.State.Output,
+                    evt.State.Name,
+                    evt.State.Input,
+                    evt.State.OrchestrationInstance.InstanceId,
+                    evt.State.OrchestrationInstance.ExecutionId,
+                    evt.State.CompletedTime,
+                    evt.State.OrchestrationStatus,
+                    evt.State.LastUpdatedTime,
+                    evt.State.CreatedTime,
+                    evt.State.ScheduledStartTime,
+                    evt.State.OrchestrationInstance.ExecutionId
+                )
+                ==
+                (
+                    this.OrchestrationState.Version,
+                    this.OrchestrationState.Status,
+                    this.OrchestrationState.Output,
+                    this.OrchestrationState.Name,
+                    this.OrchestrationState.Input,
+                    this.OrchestrationState.OrchestrationInstance.InstanceId,
+                    this.OrchestrationState.OrchestrationInstance.ExecutionId,
+                    this.OrchestrationState.CompletedTime,
+                    this.OrchestrationState.OrchestrationStatus,
+                    this.OrchestrationState.LastUpdatedTime,
+                    this.OrchestrationState.CreatedTime,
+                    this.OrchestrationState.ScheduledStartTime,
+                    evt.ExecutionId
+                ));
+            }
+            
             // if the orchestration is complete, notify clients that are waiting for it
             if (this.Waiters != null && WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
             {
@@ -102,6 +145,38 @@ namespace DurableTask.Netherite
 
                 this.Waiters = null;
             }
+        }
+
+        static OrchestrationState UpdateOrchestrationState(OrchestrationState orchestrationState, List<HistoryEvent> events)
+        {
+            if (orchestrationState == null)
+            {
+                orchestrationState = new OrchestrationState();
+            }
+            foreach (var evt in events)
+            {
+                if (evt is ExecutionStartedEvent executionStartedEvent)
+                {
+                    orchestrationState.OrchestrationInstance = executionStartedEvent.OrchestrationInstance;
+                    orchestrationState.CreatedTime = executionStartedEvent.Timestamp;
+                    orchestrationState.Input = executionStartedEvent.Input;
+                    orchestrationState.Name = executionStartedEvent.Name;
+                    orchestrationState.Version = executionStartedEvent.Version;
+                    orchestrationState.Tags = executionStartedEvent.Tags;
+                    orchestrationState.ParentInstance = executionStartedEvent.ParentInstance;
+                    orchestrationState.ScheduledStartTime = executionStartedEvent.ScheduledStartTime;
+                    orchestrationState.CompletedTime = Core.Common.Utils.DateTimeSafeMaxValue;
+                    orchestrationState.Output = null;
+                    orchestrationState.OrchestrationStatus = OrchestrationStatus.Running;
+                }
+                else if (evt is ExecutionCompletedEvent executionCompletedEvent)
+                {
+                    orchestrationState.CompletedTime = executionCompletedEvent.Timestamp;
+                    orchestrationState.Output = executionCompletedEvent.Result;
+                    orchestrationState.OrchestrationStatus = executionCompletedEvent.OrchestrationStatus;
+                }
+            }
+            return orchestrationState;
         }
 
         public void Process(WaitRequestReceived evt, EffectTracker effects)

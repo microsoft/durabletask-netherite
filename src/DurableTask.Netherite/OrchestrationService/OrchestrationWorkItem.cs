@@ -26,6 +26,8 @@ namespace DurableTask.Netherite
 
         public double StartedAt { get; set; }
 
+        public string PreStatus { get; set; } // we store this prior to executing the work item so we can diff the status afterwards to detect changes
+
         public OrchestrationWorkItem(Partition partition, OrchestrationMessageBatch messageBatch, List<HistoryEvent> previousHistory = null)
         {
             this.Partition = partition;

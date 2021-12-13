@@ -125,14 +125,8 @@ namespace DurableTask.Netherite
                     InstanceId = this.InstanceId,
                     BatchStartPosition = this.BatchStartPosition,
                     BatchLength = this.BatchLength,
-                    NewEvents = null,
-                    State = null,
-                    WorkItemForReuse = null,
-                    ActivityMessages = null,
-                    LocalMessages = null,
-                    RemoteMessages = null,
-                    TimerMessages = null,
                     Timestamp = DateTime.UtcNow,
+                    NotExecutable = true,
                 });
             }
             else

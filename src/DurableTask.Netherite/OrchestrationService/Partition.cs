@@ -300,6 +300,7 @@ namespace DurableTask.Netherite
                 item.Type.ToString(),
                 WorkItemTraceHelper.FormatMessageIdList(item.MessageBatch.TracedMessages));
 
+            item.PreStatus = item.OrchestrationRuntimeState.Status;
             this.OrchestrationWorkItemQueue.Add(item);
         }
     }
