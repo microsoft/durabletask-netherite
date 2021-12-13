@@ -57,20 +57,6 @@ namespace DurableTask.Netherite.Faster
 
             public long TrackedObjectSize => Interlocked.Read(ref this.trackedObjectSize);
 
-            //public void UpdateTrackedObjectSize(long delta)
-            //{
-            //    long trackedObjectSize = Interlocked.Add(ref this.trackedObjectSize, delta);
-            //    this.AdjustPageCount(trackedObjectSize);
-            //}
-
-            //// this version is only called when the cache debugger is attached
-            //public void UpdateTrackedObjectSize(long delta, FasterKV.Key key, long address)
-            //{
-            //    long trackedObjectSize = Interlocked.Add(ref this.trackedObjectSize, delta);
-            //    this.AdjustPageCount(trackedObjectSize);
-            //    this.cacheDebugger.TrackSize(key, delta, address);
-            //}
-
             public long TargetSize { get; set; }
 
             public CacheTracker(MemoryTracker memoryTracker, FasterKV store, CacheDebugger cacheDebugger)

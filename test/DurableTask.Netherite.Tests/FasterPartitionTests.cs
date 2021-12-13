@@ -351,11 +351,7 @@ namespace DurableTask.Netherite.Tests
                 worker.AddTaskActivities(activityType);
                 await worker.StartAsync();
 
-                this.output?.Invoke("AFTER RECOVERY ------------------------------------");
-                foreach (var line in cacheDebugger.Dump())
-                {
-                    this.output?.Invoke(line);
-                }
+                cacheDebugger.OnRecovery();
 
                 // query the status of all orchestrations
                 {

@@ -59,15 +59,16 @@ namespace DurableTask.Netherite.Faster
             // tracking adjustment
             TrackSize,
 
-            // explicit failure
+            // other events
             Fail,
+            Recovery,
         };
 
         public class ObjectInfo
         {
             public int CurrentVersion;
             public List<Entry> CacheEvents;
-            public long Size;
+            public long? Size = 0;
             
             public override string ToString()
             {
@@ -148,7 +149,7 @@ namespace DurableTask.Netherite.Faster
                 });
         }
 
-        internal void TrackSize(TrackedObjectKey key, long delta, long address)
+        internal void UpdateTrackedObjectSize(long delta, TrackedObjectKey key, long address)
         {
             Entry entry = new Entry
             {          
@@ -174,15 +175,35 @@ namespace DurableTask.Netherite.Faster
 
         internal bool CheckSize(TrackedObjectKey key, long actual, string desc)
         {
-            long expected = this.Objects[key].Size;
-            if (expected != actual)
+            long? expected = this.Objects[key].Size;
+
+            if (expected == null)
             {
-                this.Fail($"Size tracking is not accurate expected={expected} actual={actual} desc={desc}", key);
-                return false;
+                // after recovery, we don't know the size. Record it now.
+                this.Objects[key].Size = actual;
+                return true;
             }
             else
             {
-                return true;
+                if (expected != actual)
+                {
+                    this.Fail($"Size tracking is not accurate expected={expected} actual={actual} desc={desc}", key);
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+        }
+
+        internal void OnRecovery()
+        {
+            // reset all size tracking
+            foreach (var info in this.Objects.Values)
+            {
+                info.CacheEvents.Add(new Entry() { CacheEvent = CacheEvent.Recovery });
+                info.Size = null;
             }
         }
 
