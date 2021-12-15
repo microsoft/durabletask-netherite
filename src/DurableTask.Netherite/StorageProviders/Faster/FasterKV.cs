@@ -174,7 +174,7 @@ namespace DurableTask.Netherite.Faster
             {
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
-                if (this.fht.TakeFullCheckpoint(out checkpointGuid))
+                if (this.fht.TakeFullCheckpoint(out checkpointGuid, CheckpointType.FoldOver))
                 {
                     byte[] serializedSingletons = Serializer.SerializeSingletons(this.singletons);
                     this.persistSingletonsTask = this.blobManager.PersistSingletonsAsync(serializedSingletons, checkpointGuid);
@@ -250,7 +250,7 @@ namespace DurableTask.Netherite.Faster
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
 
-                if (this.fht.TakeHybridLogCheckpoint(out var token))
+                if (this.fht.TakeHybridLogCheckpoint(out var token, CheckpointType.FoldOver))
                 {
                     // according to Badrish this ensures proper fencing w.r.t. session
                     this.mainSession.Refresh();

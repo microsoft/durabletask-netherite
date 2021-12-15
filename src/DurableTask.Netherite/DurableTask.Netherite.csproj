@@ -44,7 +44,7 @@
   
   <ItemGroup>
     <PackageReference Include="Azure.Messaging.EventHubs" Version="5.5.0" />
-    <PackageReference Include="FASTER.core" Version="2.0.0-tag209" />
+    <PackageReference Include="FASTER.core" Version="2.0.0-tag211" />
     <PackageReference Include="Microsoft.Azure.Cosmos.Table" Version="1.0.8" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="3.1.5" />
     <PackageReference Include="Microsoft.Azure.EventHubs.Processor" Version="4.3.2" />

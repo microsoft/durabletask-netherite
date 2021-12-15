@@ -35,7 +35,7 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper = traceHelper;
             this.intakeWorker = new IntakeWorker(cancellationToken, this, partition.TraceHelper);
 
-            this.maxFragmentSize = (1 << this.blobManager.GetDefaultEventLogSettings(partition.Settings.UseSeparatePageBlobStorage, partition.Settings.FasterTuningParameters).PageSizeBits) - 64; // faster needs some room for header, 64 bytes is conservative
+            this.maxFragmentSize = (int) this.blobManager.GetDefaultEventLogSettings(partition.Settings.UseSeparatePageBlobStorage, partition.Settings.FasterTuningParameters).PageSize - 64; // faster needs some room for header, 64 bytes is conservative
         }
 
         public const byte first = 0x1;

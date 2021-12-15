@@ -194,7 +194,6 @@ namespace DurableTask.Netherite.Faster
         public CheckpointSettings StoreCheckpointSettings => new CheckpointSettings
         {
             CheckpointManager = this.UseLocalFiles ? (ICheckpointManager)this.LocalCheckpointManager : (ICheckpointManager)this,
-            CheckPointType = CheckpointType.FoldOver
         };
 
         public const int MaxRetries = 10;
@@ -765,7 +764,7 @@ namespace DurableTask.Netherite.Faster
             yield return 0;
         }
 
-        void ILogCommitManager.OnRecovery(long commitNum, bool purgeEarlierCommits) 
+        void ILogCommitManager.OnRecovery(long commitNum) 
         { 
             // TODO: make sure our use of single commmit is safe
         }
