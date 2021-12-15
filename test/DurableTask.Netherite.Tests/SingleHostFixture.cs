@@ -57,7 +57,6 @@ namespace DurableTask.Netherite.Tests
 
         public void Dispose()
         {
-            this.ClearOutput();
             this.Host.StopAsync(false).Wait();
             this.Host.Dispose();
             Trace.Listeners.Remove(this.traceListener);
@@ -74,13 +73,6 @@ namespace DurableTask.Netherite.Tests
             this.output = output;
             this.loggerProvider.Output = output;
             this.traceListener.Output = output;
-        }
-
-        public void ClearOutput()
-        {
-            this.loggerProvider.Output = null;
-            this.traceListener.Output = null;
-            this.output = null;
         }
 
         internal class TestTraceListener : TraceListener

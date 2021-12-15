@@ -28,10 +28,22 @@ namespace DurableTask.Netherite.Tests
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
         readonly Action<string> output;
+        ITestOutputHelper outputHelper;
 
         public ScenarioTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
-            this.output = (string message) => outputHelper.WriteLine(message);
+            this.outputHelper = outputHelper;
+            this.output = (string message) =>
+            {
+                try
+                {
+                    this.outputHelper?.WriteLine(message);
+                }
+                catch (Exception)
+                {
+                }
+            };
+
             this.output($"Running pre-test operations on {fixture.GetType().Name}.");
 
             this.fixture = fixture;
@@ -56,9 +68,9 @@ namespace DurableTask.Netherite.Tests
             }
 
             this.fixture.DumpCacheDebugger();
-            this.fixture.ClearOutput();
 
             this.output($"Completed post-test operations on {this.fixture.GetType().Name}.");
+            this.outputHelper = null;
         }
 
         /// <summary>

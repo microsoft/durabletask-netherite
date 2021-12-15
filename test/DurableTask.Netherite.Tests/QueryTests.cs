@@ -25,15 +25,28 @@ namespace DurableTask.Netherite.Tests
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
         readonly Action<string> output;
+        ITestOutputHelper outputHelper;
 
-        public QueryTests(SingleHostFixture fixture, Action<string> output)
+        public QueryTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
-            this.output = output;
-            this.output($"Running pre-test operations on {fixture.GetType().Name}.");
-
             this.fixture = fixture;
             this.host = fixture.Host;
-            this.fixture.SetOutput(output);
+            this.outputHelper = outputHelper;
+            this.output = (string message) =>
+            {
+                try
+                {
+                    this.outputHelper?.WriteLine(message);
+                }
+                catch (Exception)
+                {
+                }
+            };
+
+            this.output($"Running pre-test operations on {fixture.GetType().Name}.");
+
+            this.fixture.SetOutput(this.output); 
+
             Assert.False(fixture.HasError(out var error), $"could not start test because of preceding test failure: {error}");
 
             // purge all instances prior to each test
@@ -59,9 +72,9 @@ namespace DurableTask.Netherite.Tests
             }
 
             this.fixture.DumpCacheDebugger();
-            this.fixture.ClearOutput();
 
             this.output($"Completed post-test operations on {this.fixture.GetType().Name}.");
+            this.outputHelper = null;
         }
 
         /// <summary>

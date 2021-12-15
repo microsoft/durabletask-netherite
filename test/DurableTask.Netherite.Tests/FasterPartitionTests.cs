@@ -20,29 +20,38 @@ namespace DurableTask.Netherite.Tests
     [Collection("NetheriteTests")]
     public class FasterPartitionTests : IDisposable
     {
-        readonly PartitionTestFixture.TestTraceListener traceListener;
+        readonly SingleHostFixture.TestTraceListener traceListener;
         readonly ILoggerFactory loggerFactory;
         readonly XunitLoggerProvider provider;
-        Action<string> output;
+        readonly Action<string> output;
+        ITestOutputHelper outputHelper;
 
         public FasterPartitionTests(ITestOutputHelper outputHelper)
         {
-            Action<string> output = (string message) => outputHelper.WriteLine(message);
+            this.outputHelper = outputHelper;
+            this.output = (string message) =>
+            {
+                try
+                {
+                    this.outputHelper?.WriteLine(message);
+                }
+                catch (Exception)
+                {
+                }
+            };
+
             this.loggerFactory = new LoggerFactory();
             this.provider = new XunitLoggerProvider();
             this.loggerFactory.AddProvider(this.provider);
-            this.traceListener = new PartitionTestFixture.TestTraceListener();
+            this.traceListener = new SingleHostFixture.TestTraceListener();
             Trace.Listeners.Add(this.traceListener);
-            this.provider.Output = output;
-            this.traceListener.Output = output;
-            this.output = output;
+            this.provider.Output = this.output;
+            this.traceListener.Output = this.output;
         }
 
         public void Dispose()
         {
-            this.provider.Output = null;
-            this.traceListener.Output = null;
-            this.output = null;
+            this.outputHelper = null;
             Trace.Listeners.Remove(this.traceListener);
         }
 
@@ -98,7 +107,7 @@ namespace DurableTask.Netherite.Tests
         /// <summary>
         /// Run a number of orchestrations that requires more memory than available for FASTER
         /// </summary>
-        [Fact]
+        [Fact()]
         public async Task LimitedMemory()
         {
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
