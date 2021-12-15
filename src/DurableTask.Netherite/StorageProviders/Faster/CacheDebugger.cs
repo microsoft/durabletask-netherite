@@ -62,6 +62,7 @@ namespace DurableTask.Netherite.Faster
             // other events
             Fail,
             Recovery,
+            SizeCheck,
         };
 
         public class ObjectInfo
@@ -92,36 +93,45 @@ namespace DurableTask.Netherite.Faster
             {
                 var sb = new StringBuilder();
 
-                sb.Append(this.CacheEvent.ToString());
-
-                if (this.Version != null)
+                if (this.CacheEvent == CacheEvent.SizeCheck)
                 {
-                    sb.Append('.');
-                    sb.Append('v');
-                    sb.Append(this.Version.ToString());
-                }
-
-                if (this.CacheEvent == CacheEvent.TrackSize)
-                {
-                    if (this.Delta >= 0)
-                    {
-                        sb.Append('+');
-                    }
+                    sb.Append('✓');
                     sb.Append(this.Delta);
                 }
-
-                if (this.Address != 0)
+                else
                 {
-                    sb.Append('@');
-                    sb.Append(this.Address.ToString("x"));
+                    sb.Append(this.CacheEvent.ToString());
+
+                    if (this.Version != null)
+                    {
+                        sb.Append('.');
+                        sb.Append('v');
+                        sb.Append(this.Version.ToString());
+                    }
+
+                    if (this.CacheEvent == CacheEvent.TrackSize)
+                    {
+                        if (this.Delta >= 0)
+                        {
+                            sb.Append('+');
+                        }
+                        sb.Append(this.Delta);
+                    }
+
+
+                    if (this.Address != 0)
+                    {
+                        sb.Append('@');
+                        sb.Append(this.Address.ToString("x"));
+                    }
+
+                    //if (!string.IsNullOrEmpty(this.EventId))
+                    //{
+                    //    sb.Append('@');
+                    //    sb.Append(this.EventId);
+                    //}
+
                 }
-
-                //if (!string.IsNullOrEmpty(this.EventId))
-                //{
-                //    sb.Append('@');
-                //    sb.Append(this.EventId);
-                //}
-
                 return sb.ToString();
             }
         }
@@ -181,7 +191,6 @@ namespace DurableTask.Netherite.Faster
             {
                 // after recovery, we don't know the size. Record it now.
                 this.Objects[key].Size = actual;
-                return true;
             }
             else
             {
@@ -190,11 +199,9 @@ namespace DurableTask.Netherite.Faster
                     this.Fail($"Size tracking is not accurate expected={expected} actual={actual} desc={desc}", key);
                     return false;
                 }
-                else
-                {
-                    return true;
-                }
             }
+            this.Objects[key].CacheEvents.Add(new Entry { CacheEvent = CacheEvent.SizeCheck, Delta = actual });
+            return true;
         }
 
         internal void OnRecovery()
@@ -227,7 +234,7 @@ namespace DurableTask.Netherite.Faster
             }
 
             var objectInfo = this.Objects[key];
-            this.OnError($"{message} cacheEvents={objectInfo.PrintCacheEvents()}");
+            this.OnError($"{message} key={key} cacheEvents={objectInfo.PrintCacheEvents()}");
         }
 
         internal void ValidateObjectVersion(FasterKV.Value val, TrackedObjectKey key)
