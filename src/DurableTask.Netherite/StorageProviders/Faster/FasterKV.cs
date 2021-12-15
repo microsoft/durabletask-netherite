@@ -662,11 +662,11 @@ namespace DurableTask.Netherite.Faster
                     if (!recordInfo.Tombstone)
                     {
                         int version = iterator.GetValue().Version;
-                        this.store.cacheDebugger?.Record(ref key, CacheDebugger.CacheEvent.Evict, version, null);
+                        this.store.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.Evict, version, null);
                     }
                     else
                     {
-                        this.store.cacheDebugger?.Record(ref key, CacheDebugger.CacheEvent.EvictTombstone, null, null);
+                        this.store.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.EvictTombstone, null, null);
                     }
                 }
             }
@@ -691,11 +691,11 @@ namespace DurableTask.Netherite.Faster
                     if (!recordInfo.Tombstone)
                     {
                         int version = iterator.GetValue().Version;
-                        this.store.cacheDebugger?.Record(ref key, CacheDebugger.CacheEvent.Readonly, version, null);
+                        this.store.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.Readonly, version, null);
                     }
                     else
                     {
-                        this.store.cacheDebugger?.Record(ref key, CacheDebugger.CacheEvent.ReadonlyTombstone, null, null);
+                        this.store.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.ReadonlyTombstone, null, null);
                     }
                 }
             }
