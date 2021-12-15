@@ -1158,9 +1158,13 @@ namespace DurableTask.Netherite.Faster
                         trackedObject.Partition = this.partition;
                         dst.Val = trackedObject;
                     }
-                    else
+                    else 
                     {
-                        this.cacheDebugger?.Fail("SingleWriter should not be called with mutable source", key);
+                        if (!this.isScan)
+                        {
+                            this.cacheDebugger?.Fail("SingleWriter should not be called with mutable source", key);
+                        }
+                        dst.Val = src.Val;
                     }
                 }
                 dst.Version = src.Version;
