@@ -27,13 +27,15 @@ namespace DurableTask.Netherite.Tests
     {
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
+        ITestOutputHelper outputHelper;
 
         public ScenarioTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
-            Action<string> output = (string message) => outputHelper.WriteLine(message);
+            this.outputHelper = outputHelper;
             this.fixture = fixture;
             this.host = fixture.Host;
-            fixture.SetOutput(output);
+
+            fixture.SetOutput((string message) => this.outputHelper?.WriteLine(message));
         }
 
         public void Dispose()
@@ -45,7 +47,7 @@ namespace DurableTask.Netherite.Tests
                 throw new TimeoutException("timed out while purging instances after running test");
             }
 
-            this.fixture.ClearOutput();
+            this.outputHelper = null;
         }
 
         /// <summary>

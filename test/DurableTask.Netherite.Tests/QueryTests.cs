@@ -24,12 +24,15 @@ namespace DurableTask.Netherite.Tests
     {
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
+        ITestOutputHelper outputHelper;
 
-        public QueryTests(SingleHostFixture fixture, Action<string> output)
+        public QueryTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
             this.fixture = fixture;
             this.host = fixture.Host;
-            this.fixture.SetOutput(output);
+            this.outputHelper = outputHelper;
+
+            this.fixture.SetOutput((message) => this.outputHelper?.WriteLine(message));
 
             // purge all instances prior to each test
             if (! this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
@@ -47,7 +50,7 @@ namespace DurableTask.Netherite.Tests
                 throw new TimeoutException("timed out while purging instances after running test");
             }
 
-            this.fixture.ClearOutput();
+            this.outputHelper = null;
         }
 
         /// <summary>
