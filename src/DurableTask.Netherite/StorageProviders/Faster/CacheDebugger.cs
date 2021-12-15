@@ -68,8 +68,9 @@ namespace DurableTask.Netherite.Faster
         public class ObjectInfo
         {
             public int CurrentVersion;
-            public List<Entry> CacheEvents;
+            public ConcurrentQueue<Entry> CacheEvents;
             public long? Size = 0;
+            public int? PendingRMW;
             
             public override string ToString()
             {
@@ -80,6 +81,20 @@ namespace DurableTask.Netherite.Faster
         }
 
         public event Action<string> OnError;
+
+        internal ObjectInfo GetObjectInfo(TrackedObjectKey key)
+        {
+            return this.Objects.AddOrUpdate(
+                key,
+                key => new ObjectInfo()
+                {
+                    CacheEvents = new ConcurrentQueue<Entry>(),
+                },
+                (key, info) =>
+                {
+                    return info;
+                });
+        }
 
         public struct Entry
         {
@@ -138,59 +153,56 @@ namespace DurableTask.Netherite.Faster
 
         internal void Record(TrackedObjectKey key, CacheEvent evt, int? version, string eventId, long address)
         {
-            Entry entry = new Entry
+            var info = this.GetObjectInfo(key);
+            info.CacheEvents.Enqueue(new Entry
             {
                 EventId = eventId,
                 CacheEvent = evt,
                 Version = version,
                 Address = address,
-            };
+            });
 
-            this.Objects.AddOrUpdate(
-                key,
-                key => new ObjectInfo()
-                {
-                    CacheEvents = new List<Entry>() { entry },
-                },
-                (key, info) =>
-                {
-                    info.CacheEvents.Add(entry);
-                    return info;
-                });
+            switch(evt)
+            {
+                case CacheEvent.StartingRMW:
+                case CacheEvent.PendingRMW:
+                    info.PendingRMW = info.CurrentVersion;
+                    break;
+
+                case CacheEvent.CompletedRMW:
+                    if (info.CurrentVersion != info.PendingRMW + 1)
+                    {
+                        this.Fail("RMW completed without correctly updating the object", key);
+                    }
+                    info.PendingRMW = null;
+                    break;
+
+                default:
+                    break;
+            }
         }
 
         internal void UpdateTrackedObjectSize(long delta, TrackedObjectKey key, long address)
         {
-            Entry entry = new Entry
-            {          
+            var info = this.GetObjectInfo(key);
+            info.Size += delta;
+            info.CacheEvents.Enqueue(new Entry
+            {
                 CacheEvent = CacheEvent.TrackSize,
                 Delta = delta,
                 Address = address,
-            };
-
-            this.Objects.AddOrUpdate(
-               key,
-               key => new ObjectInfo()
-               {
-                   CacheEvents = new List<Entry>() { entry },
-                   Size = delta,
-               },
-               (key, info) =>
-               {
-                   info.CacheEvents.Add(entry);
-                   info.Size += delta;
-                   return info;
-               });
+            });
         }
 
         internal bool CheckSize(TrackedObjectKey key, long actual, string desc)
         {
-            long? expected = this.Objects[key].Size;
+            var info = this.GetObjectInfo(key);
+            long? expected = info.Size;
 
             if (expected == null)
             {
                 // after recovery, we don't know the size. Record it now.
-                this.Objects[key].Size = actual;
+                info.Size = actual;
             }
             else
             {
@@ -200,7 +212,7 @@ namespace DurableTask.Netherite.Faster
                     return false;
                 }
             }
-            this.Objects[key].CacheEvents.Add(new Entry { CacheEvent = CacheEvent.SizeCheck, Delta = actual });
+            info.CacheEvents.Enqueue(new Entry { CacheEvent = CacheEvent.SizeCheck, Delta = actual });
             return true;
         }
 
@@ -209,7 +221,7 @@ namespace DurableTask.Netherite.Faster
             // reset all size tracking
             foreach (var info in this.Objects.Values)
             {
-                info.CacheEvents.Add(new Entry() { CacheEvent = CacheEvent.Recovery });
+                info.CacheEvents.Enqueue(new Entry() { CacheEvent = CacheEvent.Recovery });
                 info.Size = null;
             }
         }
@@ -233,8 +245,8 @@ namespace DurableTask.Netherite.Faster
                 System.Diagnostics.Debugger.Break();
             }
 
-            var objectInfo = this.Objects[key];
-            this.OnError($"{message} key={key} cacheEvents={objectInfo.PrintCacheEvents()}");
+            var info = this.GetObjectInfo(key);
+            this.OnError($"{message} key={key} cacheEvents={info.PrintCacheEvents()}");
         }
 
         internal void ValidateObjectVersion(FasterKV.Value val, TrackedObjectKey key)
@@ -263,41 +275,30 @@ namespace DurableTask.Netherite.Faster
 
             if (val.Version != versionOfObject)
             {
-                var objectInfo = this.Objects[key];
-                this.Fail($"incorrect version: reference=v{val.Version} actual=v{versionOfObject} obj={val.Val} cacheEvents={objectInfo.PrintCacheEvents()}");
+                var info = this.GetObjectInfo(key);
+                this.Fail($"incorrect version: reference=v{val.Version} actual=v{versionOfObject} obj={val.Val} cacheEvents={info.PrintCacheEvents()}");
             }
         }
 
         internal void CheckVersionConsistency(ref TrackedObjectKey key, TrackedObject obj, int? version)
         {
-            var objectInfo = this.Objects[key];
+            var info = this.GetObjectInfo(key);
 
-            if (version != null && version.Value != objectInfo.CurrentVersion)
+            if (version != null && version.Value != info.CurrentVersion)
             {
-                this.Fail($"Read validation on version failed: expected=v{objectInfo.CurrentVersion} actual=v{version} obj={obj} cacheEvents={objectInfo.PrintCacheEvents()}");
+                this.Fail($"Read validation on version failed: expected=v{info.CurrentVersion} actual=v{version} obj={obj} cacheEvents={info.PrintCacheEvents()}");
             }
 
-            if ((obj?.Version ?? 0) != objectInfo.CurrentVersion)
+            if ((obj?.Version ?? 0) != info.CurrentVersion)
             {
-                this.Fail($"Read validation on object failed: expected=v{objectInfo.CurrentVersion} actual=v{obj?.Version ?? 0} obj={obj} cacheEvents={objectInfo.PrintCacheEvents()}");
+                this.Fail($"Read validation on object failed: expected=v{info.CurrentVersion} actual=v{obj?.Version ?? 0} obj={obj} cacheEvents={info.PrintCacheEvents()}");
             }
         }
 
         internal void UpdateReferenceValue(ref TrackedObjectKey key, TrackedObject obj, int version)
         {
-            this.Objects.AddOrUpdate(
-                key,
-                key => new ObjectInfo()
-                {
-                    CurrentVersion = version,
-                    CacheEvents = new List<Entry>(),
-                },
-                (key, trace) =>
-                {
-                    trace.CurrentVersion = version;
-                    return trace;
-                });
-
+            var info = this.GetObjectInfo(key);
+            info.CurrentVersion = version; 
             if (obj != null)
             {
                 obj.Version = version;

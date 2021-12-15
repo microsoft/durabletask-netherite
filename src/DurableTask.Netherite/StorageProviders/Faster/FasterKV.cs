@@ -508,52 +508,74 @@ namespace DurableTask.Netherite.Faster
                 }
                 else
                 {
-                    int numTries = 3;
-                    while (numTries-- > 0)
-                    {
-                        try
-                        {
-                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.StartingRMW, null, tracker.CurrentEventId, 0);
+                    this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.StartingRMW, null, tracker.CurrentEventId, 0);
 
-                            var rmwAsyncResult = await this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken);
+                    await this.PerformFasterRMWAsync(k, tracker);
 
-                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.PendingRMW, null, tracker.CurrentEventId, 0);
-
-                            // Synchronous version
-                            rmwAsyncResult.Complete();
-
-                            this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.CompletedRMW, null, tracker.CurrentEventId, 0);
-
-                            break;
-
-                            // As an alternative, can consider the following asynchronous version
-                            //{
-                            //    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"retrying completion of RMW on {k}");
-                            //    rmwAsyncResult = await rmwAsyncResult.CompleteAsync();
-                            //}
-                            //while (rmwAsyncResult.Status == Status.PENDING)
-                            //}
-                        }
-                        catch (Exception exception) when (!Utils.IsFatal(exception))
-                        {
-                            if (numTries > 0)
-                            {
-                                await Task.Yield();
-                                continue;
-                            }
-                            else
-                            {
-                                this.cacheDebugger.Fail($"Failed to execute RMW in Faster: {exception}", k);
-                                throw;
-                            }
-                        }
-                    }
+                    this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.CompletedRMW, null, tracker.CurrentEventId, 0);
                 }
             }
             catch (Exception exception)
                when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
             {
                 throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
+            }
+        }
+
+        async ValueTask PerformFasterRMWAsync(Key k, EffectTracker tracker)
+        {
+            try
+            {
+                var rmwAsyncResult = await this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken);
+
+                bool IsComplete()
+                {
+                    switch (rmwAsyncResult.Status)
+                    {
+                        case Status.NOTFOUND:
+                        case Status.OK:
+                            return true;
+
+                        case Status.PENDING:
+                            return false;
+
+                        case Status.ERROR:
+                        default:
+                            string msg = $"Could not execute RMW in Faster, received status={rmwAsyncResult.Status}";
+                            this.cacheDebugger?.Fail(msg, k);
+                            throw new FasterException(msg);
+                    }
+                }
+
+                if (IsComplete())
+                {
+                    return;
+                }
+
+                int numTries = 10;
+
+                while (true)
+                {
+                    this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.PendingRMW, null, tracker.CurrentEventId, 0);
+
+                    rmwAsyncResult = await rmwAsyncResult.CompleteAsync();
+
+                    if (IsComplete())
+                    {
+                        return;
+                    }
+
+                    if (--numTries == 0)
+                    {
+                        this.cacheDebugger?.Fail($"Failed to execute RMW in Faster: status={rmwAsyncResult.Status.ToString()}", k);
+                        throw new FasterException("Could not complete RMW even after all retries");
+                    }
+                }
+            }
+            catch (Exception exception) when (!Utils.IsFatal(exception)) // this is a workaround that is not completely safe and should be removed when possible
+            {
+                this.cacheDebugger?.Fail($"Failed to execute RMW in Faster, encountered exception: {exception}", k);
+                throw;
             }
         }
 
@@ -739,7 +761,6 @@ namespace DurableTask.Netherite.Faster
                 {
                     if (!this.cacheDebugger.CheckSize(kvp.Key, kvp.Value.Size, kvp.Value.Sb.ToString()))
                     {
-
                         break;
                     }
                 }        
@@ -1216,6 +1237,7 @@ namespace DurableTask.Netherite.Faster
                         if (recordInfo.Invalid)
                             removed += key.Val.EstimatedSize;
                         this.cacheDebugger?.UpdateTrackedObjectSize(-removed, key, address);
+                        this.cacheDebugger?.UpdateReferenceValue(ref key.Val, null, 0);
                     }
                 }
                 return true;
