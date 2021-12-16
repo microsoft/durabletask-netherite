@@ -23,6 +23,8 @@ If you have a .NET Durable Functions application already, and want to configure 
 - Configure `EventHubsConnection` with the connection string for the Event Hubs namespace. You can do this using an environment variable, or with a function app configuration settings.
 - Optionally, update the host.json to tweak the [settings for Netherite](https://microsoft.github.io/durabletask-netherite/#/settings.md).
 
+🎥 If you want to follow along migrating a Durable Function from Azure Storage to Netherite, we recommend the YouTube video [Migrate your Durable Function to Netherite](https://youtu.be/GRcHeZkmVcM).  
+
 ## Why a new engine?
 
 The default Azure Storage engine stores messages in Azure Storage queues and instance states in Azure Storage tables. It executes large numbers of small storage accesses. For example, executing a single orchestration with three activities may require a total of 4 dequeue operations, 3 enqueue operations, 4 table reads, and 4 table writes. Thus, the overall throughput quickly becomes limited by how many I/O operations Azure Storage allows per second.
@@ -36,7 +38,7 @@ For some other considerations about how to choose the engine, see [the documenta
 
 ## Status
 
-The current version of Netherite is *0.5.0-alpha*.  Netherite already support almost all of the DT and DF APIs. However, there are still some limitations that we plan to address in the near future, before moving to beta status:
+The current version of Netherite is *0.6.1-alpha*.  Netherite already support almost all of the DT and DF APIs. However, there are still some limitations that we plan to address in the near future, before moving to beta status:
 
 - **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled so far. 
 - **Query Performance**. We have not quite completed our implementation of a FASTER index to speed up queries that are enumerating or purging instance states.

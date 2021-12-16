@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
+    <TargetFrameworks>netstandard2.1;netstandard2.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeSymbols>true</IncludeSymbols>
@@ -26,7 +26,7 @@
   <PropertyGroup>
     <MajorVersion>0</MajorVersion>
 	<MinorVersion>6</MinorVersion>
-	<PatchVersion>0</PatchVersion>
+	<PatchVersion>1</PatchVersion>
 	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
     <VersionSuffix>alpha</VersionSuffix>
     <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
