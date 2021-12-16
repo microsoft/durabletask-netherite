@@ -208,7 +208,7 @@ namespace DurableTask.Netherite.AzureFunctions
                     }
                     else
                     {
-                        var stream = new MemoryStream(metrics[^1].Metrics);
+                        var stream = new MemoryStream(metrics[metrics.Length - 1].Metrics);
                         var collectedMetrics = (ScalingMonitor.Metrics) this.serializer.ReadObject(stream);                 
                         recommendation = this.scalingMonitor.GetScaleRecommendation(workerCount, collectedMetrics);
                     }

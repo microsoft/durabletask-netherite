@@ -163,8 +163,8 @@ namespace DurableTask.Netherite
             }
 
             // trace backlog estimates
-            string estimated = string.Join(',', this.LoadInfo.Values.Select(i => i.ProjectedLoad.ToString()));
-            string mobile = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedMobile.ToString()));
+            string estimated = string.Join(",", this.LoadInfo.Values.Select(i => i.ProjectedLoad.ToString()));
+            string mobile = string.Join(",", this.LoadInfo.Values.Select(i => i.EstimatedMobile.ToString()));
             this.traceHelper.TraceProgress($"BacklogEstimates pending={this.PendingOnSource.Count},{this.PendingOnDestination.Count} RTT={this.EstimatedTransferRTT:f2} estimated=[{estimated}] mobile=[{mobile}]");
         }
 

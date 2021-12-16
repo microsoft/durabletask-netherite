@@ -190,7 +190,7 @@ namespace DurableTask.Netherite.Scaling
 
             if (copy.LatencyTrend.Length == PartitionLoadInfo.LatencyTrendLength)
             {
-                copy.LatencyTrend = $"{copy.LatencyTrend[1..PartitionLoadInfo.LatencyTrendLength]}{Idle}";
+                copy.LatencyTrend = $"{copy.LatencyTrend.Substring(1)}{Idle}";
             }
             else
             {
@@ -202,28 +202,28 @@ namespace DurableTask.Netherite.Scaling
 
         public void MarkActive()
         {
-            char last = this.LatencyTrend[^1];
+            char last = this.LatencyTrend[this.LatencyTrend.Length-1];
             if (last == Idle)
             {
-                this.LatencyTrend = $"{this.LatencyTrend[0..^1]}{LowLatency}"; 
+                this.LatencyTrend = $"{this.LatencyTrend.Substring(0, this.LatencyTrend.Length-1)}{LowLatency}"; 
             }
         }
 
         public void MarkMediumLatency()
         {
-            char last = this.LatencyTrend[^1];
+            char last = this.LatencyTrend[this.LatencyTrend.Length - 1];
             if (last == Idle || last == LowLatency)
             {
-                this.LatencyTrend = $"{this.LatencyTrend[0..^1]}{MediumLatency}"; 
+                this.LatencyTrend = $"{this.LatencyTrend.Substring(0, this.LatencyTrend.Length - 1)}{MediumLatency}"; 
             }
         }
 
         public void MarkHighLatency()
         {
-            char last = this.LatencyTrend[^1];
+            char last = this.LatencyTrend[this.LatencyTrend.Length - 1];
             if (last == Idle || last == LowLatency || last == MediumLatency)
             {
-                this.LatencyTrend = $"{this.LatencyTrend[0..^1]}{HighLatency}";
+                this.LatencyTrend = $"{this.LatencyTrend.Substring(0, this.LatencyTrend.Length - 1)}{HighLatency}";
             }
         }
     }
