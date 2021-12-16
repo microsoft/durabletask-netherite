@@ -84,5 +84,23 @@ namespace DurableTask.Netherite
             dynamic dynamicPartitionEvent = e.ReassembledEvent;
             dynamicThis.Process(dynamicPartitionEvent, effects);
         }
+
+        public virtual void Process(BatchProcessed evt, EffectTracker tracker) { }
+        public virtual void Process(CreationRequestReceived evt, EffectTracker tracker) { }
+        public virtual void Process(DeletionRequestReceived evt, EffectTracker tracker) { }
+        public virtual void Process(InstanceQueryReceived evt, EffectTracker tracker) { }
+        public virtual void Process(PurgeRequestReceived evt, EffectTracker tracker) { }
+        public virtual void Process(WaitRequestReceived evt, EffectTracker tracker) { }
+        public virtual void Process(PurgeBatchIssued evt, EffectTracker tracker) { }
+        public virtual void Process(ClientTaskMessagesReceived evt, EffectTracker tracker) { }
+        public virtual void Process(SolicitationReceived evt, EffectTracker tracker) { }
+        public virtual void Process(TransferCommandReceived evt, EffectTracker tracker) { }
+        public virtual void Process(ActivityTransferReceived evt, EffectTracker tracker) { }
+        public virtual void Process(RemoteActivityResultReceived evt, EffectTracker tracker) { }
+        public virtual void Process(TaskMessagesReceived evt, EffectTracker tracker) { }
+        public virtual void Process(ActivityCompleted evt, EffectTracker tracker) { }
+        public virtual void Process(OffloadDecision evt, EffectTracker tracker) { }
+        public virtual void Process(SendConfirmed evt, EffectTracker tracker) { }
+        public virtual void Process(TimerFired evt, EffectTracker tracker) { }
     }
 }

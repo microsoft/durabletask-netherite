@@ -38,10 +38,15 @@ namespace DurableTask.Netherite
             }
         }
 
-
         public override void DetermineEffects(EffectTracker effects)
         {
             effects.Add(TrackedObjectKey.Reassembly);
         }
+
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
+
     }
 }

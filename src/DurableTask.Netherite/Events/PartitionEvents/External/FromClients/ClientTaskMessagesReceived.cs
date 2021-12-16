@@ -20,5 +20,10 @@ namespace DurableTask.Netherite
         {
             effects.Add(TrackedObjectKey.Sessions);
         }
+
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
     }
 }
