@@ -1109,7 +1109,9 @@ namespace DurableTask.Netherite.Faster
             if (this.UseLocalFiles)
             {
                 var path = Path.Combine(this.LocalCheckpointDirectoryPath, this.GetSingletonsSnapshotBlobName(guid));
-                await File.WriteAllBytesAsync(path, singletons);
+                using var filestream = File.OpenWrite(path);
+                await filestream.WriteAsync(singletons, 0, singletons.Length);
+                await filestream.FlushAsync();
             }
             else
             {
