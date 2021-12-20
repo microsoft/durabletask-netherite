@@ -34,11 +34,14 @@ namespace DurableTask.Netherite.Faster
 
         public long TargetMemorySize { get; set; }
 
-        public FasterStorage(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, ILoggerFactory loggerFactory)
+        public FasterStorage(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory)
         {
-            if (!string.IsNullOrEmpty(localFileDirectory))
+            string connectionString = settings.ResolvedStorageConnectionString;
+            string pageBlobConnectionString = settings.ResolvedPageBlobStorageConnectionString;
+
+            if (!string.IsNullOrEmpty(settings.UseLocalDirectoryForPartitionStorage))
             {
-                this.localFileDirectory = localFileDirectory;
+                this.localFileDirectory = settings.UseLocalDirectoryForPartitionStorage;
             }
             else
             { 
@@ -52,10 +55,15 @@ namespace DurableTask.Netherite.Faster
             {
                 this.pageBlobStorageAccount = this.storageAccount;
             }
-            this.taskHubName = taskHubName;
+            this.taskHubName = settings.HubName;
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
             this.memoryTracker = new MemoryTracker(this);
-            this.TargetMemorySize = 1024L * 1024 * 1024 * 1024;
+            this.TargetMemorySize = settings.FasterCacheSizeMB ?? 200 * 1024 * 1024;
+
+            if (settings.CacheDebugger != null)
+            {
+                settings.CacheDebugger.MemoryTracker = this.memoryTracker;
+            }
         }
 
         public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName)

@@ -29,6 +29,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public int Episode { get; set; }
 
+        [DataMember]
+        public long HistorySize;
+
         /// <summary>
         /// We cache this so we can resume the execution at the execution cursor.
         /// </summary>
@@ -40,10 +43,10 @@ namespace DurableTask.Netherite
 
         public override string ToString()
         {
-            return $"History InstanceId={this.InstanceId} ExecutionId={this.ExecutionId} Events={this.History.Count}";
+            return $"History InstanceId={this.InstanceId} ExecutionId={this.ExecutionId} Events={this.History.Count} Size={this.HistorySize}";
         }
 
-        public override long ComputeEstimatedSize() => 50 + DurableTask.Netherite.SizeUtils.GetEstimatedSize(this);
+        public override long EstimatedSize => 60 + 2 * ((this.InstanceId?.Length ?? 0) + (this.ExecutionId?.Length ?? 0)) + this.HistorySize;
 
         public void Process(BatchProcessed evt, EffectTracker effects)
         {
@@ -55,6 +58,7 @@ namespace DurableTask.Netherite
                 this.History = new List<HistoryEvent>();
                 this.Episode = 0;
                 this.ExecutionId = evt.State.OrchestrationInstance.ExecutionId;
+                this.HistorySize = 0;
             }
 
             this.Partition.Assert(!string.IsNullOrEmpty(this.InstanceId) || string.IsNullOrEmpty(this.ExecutionId));
@@ -69,7 +73,8 @@ namespace DurableTask.Netherite
                     {
                         this.Episode++;
                     }
-                    this.History.Add(evt.NewEvents[i]);
+                    this.History.Add(historyEvent);
+                    this.HistorySize += 8 + SizeUtils.GetEstimatedSize(historyEvent);
                 }
             }
 
@@ -82,6 +87,7 @@ namespace DurableTask.Netherite
                     evt.State.OrchestrationStatus,
                     this.History.Count,
                     evt.NewEvents, 
+                    this.HistorySize,
                     this.Episode);
 
                 // if present, we keep the work item so we can reuse the execution cursor

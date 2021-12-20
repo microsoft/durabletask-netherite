@@ -165,6 +165,7 @@ namespace DurableTask.Netherite.Faster
             }
 
             this.loadInfo.MissRate = this.store.StoreStats.GetMissRate();
+            this.loadInfo.CacheSizeMB = Math.Round(100 * this.store.CacheSizeMB) / 100;
 
             if (this.loadInfo.IsBusy() != null)
             {

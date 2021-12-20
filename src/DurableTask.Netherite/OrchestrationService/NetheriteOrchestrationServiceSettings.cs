@@ -91,6 +91,11 @@ namespace DurableTask.Netherite
         public int ActivityDispatcherCount { get; set; } = 1;
 
         /// <summary>
+        /// Limit on the amount of memory used by the FASTER cache
+        /// </summary>
+        public int? FasterCacheSizeMB { get; set; } = null;
+
+        /// <summary>
         /// Gets or sets the partition management option
         /// </summary>
         [JsonConverter(typeof(StringEnumConverter))]

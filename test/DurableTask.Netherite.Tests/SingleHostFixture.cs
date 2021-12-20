@@ -33,11 +33,9 @@ namespace DurableTask.Netherite.Tests
             this.LoggerFactory.AddProvider(this.loggerProvider);
             TestConstants.ValidateEnvironment();
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
+            settings.HubName = $"SingleHostFixture-{timestamp}";
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
-            this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
-            this.Host.StartAsync().Wait();
-            this.traceListener = new TestTraceListener();
-            Trace.Listeners.Add(this.traceListener);
             this.cacheDebugger = settings.CacheDebugger = new Faster.CacheDebugger();
             this.cacheDebugger.OnError += (message) =>
             {
@@ -45,6 +43,12 @@ namespace DurableTask.Netherite.Tests
                 this.traceListener.Output?.Invoke($"CACHEDEBUGGER: {message}");
                 this.firstError ??= message;
             };
+
+            // start the host
+            this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
+            this.Host.StartAsync().Wait();
+            this.traceListener = new TestTraceListener();
+            Trace.Listeners.Add(this.traceListener);
         }
 
         public void DumpCacheDebugger()

@@ -22,6 +22,9 @@ namespace DurableTask.Netherite
         public OrchestrationState OrchestrationState { get; set; }
 
         [DataMember]
+        public long OrchestrationStateSize { get; set; }
+
+        [DataMember]
         public List<WaitRequestReceived> Waiters { get; set; }
 
         [IgnoreDataMember]
@@ -32,7 +35,7 @@ namespace DurableTask.Netherite
             return $"Instance InstanceId={this.InstanceId} Status={this.OrchestrationState?.OrchestrationStatus}";
         }
 
-        public override long ComputeEstimatedSize() => 50 + this.OrchestrationState?.Size ?? 0;
+        public override long EstimatedSize => 60 + 2 * (this.InstanceId?.Length ?? 0) + this.OrchestrationStateSize;
 
         public void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
@@ -60,7 +63,7 @@ namespace DurableTask.Netherite
                     CompletedTime = Core.Common.DateTimeUtils.MinDateTime,
                     ScheduledStartTime = ee.ScheduledStartTime
                 };
-                this.OrchestrationState.Size = DurableTask.Netherite.SizeUtils.GetEstimatedSize(this.OrchestrationState);
+                this.OrchestrationStateSize = DurableTask.Netherite.SizeUtils.GetEstimatedSize(this.OrchestrationState);
 
                 // queue the message in the session, or start a timer if delayed
                 if (!ee.ScheduledStartTime.HasValue)
@@ -91,7 +94,7 @@ namespace DurableTask.Netherite
         {
             // update the state of an orchestration
             this.OrchestrationState = evt.State;
-            this.OrchestrationState.Size = DurableTask.Netherite.SizeUtils.GetEstimatedSize(this.OrchestrationState);
+            this.OrchestrationStateSize = DurableTask.Netherite.SizeUtils.GetEstimatedSize(this.OrchestrationState);
             // if the orchestration is complete, notify clients that are waiting for it
             if (this.Waiters != null && WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
             {

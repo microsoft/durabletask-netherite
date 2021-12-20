@@ -11,7 +11,7 @@ namespace DurableTask.Netherite.Tests
     {   
         public const string StorageConnectionName ="AzureWebJobsStorage";
         public const string EventHubsConnectionName ="EventHubsConnection";
-        public const string TaskHubName ="test-taskhub";
+        public const string DefaultTaskHubName ="test-taskhub";
         
         public static void ValidateEnvironment()
         {
@@ -31,7 +31,7 @@ namespace DurableTask.Netherite.Tests
             {
                 StorageConnectionName = StorageConnectionName,
                 EventHubsConnectionName = EventHubsConnectionName,
-                HubName = TaskHubName,
+                HubName = DefaultTaskHubName,
                 TransportLogLevelLimit = LogLevel.Trace,
                 StorageLogLevelLimit = LogLevel.Trace,
                 LogLevelLimit = LogLevel.Trace,
@@ -63,7 +63,5 @@ namespace DurableTask.Netherite.Tests
         internal static TestOrchestrationHost GetTestOrchestrationHost(ILoggerFactory loggerFactory)
             => new TestOrchestrationHost(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
-
-        public static bool DeleteStorageBeforeRunningTests => true; // set to false for testing log-based recovery
     }
 }

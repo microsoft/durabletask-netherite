@@ -18,6 +18,8 @@ namespace DurableTask.Netherite.Faster
     {
         readonly ConcurrentDictionary<TrackedObjectKey, ObjectInfo> Objects = new ConcurrentDictionary<TrackedObjectKey, ObjectInfo>();
 
+        internal MemoryTracker MemoryTracker { get; set; }
+ 
         public enum CacheEvent
         {
             // reads and RMWs on the main session
@@ -61,7 +63,7 @@ namespace DurableTask.Netherite.Faster
 
             // other events
             Fail,
-            Recovery,
+            Reset,
             SizeCheck,
         };
 
@@ -69,7 +71,7 @@ namespace DurableTask.Netherite.Faster
         {
             public int CurrentVersion;
             public ConcurrentQueue<Entry> CacheEvents;
-            public long? Size = 0;
+            public long Size = 0;
             public int? PendingRMW;
             
             public override string ToString()
@@ -197,32 +199,29 @@ namespace DurableTask.Netherite.Faster
         internal bool CheckSize(TrackedObjectKey key, long actual, string desc)
         {
             var info = this.GetObjectInfo(key);
-            long? expected = info.Size;
-
-            if (expected == null)
+            long expected = info.Size;
+            if (expected != actual)
             {
-                // after recovery, we don't know the size. Record it now.
-                info.Size = actual;
-            }
-            else
-            {
-                if (expected != actual)
-                {
-                    this.Fail($"Size tracking is not accurate expected={expected} actual={actual} desc={desc}", key);
-                    return false;
-                }
+                this.Fail($"Size tracking is not accurate expected={expected} actual={actual} desc={desc}", key);
+                return false;
             }
             info.CacheEvents.Enqueue(new Entry { CacheEvent = CacheEvent.SizeCheck, Delta = actual });
             return true;
         }
 
-        internal void OnRecovery()
+        internal void UpdateSize(TrackedObjectKey key, long delta)
+        {
+            var info = this.GetObjectInfo(key);
+            info.Size += delta;
+        }
+
+        internal void Reset()
         {
             // reset all size tracking
             foreach (var info in this.Objects.Values)
             {
-                info.CacheEvents.Enqueue(new Entry() { CacheEvent = CacheEvent.Recovery });
-                info.Size = null;
+                info.CacheEvents.Enqueue(new Entry() { CacheEvent = CacheEvent.Reset });
+                info.Size = 0;
             }
         }
 

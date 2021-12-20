@@ -54,6 +54,8 @@ namespace DurableTask.Netherite.Faster
 
         public StoreStatistics StoreStats { get; } = new StoreStatistics();
 
+        public abstract double CacheSizeMB { get; }
+
         public class StoreStatistics
         {
             public long Create;

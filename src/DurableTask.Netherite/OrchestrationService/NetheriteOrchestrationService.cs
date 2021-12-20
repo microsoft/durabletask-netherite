@@ -199,7 +199,7 @@ namespace DurableTask.Netherite
                     return new MemoryStorage(this.TraceHelper.Logger);
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.ResolvedPageBlobStorageConnectionString, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName, this.LoggerFactory);
+                    return new Faster.FasterStorage(this.Settings, this.LoggerFactory);
 
                 default:
                     throw new NotImplementedException("no such storage choice");

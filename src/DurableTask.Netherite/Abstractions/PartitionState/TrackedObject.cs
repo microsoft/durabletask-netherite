@@ -60,7 +60,7 @@ namespace DurableTask.Netherite
         /// <summary>
         /// An estimation of the size that this object takes up in memory
         /// </summary>
-        public virtual long ComputeEstimatedSize() => 0;
+        public virtual long EstimatedSize => 0;
 
         /// <summary>
         /// Is called on all singleton objects once at the very beginning

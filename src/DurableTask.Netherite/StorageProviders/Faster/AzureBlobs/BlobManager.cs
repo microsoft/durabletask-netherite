@@ -67,8 +67,8 @@ namespace DurableTask.Netherite.Faster
 
         volatile System.Diagnostics.Stopwatch leaseTimer;
 
-        internal const long HashTableSize = 1L << 14; // 16 k buckets, 1 GB
-        //internal const long HashTableSize = 1L << 14; // 8 M buckets, 512 GB
+        internal const long HashTableSize = 1L << 14; // 16 k buckets, 1 MB
+        internal const long HashTableSizeBytes = HashTableSize * 64;
 
         public class FasterTuningParameters
         {
@@ -79,6 +79,7 @@ namespace DurableTask.Netherite.Faster
             public int? StoreLogSegmentSizeBits;
             public int? StoreLogMemorySizeBits;
             public double? StoreLogMutableFraction;
+            public int? ExpectedObjectSize;
         }
 
         public FasterLogSettings GetDefaultEventLogSettings(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters) => new FasterLogSettings
@@ -94,28 +95,51 @@ namespace DurableTask.Netherite.Faster
             MemorySizeBits = tuningParameters?.EventLogMemorySizeBits ?? 22, // 2MB
         };
 
-        public LogSettings GetDefaultStoreLogSettings(bool useSeparatePageBlobStorage, uint numPartitions, FasterTuningParameters tuningParameters) => new LogSettings
+        public LogSettings GetDefaultStoreLogSettings(
+            bool useSeparatePageBlobStorage, 
+            long upperBoundOnAvailable, 
+            FasterTuningParameters tuningParameters)
         {
-            LogDevice = this.HybridLogDevice,
-            ObjectLogDevice = this.ObjectLogDevice,
-            PageSizeBits = tuningParameters?.StoreLogPageSizeBits ?? 17, // 128kB
-            MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
-            SegmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ??
-                (useSeparatePageBlobStorage ? 35   // 32 GB
-                                            : 32), // 4 GB
-            CopyReadsToTail = CopyReadsToTail.FromReadOnly,
-            MemorySizeBits = tuningParameters?.StoreLogMemorySizeBits ?? 
-               ((numPartitions <= 1) ? 25 : // 32MB
-                (numPartitions <= 2) ? 24 : // 16MB
-                (numPartitions <= 4) ? 23 : // 8MB
-                (numPartitions <= 8) ? 22 : // 4MB
-                (numPartitions <= 16) ? 21 : // 2MB
-                                        20), // 1MB         
-        };
+
+            var settings = new LogSettings
+            {
+                LogDevice = this.HybridLogDevice,
+                ObjectLogDevice = this.ObjectLogDevice,
+                PageSizeBits = tuningParameters?.StoreLogPageSizeBits ?? 10, // 1kB
+                MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
+                SegmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ??
+                    (useSeparatePageBlobStorage ? 35   // 32 GB
+                                                : 32), // 4 GB
+                CopyReadsToTail = CopyReadsToTail.FromReadOnly,
+            };
+
+            // compute a reasonable memory size for the log considering maximally availablee memory, and expansion factor
+            if (tuningParameters?.StoreLogMemorySizeBits != null)
+            {
+                settings.MemorySizeBits = tuningParameters.StoreLogMemorySizeBits.Value;
+            }
+            else
+            {
+                double expansionFactor = (24 + ((double)(tuningParameters?.ExpectedObjectSize ?? 216))) / 24;
+                long estimate = (long)(upperBoundOnAvailable / expansionFactor);
+                int memorybits = 0;
+                while (estimate > 0)
+                {
+                    memorybits++;
+                    estimate >>= 1;
+                }
+                memorybits = Math.Max(settings.PageSizeBits + 2, memorybits); // do not use less than 4 pages
+                settings.MemorySizeBits = memorybits;
+            }
+
+            return settings;
+        }
+
 
         static readonly int[] StorageFormatVersion = new int[] {
             1, //initial version
             2, //separate singletons
+            3, //reduced page size
         }; 
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)

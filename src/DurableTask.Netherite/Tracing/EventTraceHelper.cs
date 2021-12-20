@@ -70,6 +70,7 @@ namespace DurableTask.Netherite
             OrchestrationStatus runtimeStatus, 
             int totalEventCount, 
             List<HistoryEvent> newEvents, 
+            long historySize,
             int episode)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
@@ -121,11 +122,11 @@ namespace DurableTask.Netherite
                     (long commitLogPosition, string eventId) = EventTraceContext.Current;
 
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
-                    this.logger.LogDebug("Part{partition:D2}{prefix} Updated instance instanceId={instanceId} executionId={executionId} partitionEventId={partitionEventId} runtimeStatus={runtimeStatus} numNewEvents={numNewEvents} totalEventCount={totalEventCount} eventNames={eventNames} eventType={eventType} episode={episode}",
-                        this.partitionId, prefix, instanceId, executionId, partitionEventId, runtimeStatus, numNewEvents, totalEventCount, eventNames, eventType, episode);
+                    this.logger.LogDebug("Part{partition:D2}{prefix} Updated instance instanceId={instanceId} executionId={executionId} partitionEventId={partitionEventId} runtimeStatus={runtimeStatus} numNewEvents={numNewEvents} totalEventCount={totalEventCount} historySize={historySize} eventNames={eventNames} eventType={eventType} episode={episode}",
+                        this.partitionId, prefix, instanceId, executionId, partitionEventId, runtimeStatus, numNewEvents, totalEventCount, historySize, eventNames, eventType, episode);
                 }
 
-                this.etw?.InstanceUpdated(this.account, this.taskHub, this.partitionId, instanceId, executionId, partitionEventId, runtimeStatus.ToString(), numNewEvents, totalEventCount, eventNames, eventType, episode, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.InstanceUpdated(this.account, this.taskHub, this.partitionId, instanceId, executionId, partitionEventId, runtimeStatus.ToString(), numNewEvents, totalEventCount, historySize, eventNames, eventType, episode, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
