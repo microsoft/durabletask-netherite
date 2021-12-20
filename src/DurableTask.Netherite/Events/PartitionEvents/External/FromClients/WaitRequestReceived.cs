@@ -4,6 +4,7 @@
 namespace DurableTask.Netherite
 {
     using DurableTask.Core;
+    using System;
     using System.Runtime.Serialization;
     using System.Text;
 
@@ -21,6 +22,9 @@ namespace DurableTask.Netherite
 
         [IgnoreDataMember]
         public override string TracedInstanceId => this.InstanceId;
+
+        [DataMember]
+        public DateTime Timestamp { get; set; }
 
         protected override void ExtraTraceInformation(StringBuilder s)
         {
