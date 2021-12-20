@@ -326,7 +326,7 @@ namespace DurableTask.Netherite.Tests
                     Assert.True(this.reportedProblem == null, $"CacheDebugger detected problem while executing orchestrations: {this.reportedProblem}");
                 }
 
-                this.output?.Invoke("BEFORE SHUTDOWN ------------------------------------");
+                this.output?.Invoke("--- test progress: BEFORE SHUTDOWN ------------------------------------");
                 foreach (var line in this.cacheDebugger.Dump())
                 {
                     this.output?.Invoke(line);
@@ -337,8 +337,12 @@ namespace DurableTask.Netherite.Tests
             }
 
             {
+                this.output?.Invoke("--- test progress: BEFORE RECOVERY ------------------------------------");
+
                 // recover the service 
                 var (service, client) = await this.StartService(recover: true, orchestrationType, activityType);
+
+                this.output?.Invoke("--- test progress: AFTER RECOVERY ------------------------------------");
 
 
                 // query the status of all orchestrations
@@ -350,7 +354,7 @@ namespace DurableTask.Netherite.Tests
                     Assert.True(this.reportedProblem == null, $"CacheDebugger detected problem while querying orchestration states: {this.reportedProblem}");
                 }
 
-                this.output?.Invoke("AFTER QUERIES ------------------------------------");
+                this.output?.Invoke("--- test progress: AFTER QUERIES ------------------------------------");
                 foreach (var line in this.cacheDebugger.Dump())
                 {
                     this.output?.Invoke(line);
