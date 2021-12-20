@@ -27,12 +27,15 @@ namespace DurableTask.Netherite.Tests
     {
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
+        ITestOutputHelper outputHelper;
 
         public ScenarioTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
+            this.outputHelper = outputHelper;
             this.fixture = fixture;
             this.host = fixture.Host;
-            fixture.SetOutput(outputHelper);
+
+            fixture.SetOutput((string message) => this.outputHelper?.WriteLine(message));
         }
 
         public void Dispose()
@@ -44,7 +47,7 @@ namespace DurableTask.Netherite.Tests
                 throw new TimeoutException("timed out while purging instances after running test");
             }
 
-            this.fixture.ClearOutput();
+            this.outputHelper = null;
         }
 
         /// <summary>
@@ -692,7 +695,7 @@ namespace DurableTask.Netherite.Tests
         }
 
 
-        internal static class Orchestrations
+        public static class Orchestrations
         {
             internal class SayHelloInline : TaskOrchestration<string, string>
             {
@@ -708,6 +711,23 @@ namespace DurableTask.Netherite.Tests
                 public override Task<string> RunTask(OrchestrationContext context, string input)
                 {
                     return context.ScheduleTask<string>(typeof(Activities.Hello), input);
+                }
+            }
+
+            [KnownType(typeof(Activities.Hello))]
+            public class Hello5 : TaskOrchestration<List<string>, string>
+            {
+                public override async Task<List<string>> RunTask(OrchestrationContext context, string input)
+                {
+                    var outputs = new List<string>
+                    {
+                        await context.ScheduleTask<string>(typeof(Activities.Hello), "Tokyo"),
+                        await context.ScheduleTask<string>(typeof(Activities.Hello), "Seattle"),
+                        await context.ScheduleTask<string>(typeof(Activities.Hello), "London"),
+                        await context.ScheduleTask<string>(typeof(Activities.Hello), "Amsterdam"),
+                        await context.ScheduleTask<string>(typeof(Activities.Hello), "Mumbai")
+                    };
+                    return outputs;
                 }
             }
 
@@ -1395,7 +1415,7 @@ namespace DurableTask.Netherite.Tests
             }
         }
 
-        static class Activities
+        public static class Activities
         {
             internal class HelloFailActivity : TaskActivity<string, string>
             {
@@ -1496,7 +1516,7 @@ namespace DurableTask.Netherite.Tests
                 }
             }
 
-            internal class Hello : TaskActivity<string, string>
+            public class Hello : TaskActivity<string, string>
             {
                 protected override string Execute(TaskContext context, string input)
                 {

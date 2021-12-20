@@ -52,7 +52,9 @@ namespace DurableTask.Netherite
             { TrackedObjectType.Instance, typeof(InstanceState) },
         };
 
-        public static bool IsSingletonType(TrackedObjectType t) => (int) t < (int) TrackedObjectType.History;
+        public static bool IsSingletonType(TrackedObjectType t) => (int)t < NumberSingletonTypes;
+
+        public const int NumberSingletonTypes = (int)TrackedObjectType.History;
 
         public bool IsSingleton => IsSingletonType(this.ObjectType);
 
