@@ -40,7 +40,7 @@ namespace DurableTask.Netherite.Faster
         // kick off a read of a tracked object, completing asynchronously if necessary
         public abstract void ReadAsync(PartitionReadEvent readEvent, EffectTracker effectTracker);
 
-        // read a tracked object on the main session and wait for the response (only one of these is executing at a time)
+        // read a singleton tracked object on the main session and wait for the response (only one of these is executing at a time)
         public abstract ValueTask<TrackedObject> ReadAsync(FasterKV.Key key, EffectTracker effectTracker);
 
         // create a tracked object on the main session (only one of these is executing at a time)

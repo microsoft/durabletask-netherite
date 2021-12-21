@@ -5,6 +5,7 @@ namespace DurableTask.Netherite
 {
     using System;
     using DurableTask.Core;
+    using FASTER.core;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Converters;
@@ -59,6 +60,11 @@ namespace DurableTask.Netherite
         /// then Azure blobs are used instead.
         /// </summary>
         public string LoadInformationAzureTableName { get; set; } = "DurableTaskPartitions";
+
+        /// <summary>
+        /// Tuning parameters for the FASTER logs
+        /// </summary>
+        public Faster.BlobManager.FasterTuningParameters FasterTuningParameters { get; set; } = null;
 
         /// <summary>
         /// Gets or sets the maximum number of work items that can be processed concurrently on a single node.
@@ -173,6 +179,12 @@ namespace DurableTask.Netherite
 
         [JsonIgnore]
         internal bool UseSeparatePageBlobStorage => !string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString);
+
+        /// <summary>
+        /// Whether to attach a debugger for cache transitions. Used only for testing and debugging.
+        /// </summary>
+        [JsonIgnore]
+        public Faster.CacheDebugger CacheDebugger { get; set; } = null;
 
         /// <summary>
         /// A lower limit on the severity level of trace events emitted by the transport layer.

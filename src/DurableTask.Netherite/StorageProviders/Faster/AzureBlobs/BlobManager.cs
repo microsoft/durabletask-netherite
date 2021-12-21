@@ -70,47 +70,60 @@ namespace DurableTask.Netherite.Faster
         internal const long HashTableSize = 1L << 14; // 16 k buckets, 1 GB
         //internal const long HashTableSize = 1L << 14; // 8 M buckets, 512 GB
 
-        public FasterLogSettings EventLogSettings(bool useSeparatePageBlobStorage) => new FasterLogSettings
+        public class FasterTuningParameters
+        {
+            public int? EventLogPageSizeBits;
+            public int? EventLogSegmentSizeBits;
+            public int? EventLogMemorySizeBits;
+            public int? StoreLogPageSizeBits;
+            public int? StoreLogSegmentSizeBits;
+            public int? StoreLogMemorySizeBits;
+            public double? StoreLogMutableFraction;
+        }
+
+        public FasterLogSettings GetDefaultEventLogSettings(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters) => new FasterLogSettings
         {
             LogDevice = this.EventLogDevice,
             LogCommitManager = this.UseLocalFiles
                 ? new LocalLogCommitManager($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{CommitBlobName}")
                 : (ILogCommitManager)this,
-            PageSizeBits = 21, // 2MB
-            SegmentSizeBits =
-                useSeparatePageBlobStorage ? 35  // 32 GB
-                                           : 30, // 1 GB
-            MemorySizeBits = 22, // 2MB
+            PageSizeBits = tuningParameters?.EventLogPageSizeBits ?? 21, // 2MB
+            SegmentSizeBits = tuningParameters?.EventLogSegmentSizeBits ??
+                (useSeparatePageBlobStorage ? 35  // 32 GB
+                                            : 30), // 1 GB
+            MemorySizeBits = tuningParameters?.EventLogMemorySizeBits ?? 22, // 2MB
         };
 
-        public LogSettings StoreLogSettings(bool useSeparatePageBlobStorage, uint numPartitions) => new LogSettings
+        public LogSettings GetDefaultStoreLogSettings(bool useSeparatePageBlobStorage, uint numPartitions, FasterTuningParameters tuningParameters) => new LogSettings
         {
             LogDevice = this.HybridLogDevice,
             ObjectLogDevice = this.ObjectLogDevice,
-            PageSizeBits = 17, // 128kB
-            MutableFraction = 0.9,
-            SegmentSizeBits =
-                useSeparatePageBlobStorage ? 35 // 32 GB
-                                           : 32, // 4 GB
+            PageSizeBits = tuningParameters?.StoreLogPageSizeBits ?? 17, // 128kB
+            MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
+            SegmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ??
+                (useSeparatePageBlobStorage ? 35   // 32 GB
+                                            : 32), // 4 GB
             CopyReadsToTail = CopyReadsToTail.FromReadOnly,
-            MemorySizeBits =
-                (numPartitions <= 1) ? 25 : // 32MB
+            MemorySizeBits = tuningParameters?.StoreLogMemorySizeBits ?? 
+               ((numPartitions <= 1) ? 25 : // 32MB
                 (numPartitions <= 2) ? 24 : // 16MB
                 (numPartitions <= 4) ? 23 : // 8MB
                 (numPartitions <= 8) ? 22 : // 4MB
                 (numPartitions <= 16) ? 21 : // 2MB
-                                        20, // 1MB         
+                                        20), // 1MB         
         };
-        
-        // increment this after changes of the storage representation that break compatibility
-        const int StorageFormatVersion = 1;
+
+        static readonly int[] StorageFormatVersion = new int[] {
+            1, //initial version
+            2, //separate singletons
+        }; 
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
         {
             return JsonConvert.SerializeObject(new StorageFormatSettings()
                 {
                     UseAlternateObjectStore = settings.UseAlternateObjectStore,
-                    FormatVersion = StorageFormatVersion,
+                    FormatVersion = StorageFormatVersion.Last(),
                 }, 
                 serializerSettings);       
         }
@@ -147,7 +160,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     throw new InvalidOperationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
                 }
-                if (taskhubFormat.FormatVersion != StorageFormatVersion)
+                if (taskhubFormat.FormatVersion != StorageFormatVersion.Last())
                 {
                     throw new InvalidOperationException($"The current storage format version (={StorageFormatVersion}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
                 }
@@ -696,6 +709,8 @@ namespace DurableTask.Netherite.Faster
 
         (string, string) GetDeltaLogSnapshotBlobName(Guid token) => ($"cpr-checkpoints/{token}", "snapshot.delta.dat");
 
+        string GetSingletonsSnapshotBlobName(Guid token) => $"cpr-checkpoints/{token}/singletons.dat";
+
         #endregion
 
         #region ILogCommitManager
@@ -739,8 +754,10 @@ namespace DurableTask.Netherite.Faster
                         return (commitMetadata.Length, false);
                     }
                 });
+            
+            this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.Commit Returned");
         }
-    
+
 
         IEnumerable<long> ILogCommitManager.ListCommits()
         {
@@ -1086,6 +1103,68 @@ namespace DurableTask.Netherite.Faster
         }
 
         #endregion
+
+        internal async Task PersistSingletonsAsync(byte[] singletons, Guid guid)
+        {
+            if (this.UseLocalFiles)
+            {
+                var path = Path.Combine(this.LocalCheckpointDirectoryPath, this.GetSingletonsSnapshotBlobName(guid));
+                using var filestream = File.OpenWrite(path);
+                await filestream.WriteAsync(singletons, 0, singletons.Length);
+                await filestream.FlushAsync();
+            }
+            else
+            {
+                var singletonsBlob = this.blockBlobPartitionDirectory.GetBlockBlobReference(this.GetSingletonsSnapshotBlobName(guid));
+                await this.PerformWithRetriesAsync(
+                   BlobManager.AsynchronousStorageWriteMaxConcurrency,
+                   false,
+                   "CloudBlockBlob.UploadFromByteArrayAsync",
+                   "WriteSingletons",
+                   "",
+                   singletonsBlob.Name,
+                   1000 + singletons.Length / 5000,
+                   false,
+                   async (numAttempts) =>
+                   {
+                       await singletonsBlob.UploadFromByteArrayAsync(singletons, 0, singletons.Length);
+                       return singletons.Length;
+                   });
+            }
+        }
+
+        internal async Task<Stream> RecoverSingletonsAsync()
+        {
+            if (this.UseLocalFiles)
+            {
+                var path = Path.Combine(this.LocalCheckpointDirectoryPath, this.GetSingletonsSnapshotBlobName(this.CheckpointInfo.LogToken));
+                var stream = File.OpenRead(path);
+                return stream;
+            }
+            else
+            {
+                var singletonsBlob = this.blockBlobPartitionDirectory.GetBlockBlobReference(this.GetSingletonsSnapshotBlobName(this.CheckpointInfo.LogToken));
+                var stream = new MemoryStream();
+                await this.PerformWithRetriesAsync(
+                    BlobManager.AsynchronousStorageReadMaxConcurrency,
+                    true,
+                    "CloudBlockBlob.DownloadToStreamAsync",
+                    "ReadSingletons",
+                    "",
+                    singletonsBlob.Name,
+                    20000,
+                    true,
+                    async (numAttempts) =>
+                    {
+                        stream.Seek(0, SeekOrigin.Begin);
+                        await singletonsBlob.DownloadToStreamAsync(stream);
+                        return stream.Position;
+                    });
+
+                stream.Seek(0, SeekOrigin.Begin);
+                return stream;
+            }
+        }
 
         internal async Task FinalizeCheckpointCompletedAsync()
         {
