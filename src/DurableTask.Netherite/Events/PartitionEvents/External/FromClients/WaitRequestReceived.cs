@@ -22,6 +22,11 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override string TracedInstanceId => this.InstanceId;
 
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
+
         protected override void ExtraTraceInformation(StringBuilder s)
         {
             s.Append(' ');

@@ -43,7 +43,7 @@ namespace DurableTask.Netherite
             return $"History InstanceId={this.InstanceId} ExecutionId={this.ExecutionId} Events={this.History.Count}";
         }
 
-        public void Process(BatchProcessed evt, EffectTracker effects)
+        public override void Process(BatchProcessed evt, EffectTracker effects)
         {
             // can add events to the history, or replace it with a new history
 
