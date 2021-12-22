@@ -83,9 +83,7 @@ namespace DurableTask.Netherite
         public virtual void Process(PartitionEventFragment e, EffectTracker effects)
         {
             // processing a reassembled event just applies the original event
-            dynamic dynamicThis = this;
-            dynamic dynamicPartitionEvent = e.ReassembledEvent;
-            dynamicThis.Process(dynamicPartitionEvent, effects);
+            ((PartitionUpdateEvent) e.ReassembledEvent).ApplyTo(this, effects);  
         }
 
         public virtual void Process(BatchProcessed evt, EffectTracker tracker) { }

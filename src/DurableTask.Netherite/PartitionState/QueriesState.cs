@@ -43,15 +43,15 @@ namespace DurableTask.Netherite
 
         public override void Process(InstanceQueryReceived clientRequestEvent, EffectTracker effects)
         {
-            this.Process(clientRequestEvent, effects);
+            this.ProcessClientRequestEventWithQuery(clientRequestEvent, effects);
         }
 
         public override void Process(PurgeRequestReceived clientRequestEvent, EffectTracker effects)
         {
-            this.Process(clientRequestEvent, effects);
+            this.ProcessClientRequestEventWithQuery(clientRequestEvent, effects);
         }
 
-        void Process(ClientRequestEventWithQuery clientRequestEvent, EffectTracker effects)
+        void ProcessClientRequestEventWithQuery(ClientRequestEventWithQuery clientRequestEvent, EffectTracker effects)
         {
             if (clientRequestEvent.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query)
             {           
