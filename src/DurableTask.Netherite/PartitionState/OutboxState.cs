@@ -183,7 +183,7 @@ namespace DurableTask.Netherite
             bool sendResponses = evt.ResponsesToSend != null;
             bool sendMessages = evt.RemoteMessages?.Count > 0;
 
-            if (!sendResponses || sendMessages)
+            if (! (sendResponses || sendMessages))
             {
                 return;
             }
