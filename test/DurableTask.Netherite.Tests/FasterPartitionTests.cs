@@ -36,7 +36,6 @@ namespace DurableTask.Netherite.Tests
             this.loggerFactory.AddProvider(this.provider);
             this.traceListener = new SingleHostFixture.TestTraceListener();
             Trace.Listeners.Add(this.traceListener);
-            this.provider.Output = this.output;
             this.traceListener.Output = this.output;
         }
 

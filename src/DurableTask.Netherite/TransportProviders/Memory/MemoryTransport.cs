@@ -7,6 +7,7 @@ namespace DurableTask.Netherite.Emulated
     using System.Collections.Generic;
     using System.Threading;
     using System.Threading.Tasks;
+    using DurableTask.Netherite.Faster;
     using Microsoft.Extensions.Logging;
 
     /// <summary>
@@ -20,8 +21,10 @@ namespace DurableTask.Netherite.Emulated
         readonly NetheriteOrchestrationServiceSettings settings;
         readonly uint numberPartitions;
         readonly ILogger logger;
+        readonly FaultInjector faultInjector;
 
-        Task startupTask;
+        int epoch;
+        Task startOrRecoverTask;
 
         Dictionary<Guid, IMemoryQueue<ClientEvent>> clientQueues;
         IMemoryQueue<PartitionEvent>[] partitionQueues;
@@ -29,6 +32,7 @@ namespace DurableTask.Netherite.Emulated
         TransportAbstraction.IClient client;
         TransportAbstraction.IPartition[] partitions;
         TransportAbstraction.ILoadMonitor loadMonitor;
+        IPartitionErrorHandler[] partitionErrorHandlers;
         CancellationTokenSource shutdownTokenSource;
 
         static readonly TimeSpan simulatedDelay = TimeSpan.FromMilliseconds(1);
@@ -40,6 +44,7 @@ namespace DurableTask.Netherite.Emulated
             TransportConnectionString.Parse(settings.ResolvedTransportConnectionString, out _, out _);
             this.numberPartitions = (uint) settings.PartitionCount;
             this.logger = logger;
+            this.faultInjector = settings.FaultInjector;
         }
 
         async Task<bool> ITaskHub.CreateIfNotExistsAsync()
@@ -48,6 +53,7 @@ namespace DurableTask.Netherite.Emulated
             this.clientQueues = new Dictionary<Guid, IMemoryQueue<ClientEvent>>();
             this.partitionQueues = new IMemoryQueue<PartitionEvent>[this.numberPartitions];
             this.partitions = new TransportAbstraction.IPartition[this.numberPartitions];
+            this.partitionErrorHandlers = new IPartitionErrorHandler[this.numberPartitions];
             return true;
         }
 
@@ -92,13 +98,30 @@ namespace DurableTask.Netherite.Emulated
 
             // we finish the (possibly lengthy) partition loading asynchronously so it is possible to receive 
             // stop signals before partitions are fully recovered
-            this.startupTask = this.FinishStartup(this.shutdownTokenSource.Token, clientQueue);
+            this.startOrRecoverTask = this.StartOrRecoverAsync(0);
 
             return Task.CompletedTask;
         }
 
-        async Task FinishStartup(CancellationToken shutdownToken, MemoryClientQueue clientQueue)
+        void RecoveryHandler(int epoch)
         {
+            if (this.epoch != epoch
+                || Interlocked.CompareExchange(ref this.epoch, epoch + 1, epoch) != epoch)
+            {
+                return;
+            }
+
+            if (this.shutdownTokenSource?.IsCancellationRequested == false)
+            {
+                this.startOrRecoverTask = this.StartOrRecoverAsync(epoch + 1);
+            }
+        }
+
+        async Task StartOrRecoverAsync(int epoch)
+        {
+            await Task.Yield();
+            System.Diagnostics.Debug.Assert(this.startOrRecoverTask != null);
+
             // create all partitions
             var tasks = new List<Task>();
             for (uint i = 0; i < this.numberPartitions; i++)
@@ -112,20 +135,37 @@ namespace DurableTask.Netherite.Emulated
                 var partitionSender = new SendWorker(this.shutdownTokenSource.Token);
                 var partition = this.host.AddPartition(partitionId, partitionSender);
                 partitionSender.SetHandler(list => this.SendEvents(partition, list));
-                this.partitionQueues[partitionId] = new MemoryPartitionQueue(partition, this.shutdownTokenSource.Token, this.logger);
+
+                this.partitionQueues[partitionId] = this.faultInjector == null ?
+                    new MemoryPartitionQueueWithSerialization(partition, this.shutdownTokenSource.Token, this.logger)
+                    : new MemoryPartitionQueue(partition, this.shutdownTokenSource.Token, this.logger); // need durability listeners to be correctly notified
+                
                 this.partitions[partitionId] = partition;
-                var nextInputQueuePosition = await partition.CreateOrRestoreAsync(this.host.CreateErrorHandler(partitionId), 0).ConfigureAwait(false);
+                this.partitionErrorHandlers[partitionId] = this.host.CreateErrorHandler(partitionId);
+
+                if (this.faultInjector != null)
+                {
+                    this.partitionErrorHandlers[partitionId].Token.Register(() => this.RecoveryHandler(epoch));
+                }
+
+                var nextInputQueuePosition = await partition.CreateOrRestoreAsync(this.partitionErrorHandlers[partitionId], 0);
                 this.partitionQueues[partitionId].FirstInputQueuePosition = nextInputQueuePosition;
             };
 
-            shutdownToken.ThrowIfCancellationRequested();
+            this.shutdownTokenSource?.Token.ThrowIfCancellationRequested();
+
+            System.Diagnostics.Trace.TraceInformation($"MemoryTransport: Recovered epoch={epoch}");
 
             // start all the emulated queues
             foreach (var partitionQueue in this.partitionQueues)
             {
                 partitionQueue.Resume();
             }
-            clientQueue.Resume();
+            foreach (var clientQueue in this.clientQueues.Values)
+            {
+                clientQueue.Resume();
+            }
+            this.loadMonitorQueue.Resume();
         }
 
         async Task ITaskHub.StopAsync()
@@ -137,7 +177,7 @@ namespace DurableTask.Netherite.Emulated
 
                 try
                 {
-                    await (this.startupTask ?? Task.CompletedTask);
+                    await (this.startOrRecoverTask ?? Task.CompletedTask);
                 }
                 catch(OperationCanceledException)
                 {
@@ -197,8 +237,9 @@ namespace DurableTask.Netherite.Emulated
             {
                 // this is normal during shutdown
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                System.Diagnostics.Trace.TraceError($"MemoryTransport: send exception {e}");
             }
         }
 

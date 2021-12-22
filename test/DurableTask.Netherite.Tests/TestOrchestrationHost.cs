@@ -62,20 +62,18 @@ namespace DurableTask.Netherite.Tests
 
         public void AddAutoStartOrchestrator(Type type)
         {
-            this.worker.AddTaskOrchestrations(new AutoStartOrchestrationCreator(type));
-            this.addedOrchestrationTypes.Add(type);
+            if (this.addedOrchestrationTypes.Add(type))
+            {
+                this.worker.AddTaskOrchestrations(new AutoStartOrchestrationCreator(type));
+            }
         }
 
-        public async Task<TestOrchestrationClient> StartOrchestrationAsync(
-            Type orchestrationType,
-            object input,
-            string instanceId = null, 
-            DateTime? startAt = null)
+        private void AddTypes(Type orchestrationType)
         {
             if (!this.addedOrchestrationTypes.Contains(orchestrationType))
             {
-                this.worker.AddTaskOrchestrations(orchestrationType);
                 this.addedOrchestrationTypes.Add(orchestrationType);
+                this.worker.AddTaskOrchestrations(orchestrationType);
             }
 
             // Allow orchestration types to declare which activity types they depend on.
@@ -99,8 +97,17 @@ namespace DurableTask.Netherite.Tests
                     this.addedActivityTypes.Add(referencedKnownType.Type);
                 }
             }
+        }
 
+        public async Task<TestOrchestrationClient> StartOrchestrationAsync(
+             Type orchestrationType,
+             object input,
+             string instanceId = null,
+             DateTime? startAt = null)
+        {
+            this.AddTypes(orchestrationType);
             DateTime creationTime = DateTime.UtcNow;
+
             OrchestrationInstance instance = startAt.HasValue ?
                 await this.client.CreateScheduledOrchestrationInstanceAsync(
                     orchestrationType,
@@ -113,10 +120,44 @@ namespace DurableTask.Netherite.Tests
                     instanceId,
                     input);
 
-
             Trace.TraceInformation($"Test progress: Started {orchestrationType.Name}, Instance ID = {instance.InstanceId}");
             return new TestOrchestrationClient(this.client, orchestrationType, instance.InstanceId, creationTime);
         }
+
+        public async Task<(bool, TestOrchestrationClient)> StartDeduplicatedOrchestrationAsync(
+            Type orchestrationType,
+            object input,
+            string instanceId,
+            OrchestrationStatus[] stati = null)
+        {
+            this.AddTypes(orchestrationType);
+            DateTime creationTime = DateTime.UtcNow;
+            OrchestrationInstance instance = null;
+            bool duplicate;
+            stati = stati ?? this.dedupeStatuses;
+
+            try
+            {
+                instance = await this.client.CreateOrchestrationInstanceAsync(
+                         orchestrationType,
+                         instanceId,
+                         input,
+                         stati);
+                duplicate = false;
+            }
+            catch (InvalidOperationException e) when (e.Message.Contains("already exists"))
+            {
+                instance = new OrchestrationInstance() { InstanceId = instanceId };
+                var state = await this.client.GetOrchestrationStateAsync(instance);
+                creationTime = state.CreatedTime;
+                duplicate = true;
+            }
+
+            Trace.TraceInformation($"Test progress: Started {orchestrationType.Name}, Instance ID = {instance.InstanceId}, duplicate = {duplicate}");
+            return (!duplicate, new TestOrchestrationClient(this.client, orchestrationType, instance.InstanceId, creationTime));
+        }
+
+        readonly OrchestrationStatus[] dedupeStatuses = { OrchestrationStatus.Completed, OrchestrationStatus.Terminated, OrchestrationStatus.Pending, OrchestrationStatus.Running, OrchestrationStatus.Failed };
 
         public async Task<IList<OrchestrationState>> GetAllOrchestrationInstancesAsync()
         {

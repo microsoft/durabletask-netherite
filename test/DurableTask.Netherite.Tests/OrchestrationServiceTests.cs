@@ -22,7 +22,7 @@ namespace DurableTask.Netherite.Tests
             Action<string> output = (string message) => outputHelper.WriteLine(message);
             TestConstants.ValidateEnvironment();
             this.loggerFactory = new LoggerFactory();
-            var loggerProvider = new XunitLoggerProvider(output);
+            var loggerProvider = new XunitLoggerProvider();
             this.loggerFactory.AddProvider(loggerProvider);
         }
 

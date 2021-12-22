@@ -64,8 +64,9 @@ namespace DurableTask.Netherite.Faster
                         this.blobManager.HybridLogDevice.Dispose();
                         this.blobManager.ObjectLogDevice.Dispose();
                         this.blobManager.ClosePSFDevices();
+                        this.blobManager.FaultInjector?.Disposed(this.blobManager);
                     }
-                    catch(Exception e)
+                    catch (Exception e)
                     {
                         this.blobManager.TraceHelper.FasterStorageError("Disposing FasterKV", e);
                     }

@@ -227,14 +227,13 @@ namespace DurableTask.Netherite.Tests
             TestConstants.ValidateEnvironment();
             this.traceListener = new TestTraceListener() { Output = output };
             this.loggerFactory = new LoggerFactory();
-            this.provider = new XunitLoggerProvider(output);
+            this.provider = new XunitLoggerProvider();
             this.loggerFactory.AddProvider(this.provider);
             Trace.Listeners.Add(this.traceListener);
         }
 
         public void Dispose()
         {
-            this.provider.Output = null;
             this.traceListener.Output = null;
             Trace.Listeners.Remove(this.traceListener);
         }

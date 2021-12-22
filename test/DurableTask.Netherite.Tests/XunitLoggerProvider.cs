@@ -11,11 +11,8 @@ namespace DurableTask.Netherite.Tests
 
     public class XunitLoggerProvider : ILoggerProvider
     {
-        public Action<string> Output { get; set; }
-
-        public XunitLoggerProvider(Action<string> output = null)
+        public XunitLoggerProvider()
         {
-            this.Output = output;
         }
 
         public ILogger CreateLogger(string categoryName)

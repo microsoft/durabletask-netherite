@@ -62,6 +62,49 @@ namespace DurableTask.Netherite.Tests
             return state;
         }
 
+        public async Task<OrchestrationState> WaitForCompletionAsyncWithRetries(TimeSpan timeout, TimeSpan period)
+        {
+            timeout = AdjustTimeout(timeout);
+
+            var latestGeneration = new OrchestrationInstance { InstanceId = this.instanceId };
+            Stopwatch sw = Stopwatch.StartNew();
+            OrchestrationState state = null;
+
+            do
+            {
+                try
+                {
+                    state = await this.client.WaitForOrchestrationAsync(latestGeneration, period);
+                }
+                catch(TimeoutException)
+                {
+
+                }
+
+            } while (state == null && sw.Elapsed < timeout);
+
+            if (state != null)
+            {
+                Trace.TraceInformation(
+                    "{0} (ID = {1}) completed after ~{2}ms. Status = {3}. Output = {4}.",
+                    this.orchestrationType.Name,
+                    state.OrchestrationInstance.InstanceId,
+                    sw.ElapsedMilliseconds,
+                    state.OrchestrationStatus,
+                    state.Output);
+            }
+            else
+            {
+                Trace.TraceWarning(
+                    "{0} (ID = {1}) failed to complete after {2}ms.",
+                    this.orchestrationType.Name,
+                    this.instanceId,
+                    timeout.TotalMilliseconds);
+            }
+
+            return state;
+        }
+
         internal async Task<OrchestrationState> WaitForStartupAsync(TimeSpan timeout)
         {
             timeout = AdjustTimeout(timeout);

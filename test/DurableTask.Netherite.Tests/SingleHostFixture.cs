@@ -8,6 +8,7 @@ namespace DurableTask.Netherite.Tests
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Text;
+    using System.Threading.Tasks;
     using Xunit.Abstractions;
 
     /// <summary>
@@ -21,17 +22,27 @@ namespace DurableTask.Netherite.Tests
         internal ILoggerFactory LoggerFactory { get; private set; }
 
         public SingleHostFixture()
+            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), null)
+        {
+            this.Host.StartAsync().Wait();
+        }
+
+        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, Action<string> output)
         {
             this.LoggerFactory = new LoggerFactory();
             this.loggerProvider = new XunitLoggerProvider();
             this.LoggerFactory.AddProvider(this.loggerProvider);
-            TestConstants.ValidateEnvironment();
-            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
-            settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
-            this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
-            this.Host.StartAsync().Wait();
-            this.traceListener = new TestTraceListener();
+            this.traceListener = new TestTraceListener() { Output = output };
             Trace.Listeners.Add(this.traceListener);
+            TestConstants.ValidateEnvironment();
+            this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
+        }
+
+        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, Action<string> output)
+        {
+            var fixture = new SingleHostFixture(settings, output);
+            await fixture.Host.StartAsync();
+            return fixture;
         }
 
         public void Dispose()
@@ -43,7 +54,6 @@ namespace DurableTask.Netherite.Tests
 
         public void SetOutput(Action<string> output)
         {
-            this.loggerProvider.Output = output;
             this.traceListener.Output = output;
         }
 
