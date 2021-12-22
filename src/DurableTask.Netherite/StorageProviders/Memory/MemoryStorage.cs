@@ -25,12 +25,10 @@ namespace DurableTask.Netherite
         public MemoryStorage(ILogger logger) : base(nameof(MemoryStorage), true, int.MaxValue, CancellationToken.None, null)
         {
             this.logger = logger;
-            this.GetOrAdd(TrackedObjectKey.Activities);
-            this.GetOrAdd(TrackedObjectKey.Dedup);
-            this.GetOrAdd(TrackedObjectKey.Outbox);
-            this.GetOrAdd(TrackedObjectKey.Reassembly);
-            this.GetOrAdd(TrackedObjectKey.Sessions);
-            this.GetOrAdd(TrackedObjectKey.Timers);
+            foreach (var k in TrackedObjectKey.GetSingletons())
+            {
+                this.GetOrAdd(k);
+            }
         }
         public CancellationToken Termination => CancellationToken.None;
 

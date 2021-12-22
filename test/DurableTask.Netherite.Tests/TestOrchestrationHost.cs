@@ -68,7 +68,7 @@ namespace DurableTask.Netherite.Tests
             }
         }
 
-        private void AddTypes(Type orchestrationType)
+        void AddTypes(Type orchestrationType)
         {
             if (!this.addedOrchestrationTypes.Contains(orchestrationType))
             {
@@ -155,6 +155,37 @@ namespace DurableTask.Netherite.Tests
 
             Trace.TraceInformation($"Test progress: Started {orchestrationType.Name}, Instance ID = {instance.InstanceId}, duplicate = {duplicate}");
             return (!duplicate, new TestOrchestrationClient(this.client, orchestrationType, instance.InstanceId, creationTime));
+        }
+
+        public async Task<TestOrchestrationClient> StartOrchestrationWithRetriesAsync(
+           TimeSpan timeout,
+           TimeSpan period,
+           Type orchestrationType,
+           object input,
+           string instanceId = null)
+        {
+            this.AddTypes(orchestrationType);
+            instanceId = instanceId ?? Guid.NewGuid().ToString("n");
+            Stopwatch sw = Stopwatch.StartNew();
+            bool created = false;
+            TestOrchestrationClient client = null;
+
+            do
+            {
+                var periodTask = Task.Delay(period);
+                async Task Invoke()
+                {
+                    (created, client) = await this.StartDeduplicatedOrchestrationAsync(orchestrationType, input, instanceId);
+                }
+                var invokeTask = Invoke();
+                var firstTask = await Task.WhenAny(invokeTask, periodTask);
+                if (firstTask == invokeTask)
+                {
+                    await invokeTask;
+                }
+            } while (client == null && (sw.Elapsed < timeout));
+
+            return client;
         }
 
         readonly OrchestrationStatus[] dedupeStatuses = { OrchestrationStatus.Completed, OrchestrationStatus.Terminated, OrchestrationStatus.Pending, OrchestrationStatus.Running, OrchestrationStatus.Failed };

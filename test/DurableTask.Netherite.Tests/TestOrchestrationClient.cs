@@ -62,7 +62,7 @@ namespace DurableTask.Netherite.Tests
             return state;
         }
 
-        public async Task<OrchestrationState> WaitForCompletionAsyncWithRetries(TimeSpan timeout, TimeSpan period)
+        public async Task<OrchestrationState> WaitForCompletionWithRetriesAsync(TimeSpan timeout, TimeSpan period)
         {
             timeout = AdjustTimeout(timeout);
 

@@ -25,7 +25,7 @@ namespace DurableTask.Netherite.Tests
         }
 
         [Fact]
-        public async Task SingleStartup()
+        public async Task HeckleStartup()
         {
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             settings.ResolvedTransportConnectionString = "MemoryF";
@@ -50,7 +50,7 @@ namespace DurableTask.Netherite.Tests
         }
 
         [Fact]
-        public async Task HelloOrchestration()
+        public async Task HeckleHelloCompletion()
         {
             // start the test normally without faults
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
@@ -64,10 +64,62 @@ namespace DurableTask.Netherite.Tests
             // issue a new request
             var client = await fixture.Host.StartOrchestrationAsync(typeof(ScenarioTests.Orchestrations.SayHelloWithActivity), "World");
 
-            // inject faults with growing success runs until the partition has successfully started
+            // inject faults with growing success for the rest of the test
             settings.FaultInjector.SetMode(Faster.FaultInjector.InjectionMode.IncrementSuccessRuns);
 
-            var status = await client.WaitForCompletionAsyncWithRetries(TimeSpan.FromSeconds(240), TimeSpan.FromSeconds(10));
+            var status = await client.WaitForCompletionWithRetriesAsync(TimeSpan.FromSeconds(240), TimeSpan.FromSeconds(10));
+
+            Assert.Equal(Core.OrchestrationStatus.Completed, status?.OrchestrationStatus);
+            Assert.Equal("World", JToken.Parse(status?.Input));
+            Assert.Equal("Hello, World!", JToken.Parse(status?.Output));
+        }
+
+        [Fact]
+        public async Task HeckleHelloCreation()
+        {
+            // start the test normally without faults
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            settings.ResolvedTransportConnectionString = "MemoryF";
+            settings.PartitionCount = 1;
+            settings.FaultInjector = new Faster.FaultInjector();
+            settings.FaultInjector.InjectOnStartup = false;
+            using var fixture = await SingleHostFixture.StartNew(settings, (msg) => this.outputHelper.WriteLine(msg));
+            await settings.FaultInjector.WaitForStartup(1);
+
+            // inject faults with growing success while creating the hello orchestrator
+            settings.FaultInjector.SetMode(Faster.FaultInjector.InjectionMode.IncrementSuccessRuns);
+
+            // issue a new request
+            var client = await fixture.Host.StartOrchestrationWithRetriesAsync(TimeSpan.FromSeconds(240), TimeSpan.FromSeconds(10), typeof(ScenarioTests.Orchestrations.SayHelloWithActivity), "World");
+
+            // for the rest of the test, do not inject any more faults
+            settings.FaultInjector.SetMode(Faster.FaultInjector.InjectionMode.None);
+
+            var status = await client.WaitForCompletionWithRetriesAsync(TimeSpan.FromSeconds(240), TimeSpan.FromSeconds(10));
+
+            Assert.Equal(Core.OrchestrationStatus.Completed, status?.OrchestrationStatus);
+            Assert.Equal("World", JToken.Parse(status?.Input));
+            Assert.Equal("Hello, World!", JToken.Parse(status?.Output));
+        }
+
+        [Fact]
+        public async Task HeckleHelloCreationAndCompletion()
+        {
+            // start the test normally without faults
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            settings.ResolvedTransportConnectionString = "MemoryF";
+            settings.PartitionCount = 1;
+            settings.FaultInjector = new Faster.FaultInjector();
+            settings.FaultInjector.InjectOnStartup = false;
+            using var fixture = await SingleHostFixture.StartNew(settings, (msg) => this.outputHelper.WriteLine(msg));
+            await settings.FaultInjector.WaitForStartup(1);
+
+            // inject faults with growing success for the rest of the test
+            settings.FaultInjector.SetMode(Faster.FaultInjector.InjectionMode.IncrementSuccessRuns);
+
+            // issue a new request and wait for it
+            var client = await fixture.Host.StartOrchestrationWithRetriesAsync(TimeSpan.FromSeconds(240), TimeSpan.FromSeconds(10), typeof(ScenarioTests.Orchestrations.SayHelloWithActivity), "World");
+            var status = await client.WaitForCompletionWithRetriesAsync(TimeSpan.FromSeconds(240), TimeSpan.FromSeconds(10));
 
             Assert.Equal(Core.OrchestrationStatus.Completed, status?.OrchestrationStatus);
             Assert.Equal("World", JToken.Parse(status?.Input));
