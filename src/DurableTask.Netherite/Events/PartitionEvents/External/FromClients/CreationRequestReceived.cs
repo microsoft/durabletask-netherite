@@ -39,6 +39,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Target => TrackedObjectKey.Instance(this.InstanceId);
 
+        [IgnoreDataMember]
+        public CreationResponseReceived ResponseToSend { get; set; } // used to communicate response to ClientState
+
         public override bool OnReadComplete(TrackedObject target, Partition partition)
         {
             // Use this moment of time as the creation timestamp, replacing the original timestamp taken on the client.

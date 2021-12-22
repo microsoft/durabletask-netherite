@@ -64,7 +64,7 @@ namespace DurableTask.Netherite
             if (!effects.IsReplaying)
             {
                 // lets the query that is currently in progress know that this batch is done
-                purgeBatchIssued.WhenProcessed.TrySetResult(null);
+                DurabilityListeners.Register(purgeBatchIssued, purgeBatchIssued);
             }
         }
 

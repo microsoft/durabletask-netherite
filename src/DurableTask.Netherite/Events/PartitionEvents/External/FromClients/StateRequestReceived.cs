@@ -42,7 +42,7 @@ namespace DurableTask.Netherite
                 OrchestrationState = editedState,
             };
 
-            partition.Send(response);
+            partition.Send(response); //TODO wait for persistence
         }
     }
 }
