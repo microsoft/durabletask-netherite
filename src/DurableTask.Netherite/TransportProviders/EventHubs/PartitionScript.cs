@@ -37,7 +37,7 @@ namespace DurableTask.Netherite.EventHubs
                         currentTimeSeconds += seconds;
                         currentTimeUtc += TimeSpan.FromSeconds(seconds);
                     }
-                    else if (words[1] == workerId || words[1] == "*")
+                    else if (string.Equals(words[1], workerId, StringComparison.OrdinalIgnoreCase) || words[1] == "*")
                     {
                         int from;
                         int to;

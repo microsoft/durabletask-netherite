@@ -33,13 +33,13 @@ namespace DurableTask.Netherite
         #region prefetch state machine
 
         [IgnoreDataMember]
-bool prefetchLoaded;
+        bool prefetchLoaded;
 
         [IgnoreDataMember]
-bool targetLoaded;
+        bool targetLoaded;
 
         [IgnoreDataMember]
-TrackedObject target;
+        TrackedObject target;
 
         public void Deliver(TrackedObjectKey key, TrackedObject trackedObject, out bool isReady)
         {

@@ -50,5 +50,10 @@ namespace DurableTask.Netherite
 
             return true;
         }
+
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
     }
 }

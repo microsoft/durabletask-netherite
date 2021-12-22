@@ -33,6 +33,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         internal byte[] SerializationCache { get; set; }
 
+        [DataMember]
+        public int Version { get; set;  } // we use this validate consistency of read/write updates in FASTER, it is not otherwise needed
+
         /// <summary>
         /// The collection of all types of tracked objects and polymorphic members of tracked objects. Can be
         /// used by serializers to compute a type map.
@@ -80,9 +83,25 @@ namespace DurableTask.Netherite
         public virtual void Process(PartitionEventFragment e, EffectTracker effects)
         {
             // processing a reassembled event just applies the original event
-            dynamic dynamicThis = this;
-            dynamic dynamicPartitionEvent = e.ReassembledEvent;
-            dynamicThis.Process(dynamicPartitionEvent, effects);
+            ((PartitionUpdateEvent) e.ReassembledEvent).ApplyTo(this, effects);  
         }
+
+        public virtual void Process(BatchProcessed evt, EffectTracker tracker) { }
+        public virtual void Process(CreationRequestReceived evt, EffectTracker tracker) { }
+        public virtual void Process(DeletionRequestReceived evt, EffectTracker tracker) { }
+        public virtual void Process(InstanceQueryReceived evt, EffectTracker tracker) { }
+        public virtual void Process(PurgeRequestReceived evt, EffectTracker tracker) { }
+        public virtual void Process(WaitRequestReceived evt, EffectTracker tracker) { }
+        public virtual void Process(PurgeBatchIssued evt, EffectTracker tracker) { }
+        public virtual void Process(ClientTaskMessagesReceived evt, EffectTracker tracker) { }
+        public virtual void Process(SolicitationReceived evt, EffectTracker tracker) { }
+        public virtual void Process(TransferCommandReceived evt, EffectTracker tracker) { }
+        public virtual void Process(ActivityTransferReceived evt, EffectTracker tracker) { }
+        public virtual void Process(RemoteActivityResultReceived evt, EffectTracker tracker) { }
+        public virtual void Process(TaskMessagesReceived evt, EffectTracker tracker) { }
+        public virtual void Process(ActivityCompleted evt, EffectTracker tracker) { }
+        public virtual void Process(OffloadDecision evt, EffectTracker tracker) { }
+        public virtual void Process(SendConfirmed evt, EffectTracker tracker) { }
+        public virtual void Process(TimerFired evt, EffectTracker tracker) { }
     }
 }

@@ -24,12 +24,15 @@ namespace DurableTask.Netherite.Tests
     {
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
+        ITestOutputHelper outputHelper;
 
         public QueryTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
             this.fixture = fixture;
             this.host = fixture.Host;
-            this.fixture.SetOutput(outputHelper);
+            this.outputHelper = outputHelper;
+
+            this.fixture.SetOutput((message) => this.outputHelper?.WriteLine(message));
 
             // purge all instances prior to each test
             if (! this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
@@ -47,7 +50,7 @@ namespace DurableTask.Netherite.Tests
                 throw new TimeoutException("timed out while purging instances after running test");
             }
 
-            this.fixture.ClearOutput();
+            this.outputHelper = null;
         }
 
         /// <summary>
@@ -219,10 +222,12 @@ namespace DurableTask.Netherite.Tests
 
         public NonFixtureQueryTests(ITestOutputHelper outputHelper)
         {
+            Action<string> output = (string message) => outputHelper.WriteLine(message);
+           
             TestConstants.ValidateEnvironment();
-            this.traceListener = new TestTraceListener() { Output = outputHelper };
+            this.traceListener = new TestTraceListener() { Output = output };
             this.loggerFactory = new LoggerFactory();
-            this.provider = new XunitLoggerProvider(outputHelper);
+            this.provider = new XunitLoggerProvider(output);
             this.loggerFactory.AddProvider(this.provider);
             Trace.Listeners.Add(this.traceListener);
         }

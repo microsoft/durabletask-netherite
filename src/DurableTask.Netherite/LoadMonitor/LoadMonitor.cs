@@ -94,8 +94,12 @@ namespace DurableTask.Netherite
 
         void TransportAbstraction.ILoadMonitor.Process(LoadMonitorEvent loadMonitorEvent)
         {
-            // dispatch call to matching method
-            this.Process((dynamic)loadMonitorEvent);
+            switch (loadMonitorEvent)
+            {
+                case LoadInformationReceived loadInformationReceived:
+                    this.Process(loadInformationReceived);
+                    break;
+            }
         }
 
         void SendTransferCommand(uint from, uint to, int num)
@@ -163,8 +167,8 @@ namespace DurableTask.Netherite
             }
 
             // trace backlog estimates
-            string estimated = string.Join(',', this.LoadInfo.Values.Select(i => i.ProjectedLoad.ToString()));
-            string mobile = string.Join(',', this.LoadInfo.Values.Select(i => i.EstimatedMobile.ToString()));
+            string estimated = string.Join(",", this.LoadInfo.Values.Select(i => i.ProjectedLoad.ToString()));
+            string mobile = string.Join(",", this.LoadInfo.Values.Select(i => i.EstimatedMobile.ToString()));
             this.traceHelper.TraceProgress($"BacklogEstimates pending={this.PendingOnSource.Count},{this.PendingOnDestination.Count} RTT={this.EstimatedTransferRTT:f2} estimated=[{estimated}] mobile=[{mobile}]");
         }
 

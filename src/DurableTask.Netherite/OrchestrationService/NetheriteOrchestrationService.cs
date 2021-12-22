@@ -175,7 +175,8 @@ namespace DurableTask.Netherite
                     this.Settings.ResolvedTransportConnectionString, 
                     this.Settings.LoadInformationAzureTableName, 
                     this.Settings.HubName,
-                    this.TraceHelper.TraceScaleRecommendation);
+                    this.TraceHelper.TraceScaleRecommendation,
+                    this.TraceHelper.Logger);
                 return true;
             }
             else
@@ -772,6 +773,7 @@ namespace DurableTask.Netherite
             var originalHistory = orchestrationWorkItem.OrchestrationRuntimeState.Events.Take(originalHistorySize).ToList();
             var newWorkItem = new OrchestrationWorkItem(orchestrationWorkItem.Partition, orchestrationWorkItem.MessageBatch, originalHistory);
             newWorkItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
+            newWorkItem.HistorySize = originalHistory.Count;
 
             orchestrationWorkItem.Partition.EnqueueOrchestrationWorkItem(newWorkItem);
 
