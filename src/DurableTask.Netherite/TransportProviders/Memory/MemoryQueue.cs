@@ -91,6 +91,8 @@ namespace DurableTask.Netherite.Emulated
 
             var serialized = this.Serialize(evt);
 
+            DurabilityListeners.ConfirmDurable(evt);
+
             this.Submit(serialized);
         }
     }

@@ -41,6 +41,9 @@ namespace DurableTask.Netherite
 
             PurgeBatchIssued batch = makeNewBatchObject();
 
+            // TODO : while the request itself is reliable, the client response is not. 
+            // We should probably fix that by using the ClientState to track progress.
+
             async Task ExecuteBatch()
             {
                 await partition.State.Prefetch(batch.KeysToPrefetch);

@@ -31,7 +31,7 @@ namespace DurableTask.Netherite
                 History = historyState?.History?.ToList(),
             };
 
-            partition.Send(response);
+            partition.Send(response); //TODO wait for persistence
         }
     }
 }
