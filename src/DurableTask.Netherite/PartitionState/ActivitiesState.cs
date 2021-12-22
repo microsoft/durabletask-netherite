@@ -158,7 +158,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(BatchProcessed evt, EffectTracker effects)
+        public override void Process(BatchProcessed evt, EffectTracker effects)
         {
             // the completed orchestration work item can launch activities
             foreach (var msg in evt.ActivityMessages)
@@ -198,7 +198,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(ActivityTransferReceived evt, EffectTracker effects)
+        public override void Process(ActivityTransferReceived evt, EffectTracker effects)
         {
             // may bring in offloaded activities from other partitions
             foreach (var msg in evt.TransferredActivities)
@@ -239,7 +239,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(ActivityCompleted evt, EffectTracker effects)
+        public override void Process(ActivityCompleted evt, EffectTracker effects)
         {
             // records the result of a finished activity
 
@@ -284,7 +284,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(TransferCommandReceived evt, EffectTracker effects)
+        public override void Process(TransferCommandReceived evt, EffectTracker effects)
         {
             evt.TransferredActivities = new List<(TaskMessage, string)>();
 
@@ -310,12 +310,12 @@ namespace DurableTask.Netherite
             effects.Add(TrackedObjectKey.Outbox);
         }
 
-        public void Process(SolicitationReceived evt, EffectTracker effects)
+        public override void Process(SolicitationReceived evt, EffectTracker effects)
         {
             this.LastSolicitation = evt.Timestamp;
         }
 
-        public void Process(OffloadDecision offloadDecisionEvent, EffectTracker effects)
+        public override void Process(OffloadDecision offloadDecisionEvent, EffectTracker effects)
         {
             // check for offload conditions and if satisfied, send batch to remote
             if (this.LocalBacklog.Count == 0)

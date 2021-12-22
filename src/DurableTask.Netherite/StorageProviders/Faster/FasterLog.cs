@@ -16,7 +16,9 @@ namespace DurableTask.Netherite.Faster
 
         public FasterLog(BlobManager blobManager, NetheriteOrchestrationServiceSettings settings)
         {
-            this.log = new FASTER.core.FasterLog(blobManager.EventLogSettings(settings.UseSeparatePageBlobStorage));
+            var eventlogsettings = blobManager.GetDefaultEventLogSettings(settings.UseSeparatePageBlobStorage, settings.FasterTuningParameters);
+
+            this.log = new FASTER.core.FasterLog(eventlogsettings);
             this.terminationToken = blobManager.PartitionErrorHandler.Token;
 
             var _ = this.terminationToken.Register(

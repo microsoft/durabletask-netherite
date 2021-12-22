@@ -26,6 +26,11 @@ namespace DurableTask.Netherite
         [DataMember]
         public DateTime Timestamp { get; set; }
 
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
+
         protected override void ExtraTraceInformation(StringBuilder s)
         {
             s.Append(' ');

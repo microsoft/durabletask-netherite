@@ -49,5 +49,10 @@ namespace DurableTask.Netherite
             response.SerializeOrchestrationStates(memoryStream, this.InstanceQuery.FetchInput);
             partition.Send(response);
         }
+
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
     }
 }
