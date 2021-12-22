@@ -94,6 +94,11 @@ namespace DurableTask.Netherite
                 outmessage.OriginPosition = batch.Position;
                 this.Partition.Send(outmessage);
             }
+            foreach (var outresponse in batch.OutgoingResponses)
+            {
+                DurabilityListeners.Register(outresponse, batch);
+                this.Partition.Send(outresponse);
+            }
         }
 
         [DataContract]
@@ -101,6 +106,9 @@ namespace DurableTask.Netherite
         {
             [DataMember]
             public List<PartitionMessageEvent> OutgoingMessages { get; set; } = new List<PartitionMessageEvent>();
+
+            [DataMember]
+            public List<ClientEvent> OutgoingResponses { get; set; } = new List<ClientEvent>();
 
             [IgnoreDataMember]
             public long Position { get; set; }
@@ -119,21 +127,22 @@ namespace DurableTask.Netherite
  
             public void ConfirmDurable(Event evt)
             {
-                var partitionMessageEvent = (PartitionMessageEvent)evt;
-
-                var workItemTraceHelper = this.Partition.WorkItemTraceHelper;
-                if (workItemTraceHelper.TraceTaskMessages)
+                if (evt is PartitionMessageEvent partitionMessageEvent)
                 {
-                    double? persistenceDelayMs = this.ProcessedTimestamp.HasValue ? (this.ReadyToSendTimestamp - this.ProcessedTimestamp.Value) : null;
-                    double sendDelayMs = this.Partition.CurrentTimeMs - this.ReadyToSendTimestamp;
-
-                    foreach (var entry in partitionMessageEvent.TracedTaskMessages)
+                    var workItemTraceHelper = this.Partition.WorkItemTraceHelper;
+                    if (workItemTraceHelper.TraceTaskMessages)
                     {
-                        workItemTraceHelper.TraceTaskMessageSent(this.Partition.PartitionId, entry.message, entry.workItemId, persistenceDelayMs, sendDelayMs);
+                        double? persistenceDelayMs = this.ProcessedTimestamp.HasValue ? (this.ReadyToSendTimestamp - this.ProcessedTimestamp.Value) : null;
+                        double sendDelayMs = this.Partition.CurrentTimeMs - this.ReadyToSendTimestamp;
+
+                        foreach (var entry in partitionMessageEvent.TracedTaskMessages)
+                        {
+                            workItemTraceHelper.TraceTaskMessageSent(this.Partition.PartitionId, entry.message, entry.workItemId, persistenceDelayMs, sendDelayMs);
+                        }
                     }
                 }
 
-                if (++this.numAcks == this.OutgoingMessages.Count)
+                if (++this.numAcks == this.OutgoingMessages.Count + this.OutgoingResponses.Count)
                 {
                     this.Partition.SubmitEvent(new SendConfirmed()
                     {
@@ -171,73 +180,93 @@ namespace DurableTask.Netherite
             var batch = new Batch();
             int subPosition = 0;
 
-            IEnumerable<(uint,TaskMessage)> Messages()
+            bool sendResponses = evt.ResponsesToSend != null;
+            bool sendMessages = evt.RemoteMessages?.Count > 0;
+
+            if (! (sendResponses || sendMessages))
             {
-                foreach (var message in evt.RemoteMessages)
+                return;
+            }
+
+            if (sendResponses)
+            {
+                foreach(var r in evt.ResponsesToSend)
                 {
-                    var instanceId = message.OrchestrationInstance.InstanceId;
-                    var destination = this.Partition.PartitionFunction(instanceId);
-                    yield return (destination, message);
+                    batch.OutgoingResponses.Add(r);
                 }
             }
 
-            void AddMessage(TaskMessagesReceived outmessage, TaskMessage message)
+            if (sendMessages)
             {
-                if (Entities.IsDelayedEntityMessage(message, out _))
+                IEnumerable<(uint, TaskMessage)> Messages()
                 {
-                    (outmessage.DelayedTaskMessages ??= new List<TaskMessage>()).Add(message);
+                    foreach (var message in evt.RemoteMessages)
+                    {
+                        var instanceId = message.OrchestrationInstance.InstanceId;
+                        var destination = this.Partition.PartitionFunction(instanceId);
+                        yield return (destination, message);
+                    }
                 }
-                else if (message.Event is ExecutionStartedEvent executionStartedEvent && executionStartedEvent.ScheduledStartTime.HasValue)
+
+                void AddMessage(TaskMessagesReceived outmessage, TaskMessage message)
                 {
-                    (outmessage.DelayedTaskMessages ??= new List<TaskMessage>()).Add(message);
+                    if (Entities.IsDelayedEntityMessage(message, out _))
+                    {
+                        (outmessage.DelayedTaskMessages ??= new List<TaskMessage>()).Add(message);
+                    }
+                    else if (message.Event is ExecutionStartedEvent executionStartedEvent && executionStartedEvent.ScheduledStartTime.HasValue)
+                    {
+                        (outmessage.DelayedTaskMessages ??= new List<TaskMessage>()).Add(message);
+                    }
+                    else
+                    {
+                        (outmessage.TaskMessages ??= new List<TaskMessage>()).Add(message);
+                    }
+                    outmessage.SubPosition = ++subPosition;
+                }
+
+                if (evt.PackPartitionTaskMessages > 1)
+                {
+                    // pack multiple TaskMessages for the same destination into a single TaskMessagesReceived event
+                    var sorted = new Dictionary<uint, TaskMessagesReceived>();
+                    foreach ((uint destination, TaskMessage message) in Messages())
+                    {
+                        if (!sorted.TryGetValue(destination, out var outmessage))
+                        {
+                            sorted[destination] = outmessage = new TaskMessagesReceived()
+                            {
+                                PartitionId = destination,
+                                WorkItemId = evt.WorkItemId,
+                            };
+                        }
+
+                        AddMessage(outmessage, message);
+
+                        // send the message if we have reached the pack limit
+                        if (outmessage.NumberMessages >= evt.PackPartitionTaskMessages)
+                        {
+                            batch.OutgoingMessages.Add(outmessage);
+                            sorted.Remove(destination);
+                        }
+                    }
+                    batch.OutgoingMessages.AddRange(sorted.Values);
                 }
                 else
                 {
-                    (outmessage.TaskMessages ??= new List<TaskMessage>()).Add(message);
-                }
-                outmessage.SubPosition = ++subPosition;
-            }
-
-            if (evt.PackPartitionTaskMessages > 1)
-            {
-                // pack multiple TaskMessages for the same destination into a single TaskMessagesReceived event
-                var sorted = new Dictionary<uint, TaskMessagesReceived>();
-                foreach ((uint destination, TaskMessage message) in Messages())
-                {
-                    if (!sorted.TryGetValue(destination, out var outmessage))
+                    // send each TaskMessage as a separate TaskMessagesReceived event
+                    foreach ((uint destination, TaskMessage message) in Messages())
                     {
-                        sorted[destination] = outmessage = new TaskMessagesReceived()
+                        var outmessage = new TaskMessagesReceived()
                         {
                             PartitionId = destination,
                             WorkItemId = evt.WorkItemId,
                         };
-                    }
-
-                    AddMessage(outmessage, message);
-
-                    // send the message if we have reached the pack limit
-                    if (outmessage.NumberMessages >= evt.PackPartitionTaskMessages)
-                    {
+                        AddMessage(outmessage, message);
                         batch.OutgoingMessages.Add(outmessage);
-                        sorted.Remove(destination);
                     }
                 }
-                batch.OutgoingMessages.AddRange(sorted.Values);
             }
-            else
-            {
-                // send each TaskMessage as a separate TaskMessagesReceived event
-                foreach ((uint destination, TaskMessage message) in Messages())
-                {
-                    var outmessage = new TaskMessagesReceived()
-                    {
-                        PartitionId = destination,
-                        WorkItemId = evt.WorkItemId,
-                    };
-                    AddMessage(outmessage, message);
-                    batch.OutgoingMessages.Add(outmessage);
-                }
-            }
+
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
 
@@ -268,6 +297,30 @@ namespace DurableTask.Netherite
                 Timestamp = evt.Timestamp,
             });
 
+            this.SendBatchOnceEventIsPersisted(evt, effects, batch);
+        }
+
+        public override void Process(WaitRequestReceived evt, EffectTracker effects)
+        {
+            this.Partition.Assert(evt.ResponseToSend != null);
+            var batch = new Batch();
+            batch.OutgoingResponses.Add(evt.ResponseToSend);
+            this.SendBatchOnceEventIsPersisted(evt, effects, batch);
+        }
+
+        public override void Process(CreationRequestReceived evt, EffectTracker effects)
+        {
+            this.Partition.Assert(evt.ResponseToSend != null);
+            var batch = new Batch();
+            batch.OutgoingResponses.Add(evt.ResponseToSend);
+            this.SendBatchOnceEventIsPersisted(evt, effects, batch);
+        }
+
+        public override void Process(DeletionRequestReceived evt, EffectTracker effects)
+        {
+            this.Partition.Assert(evt.ResponseToSend != null);
+            var batch = new Batch();
+            batch.OutgoingResponses.Add(evt.ResponseToSend);
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
     }

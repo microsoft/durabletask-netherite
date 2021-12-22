@@ -81,6 +81,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override string TracedInstanceId => this.InstanceId;
 
+        [IgnoreDataMember]
+        public List<WaitResponseReceived> ResponsesToSend { get; set; } // used to communicate responses to ClientState
+
         IEnumerable<TrackedObjectKey> IRequiresPrefetch.KeysToPrefetch
         {
             get
