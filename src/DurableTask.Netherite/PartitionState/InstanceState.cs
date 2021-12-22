@@ -80,6 +80,16 @@ namespace DurableTask.Netherite
             };
         }
 
+        void CullWaiters(DateTime threshold)
+        {
+            // remove all waiters whose timeout is before the threshold
+            if (this.Waiters.Any(request => request.TimeoutUtc <= threshold))
+            {
+                this.Waiters = this.Waiters
+                            .Where(request => request.TimeoutUtc > threshold)
+                            .ToList();
+            }
+        }
 
         public override void Process(BatchProcessed evt, EffectTracker effects)
         {
@@ -87,12 +97,19 @@ namespace DurableTask.Netherite
             this.OrchestrationState = evt.State;
 
             // if the orchestration is complete, notify clients that are waiting for it
-            if (this.Waiters != null && WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
+            if (this.Waiters != null)
             {
-                // we do not need effects.Add(TrackedObjectKey.Outbox) because it has already been added by SessionsState
-                evt.ResponsesToSend = this.Waiters.Select(request => request.CreateResponse(this.OrchestrationState)).ToList();
+                if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
+                {
+                    // we do not need effects.Add(TrackedObjectKey.Outbox) because it has already been added by SessionsState
+                    evt.ResponsesToSend = this.Waiters.Select(request => request.CreateResponse(this.OrchestrationState)).ToList();
 
-                this.Waiters = null;
+                    this.Waiters = null;
+                }
+                else
+                {
+                    this.CullWaiters(evt.Timestamp);
+                }
             }
         }
 
@@ -111,10 +128,7 @@ namespace DurableTask.Netherite
                 }
                 else
                 {
-                    // cull the list of waiters to remove requests that have already timed out
-                    this.Waiters = this.Waiters
-                        .Where(request => request.TimeoutUtc > DateTime.UtcNow)
-                        .ToList();
+                    this.CullWaiters(evt.Timestamp);
                 }
                 
                 this.Waiters.Add(evt);
