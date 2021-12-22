@@ -29,7 +29,7 @@ namespace DurableTask.Netherite
 
         public override string ToString()
         {
-            return $"History InstanceId={this.InstanceId} Status={this.OrchestrationState?.OrchestrationStatus}";
+            return $"Instance InstanceId={this.InstanceId} Status={this.OrchestrationState?.OrchestrationStatus}";
         }
 
         public override void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)

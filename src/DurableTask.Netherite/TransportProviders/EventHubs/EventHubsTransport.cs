@@ -375,7 +375,7 @@ namespace DurableTask.Netherite.EventHubs
                 {
                     this.traceHelper.LogDebug("Stopping partition and loadmonitor hosts");
                     await Task.WhenAll(
-                      this.eventProcessorHost.UnregisterEventProcessorAsync(),
+                      this.StopPartitionHost(),
                       this.loadMonitorHost.UnregisterEventProcessorAsync()).ConfigureAwait(false);
                 }
                 else
@@ -393,6 +393,19 @@ namespace DurableTask.Netherite.EventHubs
 
             this.traceHelper.LogInformation("EventHubsBackend shutdown completed");
         }
+
+        Task StopPartitionHost()
+        {
+            if (this.settings.PartitionManagement != PartitionManagementOptions.Scripted)
+            {
+                return this.eventProcessorHost.UnregisterEventProcessorAsync();
+            }
+            else
+            {
+                return this.scriptedEventProcessorHost.StopAsync();
+            }   
+        }
+
 
         IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
         {

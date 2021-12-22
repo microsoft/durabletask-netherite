@@ -11,11 +11,11 @@ namespace DurableTask.Netherite.Tests
 
     public class XunitLoggerProvider : ILoggerProvider
     {
-        public ITestOutputHelper Output { get; set; }
+        public Action<string> Output { get; set; }
 
-        public XunitLoggerProvider(ITestOutputHelper testOutputHelper = null)
+        public XunitLoggerProvider(Action<string> output = null)
         {
-            this.Output = testOutputHelper;
+            this.Output = output;
         }
 
         public ILogger CreateLogger(string categoryName)

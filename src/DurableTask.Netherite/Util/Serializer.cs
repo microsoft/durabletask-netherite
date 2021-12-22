@@ -7,6 +7,7 @@ namespace DurableTask.Netherite
     using System.IO;
     using System.Runtime.Serialization;
     using System.Text;
+    using DurableTask.Netherite.Faster;
 
     static class Serializer
     {
@@ -15,6 +16,12 @@ namespace DurableTask.Netherite
 
         static readonly DataContractSerializer trackedObjectSerializer
             = new DataContractSerializer(typeof(TrackedObject));
+
+        static readonly DataContractSerializer singletonsSerializer
+            = new DataContractSerializer(typeof(TrackedObject[]));
+
+        static readonly DataContractSerializer checkpointInfoSerializer
+            = new DataContractSerializer(typeof(CheckpointInfo));
 
         static readonly UnicodeEncoding uniEncoding = new UnicodeEncoding();
 
@@ -66,6 +73,32 @@ namespace DurableTask.Netherite
             var stream = new MemoryStream(bytes);
             var result = (TrackedObject)trackedObjectSerializer.ReadObject(stream);
             result.SerializationCache = bytes;
+            return result;
+        }
+
+        public static byte[] SerializeSingletons(TrackedObject[] singletons)
+        {
+            var stream = new MemoryStream();
+            singletonsSerializer.WriteObject(stream, singletons);
+            return stream.ToArray();
+        }
+
+        public static TrackedObject[] DeserializeSingletons(Stream stream)
+        {
+            var result = (TrackedObject[])singletonsSerializer.ReadObject(stream);
+            return result;
+        }
+
+        public static MemoryStream SerializeCheckpointInfo(CheckpointInfo checkpointInfo)
+        {
+            var stream = new MemoryStream();
+            checkpointInfoSerializer.WriteObject(stream, checkpointInfo);
+            return stream;
+        }
+
+        public static CheckpointInfo DeserializeCheckpointInfo(Stream stream)
+        {
+            var result = (CheckpointInfo)checkpointInfoSerializer.ReadObject(stream);
             return result;
         }
     }

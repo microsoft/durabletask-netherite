@@ -39,9 +39,9 @@ namespace DurableTask.Netherite
         public Partition Partition { get; }
 
         /// <summary>
-        /// The effect currently being applied.
+        /// The event id of the current effect.
         /// </summary>
-        public dynamic Effect { get; set; }
+        public string CurrentEventId => this.currentUpdate?.EventIdString;
 
         /// <summary>
         /// True if we are replaying this effect during recovery.
@@ -50,15 +50,33 @@ namespace DurableTask.Netherite
         /// </summary>
         public bool IsReplaying { get; set; }
 
+        void SetCurrentUpdateEvent(PartitionUpdateEvent updateEvent)
+        {
+            this.effect = this.currentUpdate = updateEvent;
+        }
+
+        PartitionUpdateEvent currentUpdate;
+        dynamic effect;
+
         /// <summary>
         /// Applies the event to the given tracked object, using dynamic dispatch to 
         /// select the correct Process method overload for the event. 
         /// </summary>
-        /// <param name="trackedObject"></param>
+        /// <param name="trackedObject">The tracked object on which the event should be applied.</param>
         /// <remarks>Called by the storage layer when this object calls applyToStore.</remarks>
         public void ProcessEffectOn(dynamic trackedObject)
         {
-            trackedObject.Process(this.Effect, this);
+            this.Partition.Assert(this.currentUpdate != null);
+            try
+            {
+                trackedObject.Process(this.effect, this);
+            }
+            catch (Exception exception) when (!Utils.IsFatal(exception))
+            {
+                // for robustness, we swallow exceptions inside event processing.
+                // It does not mean they are not serious. We still report them as errors.
+                this.Partition.ErrorHandler.HandleError(nameof(ProcessUpdate), $"Encountered exception on {trackedObject} when applying update event {this.currentUpdate}, eventId={this.currentUpdate?.EventId}", exception, false, false);
+            }
         }
 
         public void AddDeletion(TrackedObjectKey key)
@@ -77,7 +95,9 @@ namespace DurableTask.Netherite
                 {
                     this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, this.IsReplaying);
 
-                    this.Effect = updateEvent;
+                    this.Partition.Assert(updateEvent != null);
+
+                    this.SetCurrentUpdateEvent(updateEvent);
 
                     // collect the initial list of targets
                     updateEvent.DetermineEffects(this);
@@ -114,7 +134,7 @@ namespace DurableTask.Netherite
                         this.deletedKeys.Clear();
                     }
 
-                    this.Effect = null;
+                    this.SetCurrentUpdateEvent(null);
                 }
                 catch (OperationCanceledException)
                 {
@@ -146,32 +166,31 @@ namespace DurableTask.Netherite
                 {
                     readEvent.Deliver(key, target, out var isReady);
 
+                    // trace read accesses to instance and history
+                    switch (key.ObjectType)
+                    {
+                        case TrackedObjectKey.TrackedObjectType.Instance:
+                            InstanceState instanceState = (InstanceState)target;
+                            string instanceExecutionId = instanceState?.OrchestrationState?.OrchestrationInstance.ExecutionId;
+                            string status = instanceState?.OrchestrationState?.OrchestrationStatus.ToString() ?? "null";
+                            this.Partition.EventTraceHelper.TraceFetchedInstanceStatus(readEvent, key.InstanceId, instanceExecutionId, status, startedTimestamp - readEvent.IssuedTimestamp);
+                            break;
+
+                        case TrackedObjectKey.TrackedObjectType.History:
+                            HistoryState historyState = (HistoryState)target;
+                            string historyExecutionId = historyState?.ExecutionId;
+                            int eventCount = historyState?.History?.Count ?? 0;
+                            int episode = historyState?.Episode ?? 0;
+                            this.Partition.EventTraceHelper.TraceFetchedInstanceHistory(readEvent, key.InstanceId, historyExecutionId, eventCount, episode, startedTimestamp - readEvent.IssuedTimestamp);
+                            break;
+
+                        default:
+                            break;
+                    }
+
                     if (isReady)
                     {
                         this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, false);
-
-                        // trace read accesses to instance and history
-                        switch (key.ObjectType)
-                        {
-                            case TrackedObjectKey.TrackedObjectType.Instance:
-                                InstanceState instanceState = (InstanceState)target;
-                                string instanceExecutionId = instanceState?.OrchestrationState?.OrchestrationInstance.ExecutionId;
-                                string status = instanceState?.OrchestrationState?.OrchestrationStatus.ToString() ?? "null";
-                                this.Partition.EventTraceHelper.TraceFetchedInstanceStatus(readEvent, key.InstanceId, instanceExecutionId, status, startedTimestamp - readEvent.IssuedTimestamp);
-                                break;
-
-                            case TrackedObjectKey.TrackedObjectType.History:
-                                HistoryState historyState = (HistoryState)target;
-                                string historyExecutionId = historyState?.ExecutionId;
-                                int eventCount = historyState?.History?.Count ?? 0;
-                                int episode = historyState?.Episode ?? 0;
-                                this.Partition.EventTraceHelper.TraceFetchedInstanceHistory(readEvent, key.InstanceId, historyExecutionId, eventCount, episode, startedTimestamp - readEvent.IssuedTimestamp);
-                                break;
-
-                            default:
-                                break;
-                        }
-
                         readEvent.Fire(this.Partition);
                     }
                 }

@@ -36,29 +36,22 @@ namespace DurableTask.Netherite.Tests
 
         public void Dispose()
         {
-            this.ClearOutput();
             this.Host.StopAsync(false).Wait();
             this.Host.Dispose();
             Trace.Listeners.Remove(this.traceListener);
         }
 
-        public void SetOutput(ITestOutputHelper output)
+        public void SetOutput(Action<string> output)
         {
             this.loggerProvider.Output = output;
             this.traceListener.Output = output;
         }
 
-        public void ClearOutput()
-        {
-            this.loggerProvider.Output = null;
-            this.traceListener.Output = null;
-        }
-
         internal class TestTraceListener : TraceListener
         {
-            public ITestOutputHelper Output { get; set; }
+            public Action<string> Output { get; set; }
             public override void Write(string message) {  }
-            public override void WriteLine(string message) { this.Output?.WriteLine($"{DateTime.Now:o} {message}"); }
+            public override void WriteLine(string message) { this.Output?.Invoke($"{DateTime.Now:o} {message}"); }
         }
     }
 }
