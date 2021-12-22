@@ -608,6 +608,11 @@ namespace DurableTask.Netherite
 
             if (nextOrchestrationWorkItem != null) 
             {
+                if (nextOrchestrationWorkItem.MessageBatch.WaitForDequeueCountPersistence != null)
+                {
+                    await nextOrchestrationWorkItem.MessageBatch.WaitForDequeueCountPersistence.Task;
+                }
+
                 nextOrchestrationWorkItem.MessageBatch.WaitingSince = null;
 
                 this.workItemTraceHelper.TraceWorkItemStarted(
@@ -816,6 +821,11 @@ namespace DurableTask.Netherite
 
             if (nextActivityWorkItem != null)
             {
+                if (nextActivityWorkItem.WaitForDequeueCountPersistence != null)
+                {
+                    await nextActivityWorkItem.WaitForDequeueCountPersistence.Task;
+                }
+
                 this.workItemTraceHelper.TraceWorkItemStarted(
                     nextActivityWorkItem.Partition.PartitionId,
                     WorkItemTraceHelper.WorkItemType.Activity,

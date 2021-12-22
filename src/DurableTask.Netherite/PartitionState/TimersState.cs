@@ -30,7 +30,7 @@ namespace DurableTask.Netherite
             return $"Timers ({this.PendingTimers.Count} pending) next={this.SequenceNumber:D6}";
         }
 
-        public override void OnRecoveryCompleted()
+        public override void OnRecoveryCompleted(RecoveryCompleted evt)
         {
             // restore the pending timers
             foreach (var kvp in this.PendingTimers)

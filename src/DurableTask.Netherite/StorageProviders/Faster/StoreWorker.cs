@@ -443,13 +443,28 @@ namespace DurableTask.Netherite.Faster
         {
             this.traceHelper.FasterProgress("Restarting tasks");
 
+            // we use this event for updating dequeue counts when restarting sessions and/or activities
+            var recoveryCompletedEvent = new RecoveryCompleted()
+            {
+                PartitionId = this.partition.PartitionId,
+                RecoveredPosition = this.CommitLogPosition,
+                Timestamp= DateTime.UtcNow,
+                WorkerId = this.partition.Settings.WorkerId,
+            };
+
+            // restart pending actitivities, timers, work items etc.
             using (EventTraceContext.MakeContext(this.CommitLogPosition, string.Empty))
             {
                 foreach (var key in TrackedObjectKey.GetSingletons())
                 {
                     var target = (TrackedObject)await this.store.ReadAsync(key, this.effectTracker).ConfigureAwait(false);
-                    target.OnRecoveryCompleted();
+                    target.OnRecoveryCompleted(recoveryCompletedEvent);
                 }
+            }
+
+            if (recoveryCompletedEvent.RequiresStateUpdate)
+            {
+                this.partition.SubmitEvent(recoveryCompletedEvent);
             }
         }
 

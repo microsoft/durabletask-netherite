@@ -7,9 +7,10 @@ namespace DurableTask.Netherite
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Text;
+    using System.Threading.Tasks;
     using DurableTask.Core;
 
-    class ActivityWorkItem : TaskActivityWorkItem
+    class ActivityWorkItem : TaskActivityWorkItem, TransportAbstraction.IDurabilityListener
     {
         public Partition Partition { get; set; }
 
@@ -23,7 +24,10 @@ namespace DurableTask.Netherite
 
         public double StartedAt { get; set; }
 
-        public ActivityWorkItem(Partition partition, long activityId, TaskMessage message, string originWorkItem)
+        // enforces that the activity cannot start executing before the issuing event is persisted
+        public readonly TaskCompletionSource<object> WaitForDequeueCountPersistence;
+
+        ActivityWorkItem(Partition partition, long activityId, TaskMessage message, string originWorkItem)
         {
             this.Partition = partition;
             this.OriginPartition = partition.PartitionFunction(message.OrchestrationInstance.InstanceId);
@@ -34,8 +38,23 @@ namespace DurableTask.Netherite
             this.TaskMessage = message;
         }
 
+        public ActivityWorkItem(Partition partition, long activityId, TaskMessage message, string originWorkItem, PartitionUpdateEvent filingEvent)
+            : this(partition, activityId, message, originWorkItem)
+        {
+            if (partition.Settings.PersistDequeueCountBeforeStartingWorkItem)
+            {
+                this.WaitForDequeueCountPersistence = new TaskCompletionSource<object>();
+                DurabilityListeners.Register(filingEvent, this);
+            }
+        }
+
         public string WorkItemId => ActivitiesState.GetWorkItemId(this.Partition.PartitionId, this.ActivityId);
 
         public string ExecutionType => (this.Partition.PartitionId == this.OriginPartition ? "Local" : "Remote");
+
+        public void ConfirmDurable(Event evt)
+        {
+            this.WaitForDequeueCountPersistence.TrySetResult(null);
+        }
     }
 }
