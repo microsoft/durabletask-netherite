@@ -24,5 +24,7 @@ namespace DurableTask.Netherite
         public OutboxState.Batch OutboxBatch { get; set; }
 
         public abstract void DetermineEffects(EffectTracker effects);
+
+        public abstract void ApplyTo(TrackedObject trackedObject, EffectTracker effectTracker);
     }
 }

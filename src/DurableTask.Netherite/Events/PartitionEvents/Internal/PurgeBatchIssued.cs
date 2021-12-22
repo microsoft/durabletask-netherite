@@ -52,6 +52,11 @@ namespace DurableTask.Netherite
             }
         }
 
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
+
         public override void DetermineEffects(EffectTracker effects)
         {
             // the last-added effects are processed first

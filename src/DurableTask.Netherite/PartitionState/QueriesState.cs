@@ -41,7 +41,17 @@ namespace DurableTask.Netherite
             return $"Queries ({this.PendingQueries.Count} pending)";
         }
 
-        public void Process(ClientRequestEventWithQuery clientRequestEvent, EffectTracker effects)
+        public override void Process(InstanceQueryReceived clientRequestEvent, EffectTracker effects)
+        {
+            this.ProcessClientRequestEventWithQuery(clientRequestEvent, effects);
+        }
+
+        public override void Process(PurgeRequestReceived clientRequestEvent, EffectTracker effects)
+        {
+            this.ProcessClientRequestEventWithQuery(clientRequestEvent, effects);
+        }
+
+        void ProcessClientRequestEventWithQuery(ClientRequestEventWithQuery clientRequestEvent, EffectTracker effects)
         {
             if (clientRequestEvent.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query)
             {           
@@ -56,7 +66,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
+        public override void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
         {
             var purgeRequest = (PurgeRequestReceived)this.PendingQueries[purgeBatchIssued.QueryEventId];
             purgeRequest.NumberInstancesPurged += purgeBatchIssued.Purged.Count;

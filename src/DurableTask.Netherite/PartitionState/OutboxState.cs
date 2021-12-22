@@ -153,7 +153,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(SendConfirmed evt, EffectTracker _)
+        public override void Process(SendConfirmed evt, EffectTracker _)
         {
             this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Store has sent all outbound messages by event {evt} id={evt.EventIdString}");
 
@@ -161,7 +161,7 @@ namespace DurableTask.Netherite
             this.Outbox.Remove(evt.Position);
         }
 
-        public void Process(ActivityCompleted evt, EffectTracker effects)
+        public override void Process(ActivityCompleted evt, EffectTracker effects)
         {
             var batch = new Batch();
             batch.OutgoingMessages.Add(new RemoteActivityResultReceived()
@@ -175,7 +175,7 @@ namespace DurableTask.Netherite
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
 
-        public void Process(BatchProcessed evt, EffectTracker effects)
+        public override void Process(BatchProcessed evt, EffectTracker effects)
         {
             var batch = new Batch();
             int subPosition = 0;
@@ -270,7 +270,7 @@ namespace DurableTask.Netherite
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
 
-        public void Process(OffloadDecision evt, EffectTracker effects)
+        public override void Process(OffloadDecision evt, EffectTracker effects)
         {
             var batch = new Batch();
 
@@ -287,7 +287,7 @@ namespace DurableTask.Netherite
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
 
-        public void Process(TransferCommandReceived evt, EffectTracker effects)
+        public override void Process(TransferCommandReceived evt, EffectTracker effects)
         {
             var batch = new Batch();
             batch.OutgoingMessages.Add(new ActivityTransferReceived()
@@ -300,7 +300,7 @@ namespace DurableTask.Netherite
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
 
-        public void Process(WaitRequestReceived evt, EffectTracker effects)
+        public override void Process(WaitRequestReceived evt, EffectTracker effects)
         {
             this.Partition.Assert(evt.ResponseToSend != null);
             var batch = new Batch();
@@ -308,7 +308,7 @@ namespace DurableTask.Netherite
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
 
-        public void Process(CreationRequestReceived evt, EffectTracker effects)
+        public override void Process(CreationRequestReceived evt, EffectTracker effects)
         {
             this.Partition.Assert(evt.ResponseToSend != null);
             var batch = new Batch();
@@ -316,7 +316,7 @@ namespace DurableTask.Netherite
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
         }
 
-        public void Process(DeletionRequestReceived evt, EffectTracker effects)
+        public override void Process(DeletionRequestReceived evt, EffectTracker effects)
         {
             this.Partition.Assert(evt.ResponseToSend != null);
             var batch = new Batch();
