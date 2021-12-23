@@ -304,6 +304,7 @@ namespace DurableTask.Netherite
                 item.HistorySize,
                 WorkItemTraceHelper.FormatMessageIdList(item.MessageBatch.TracedMessages));
 
+            item.PreStatus = item.OrchestrationRuntimeState.Status;
             this.OrchestrationWorkItemQueue.Add(item);
         }
     }
