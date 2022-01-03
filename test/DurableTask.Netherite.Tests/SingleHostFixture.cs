@@ -20,6 +20,8 @@ namespace DurableTask.Netherite.Tests
         internal TestOrchestrationHost Host { get; private set; }
         internal ILoggerFactory LoggerFactory { get; private set; }
 
+        internal string TestHooksError { get; private set; }
+
         public SingleHostFixture()
         {
             this.LoggerFactory = new LoggerFactory();
@@ -32,6 +34,7 @@ namespace DurableTask.Netherite.Tests
             settings.TestHooks.OnError += (message) =>
             {
                 System.Diagnostics.Trace.WriteLine($"TESTHOOKS: {message}");
+                this.TestHooksError ??= message;
             };
             this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
             this.Host.StartAsync().Wait();
@@ -50,6 +53,7 @@ namespace DurableTask.Netherite.Tests
         {
             this.loggerProvider.Output = output;
             this.traceListener.Output = output;
+            this.TestHooksError = null;
         }
 
         internal class TestTraceListener : TraceListener
