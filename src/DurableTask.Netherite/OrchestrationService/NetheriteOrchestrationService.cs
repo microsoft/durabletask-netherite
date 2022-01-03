@@ -728,7 +728,6 @@ namespace DurableTask.Netherite
                 PersistFirst = partition.Settings.PersistStepsFirst ? BatchProcessed.PersistFirstStatus.Required : BatchProcessed.PersistFirstStatus.NotRequired,
                 OrchestrationStatus = state.OrchestrationStatus,
                 ExecutionId = state.OrchestrationInstance.ExecutionId,
-                State = state,
                 ActivityMessages = (List<TaskMessage>)activityMessages,
                 LocalMessages = localMessages,
                 RemoteMessages = remoteMessages,

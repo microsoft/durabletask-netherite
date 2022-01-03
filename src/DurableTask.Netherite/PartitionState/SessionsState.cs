@@ -327,7 +327,7 @@ namespace DurableTask.Netherite
                     effects.Add(TrackedObjectKey.Timers);
                 }
 
-                if (evt.RemoteMessages?.Count > 0 || WaitRequestReceived.SatisfiesWaitCondition(evt.State))
+                if (evt.RemoteMessages?.Count > 0 || WaitRequestReceived.SatisfiesWaitCondition(evt.OrchestrationStatus))
                 {
                     effects.Add(TrackedObjectKey.Outbox);
                 }
