@@ -16,9 +16,6 @@ namespace DurableTask.Netherite
         public OrchestrationStatus[] DedupeStatuses { get; set; }
 
         [DataMember]
-        public DateTime CreationTimestamp { get; set; }
-
-        [DataMember]
         public TaskMessage TaskMessage { get; set; }
         
         [DataMember]
@@ -42,9 +39,12 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public CreationResponseReceived ResponseToSend { get; set; } // used to communicate response to ClientState
 
+        [IgnoreDataMember]
+        public DateTime CreationTimestamp { get; set; }
+
         public override bool OnReadComplete(TrackedObject target, Partition partition)
         {
-            // Use this moment of time as the creation timestamp, replacing the original timestamp taken on the client.
+            // Use this moment of time as the creation timestamp, which is going to replace the original timestamp taken on the client.
             // This is preferrable because it avoids clock synchronization issues (which can result in negative orchestration durations)
             // and means the timestamp is consistently ordered with respect to timestamps of other events on this partition.
             this.CreationTimestamp = DateTime.UtcNow;
