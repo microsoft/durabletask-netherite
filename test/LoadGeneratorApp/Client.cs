@@ -21,16 +21,15 @@ namespace LoadGeneratorApp
     /// <summary>
     /// A static client object, to be shared by all robots on the same node
     /// </summary>
-    internal class Client
+    class Client
     {
-        private readonly Random random = new Random();
-        private readonly BaseParameters parameters;
+        readonly Random random = new Random();
+        readonly BaseParameters parameters;
 
-        private static readonly SemaphoreSlim asyncLock = new SemaphoreSlim(1, 1);
-        private static Client client;
-        private static int referenceCount;
-
-        private ConcurrentDictionary<Guid, TaskCompletionSource<string>> continuations;
+        static readonly SemaphoreSlim asyncLock = new SemaphoreSlim(1, 1);
+        static Client client;
+        static int referenceCount;
+        readonly ConcurrentDictionary<Guid, TaskCompletionSource<string>> continuations;
 
         public HttpClient HttpClient { get; private set; }
 
@@ -83,11 +82,11 @@ namespace LoadGeneratorApp
 
         public string BaseUrl()
         {
-            string[] urls = parameters.ServiceUrls.Split(new char[] { ' ' });
-            return urls[random.Next(urls.Length)];
+            string[] urls = this.parameters.ServiceUrls.Split(new char[] { ' ' });
+            return urls[this.random.Next(urls.Length)];
         }
 
-        private Client(BaseParameters parameters)
+        Client(BaseParameters parameters)
         {
             this.parameters = parameters;
             this.HttpClient = new HttpClient();
@@ -95,12 +94,12 @@ namespace LoadGeneratorApp
             this.continuations = new ConcurrentDictionary<Guid, TaskCompletionSource<string>>();
         }
 
-        private Task<Client> StartAsync()
+        Task<Client> StartAsync()
         {
             return Task.FromResult(this);
         }
 
-        private Task StopAsync()
+        Task StopAsync()
         {
             return Task.CompletedTask;
         }
@@ -114,7 +113,7 @@ namespace LoadGeneratorApp
                 Name = name,
                 InstanceId = instanceId,
                 Input = input,
-                Timeout = parameters.TimeoutSeconds,
+                Timeout = this.parameters.TimeoutSeconds,
                 UseReportedLatency = useReportedLatency,
             };
 
@@ -164,7 +163,7 @@ namespace LoadGeneratorApp
             var tcs = new TaskCompletionSource<string>();
             var c = new CancellationTokenSource();
 
-            var timeout = TimeSpan.FromSeconds(parameters.TimeoutSeconds);
+            var timeout = TimeSpan.FromSeconds(this.parameters.TimeoutSeconds);
             Task timeoutTask = Timeout();
             async Task Timeout()
             {
@@ -178,13 +177,13 @@ namespace LoadGeneratorApp
                 }
             }
 
-            continuations[wReqId] = tcs;
+            this.continuations[wReqId] = tcs;
 
             try
             {
                 var inputObject = input(callbackUri(wReqId));
                 var content = inputObject.ToString(Formatting.Indented);
-                HttpResponseMessage response = await HttpClient.PostAsync(requestUri, new StringContent(content)).ConfigureAwait(false);
+                HttpResponseMessage response = await this.HttpClient.PostAsync(requestUri, new StringContent(content)).ConfigureAwait(false);
                 if (response.StatusCode != HttpStatusCode.OK)
                 {
                     throw new HttpRequestException(response.ReasonPhrase);
@@ -196,7 +195,7 @@ namespace LoadGeneratorApp
             }
             finally
             {
-                continuations.TryRemove(wReqId, out _);
+                this.continuations.TryRemove(wReqId, out _);
                 c.Cancel();
                 await timeoutTask.ConfigureAwait(false);
             }
