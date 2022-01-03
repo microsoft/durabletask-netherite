@@ -73,7 +73,7 @@ namespace DurableTask.Netherite
 
             if (!effects.IsReplaying)
             {
-                this.Partition.EventTraceHelper.TraceInstanceUpdate(
+                effects.EventTraceHelper?.TraceInstanceUpdate(
                     evt.EventIdString,
                     evt.InstanceId,
                     evt.ExecutionId,
@@ -88,7 +88,7 @@ namespace DurableTask.Netherite
                 if (this.CachedOrchestrationWorkItem != null 
                     && this.CachedOrchestrationWorkItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId != evt.ExecutionId)
                 {
-                    effects.Partition.EventTraceHelper.TraceEventProcessingWarning($"Dropping bad workitem cache instance={this.InstanceId} expected_executionid={evt.ExecutionId} actual_executionid={this.CachedOrchestrationWorkItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId}");
+                    effects.EventTraceHelper?.TraceEventProcessingWarning($"Dropping bad workitem cache instance={this.InstanceId} expected_executionid={evt.ExecutionId} actual_executionid={this.CachedOrchestrationWorkItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId}");
                     this.CachedOrchestrationWorkItem = null;
                 }
             }

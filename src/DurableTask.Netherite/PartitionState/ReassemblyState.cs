@@ -29,7 +29,7 @@ namespace DurableTask.Netherite
             {
                 evt.ReassembledEvent =  FragmentationAndReassembly.Reassemble<PartitionEvent>(this.Fragments[originalEventString], evt);
                 
-                this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Reassembled {evt.ReassembledEvent}");
+                effects.EventDetailTracer?.TraceEventProcessingDetail($"Reassembled {evt.ReassembledEvent}");
 
                 this.Fragments.Remove(originalEventString);
 

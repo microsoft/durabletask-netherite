@@ -751,7 +751,7 @@ namespace DurableTask.Netherite
                 latencyMs,
                 sequenceNumber);
 
-             partition.SubmitEvent(batchProcessedEvent);
+            partition.SubmitEvent(batchProcessedEvent);
 
             if (this.workItemTraceHelper.TraceTaskMessages)
             {

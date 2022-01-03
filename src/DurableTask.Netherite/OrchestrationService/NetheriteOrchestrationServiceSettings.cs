@@ -181,10 +181,10 @@ namespace DurableTask.Netherite
         internal bool UseSeparatePageBlobStorage => !string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString);
 
         /// <summary>
-        /// Whether to attach a debugger for cache transitions. Used only for testing and debugging.
+        /// Allows attaching additional checkers and debuggers during testing.
         /// </summary>
         [JsonIgnore]
-        public Faster.CacheDebugger CacheDebugger { get; set; } = null;
+        public TestHooks TestHooks { get; set; } = null;
 
         /// <summary>
         /// A lower limit on the severity level of trace events emitted by the transport layer.

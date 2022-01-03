@@ -28,6 +28,11 @@ namespace DurableTask.Netherite.Tests
             TestConstants.ValidateEnvironment();
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
+            settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
+            settings.TestHooks.OnError += (message) =>
+            {
+                System.Diagnostics.Trace.WriteLine($"TESTHOOKS: {message}");
+            };
             this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
             this.Host.StartAsync().Wait();
             this.traceListener = new TestTraceListener();
