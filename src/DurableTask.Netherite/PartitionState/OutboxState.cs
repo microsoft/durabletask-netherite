@@ -59,6 +59,12 @@ namespace DurableTask.Netherite
             batch.Position = commitPosition;
             batch.Partition = this.Partition;
 
+            foreach (var partitionMessageEvent in batch.OutgoingMessages)
+            {
+                partitionMessageEvent.OriginPartition = this.Partition.PartitionId;
+                partitionMessageEvent.OriginPosition = commitPosition;
+            }
+
             if (!effects.IsReplaying)
             {
                 if (evt is BatchProcessed batchProcessedEvt 
@@ -90,8 +96,6 @@ namespace DurableTask.Netherite
             foreach (var outmessage in batch.OutgoingMessages)
             {
                 DurabilityListeners.Register(outmessage, batch);
-                outmessage.OriginPartition = this.Partition.PartitionId;
-                outmessage.OriginPosition = batch.Position;
                 this.Partition.Send(outmessage);
             }
             foreach (var outresponse in batch.OutgoingResponses)
