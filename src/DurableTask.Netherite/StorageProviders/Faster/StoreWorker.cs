@@ -16,6 +16,7 @@ namespace DurableTask.Netherite.Faster
         readonly FasterTraceHelper traceHelper;
         readonly BlobManager blobManager;
         readonly Random random;
+        readonly ReplayChecker replayChecker;
 
         readonly EffectTracker effectTracker;
 
@@ -43,7 +44,7 @@ namespace DurableTask.Netherite.Faster
         public static TimeSpan PokePeriod = TimeSpan.FromSeconds(3); // allows storeworker to checkpoint and publish load even while idle
 
 
-        public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken) 
+        public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken)
             : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", true, 500, cancellationToken, partition.TraceHelper)
         {
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
@@ -53,18 +54,14 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper = traceHelper;
             this.blobManager = blobManager;
             this.random = new Random();
+            this.replayChecker = this.partition.Settings.TestHooks?.ReplayChecker;
 
             this.loadInfo = PartitionLoadInfo.FirstFrame(this.partition.Settings.WorkerId);
             this.lastPublished = DateTime.MinValue;
             this.lastPublishedLatencyTrend = "";
 
             // construct an effect tracker that we use to apply effects to the store
-            this.effectTracker = new EffectTracker(
-                this.partition,
-                (key, tracker) => store.ProcessEffectOnTrackedObject(key, tracker),
-                (keys) => store.RemoveKeys(keys),
-                () => (this.CommitLogPosition, this.InputQueuePosition)
-            );
+            this.effectTracker = new TrackedObjectStoreEffectTracker(this.partition, this, store);
         }
 
         public async Task Initialize(long initialCommitLogPosition, long initialInputQueuePosition)
@@ -85,6 +82,8 @@ namespace DurableTask.Netherite.Faster
             this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
             this.lastCheckpointedInputQueuePosition = this.InputQueuePosition;
             this.numberEventsSinceLastCheckpoint = initialCommitLogPosition;
+
+            this.replayChecker?.PartitionStarting(this.partition, this.store, this.CommitLogPosition, this.InputQueuePosition);
         }
 
         public void StartProcessing()
@@ -148,6 +147,8 @@ namespace DurableTask.Netherite.Faster
             {
                 await this.pendingStoreCheckpoint.ConfigureAwait(false);
             }
+
+            this.replayChecker?.PartitionStopped(this.partition);
 
             this.traceHelper.FasterProgress("Stopped StoreWorker");
         }
@@ -443,6 +444,8 @@ namespace DurableTask.Netherite.Faster
         {
             this.traceHelper.FasterProgress("Restarting tasks");
 
+            this.replayChecker?.PartitionStarting(this.partition, this.store, this.CommitLogPosition, this.InputQueuePosition);
+
             // we use this event for updating dequeue counts when restarting sessions and/or activities
             var recoveryCompletedEvent = new RecoveryCompleted()
             {
@@ -458,7 +461,7 @@ namespace DurableTask.Netherite.Faster
                 foreach (var key in TrackedObjectKey.GetSingletons())
                 {
                     var target = (TrackedObject)await this.store.ReadAsync(key, this.effectTracker).ConfigureAwait(false);
-                    target.OnRecoveryCompleted(recoveryCompletedEvent);
+                    target.OnRecoveryCompleted(this.effectTracker, recoveryCompletedEvent);
                 }
             }
 
@@ -500,6 +503,11 @@ namespace DurableTask.Netherite.Faster
             }
 
             await this.effectTracker.ProcessUpdate(partitionUpdateEvent).ConfigureAwait(false);
+
+            if (this.replayChecker != null)
+            {
+                await this.replayChecker.CheckUpdate(this.partition, partitionUpdateEvent, this.store);
+            }
 
             // update the commit log position
             if (partitionUpdateEvent.NextCommitLogPosition > 0)

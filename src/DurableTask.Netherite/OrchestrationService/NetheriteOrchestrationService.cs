@@ -731,24 +731,31 @@ namespace DurableTask.Netherite
                 WorkItemForReuse = cacheWorkItemForReuse ? orchestrationWorkItem : null,
                 PackPartitionTaskMessages = partition.Settings.PackPartitionTaskMessages,
                 PersistFirst = partition.Settings.PersistStepsFirst ? BatchProcessed.PersistFirstStatus.Required : BatchProcessed.PersistFirstStatus.NotRequired,
-                State = state,
+                OrchestrationStatus = state.OrchestrationStatus,
+                ExecutionId = state.OrchestrationInstance.ExecutionId,
                 ActivityMessages = (List<TaskMessage>)activityMessages,
                 LocalMessages = localMessages,
                 RemoteMessages = remoteMessages,
                 TimerMessages = (List<TaskMessage>)timerMessages,
-                Timestamp = DateTime.UtcNow,
+                Timestamp = state.LastUpdatedTime,
             };
+
+            if (state.Status != orchestrationWorkItem.PreStatus)
+            {
+                batchProcessedEvent.CustomStatusUpdated = true;
+                batchProcessedEvent.CustomStatus = state.Status;
+            }
 
             this.workItemTraceHelper.TraceWorkItemCompleted(
                 partition.PartitionId,
                 WorkItemTraceHelper.WorkItemType.Orchestration,
                 messageBatch.WorkItemId,
                 workItem.InstanceId,
-                batchProcessedEvent.State.OrchestrationStatus,
+                batchProcessedEvent.OrchestrationStatus,
                 latencyMs,
                 sequenceNumber);
 
-             partition.SubmitEvent(batchProcessedEvent);
+            partition.SubmitEvent(batchProcessedEvent);
 
             if (this.workItemTraceHelper.TraceTaskMessages)
             {

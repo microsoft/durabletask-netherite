@@ -4,6 +4,7 @@
 namespace DurableTask.Netherite
 {
     using DurableTask.Core;
+    using System;
     using System.Runtime.Serialization;
     using System.Text;
 
@@ -22,6 +23,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override string TracedInstanceId => this.InstanceId;
 
+        [DataMember]
+        public DateTime Timestamp { get; set; }
+
         [IgnoreDataMember]
         public WaitResponseReceived ResponseToSend { get; set; } // used to communicate response to ClientState
 
@@ -36,11 +40,11 @@ namespace DurableTask.Netherite
             s.Append(this.InstanceId);
         }
 
-        public static bool SatisfiesWaitCondition(OrchestrationState value)
-             => (value != null &&
-                 value.OrchestrationStatus != OrchestrationStatus.Running &&
-                 value.OrchestrationStatus != OrchestrationStatus.Pending &&
-                 value.OrchestrationStatus != OrchestrationStatus.ContinuedAsNew);
+        public static bool SatisfiesWaitCondition(OrchestrationStatus? value)
+             => (value.HasValue &&
+                 value.Value != OrchestrationStatus.Running &&
+                 value.Value != OrchestrationStatus.Pending &&
+                 value.Value != OrchestrationStatus.ContinuedAsNew);
 
         public WaitResponseReceived CreateResponse(OrchestrationState value)
             => new WaitResponseReceived()

@@ -51,7 +51,7 @@ namespace DurableTask.Netherite
 
         public static string GetWorkItemId(uint partition, long session, long position) => $"{partition:D2}S{session}P{position}";
 
-        public override void OnRecoveryCompleted(RecoveryCompleted evt)
+        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
         {
             // handle all steps that were awaiting persistence
             foreach(var kvp in this.StepsAwaitingPersistence)
@@ -331,40 +331,41 @@ namespace DurableTask.Netherite
                 return;
             };
 
-            if (evt.ActivityMessages?.Count > 0)
+            if (!evt.NotExecutable)
             {
-                effects.Add(TrackedObjectKey.Activities);
-            }
 
-            if (evt.TimerMessages?.Count > 0)
-            {
-                effects.Add(TrackedObjectKey.Timers);
-            }
-
-            if (evt.RemoteMessages?.Count > 0 || WaitRequestReceived.SatisfiesWaitCondition(evt.State))
-            {
-                effects.Add(TrackedObjectKey.Outbox);
-            }
-
-            // deliver orchestrator messages destined for this partition directly to the relevant session(s)
-            if (evt.LocalMessages?.Count > 0)
-            {
-                foreach (var group in evt.LocalMessages.GroupBy(tm => tm.OrchestrationInstance.InstanceId))
+                if (evt.ActivityMessages?.Count > 0)
                 {
-                    this.AddMessagesToSession(group.Key, evt.WorkItemId, group, effects.IsReplaying, evt);
+                    effects.Add(TrackedObjectKey.Activities);
                 }
-            }
 
-            if (evt.State != null)
-            {
+                if (evt.TimerMessages?.Count > 0)
+                {
+                    effects.Add(TrackedObjectKey.Timers);
+                }
+
+                if (evt.RemoteMessages?.Count > 0 || WaitRequestReceived.SatisfiesWaitCondition(evt.OrchestrationStatus))
+                {
+                    effects.Add(TrackedObjectKey.Outbox);
+                }
+
+                // deliver orchestrator messages destined for this partition directly to the relevant session(s)
+                if (evt.LocalMessages?.Count > 0)
+                {
+                    foreach (var group in evt.LocalMessages.GroupBy(tm => tm.OrchestrationInstance.InstanceId))
+                    {
+                        this.AddMessagesToSession(group.Key, evt.WorkItemId, group, effects.IsReplaying, evt);
+                    }
+                }
+
                 effects.Add(TrackedObjectKey.Instance(evt.InstanceId));
                 effects.Add(TrackedObjectKey.History(evt.InstanceId));
             }
 
             // remove processed messages from this batch
-            effects.Partition.Assert(session != null);
-            effects.Partition.Assert(session.SessionId == evt.SessionId);
-            effects.Partition.Assert(session.BatchStartPosition == evt.BatchStartPosition);
+            effects.Assert(session != null);
+            effects.Assert(session.SessionId == evt.SessionId);
+            effects.Assert(session.BatchStartPosition == evt.BatchStartPosition);
             session.Batch.RemoveRange(0, evt.BatchLength);
             session.BatchStartPosition += evt.BatchLength;
             session.DequeueCount = 1;
@@ -372,7 +373,7 @@ namespace DurableTask.Netherite
             this.StartNewBatchIfNeeded(session, effects, evt.InstanceId, effects.IsReplaying, evt);
         }
 
-        void StartNewBatchIfNeeded(Session session, EffectTracker effects, string instanceId, bool inRecovery, PartitionUpdateEvent filingEvent)
+        void StartNewBatchIfNeeded(Session session, EffectTracker effects, string instanceId, bool isReplaying, PartitionUpdateEvent filingEvent)
         {
             if (session.Batch.Count == 0)
             {
@@ -381,7 +382,7 @@ namespace DurableTask.Netherite
             }
             else
             {
-                if (!inRecovery) // we don't start work items until end of recovery
+                if (!isReplaying) // we don't start work items until end of recovery
                 {
                     // there are more messages. Start another work item.
                     new OrchestrationMessageBatch(instanceId, session, this.Partition, filingEvent);

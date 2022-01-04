@@ -20,6 +20,8 @@ namespace DurableTask.Netherite.Tests
         internal TestOrchestrationHost Host { get; private set; }
         internal ILoggerFactory LoggerFactory { get; private set; }
 
+        internal string TestHooksError { get; private set; }
+
         public SingleHostFixture()
         {
             this.LoggerFactory = new LoggerFactory();
@@ -28,6 +30,12 @@ namespace DurableTask.Netherite.Tests
             TestConstants.ValidateEnvironment();
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
+            settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
+            settings.TestHooks.OnError += (message) =>
+            {
+                System.Diagnostics.Trace.WriteLine($"TESTHOOKS: {message}");
+                this.TestHooksError ??= message;
+            };
             this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
             this.Host.StartAsync().Wait();
             this.traceListener = new TestTraceListener();
@@ -45,6 +53,7 @@ namespace DurableTask.Netherite.Tests
         {
             this.loggerProvider.Output = output;
             this.traceListener.Output = output;
+            this.TestHooksError = null;
         }
 
         internal class TestTraceListener : TraceListener

@@ -54,7 +54,7 @@ namespace DurableTask.Netherite
                     Input = ee.Input,
                     Tags = ee.Tags,
                     CreatedTime = ee.Timestamp,
-                    LastUpdatedTime = DateTime.UtcNow,
+                    LastUpdatedTime = ee.Timestamp,
                     CompletedTime = Core.Common.DateTimeUtils.MinDateTime,
                     ScheduledStartTime = ee.ScheduledStartTime
                 };
@@ -80,25 +80,81 @@ namespace DurableTask.Netherite
             };
         }
 
+        void CullWaiters(DateTime threshold)
+        {
+            // remove all waiters whose timeout is before the threshold
+            if (this.Waiters.Any(request => request.TimeoutUtc <= threshold))
+            {
+                this.Waiters = this.Waiters
+                            .Where(request => request.TimeoutUtc > threshold)
+                            .ToList();
+            }
+        }
 
         public override void Process(BatchProcessed evt, EffectTracker effects)
         {
-            // update the state of an orchestration
-            this.OrchestrationState = evt.State;
+            // update the current orchestration state based on the new events
+            this.OrchestrationState = UpdateOrchestrationState(this.OrchestrationState, evt.NewEvents);
 
-            // if the orchestration is complete, notify clients that are waiting for it
-            if (this.Waiters != null && WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
+            if (evt.CustomStatusUpdated)
             {
-                // we do not need effects.Add(TrackedObjectKey.Outbox) because it has already been added by SessionsState
-                evt.ResponsesToSend = this.Waiters.Select(request => request.CreateResponse(this.OrchestrationState)).ToList();
-
-                this.Waiters = null;
+                this.OrchestrationState.Status = evt.CustomStatus;
             }
+
+            this.OrchestrationState.LastUpdatedTime = evt.Timestamp;
+            
+            // if the orchestration is complete, notify clients that are waiting for it
+            if (this.Waiters != null)
+            {
+                if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState?.OrchestrationStatus))
+                {
+                    // we do not need effects.Add(TrackedObjectKey.Outbox) because it has already been added by SessionsState
+                    evt.ResponsesToSend = this.Waiters.Select(request => request.CreateResponse(this.OrchestrationState)).ToList();
+
+                    this.Waiters = null;
+                }
+                else
+                {
+                    this.CullWaiters(evt.Timestamp);
+                }
+            }
+        }
+
+        static OrchestrationState UpdateOrchestrationState(OrchestrationState orchestrationState, List<HistoryEvent> events)
+        {
+            if (orchestrationState == null)
+            {
+                orchestrationState = new OrchestrationState();
+            }
+            foreach (var evt in events)
+            {
+                if (evt is ExecutionStartedEvent executionStartedEvent)
+                {
+                    orchestrationState.OrchestrationInstance = executionStartedEvent.OrchestrationInstance;
+                    orchestrationState.CreatedTime = executionStartedEvent.Timestamp;
+                    orchestrationState.Input = executionStartedEvent.Input;
+                    orchestrationState.Name = executionStartedEvent.Name;
+                    orchestrationState.Version = executionStartedEvent.Version;
+                    orchestrationState.Tags = executionStartedEvent.Tags;
+                    orchestrationState.ParentInstance = executionStartedEvent.ParentInstance;
+                    orchestrationState.ScheduledStartTime = executionStartedEvent.ScheduledStartTime;
+                    orchestrationState.CompletedTime = Core.Common.Utils.DateTimeSafeMaxValue;
+                    orchestrationState.Output = null;
+                    orchestrationState.OrchestrationStatus = OrchestrationStatus.Running;
+                }
+                else if (evt is ExecutionCompletedEvent executionCompletedEvent)
+                {
+                    orchestrationState.CompletedTime = executionCompletedEvent.Timestamp;
+                    orchestrationState.Output = executionCompletedEvent.Result;
+                    orchestrationState.OrchestrationStatus = executionCompletedEvent.OrchestrationStatus;
+                }
+            }
+            return orchestrationState;
         }
 
         public override void Process(WaitRequestReceived evt, EffectTracker effects)
         {
-            if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
+            if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState?.OrchestrationStatus))
             {
                 effects.Add(TrackedObjectKey.Outbox);
                 evt.ResponseToSend =  evt.CreateResponse(this.OrchestrationState);              
@@ -111,10 +167,7 @@ namespace DurableTask.Netherite
                 }
                 else
                 {
-                    // cull the list of waiters to remove requests that have already timed out
-                    this.Waiters = this.Waiters
-                        .Where(request => request.TimeoutUtc > DateTime.UtcNow)
-                        .ToList();
+                    this.CullWaiters(evt.Timestamp);
                 }
                 
                 this.Waiters.Add(evt);

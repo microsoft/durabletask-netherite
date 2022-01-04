@@ -29,7 +29,19 @@ namespace DurableTask.Netherite
         public List<HistoryEvent> NewEvents { get; set; }
 
         [DataMember]
-        public OrchestrationState State { get; set; }
+        public string CustomStatus { get; set; }
+
+        [DataMember]
+        public bool CustomStatusUpdated { get; set; }
+
+        [DataMember]
+        public bool NotExecutable { get; set; }
+
+        [DataMember]
+        public string ExecutionId { get; set; }
+
+        [DataMember]
+        public OrchestrationStatus OrchestrationStatus { get; set; }
 
         [DataMember]
         public List<TaskMessage> ActivityMessages { get; set; }
@@ -118,11 +130,8 @@ namespace DurableTask.Netherite
         {
             base.ExtraTraceInformation(s);
 
-            if (this.State != null)
-            {
-                s.Append(' ');
-                s.Append(this.State.OrchestrationStatus);
-            }
+            s.Append(' ');
+            s.Append(this.OrchestrationStatus);
         }
     }
 }

@@ -22,7 +22,7 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Prefetch);
 
-        public override void OnRecoveryCompleted(RecoveryCompleted evt)
+        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
         {
             // reissue prefetch tasks for what did not complete prior to crash/recovery
             foreach (var kvp in this.PendingPrefetches)

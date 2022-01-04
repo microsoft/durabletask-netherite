@@ -83,7 +83,7 @@ namespace DurableTask.Netherite
             this.WorkItemTraceHelper = workItemTraceHelper;
             this.stopwatch.Start();
             this.LastTransition = this.CurrentTimeMs;
-            this.CacheDebugger = this.Settings.CacheDebugger;
+            this.CacheDebugger = this.Settings.TestHooks?.CacheDebugger;
         }
 
         public async Task<long> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, long firstInputQueuePosition)
@@ -304,6 +304,7 @@ namespace DurableTask.Netherite
                 item.HistorySize,
                 WorkItemTraceHelper.FormatMessageIdList(item.MessageBatch.TracedMessages));
 
+            item.PreStatus = item.OrchestrationRuntimeState.Status;
             this.OrchestrationWorkItemQueue.Add(item);
         }
     }

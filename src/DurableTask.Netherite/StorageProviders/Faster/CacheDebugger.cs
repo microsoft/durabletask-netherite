@@ -14,9 +14,15 @@ namespace DurableTask.Netherite.Faster
     /// <summary>
     /// Records cache and storage management traces for each object. This class is only used for testing and debugging, as it creates lots of overhead.
     /// </summary>
-    public class CacheDebugger
+    class CacheDebugger
     {
+        readonly TestHooks testHooks;
         readonly ConcurrentDictionary<TrackedObjectKey, ObjectInfo> Objects = new ConcurrentDictionary<TrackedObjectKey, ObjectInfo>();
+
+        public CacheDebugger(TestHooks testHooks)
+        {
+            this.testHooks = testHooks;
+        }
 
         public enum CacheEvent
         {
@@ -67,9 +73,6 @@ namespace DurableTask.Netherite.Faster
 
             public string PrintCacheEvents() => string.Join(",", this.CacheEvents.Select(e => e.ToString()));
         }
-
-        public event Action<string> OnError;
-
      
         public Task CreateTimer(TimeSpan timeSpan)
         {
@@ -81,7 +84,7 @@ namespace DurableTask.Netherite.Faster
             var first = await Task.WhenAny(waitingFor, timer);
             if (first == timer)
             {
-                this.OnError($"timeout: {message}");
+                this.testHooks.Error(this.GetType().Name, $"timeout: {message}");
             }
         }
 
@@ -138,25 +141,15 @@ namespace DurableTask.Netherite.Faster
 
         internal void Fail(string message)
         {
-            if (System.Diagnostics.Debugger.IsAttached)
-            {
-                System.Diagnostics.Debugger.Break();
-            }
-
-            this.OnError(message);
+            this.testHooks.Error(this.GetType().Name, message);
         }
 
         internal void Fail(string message, TrackedObjectKey key)
         {
             this.Record(key, CacheEvent.Fail, null, null);
 
-            if (System.Diagnostics.Debugger.IsAttached)
-            {
-                System.Diagnostics.Debugger.Break();
-            }
-
             var objectInfo = this.Objects[key];
-            this.OnError($"{message} cacheEvents={objectInfo.PrintCacheEvents()}");
+            this.testHooks.Error(this.GetType().Name, $"{message} cacheEvents={objectInfo.PrintCacheEvents()}");
         }
 
         internal void ValidateObjectVersion(FasterKV.Value val, TrackedObjectKey key)
