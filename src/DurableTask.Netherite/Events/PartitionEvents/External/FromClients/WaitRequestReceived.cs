@@ -40,11 +40,11 @@ namespace DurableTask.Netherite
             s.Append(this.InstanceId);
         }
 
-        public static bool SatisfiesWaitCondition(OrchestrationState value)
-             => (value != null &&
-                 value.OrchestrationStatus != OrchestrationStatus.Running &&
-                 value.OrchestrationStatus != OrchestrationStatus.Pending &&
-                 value.OrchestrationStatus != OrchestrationStatus.ContinuedAsNew);
+        public static bool SatisfiesWaitCondition(OrchestrationStatus? value)
+             => (value.HasValue &&
+                 value.Value != OrchestrationStatus.Running &&
+                 value.Value != OrchestrationStatus.Pending &&
+                 value.Value != OrchestrationStatus.ContinuedAsNew);
 
         public WaitResponseReceived CreateResponse(OrchestrationState value)
             => new WaitResponseReceived()

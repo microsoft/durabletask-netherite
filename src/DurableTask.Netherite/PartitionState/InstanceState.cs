@@ -102,47 +102,11 @@ namespace DurableTask.Netherite
             }
 
             this.OrchestrationState.LastUpdatedTime = evt.Timestamp;
-
-            if (evt.State != null)
-            {
-                this.Partition.Assert(
-                (
-                    evt.State.Version,
-                    evt.State.Status,
-                    evt.State.Output,
-                    evt.State.Name,
-                    evt.State.Input,
-                    evt.State.OrchestrationInstance.InstanceId,
-                    evt.State.OrchestrationInstance.ExecutionId,
-                    evt.State.CompletedTime,
-                    evt.State.OrchestrationStatus,
-                    evt.State.LastUpdatedTime,
-                    evt.State.CreatedTime,
-                    evt.State.ScheduledStartTime,
-                    evt.State.OrchestrationInstance.ExecutionId
-                )
-                ==
-                (
-                    this.OrchestrationState.Version,
-                    this.OrchestrationState.Status,
-                    this.OrchestrationState.Output,
-                    this.OrchestrationState.Name,
-                    this.OrchestrationState.Input,
-                    this.OrchestrationState.OrchestrationInstance.InstanceId,
-                    this.OrchestrationState.OrchestrationInstance.ExecutionId,
-                    this.OrchestrationState.CompletedTime,
-                    this.OrchestrationState.OrchestrationStatus,
-                    this.OrchestrationState.LastUpdatedTime,
-                    this.OrchestrationState.CreatedTime,
-                    this.OrchestrationState.ScheduledStartTime,
-                    evt.ExecutionId
-                ));
-            }
             
             // if the orchestration is complete, notify clients that are waiting for it
             if (this.Waiters != null)
             {
-                if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
+                if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState?.OrchestrationStatus))
                 {
                     // we do not need effects.Add(TrackedObjectKey.Outbox) because it has already been added by SessionsState
                     evt.ResponsesToSend = this.Waiters.Select(request => request.CreateResponse(this.OrchestrationState)).ToList();
@@ -190,7 +154,7 @@ namespace DurableTask.Netherite
 
         public override void Process(WaitRequestReceived evt, EffectTracker effects)
         {
-            if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
+            if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState?.OrchestrationStatus))
             {
                 effects.Add(TrackedObjectKey.Outbox);
                 evt.ResponseToSend =  evt.CreateResponse(this.OrchestrationState);              

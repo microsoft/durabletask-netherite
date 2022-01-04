@@ -728,7 +728,6 @@ namespace DurableTask.Netherite
                 PersistFirst = partition.Settings.PersistStepsFirst ? BatchProcessed.PersistFirstStatus.Required : BatchProcessed.PersistFirstStatus.NotRequired,
                 OrchestrationStatus = state.OrchestrationStatus,
                 ExecutionId = state.OrchestrationInstance.ExecutionId,
-                State = state,
                 ActivityMessages = (List<TaskMessage>)activityMessages,
                 LocalMessages = localMessages,
                 RemoteMessages = remoteMessages,
@@ -751,7 +750,7 @@ namespace DurableTask.Netherite
                 latencyMs,
                 sequenceNumber);
 
-             partition.SubmitEvent(batchProcessedEvent);
+            partition.SubmitEvent(batchProcessedEvent);
 
             if (this.workItemTraceHelper.TraceTaskMessages)
             {

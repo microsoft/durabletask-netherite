@@ -59,7 +59,7 @@ namespace DurableTask.Netherite
 
         const double SMOOTHING_FACTOR = 0.1;
 
-        public override void OnRecoveryCompleted()
+        public override void OnRecoveryCompleted(EffectTracker effects)
         {
             // reschedule work items
             foreach (var pending in this.Pending)
@@ -251,7 +251,7 @@ namespace DurableTask.Netherite
             this.AverageActivityCompletionTime = !this.AverageActivityCompletionTime.HasValue ? evt.LatencyMs :
                 SMOOTHING_FACTOR * evt.LatencyMs + (1 - SMOOTHING_FACTOR) * this.AverageActivityCompletionTime.Value;
 
-            if (evt.OriginPartitionId == effects.Partition.PartitionId)
+            if (evt.OriginPartitionId == effects.PartitionId)
             {
                 // the response can be delivered to a session on this partition
                 effects.Add(TrackedObjectKey.Sessions);
@@ -305,7 +305,7 @@ namespace DurableTask.Netherite
                 this.TransferCommandsReceived[evt.PartitionId] = evt.Timestamp;
             }
 
-            this.Partition.EventTraceHelper.TraceEventProcessingDetail($"Processed OffloadCommand, " +
+            effects.EventTraceHelper?.TraceEventProcessingDetail($"Processed OffloadCommand, " +
                 $"OffloadDestination={evt.TransferDestination}, NumActivitiesSent={evt.TransferredActivities.Count}");
             effects.Add(TrackedObjectKey.Outbox);
         }
@@ -362,7 +362,7 @@ namespace DurableTask.Netherite
 
             if (!effects.IsReplaying)
             {
-                this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedWorkItemQueueSize, this.Pending.Count, this.LocalBacklog.Count, -1, offloadDecisionEvent);
+                effects.EventTraceHelper?.TracePartitionOffloadDecision(this.EstimatedWorkItemQueueSize, this.Pending.Count, this.LocalBacklog.Count, -1, offloadDecisionEvent);
 
                 if (this.LocalBacklog.Count > 0)
                 {

@@ -43,9 +43,6 @@ namespace DurableTask.Netherite
         [DataMember]
         public OrchestrationStatus OrchestrationStatus { get; set; }
 
-        [IgnoreDataMember]
-        public OrchestrationState State { get; set; }
-
         [DataMember]
         public List<TaskMessage> ActivityMessages { get; set; }
 

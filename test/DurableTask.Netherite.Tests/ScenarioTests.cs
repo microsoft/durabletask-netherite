@@ -47,6 +47,7 @@ namespace DurableTask.Netherite.Tests
                 throw new TimeoutException("timed out while purging instances after running test");
             }
 
+            Assert.Null(this.fixture.TestHooksError);
             this.outputHelper = null;
         }
 

@@ -49,7 +49,7 @@ namespace DurableTask.Netherite
         public static string GetWorkItemId(uint partition, long session, long position) => $"{partition:D2}S{session}P{position}";
 
 
-        public override void OnRecoveryCompleted()
+        public override void OnRecoveryCompleted(EffectTracker effects)
         {
             // start work items for all sessions
             foreach (var kvp in this.Sessions)
@@ -327,7 +327,7 @@ namespace DurableTask.Netherite
                     effects.Add(TrackedObjectKey.Timers);
                 }
 
-                if (evt.RemoteMessages?.Count > 0 || WaitRequestReceived.SatisfiesWaitCondition(evt.State))
+                if (evt.RemoteMessages?.Count > 0 || WaitRequestReceived.SatisfiesWaitCondition(evt.OrchestrationStatus))
                 {
                     effects.Add(TrackedObjectKey.Outbox);
                 }
@@ -346,16 +346,16 @@ namespace DurableTask.Netherite
             }
 
             // remove processed messages from this batch
-            effects.Partition.Assert(session != null);
-            effects.Partition.Assert(session.SessionId == evt.SessionId);
-            effects.Partition.Assert(session.BatchStartPosition == evt.BatchStartPosition);
+            effects.Assert(session != null);
+            effects.Assert(session.SessionId == evt.SessionId);
+            effects.Assert(session.BatchStartPosition == evt.BatchStartPosition);
             session.Batch.RemoveRange(0, evt.BatchLength);
             session.BatchStartPosition += evt.BatchLength;
 
             this.StartNewBatchIfNeeded(session, effects, evt.InstanceId, effects.IsReplaying);
         }
 
-        void StartNewBatchIfNeeded(Session session, EffectTracker effects, string instanceId, bool inRecovery)
+        void StartNewBatchIfNeeded(Session session, EffectTracker effects, string instanceId, bool isReplaying)
         {
             if (session.Batch.Count == 0)
             {
@@ -364,7 +364,7 @@ namespace DurableTask.Netherite
             }
             else
             {
-                if (!inRecovery) // we don't start work items until end of recovery
+                if (!isReplaying) // we don't start work items until end of recovery
                 {
                     // there are more messages. Start another work item.
                     new OrchestrationMessageBatch(instanceId, session, this.Partition);

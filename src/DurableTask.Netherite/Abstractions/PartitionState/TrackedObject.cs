@@ -68,7 +68,7 @@ namespace DurableTask.Netherite
         /// Is automatically called on all singleton objects after recovery. Typically used to
         /// restart pending activities, timers, tasks and the like.
         /// </summary>
-        public virtual void OnRecoveryCompleted()
+        public virtual void OnRecoveryCompleted(EffectTracker effects)
         {
         }
 

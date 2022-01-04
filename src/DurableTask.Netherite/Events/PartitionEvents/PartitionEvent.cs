@@ -40,7 +40,7 @@ namespace DurableTask.Netherite
         public virtual void OnSubmit(Partition partition) { }
 
         // make a copy of an event so we run it through the pipeline a second time
-        public PartitionEvent Clone()
+        public virtual PartitionEvent Clone()
         {
             var evt = (PartitionEvent)this.MemberwiseClone();
 
