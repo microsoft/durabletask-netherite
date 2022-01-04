@@ -11,6 +11,8 @@ namespace DurableTask.Netherite.Faster
     using System.Threading.Tasks;
     using FASTER.core;
     using Newtonsoft.Json;
+    using Newtonsoft.Json.Linq;
+    using Newtonsoft.Json.Serialization;
 
     /// <summary>
     /// Validates the replay, by maintaining an ongoing checkpoint and confirming the commutative diagram
@@ -43,21 +45,85 @@ namespace DurableTask.Netherite.Faster
         };
 
         string Serialize(TrackedObject trackedObject)
-        { 
-            string serialized =  trackedObject == null ? "null" : JsonConvert.SerializeObject(trackedObject, typeof(TrackedObject), Formatting.Indented, this.settings);
-            if (trackedObject is SessionsState)
+        {
+            if (trackedObject == null)
             {
-                serialized = serialized.Replace("\"IsPlayed\": true", "\"IsPlayed\": false");
+                return "null";
             }
-            else if (trackedObject is HistoryState)
+            else
             {
-                serialized = serialized.Replace("\"IsPlayed\": false", "\"IsPlayed\": true");
+                JObject jObject = JObject.FromObject(trackedObject, JsonSerializer.Create(this.settings));
+
+                // for the checking to work correctly, we must edit the serialized state as follows:
+                // - order all json properties, otherwise nondeterminism causes false errors
+                // - modify isPlayed to true (on HistoryState) or false (on SessionsState) to avoid errors due to racing mutations
+
+                bool? fixIsPlayed;
+                if (trackedObject is SessionsState)
+                {
+                    fixIsPlayed = false;
+                }
+                else if (trackedObject is HistoryState)
+                {
+                    fixIsPlayed = true;
+                }
+                else
+                {
+                    fixIsPlayed = null;
+                }
+
+                RecursivelyEdit(jObject);
+
+                return jObject.ToString(Formatting.Indented);
+
+                void RecursivelyEdit(JObject jObj)
+                {
+                    var children = jObj.Properties().OrderBy(p => p.Name).ToList();
+                    foreach (var prop in children)
+                    {
+                        prop.Remove();
+                    }
+                    foreach (var prop in children)
+                    {
+                        jObj.Add(prop);
+
+                        if (prop.Value is JObject o1)
+                        {
+                            RecursivelyEdit(o1);
+                        }
+                        else if (prop.Value is JArray)
+                        {
+                            var numProperties = prop.Value.Count();
+                            for (int i = 0; i < numProperties; i++)
+                            {
+                                if (prop.Value[i] is JObject o2)
+                                {
+                                    RecursivelyEdit(o2);
+                                }
+                            }
+                        }
+                        else if (fixIsPlayed.HasValue && prop.Name == "IsPlayed")
+                        {
+                            prop.Value = (JToken)fixIsPlayed.Value;
+                        }
+                    }
+                }
             }
-            return serialized;
         }
 
         TrackedObject DeserializeTrackedObject(string content, TrackedObjectKey key)
-            => (content != null) ? (TrackedObject) JsonConvert.DeserializeObject(content, this.settings) : TrackedObjectKey.Factory(key);
+        {
+            if (content == "null")
+            {
+                return null;
+            }
+            else
+            {
+                var trackedObject = TrackedObjectKey.Factory(key);
+                JsonConvert.PopulateObject(content, trackedObject, this.settings);
+                return trackedObject;
+            }
+        }
 
         string Serialize(PartitionUpdateEvent partitionUpdateEvent)
             => JsonConvert.SerializeObject(partitionUpdateEvent, typeof(PartitionUpdateEvent), Formatting.Indented, this.settings);
@@ -168,13 +234,25 @@ namespace DurableTask.Netherite.Faster
             public override double CurrentTimeMs => 0;
  
             public override ValueTask ApplyToStore(TrackedObjectKey key, EffectTracker tracker)
-            {
-                this.info.Store.TryGetValue(key, out string content);
-                var trackedObject = this.replayChecker.DeserializeTrackedObject(content, key);
+            {                
+                // retrieve the previously stored state, if present
+                TrackedObject trackedObject = null;
+                if (this.info.Store.TryGetValue(key, out string content))
+                {
+                    trackedObject = this.replayChecker.DeserializeTrackedObject(content, key);
+                }
+
+                // initialize the tracked object before applying the effect
+                trackedObject ??= TrackedObjectKey.Factory(key); 
                 trackedObject.Partition = this.Partition;
+
+                // apply the effect using our special tracker that suppresses side effects
                 tracker.ProcessEffectOn(trackedObject);
+
+                // store the result back, to reuse on the next update
                 content = this.replayChecker.Serialize(trackedObject);
                 this.info.Store[key] = content;
+
                 return default;
             }
 
