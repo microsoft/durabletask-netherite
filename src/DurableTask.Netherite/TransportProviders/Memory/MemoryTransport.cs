@@ -5,6 +5,7 @@ namespace DurableTask.Netherite.Emulated
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Netherite.Faster;
@@ -27,13 +28,16 @@ namespace DurableTask.Netherite.Emulated
         Task startOrRecoverTask;
 
         Dictionary<Guid, IMemoryQueue<ClientEvent>> clientQueues;
-        IMemoryQueue<PartitionEvent>[] partitionQueues;
         IMemoryQueue<LoadMonitorEvent> loadMonitorQueue;
         TransportAbstraction.IClient client;
-        TransportAbstraction.IPartition[] partitions;
         TransportAbstraction.ILoadMonitor loadMonitor;
-        IPartitionErrorHandler[] partitionErrorHandlers;
         CancellationTokenSource shutdownTokenSource;
+
+        SendWorker clientSender;
+        SendWorker loadMonitorSender;
+
+        IMemoryQueue<PartitionEvent>[] partitionQueues;
+        TransportAbstraction.IPartition[] partitions;
 
         static readonly TimeSpan simulatedDelay = TimeSpan.FromMilliseconds(1);
 
@@ -44,23 +48,19 @@ namespace DurableTask.Netherite.Emulated
             TransportConnectionString.Parse(settings.ResolvedTransportConnectionString, out _, out _);
             this.numberPartitions = (uint) settings.PartitionCount;
             this.logger = logger;
-            this.faultInjector = settings.FaultInjector;
+            this.faultInjector = settings.TestHooks?.FaultInjector;
         }
 
         async Task<bool> ITaskHub.CreateIfNotExistsAsync()
         {
             await Task.Delay(simulatedDelay).ConfigureAwait(false);
             this.clientQueues = new Dictionary<Guid, IMemoryQueue<ClientEvent>>();
-            this.partitionQueues = new IMemoryQueue<PartitionEvent>[this.numberPartitions];
-            this.partitions = new TransportAbstraction.IPartition[this.numberPartitions];
-            this.partitionErrorHandlers = new IPartitionErrorHandler[this.numberPartitions];
             return true;
         }
 
         Task ITaskHub.DeleteAsync()
         {
             this.clientQueues = null;
-            this.partitionQueues = null;
 
             return this.host.StorageProvider.DeleteAllPartitionStatesAsync();
         }
@@ -68,7 +68,7 @@ namespace DurableTask.Netherite.Emulated
         async Task<bool> ITaskHub.ExistsAsync()
         {
             await Task.Delay(simulatedDelay).ConfigureAwait(false);
-            return this.partitionQueues != null;
+            return this.clientQueues != null;
         }
 
         Task ITaskHub.StartAsync()
@@ -81,19 +81,20 @@ namespace DurableTask.Netherite.Emulated
 
             // create a client
             var clientId = Guid.NewGuid();
-            var clientSender = new SendWorker(this.shutdownTokenSource.Token);
-            this.client = this.host.AddClient(clientId, default, clientSender);
+            this.clientSender = new SendWorker(this.shutdownTokenSource.Token);
+            this.client = this.host.AddClient(clientId, default, this.clientSender);
             var clientQueue = new MemoryClientQueue(this.client, this.shutdownTokenSource.Token, this.logger);
             this.clientQueues[clientId] = clientQueue;
-            clientSender.SetHandler(list => this.SendEvents(this.client, list));
+            this.clientSender.SetHandler(list => this.SendEvents(this.client, list));
 
             // create a load monitor
             if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
             {
-                var loadMonitorSender = new SendWorker(this.shutdownTokenSource.Token);
-                this.loadMonitor = this.host.AddLoadMonitor(default, loadMonitorSender);
+                this.loadMonitorSender = new SendWorker(this.shutdownTokenSource.Token);
+                this.loadMonitor = this.host.AddLoadMonitor(default, this.loadMonitorSender);
                 this.loadMonitorQueue = new MemoryLoadMonitorQueue(this.loadMonitor, this.shutdownTokenSource.Token, this.logger);
-                loadMonitorSender.SetHandler(list => this.SendEvents(this.loadMonitor, list));
+                this.loadMonitorSender.SetHandler(list => this.SendEvents(this.loadMonitor, list));
+                this.loadMonitorSender.Resume();
             }
 
             // we finish the (possibly lengthy) partition loading asynchronously so it is possible to receive 
@@ -119,53 +120,90 @@ namespace DurableTask.Netherite.Emulated
 
         async Task StartOrRecoverAsync(int epoch)
         {
-            await Task.Yield();
-            System.Diagnostics.Debug.Assert(this.startOrRecoverTask != null);
+           await Task.Yield();
+           System.Diagnostics.Debug.Assert(this.startOrRecoverTask != null);
 
-            // create all partitions
+           if (epoch > 0)
+           {
+                if (this.settings.TestHooks != null && this.settings.TestHooks.FaultInjector == null)
+                {
+                    this.settings.TestHooks.Error("MemoryTransport", "Unexpected partition termination");
+                }
+
+                // stop all partitions that are not already terminated
+                var stoptasks = new List<Task>();
+                foreach (var partition in this.partitions)
+                {
+                    if (! partition.ErrorHandler.IsTerminated)
+                    {
+                        stoptasks.Add(partition.StopAsync(true));
+                    }
+                }
+                await Task.WhenAll(stoptasks);
+           }
+
+            var partitions = new TransportAbstraction.IPartition[this.numberPartitions];
+            var partitionQueues = new IMemoryQueue<PartitionEvent>[this.numberPartitions];
+            var partitionSenders = new SendWorker[this.numberPartitions];
+
+            // create the partitions and partition queues
+            for (int i = 0; i < this.numberPartitions; i++)
+            {
+                var partitionSender = partitionSenders[i] = new SendWorker(this.shutdownTokenSource.Token);
+                var partition = this.host.AddPartition((uint) i, partitionSender);
+                partitionSender.SetHandler(list => this.SendEvents(partition, list, partitionQueues));
+
+                partitionQueues[i] = this.faultInjector == null ?
+                    new MemoryPartitionQueueWithSerialization(partition, this.shutdownTokenSource.Token, this.logger)
+                    : new MemoryPartitionQueue(partition, this.shutdownTokenSource.Token, this.logger); // need durability listeners to be correctly notified
+
+                partitions[i] = partition;
+            }
+
+            // start all the partitions
             var tasks = new List<Task>();
-            for (uint i = 0; i < this.numberPartitions; i++)
+            for (int i = 0; i < this.numberPartitions; i++)
             {
                 tasks.Add(StartPartition(i));
             }
             await Task.WhenAll(tasks);
 
-            async Task StartPartition(uint partitionId)
+            async Task StartPartition(int i)
             {
-                var partitionSender = new SendWorker(this.shutdownTokenSource.Token);
-                var partition = this.host.AddPartition(partitionId, partitionSender);
-                partitionSender.SetHandler(list => this.SendEvents(partition, list));
-
-                this.partitionQueues[partitionId] = this.faultInjector == null ?
-                    new MemoryPartitionQueueWithSerialization(partition, this.shutdownTokenSource.Token, this.logger)
-                    : new MemoryPartitionQueue(partition, this.shutdownTokenSource.Token, this.logger); // need durability listeners to be correctly notified
-                
-                this.partitions[partitionId] = partition;
-                this.partitionErrorHandlers[partitionId] = this.host.CreateErrorHandler(partitionId);
-
+                partitionSenders[i].Resume();
+                var errorHandler = this.host.CreateErrorHandler((uint)i);
                 if (this.faultInjector != null)
                 {
-                    this.partitionErrorHandlers[partitionId].Token.Register(() => this.RecoveryHandler(epoch));
+                    errorHandler.Token.Register(() => this.RecoveryHandler(epoch));
                 }
-
-                var nextInputQueuePosition = await partition.CreateOrRestoreAsync(this.partitionErrorHandlers[partitionId], 0);
-                this.partitionQueues[partitionId].FirstInputQueuePosition = nextInputQueuePosition;
+                var nextInputQueuePosition = await partitions[i].CreateOrRestoreAsync(errorHandler, 0);
+                partitionQueues[i].FirstInputQueuePosition = nextInputQueuePosition;
             };
+
+            // replace the arrays so the new queues and partitions are now receiving new client and load monitor requests
+            this.partitions = partitions;
+            this.partitionQueues = partitionQueues;
 
             this.shutdownTokenSource?.Token.ThrowIfCancellationRequested();
 
             System.Diagnostics.Trace.TraceInformation($"MemoryTransport: Recovered epoch={epoch}");
 
             // start all the emulated queues
-            foreach (var partitionQueue in this.partitionQueues)
+            foreach (var partitionQueue in partitionQueues)
             {
                 partitionQueue.Resume();
             }
-            foreach (var clientQueue in this.clientQueues.Values)
+
+            if (epoch == 0)
             {
-                clientQueue.Resume();
+                this.loadMonitorSender.Resume();
+                this.loadMonitorQueue.Resume();
+                this.clientSender.Resume();
+                foreach (var clientQueue in this.clientQueues.Values)
+                {
+                    clientQueue.Resume();
+                }
             }
-            this.loadMonitorQueue.Resume();
         }
 
         async Task ITaskHub.StopAsync()
@@ -199,7 +237,7 @@ namespace DurableTask.Netherite.Emulated
         {
             try
             {
-                this.SendEvents(events, null);
+                this.SendEvents(events, null, this.partitionQueues);
             }
             catch (TaskCanceledException)
             {
@@ -211,11 +249,11 @@ namespace DurableTask.Netherite.Emulated
             }
         }
 
-        void SendEvents(TransportAbstraction.IPartition partition, IEnumerable<Event> events)
+        void SendEvents(TransportAbstraction.IPartition partition, IEnumerable<Event> events, IMemoryQueue<PartitionEvent>[] partitionQueues)
         {
             try
             {
-                this.SendEvents(events, partition.PartitionId);
+                this.SendEvents(events, partition.PartitionId, partitionQueues);
             }
             catch (TaskCanceledException)
             {
@@ -231,7 +269,7 @@ namespace DurableTask.Netherite.Emulated
         {
             try
             {
-                this.SendEvents(events, null);
+                this.SendEvents(events, null, this.partitionQueues);
             }
             catch (TaskCanceledException)
             {
@@ -243,7 +281,7 @@ namespace DurableTask.Netherite.Emulated
             }
         }
 
-        void SendEvents(IEnumerable<Event> events, uint? sendingPartition)
+        void SendEvents(IEnumerable<Event> events, uint? sendingPartition, IMemoryQueue<PartitionEvent>[] partitionQueues)
         {
             foreach (var evt in events)
             {
@@ -256,7 +294,7 @@ namespace DurableTask.Netherite.Emulated
                 }
                 else if (evt is PartitionEvent partitionEvent)
                 {
-                    this.partitionQueues[partitionEvent.PartitionId].Send(partitionEvent);
+                    partitionQueues[partitionEvent.PartitionId].Send(partitionEvent);
                 }
                 else if (evt is LoadMonitorEvent loadMonitorEvent)
                 {
