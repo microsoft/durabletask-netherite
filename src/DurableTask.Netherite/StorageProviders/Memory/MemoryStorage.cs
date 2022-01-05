@@ -16,6 +16,7 @@ namespace DurableTask.Netherite
     {
         readonly ILogger logger;
         Partition partition;
+        EffectTracker effects;
         long nextSubmitPosition = 0;
         long commitPosition = 0;
         long inputQueuePosition = 0;
@@ -63,6 +64,7 @@ namespace DurableTask.Netherite
         public Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler termination, long initialInputQueuePosition)
         {
             this.partition = partition;
+            this.effects = new MemoryStorageEffectTracker(partition, this);
 
             foreach (var trackedObject in this.trackedObjects.Values)
             {
@@ -112,14 +114,7 @@ namespace DurableTask.Netherite
         protected override async Task Process(IList<PartitionEvent> batch)
         {
             try
-            {
-                var effects = new EffectTracker(
-                    this.partition,
-                    this.ApplyToStore,
-                    this.RemoveFromStore,
-                    () => (this.commitPosition, this.inputQueuePosition)
-                );
-
+            {             
                 if (batch.Count != 0)
                 {
                     foreach (var partitionEvent in batch)
@@ -133,7 +128,7 @@ namespace DurableTask.Netherite
                             {
                                 case PartitionUpdateEvent updateEvent:
                                     updateEvent.NextCommitLogPosition = this.commitPosition + 1;
-                                    await effects.ProcessUpdate(updateEvent).ConfigureAwait(false);
+                                    await this.effects.ProcessUpdate(updateEvent).ConfigureAwait(false);
                                     DurabilityListeners.ConfirmDurable(updateEvent);
                                     if (updateEvent.NextCommitLogPosition > 0)
                                     {
@@ -146,15 +141,15 @@ namespace DurableTask.Netherite
                                     if (readEvent.Prefetch.HasValue)
                                     {
                                         var prefetchTarget = this.GetOrAdd(readEvent.Prefetch.Value);
-                                        effects.ProcessReadResult(readEvent, readEvent.Prefetch.Value, prefetchTarget);
+                                        this.effects.ProcessReadResult(readEvent, readEvent.Prefetch.Value, prefetchTarget);
                                     }
                                     var readTarget = this.GetOrAdd(readEvent.ReadTarget);
-                                    effects.ProcessReadResult(readEvent, readEvent.ReadTarget, readTarget);
+                                    this.effects.ProcessReadResult(readEvent, readEvent.ReadTarget, readTarget);
                                     break;
 
                                 case PartitionQueryEvent queryEvent:
                                     var instances = this.QueryOrchestrationStates(queryEvent.InstanceQuery);
-                                    var backgroundTask = Task.Run(() => effects.ProcessQueryResultAsync(queryEvent, instances.ToAsyncEnumerable()));
+                                    var backgroundTask = Task.Run(() => this.effects.ProcessQueryResultAsync(queryEvent, instances.ToAsyncEnumerable()));
                                     break;
 
                                 default:
@@ -180,24 +175,40 @@ namespace DurableTask.Netherite
             }
         }
 
-        public ValueTask ApplyToStore(TrackedObjectKey key, EffectTracker tracker)
-        {
-            tracker.ProcessEffectOn(this.GetOrAdd(key));
-            return default;
-        }
-
-        public ValueTask RemoveFromStore(IEnumerable<TrackedObjectKey> keys)
-        {
-            foreach (var key in keys)
-            {
-                this.trackedObjects.TryRemove(key, out _);
-            }
-            return default;
-        }
-
         public Task Prefetch(IEnumerable<TrackedObjectKey> keys)
         {
             return Task.CompletedTask;
+        }
+
+        class MemoryStorageEffectTracker : PartitionEffectTracker
+        {
+            readonly MemoryStorage memoryStorage;
+
+            public MemoryStorageEffectTracker(Partition partition, MemoryStorage memoryStorage)
+                : base(partition)
+            { 
+                this.memoryStorage = memoryStorage;
+            }
+
+            public override ValueTask ApplyToStore(TrackedObjectKey key, EffectTracker tracker)
+            {
+                tracker.ProcessEffectOn(this.memoryStorage.GetOrAdd(key));
+                return default;
+            }
+
+            public override (long, long) GetPositions()
+            {
+                return (this.memoryStorage.commitPosition, this.memoryStorage.inputQueuePosition);
+            }
+
+            public override ValueTask RemoveFromStore(IEnumerable<TrackedObjectKey> keys)
+            {
+                foreach (var key in keys)
+                {
+                    this.memoryStorage.trackedObjects.TryRemove(key, out _);
+                }
+                return default;
+            }
         }
     }
 }

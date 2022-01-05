@@ -19,6 +19,11 @@ namespace DurableTask.Netherite
 
         const int MaxBatchSize = 1000;
 
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
+
         public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition)
         {
             int batchCount = 0;
@@ -35,6 +40,9 @@ namespace DurableTask.Netherite
                 };
 
             PurgeBatchIssued batch = makeNewBatchObject();
+
+            // TODO : while the request itself is reliable, the client response is not. 
+            // We should probably fix that by using the ClientState to track progress.
 
             async Task ExecuteBatch()
             {

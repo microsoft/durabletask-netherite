@@ -32,7 +32,7 @@ namespace DurableTask.Netherite
             return $"Instance InstanceId={this.InstanceId} Status={this.OrchestrationState?.OrchestrationStatus}";
         }
 
-        public void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
+        public override void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
             bool filterDuplicate = this.OrchestrationState != null
                 && creationRequestReceived.DedupeStatuses != null
@@ -54,7 +54,7 @@ namespace DurableTask.Netherite
                     Input = ee.Input,
                     Tags = ee.Tags,
                     CreatedTime = ee.Timestamp,
-                    LastUpdatedTime = DateTime.UtcNow,
+                    LastUpdatedTime = ee.Timestamp,
                     CompletedTime = Core.Common.DateTimeUtils.MinDateTime,
                     ScheduledStartTime = ee.ScheduledStartTime
                 };
@@ -70,48 +70,94 @@ namespace DurableTask.Netherite
                 }
             }
 
-            if (!effects.IsReplaying)
+            effects.Add(TrackedObjectKey.Outbox);
+            creationRequestReceived.ResponseToSend = new CreationResponseReceived()
             {
-                // send response to client
-                effects.Partition.Send(new CreationResponseReceived()
-                {
-                    ClientId = creationRequestReceived.ClientId,
-                    RequestId = creationRequestReceived.RequestId,
-                    Succeeded = !filterDuplicate,
-                    ExistingInstanceOrchestrationStatus = this.OrchestrationState?.OrchestrationStatus,
-                });
+                ClientId = creationRequestReceived.ClientId,
+                RequestId = creationRequestReceived.RequestId,
+                Succeeded = !filterDuplicate,
+                ExistingInstanceOrchestrationStatus = this.OrchestrationState?.OrchestrationStatus,
+            };
+        }
+
+        void CullWaiters(DateTime threshold)
+        {
+            // remove all waiters whose timeout is before the threshold
+            if (this.Waiters.Any(request => request.TimeoutUtc <= threshold))
+            {
+                this.Waiters = this.Waiters
+                            .Where(request => request.TimeoutUtc > threshold)
+                            .ToList();
             }
         }
 
-
-        public void Process(BatchProcessed evt, EffectTracker effects)
+        public override void Process(BatchProcessed evt, EffectTracker effects)
         {
-            // update the state of an orchestration
-            this.OrchestrationState = evt.State;
+            // update the current orchestration state based on the new events
+            this.OrchestrationState = UpdateOrchestrationState(this.OrchestrationState, evt.NewEvents);
 
+            if (evt.CustomStatusUpdated)
+            {
+                this.OrchestrationState.Status = evt.CustomStatus;
+            }
+
+            this.OrchestrationState.LastUpdatedTime = evt.Timestamp;
+            
             // if the orchestration is complete, notify clients that are waiting for it
-            if (this.Waiters != null && WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
+            if (this.Waiters != null)
             {
-                if (!effects.IsReplaying)
+                if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState?.OrchestrationStatus))
                 {
-                    foreach (var request in this.Waiters)
-                    {
-                        this.Partition.Send(request.CreateResponse(this.OrchestrationState));
-                    }
-                }
+                    // we do not need effects.Add(TrackedObjectKey.Outbox) because it has already been added by SessionsState
+                    evt.ResponsesToSend = this.Waiters.Select(request => request.CreateResponse(this.OrchestrationState)).ToList();
 
-                this.Waiters = null;
+                    this.Waiters = null;
+                }
+                else
+                {
+                    this.CullWaiters(evt.Timestamp);
+                }
             }
         }
 
-        public void Process(WaitRequestReceived evt, EffectTracker effects)
+        static OrchestrationState UpdateOrchestrationState(OrchestrationState orchestrationState, List<HistoryEvent> events)
         {
-            if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
+            if (orchestrationState == null)
             {
-                if (!effects.IsReplaying)
+                orchestrationState = new OrchestrationState();
+            }
+            foreach (var evt in events)
+            {
+                if (evt is ExecutionStartedEvent executionStartedEvent)
                 {
-                    this.Partition.Send(evt.CreateResponse(this.OrchestrationState));
+                    orchestrationState.OrchestrationInstance = executionStartedEvent.OrchestrationInstance;
+                    orchestrationState.CreatedTime = executionStartedEvent.Timestamp;
+                    orchestrationState.Input = executionStartedEvent.Input;
+                    orchestrationState.Name = executionStartedEvent.Name;
+                    orchestrationState.Version = executionStartedEvent.Version;
+                    orchestrationState.Tags = executionStartedEvent.Tags;
+                    orchestrationState.ParentInstance = executionStartedEvent.ParentInstance;
+                    orchestrationState.ScheduledStartTime = executionStartedEvent.ScheduledStartTime;
+                    orchestrationState.CompletedTime = Core.Common.Utils.DateTimeSafeMaxValue;
+                    orchestrationState.Output = null;
+                    orchestrationState.OrchestrationStatus = OrchestrationStatus.Running;
                 }
+                else if (evt is ExecutionCompletedEvent executionCompletedEvent)
+                {
+                    orchestrationState.CompletedTime = executionCompletedEvent.Timestamp;
+                    orchestrationState.Output = executionCompletedEvent.Result;
+                    orchestrationState.OrchestrationStatus = executionCompletedEvent.OrchestrationStatus;
+                }
+            }
+            return orchestrationState;
+        }
+
+        public override void Process(WaitRequestReceived evt, EffectTracker effects)
+        {
+            if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState?.OrchestrationStatus))
+            {
+                effects.Add(TrackedObjectKey.Outbox);
+                evt.ResponseToSend =  evt.CreateResponse(this.OrchestrationState);              
             }
             else
             {
@@ -121,21 +167,18 @@ namespace DurableTask.Netherite
                 }
                 else
                 {
-                    // cull the list of waiters to remove requests that have already timed out
-                    this.Waiters = this.Waiters
-                        .Where(request => request.TimeoutUtc > DateTime.UtcNow)
-                        .ToList();
+                    this.CullWaiters(evt.Timestamp);
                 }
                 
                 this.Waiters.Add(evt);
             }
         }
 
-        public void Process(DeletionRequestReceived deletionRequest, EffectTracker effects)
+        public override void Process(DeletionRequestReceived deletionRequest, EffectTracker effects)
         {
             int numberInstancesDeleted = 0;
 
-            if (this.OrchestrationState != null 
+            if (this.OrchestrationState != null
                 && (!deletionRequest.CreatedTime.HasValue || deletionRequest.CreatedTime.Value == this.OrchestrationState.CreatedTime))
             {
                 numberInstancesDeleted++;
@@ -148,18 +191,16 @@ namespace DurableTask.Netherite
                 effects.Add(TrackedObjectKey.Sessions);
             }
 
-            if (!effects.IsReplaying)
+            effects.Add(TrackedObjectKey.Outbox);
+            deletionRequest.ResponseToSend = new DeletionResponseReceived()
             {
-                this.Partition.Send(new DeletionResponseReceived()
-                {
-                    ClientId = deletionRequest.ClientId,
-                    RequestId = deletionRequest.RequestId,
-                    NumberInstancesDeleted = numberInstancesDeleted,
-                });
-            }
+                ClientId = deletionRequest.ClientId,
+                RequestId = deletionRequest.RequestId,
+                NumberInstancesDeleted = numberInstancesDeleted,
+            };
         }
 
-        public void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
+        public override void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
         {
             OrchestrationState state = this.OrchestrationState;
             if (this.OrchestrationState != null

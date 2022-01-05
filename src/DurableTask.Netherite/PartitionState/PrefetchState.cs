@@ -22,7 +22,7 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Prefetch);
 
-        public override void OnRecoveryCompleted()
+        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
         {
             // reissue prefetch tasks for what did not complete prior to crash/recovery
             foreach (var kvp in this.PendingPrefetches)
@@ -41,7 +41,22 @@ namespace DurableTask.Netherite
             return $"Prefetch ({this.PendingPrefetches.Count} pending)";
         }
 
-        public void Process(ClientRequestEventWithPrefetch clientRequestEvent, EffectTracker effects)
+        public override void Process(CreationRequestReceived creationRequestEvent, EffectTracker effects)
+        {
+            this.ProcessClientRequestEventWithPrefetch(creationRequestEvent, effects);
+        }
+
+        public override void Process(DeletionRequestReceived deletionRequestEvent, EffectTracker effects)
+        {
+            this.ProcessClientRequestEventWithPrefetch(deletionRequestEvent, effects);
+        }
+
+        public override void Process(WaitRequestReceived waitRequestEvent, EffectTracker effects)
+        {
+            this.ProcessClientRequestEventWithPrefetch(waitRequestEvent, effects);
+        }
+
+        void ProcessClientRequestEventWithPrefetch(ClientRequestEventWithPrefetch clientRequestEvent, EffectTracker effects)
         {
             if (clientRequestEvent.Phase == ClientRequestEventWithPrefetch.ProcessingPhase.Read)
             {           

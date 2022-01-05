@@ -30,12 +30,12 @@ namespace DurableTask.Netherite
             return $"Timers ({this.PendingTimers.Count} pending) next={this.SequenceNumber:D6}";
         }
 
-        public override void OnRecoveryCompleted()
+        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
         {
             // restore the pending timers
             foreach (var kvp in this.PendingTimers)
             {
-                this.Schedule(kvp.Key, kvp.Value.due, kvp.Value.message, kvp.Value.workItemId);
+                this.Schedule(kvp.Key, kvp.Value.due, kvp.Value.message, kvp.Value.workItemId, effects);
             }
         }
 
@@ -53,7 +53,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        void Schedule(long timerId, DateTime due, TaskMessage message, string originWorkItemId)
+        void Schedule(long timerId, DateTime due, TaskMessage message, string originWorkItemId, EffectTracker effects)
         {
             TimerFired expirationEvent = new TimerFired()
             {
@@ -64,20 +64,20 @@ namespace DurableTask.Netherite
                 Due = due,
             };
 
-            this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Scheduled {message} due at {expirationEvent.Due:o}, id={expirationEvent.EventIdString}");
+            effects.EventDetailTracer?.TraceEventProcessingDetail($"Scheduled {message} due at {expirationEvent.Due:o}, id={expirationEvent.EventIdString}");
             this.Partition.PendingTimers.Schedule(expirationEvent.Due, expirationEvent);
         }
 
-        void AddTimer(TaskMessage taskMessage, string originWorkItemId, bool isReplaying)
+        void AddTimer(TaskMessage taskMessage, string originWorkItemId, EffectTracker effects)
         {
             var timerId = this.SequenceNumber++;
             var due = GetDueTime(taskMessage);
             this.PendingTimers.Add(timerId, (due, taskMessage, originWorkItemId));
 
-            if (!isReplaying)
+            if (!effects.IsReplaying)
             {
                 this.Partition.WorkItemTraceHelper.TraceTaskMessageReceived(this.Partition.PartitionId, taskMessage, originWorkItemId, $"Timer@{due}");
-                this.Schedule(timerId, due, taskMessage, originWorkItemId);
+                this.Schedule(timerId, due, taskMessage, originWorkItemId, effects);
             }
         }
 
@@ -101,33 +101,33 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(TimerFired evt, EffectTracker effects)
+        public override void Process(TimerFired evt, EffectTracker effects)
         {
             // removes the entry for the pending timer, and then adds it to the sessions queue
             this.PendingTimers.Remove(evt.TimerId);
         }
 
-        public void Process(BatchProcessed evt, EffectTracker effects)
+        public override void Process(BatchProcessed evt, EffectTracker effects)
         {
             // starts new timers as specified by the batch
             foreach (var taskMessage in evt.TimerMessages)
             {
-                this.AddTimer(taskMessage, evt.EventIdString, effects.IsReplaying);
+                this.AddTimer(taskMessage, evt.EventIdString, effects);
             }
         }
 
-        public void Process(TaskMessagesReceived evt, EffectTracker effects)
+        public override void Process(TaskMessagesReceived evt, EffectTracker effects)
         {
             // starts new timers as specified by the batch
             foreach (var taskMessage in evt.DelayedTaskMessages)
             {
-                this.AddTimer(taskMessage, evt.WorkItemId, effects.IsReplaying);
+                this.AddTimer(taskMessage, evt.WorkItemId, effects);
             }
         }
 
-        public void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
+        public override void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
-            this.AddTimer(creationRequestReceived.TaskMessage, creationRequestReceived.EventIdString, effects.IsReplaying);
+            this.AddTimer(creationRequestReceived.TaskMessage, creationRequestReceived.EventIdString, effects);
         }
     }
 }

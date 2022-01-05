@@ -59,17 +59,32 @@ namespace DurableTask.Netherite
 
         const double SMOOTHING_FACTOR = 0.1;
 
-        public override void OnRecoveryCompleted()
+        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
         {
-            // reschedule work items
-            foreach (var pending in this.Pending)
-            {
-                this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, pending.Key, pending.Value.Message, pending.Value.OriginWorkItemId));
-            }
-
             if (this.LocalBacklog.Count > 0)
             {
                 this.ScheduleNextOffloadDecision(TimeSpan.Zero);
+            }
+
+            if (this.Pending.Count > 0)
+            {
+                evt.NumActivities = this.Pending.Count;
+                evt.MaxActivityDequeueCount = this.Pending.Values.Select(val => val.DequeueCount).Max() + 1;
+            }
+        }
+
+        public override void Process(RecoveryCompleted evt, EffectTracker effects)
+        {
+            effects.Partition.Assert(this.Pending.Count == evt.NumActivities);
+
+            foreach (var kvp in this.Pending)
+            {
+                kvp.Value.DequeueCount++;
+
+                if (!effects.IsReplaying)
+                {
+                    this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, kvp.Key, kvp.Value.Message, kvp.Value.OriginWorkItemId, evt));
+                }
             }
         }
 
@@ -158,7 +173,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(BatchProcessed evt, EffectTracker effects)
+        public override void Process(BatchProcessed evt, EffectTracker effects)
         {
             // the completed orchestration work item can launch activities
             foreach (var msg in evt.ActivityMessages)
@@ -173,11 +188,12 @@ namespace DurableTask.Netherite
 
                 if (this.Pending.Count == 0 || this.EstimatedWorkItemQueueSize < this.WorkItemQueueLimit)
                 {
+                    activityInfo.DequeueCount++;
                     this.Pending.Add(activityInfo.ActivityId, activityInfo);
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, msg, evt.WorkItemId));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, msg, evt.WorkItemId, evt));
                     }
 
                     this.EstimatedWorkItemQueueSize++;
@@ -198,7 +214,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(ActivityTransferReceived evt, EffectTracker effects)
+        public override void Process(ActivityTransferReceived evt, EffectTracker effects)
         {
             // may bring in offloaded activities from other partitions
             foreach (var msg in evt.TransferredActivities)
@@ -213,11 +229,12 @@ namespace DurableTask.Netherite
 
                 if (this.Pending.Count == 0 || this.EstimatedWorkItemQueueSize <= this.WorkItemQueueLimit)
                 {
+                    activityInfo.DequeueCount++;
                     this.Pending.Add(activityInfo.ActivityId, activityInfo);
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, msg.Item1, msg.Item2));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, msg.Item1, msg.Item2, evt));
                     }
 
                     this.EstimatedWorkItemQueueSize++;
@@ -239,7 +256,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(ActivityCompleted evt, EffectTracker effects)
+        public override void Process(ActivityCompleted evt, EffectTracker effects)
         {
             // records the result of a finished activity
 
@@ -251,7 +268,7 @@ namespace DurableTask.Netherite
             this.AverageActivityCompletionTime = !this.AverageActivityCompletionTime.HasValue ? evt.LatencyMs :
                 SMOOTHING_FACTOR * evt.LatencyMs + (1 - SMOOTHING_FACTOR) * this.AverageActivityCompletionTime.Value;
 
-            if (evt.OriginPartitionId == effects.Partition.PartitionId)
+            if (evt.OriginPartitionId == effects.PartitionId)
             {
                 // the response can be delivered to a session on this partition
                 effects.Add(TrackedObjectKey.Sessions);
@@ -268,11 +285,12 @@ namespace DurableTask.Netherite
             {
                 if (this.TryGetNextActivity(out var activityInfo))
                 {
+                    activityInfo.DequeueCount++;
                     this.Pending.Add(activityInfo.ActivityId, activityInfo);
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message, activityInfo.OriginWorkItemId));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message, activityInfo.OriginWorkItemId, evt));
                     }
 
                     this.EstimatedWorkItemQueueSize++;
@@ -284,7 +302,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(TransferCommandReceived evt, EffectTracker effects)
+        public override void Process(TransferCommandReceived evt, EffectTracker effects)
         {
             evt.TransferredActivities = new List<(TaskMessage, string)>();
 
@@ -305,17 +323,17 @@ namespace DurableTask.Netherite
                 this.TransferCommandsReceived[evt.PartitionId] = evt.Timestamp;
             }
 
-            this.Partition.EventTraceHelper.TraceEventProcessingDetail($"Processed OffloadCommand, " +
+            effects.EventTraceHelper?.TraceEventProcessingDetail($"Processed OffloadCommand, " +
                 $"OffloadDestination={evt.TransferDestination}, NumActivitiesSent={evt.TransferredActivities.Count}");
             effects.Add(TrackedObjectKey.Outbox);
         }
 
-        public void Process(SolicitationReceived evt, EffectTracker effects)
+        public override void Process(SolicitationReceived evt, EffectTracker effects)
         {
             this.LastSolicitation = evt.Timestamp;
         }
 
-        public void Process(OffloadDecision offloadDecisionEvent, EffectTracker effects)
+        public override void Process(OffloadDecision offloadDecisionEvent, EffectTracker effects)
         {
             // check for offload conditions and if satisfied, send batch to remote
             if (this.LocalBacklog.Count == 0)
@@ -362,7 +380,7 @@ namespace DurableTask.Netherite
 
             if (!effects.IsReplaying)
             {
-                this.Partition.EventTraceHelper.TracePartitionOffloadDecision(this.EstimatedWorkItemQueueSize, this.Pending.Count, this.LocalBacklog.Count, -1, offloadDecisionEvent);
+                effects.EventTraceHelper?.TracePartitionOffloadDecision(this.EstimatedWorkItemQueueSize, this.Pending.Count, this.LocalBacklog.Count, -1, offloadDecisionEvent);
 
                 if (this.LocalBacklog.Count > 0)
                 {
@@ -385,6 +403,9 @@ namespace DurableTask.Netherite
 
             [DataMember]
             public DateTime IssueTime;
+
+            [DataMember]
+            public int DequeueCount;
         }
     }
 }

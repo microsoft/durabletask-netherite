@@ -9,7 +9,7 @@ namespace DurableTask.Netherite
     using System.Threading.Tasks;
 
     [DataContract]
-    class PurgeBatchIssued : PartitionUpdateEvent, IRequiresPrefetch
+    class PurgeBatchIssued : PartitionUpdateEvent, IRequiresPrefetch, TransportAbstraction.IDurabilityListener
     {
         [DataMember]
         public string QueryEventId { get; set; }
@@ -52,6 +52,11 @@ namespace DurableTask.Netherite
             }
         }
 
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
+
         public override void DetermineEffects(EffectTracker effects)
         {
             // the last-added effects are processed first
@@ -65,6 +70,12 @@ namespace DurableTask.Netherite
             {
                 effects.Add(TrackedObjectKey.Instance(instanceId));
             }
+        }
+
+        public void ConfirmDurable(Event evt)
+        {
+            // lets the client know this batch has been persisted
+            this.WhenProcessed.TrySetResult(null);
         }
     }
 }

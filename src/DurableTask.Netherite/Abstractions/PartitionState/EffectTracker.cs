@@ -14,29 +14,16 @@ namespace DurableTask.Netherite
     /// information about the context, and to enumerate the objects on which the effect
     /// is being processed.
     /// </summary>
-    class EffectTracker : List<TrackedObjectKey>
+    abstract class EffectTracker : List<TrackedObjectKey>
     {
-        readonly Func<TrackedObjectKey, EffectTracker, ValueTask> applyToStore;
-        readonly Func<IEnumerable<TrackedObjectKey>, ValueTask> removeFromStore;
-        readonly Func<(long, long)> getPositions;
-        readonly System.Diagnostics.Stopwatch stopWatch;
         readonly HashSet<TrackedObjectKey> deletedKeys;
 
-        public EffectTracker(Partition partition, Func<TrackedObjectKey, EffectTracker, ValueTask> applyToStore, Func<IEnumerable<TrackedObjectKey>, ValueTask> removeFromStore, Func<(long, long)> getPositions)
-        {
-            this.Partition = partition;
-            this.applyToStore = applyToStore;
-            this.removeFromStore = removeFromStore;
-            this.getPositions = getPositions;
-            this.stopWatch = new System.Diagnostics.Stopwatch();
-            this.deletedKeys = new HashSet<TrackedObjectKey>();
-            this.stopWatch.Start();
-        }
+        PartitionUpdateEvent currentUpdate;
 
-        /// <summary>
-        /// The current partition.
-        /// </summary>
-        public Partition Partition { get; }
+        public EffectTracker()
+        {
+            this.deletedKeys = new HashSet<TrackedObjectKey>();
+        }
 
         /// <summary>
         /// The event id of the current effect.
@@ -52,30 +39,51 @@ namespace DurableTask.Netherite
 
         void SetCurrentUpdateEvent(PartitionUpdateEvent updateEvent)
         {
-            this.effect = this.currentUpdate = updateEvent;
+            this.currentUpdate = updateEvent;
         }
 
-        PartitionUpdateEvent currentUpdate;
-        dynamic effect;
+
+        #region abstract methods
+
+        public abstract ValueTask ApplyToStore(TrackedObjectKey key, EffectTracker tracker);
+
+        public abstract ValueTask RemoveFromStore(IEnumerable<TrackedObjectKey> keys);
+        
+        public abstract (long, long) GetPositions();
+
+        public abstract Partition Partition { get; }
+
+        public abstract EventTraceHelper EventTraceHelper { get; }    
+
+        public abstract EventTraceHelper EventDetailTracer { get; }
+
+        protected abstract void HandleError(string where, string message, Exception e, bool terminatePartition, bool reportAsWarning);
+
+        public abstract void Assert(bool condition);
+
+        public abstract uint PartitionId { get; }
+
+        public abstract double CurrentTimeMs { get; }
+
+        #endregion
 
         /// <summary>
-        /// Applies the event to the given tracked object, using dynamic dispatch to 
+        /// Applies the event to the given tracked object, using visitor pattern to
         /// select the correct Process method overload for the event. 
         /// </summary>
         /// <param name="trackedObject">The tracked object on which the event should be applied.</param>
         /// <remarks>Called by the storage layer when this object calls applyToStore.</remarks>
-        public void ProcessEffectOn(dynamic trackedObject)
+        public void ProcessEffectOn(TrackedObject trackedObject)
         {
-            this.Partition.Assert(this.currentUpdate != null);
             try
             {
-                trackedObject.Process(this.effect, this);
+                this.currentUpdate.ApplyTo(trackedObject, this);
             }
             catch (Exception exception) when (!Utils.IsFatal(exception))
             {
                 // for robustness, we swallow exceptions inside event processing.
                 // It does not mean they are not serious. We still report them as errors.
-                this.Partition.ErrorHandler.HandleError(nameof(ProcessUpdate), $"Encountered exception on {trackedObject} when applying update event {this.currentUpdate}, eventId={this.currentUpdate?.EventId}", exception, false, false);
+                this.HandleError(nameof(ProcessUpdate), $"Encountered exception on {trackedObject} when applying update event {this.currentUpdate}, eventId={this.currentUpdate?.EventId}", exception, false, false);
             }
         }
 
@@ -86,16 +94,16 @@ namespace DurableTask.Netherite
 
         public async Task ProcessUpdate(PartitionUpdateEvent updateEvent)
         {
-            (long commitLogPosition, long inputQueuePosition) = this.getPositions();
-            double startedTimestamp = this.Partition.CurrentTimeMs;
+            (long commitLogPosition, long inputQueuePosition) = this.GetPositions();
+            double startedTimestamp = this.CurrentTimeMs;
 
             using (EventTraceContext.MakeContext(commitLogPosition, updateEvent.EventIdString))
             {
                 try
                 {
-                    this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, this.IsReplaying);
+                    this.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, this.IsReplaying);
 
-                    this.Partition.Assert(updateEvent != null);
+                    this.Assert(updateEvent != null);
 
                     this.SetCurrentUpdateEvent(updateEvent);
 
@@ -113,10 +121,10 @@ namespace DurableTask.Netherite
                         var startPos = this.Count - 1;
                         var key = this[startPos];
 
-                        this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Process on [{key}]");
+                        this.EventDetailTracer?.TraceEventProcessingDetail($"Process on [{key}]");
 
                         // start with processing the event on this object 
-                        await this.applyToStore(key, this).ConfigureAwait(false);
+                        await this.ApplyToStore(key, this).ConfigureAwait(false);
 
                         // recursively process all additional objects to process
                         while (this.Count - 1 > startPos)
@@ -130,7 +138,7 @@ namespace DurableTask.Netherite
 
                     if (this.deletedKeys.Count > 0)
                     {
-                        await this.removeFromStore(this.deletedKeys);
+                        await this.RemoveFromStore(this.deletedKeys);
                         this.deletedKeys.Clear();
                     }
 
@@ -144,21 +152,21 @@ namespace DurableTask.Netherite
                 {
                     // for robustness, we swallow exceptions inside event processing.
                     // It does not mean they are not serious. We still report them as errors.
-                    this.Partition.ErrorHandler.HandleError(nameof(ProcessUpdate), $"Encountered exception while processing update event {updateEvent}", exception, false, false);
+                    this.HandleError(nameof(ProcessUpdate), $"Encountered exception while processing update event {updateEvent}", exception, false, false);
                 }
                 finally
                 {
-                    double finishedTimestamp = this.Partition.CurrentTimeMs;
-                    this.Partition.EventTraceHelper.TraceEventProcessed(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, startedTimestamp, finishedTimestamp, this.IsReplaying);
+                    double finishedTimestamp = this.CurrentTimeMs;
+                    this.EventTraceHelper?.TraceEventProcessed(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, startedTimestamp, finishedTimestamp, this.IsReplaying);
                 }
             }
         }
 
         public void ProcessReadResult(PartitionReadEvent readEvent, TrackedObjectKey key, TrackedObject target)
         {
-            (long commitLogPosition, long inputQueuePosition) = this.getPositions();
-            this.Partition.Assert(!this.IsReplaying); // read events are never part of the replay
-            double startedTimestamp = this.Partition.CurrentTimeMs;
+            (long commitLogPosition, long inputQueuePosition) = this.GetPositions();
+            this.Assert(!this.IsReplaying); // read events are never part of the replay
+            double startedTimestamp = this.CurrentTimeMs;
 
             using (EventTraceContext.MakeContext(commitLogPosition, readEvent.EventIdString))
             {
@@ -173,7 +181,7 @@ namespace DurableTask.Netherite
                             InstanceState instanceState = (InstanceState)target;
                             string instanceExecutionId = instanceState?.OrchestrationState?.OrchestrationInstance.ExecutionId;
                             string status = instanceState?.OrchestrationState?.OrchestrationStatus.ToString() ?? "null";
-                            this.Partition.EventTraceHelper.TraceFetchedInstanceStatus(readEvent, key.InstanceId, instanceExecutionId, status, startedTimestamp - readEvent.IssuedTimestamp);
+                            this.EventTraceHelper?.TraceFetchedInstanceStatus(readEvent, key.InstanceId, instanceExecutionId, status, startedTimestamp - readEvent.IssuedTimestamp);
                             break;
 
                         case TrackedObjectKey.TrackedObjectType.History:
@@ -181,7 +189,7 @@ namespace DurableTask.Netherite
                             string historyExecutionId = historyState?.ExecutionId;
                             int eventCount = historyState?.History?.Count ?? 0;
                             int episode = historyState?.Episode ?? 0;
-                            this.Partition.EventTraceHelper.TraceFetchedInstanceHistory(readEvent, key.InstanceId, historyExecutionId, eventCount, episode, startedTimestamp - readEvent.IssuedTimestamp);
+                            this.EventTraceHelper?.TraceFetchedInstanceHistory(readEvent, key.InstanceId, historyExecutionId, eventCount, episode, startedTimestamp - readEvent.IssuedTimestamp);
                             break;
 
                         default:
@@ -190,7 +198,7 @@ namespace DurableTask.Netherite
 
                     if (isReady)
                     {
-                        this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, false);
+                        this.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, false);
                         readEvent.Fire(this.Partition);
                     }
                 }
@@ -202,27 +210,27 @@ namespace DurableTask.Netherite
                 {
                     // for robustness, we swallow exceptions inside event processing.
                     // It does not mean they are not serious. We still report them as errors.
-                    this.Partition.ErrorHandler.HandleError(nameof(ProcessReadResult), $"Encountered exception while processing read event {readEvent}", exception, false, false);
+                    this.HandleError(nameof(ProcessReadResult), $"Encountered exception while processing read event {readEvent}", exception, false, false);
                 }
                 finally
                 {
-                    double finishedTimestamp = this.Partition.CurrentTimeMs;
-                    this.Partition.EventTraceHelper.TraceEventProcessed(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, startedTimestamp, finishedTimestamp, false);
+                    double finishedTimestamp = this.CurrentTimeMs;
+                    this.EventTraceHelper?.TraceEventProcessed(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, startedTimestamp, finishedTimestamp, false);
                 }
             }
         }
         
         public async Task ProcessQueryResultAsync(PartitionQueryEvent queryEvent, IAsyncEnumerable<OrchestrationState> instances)
         {
-            (long commitLogPosition, long inputQueuePosition) = this.getPositions();
-            this.Partition.Assert(!this.IsReplaying); // query events are never part of the replay
-            double startedTimestamp = this.Partition.CurrentTimeMs;
+            (long commitLogPosition, long inputQueuePosition) = this.GetPositions();
+            this.Assert(!this.IsReplaying); // query events are never part of the replay
+            double startedTimestamp = this.CurrentTimeMs;
 
             using (EventTraceContext.MakeContext(commitLogPosition, queryEvent.EventIdString))
             {
                 try
                 {
-                    this.Partition.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, queryEvent, EventTraceHelper.EventCategory.QueryEvent, false);
+                    this.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, queryEvent, EventTraceHelper.EventCategory.QueryEvent, false);
                     await queryEvent.OnQueryCompleteAsync(instances, this.Partition);
                 }
                 catch (OperationCanceledException)
@@ -233,12 +241,12 @@ namespace DurableTask.Netherite
                 {
                     // for robustness, we swallow exceptions inside event processing.
                     // It does not mean they are not serious. We still report them as errors.
-                    this.Partition.ErrorHandler.HandleError(nameof(ProcessQueryResultAsync), $"Encountered exception while processing query event {queryEvent}", exception, false, false);
+                    this.HandleError(nameof(ProcessQueryResultAsync), $"Encountered exception while processing query event {queryEvent}", exception, false, false);
                 }
                 finally
                 {
-                    double finishedTimestamp = this.Partition.CurrentTimeMs;
-                    this.Partition.EventTraceHelper.TraceEventProcessed(commitLogPosition, queryEvent, EventTraceHelper.EventCategory.QueryEvent, startedTimestamp, finishedTimestamp, false);
+                    double finishedTimestamp = this.CurrentTimeMs;
+                    this.EventTraceHelper?.TraceEventProcessed(commitLogPosition, queryEvent, EventTraceHelper.EventCategory.QueryEvent, startedTimestamp, finishedTimestamp, false);
                 }
             }
         }

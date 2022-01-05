@@ -29,7 +29,19 @@ namespace DurableTask.Netherite
         public List<HistoryEvent> NewEvents { get; set; }
 
         [DataMember]
-        public OrchestrationState State { get; set; }
+        public string CustomStatus { get; set; }
+
+        [DataMember]
+        public bool CustomStatusUpdated { get; set; }
+
+        [DataMember]
+        public bool NotExecutable { get; set; }
+
+        [DataMember]
+        public string ExecutionId { get; set; }
+
+        [DataMember]
+        public OrchestrationStatus OrchestrationStatus { get; set; }
 
         [DataMember]
         public List<TaskMessage> ActivityMessages { get; set; }
@@ -66,6 +78,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override string TracedInstanceId => this.InstanceId;
 
+        [IgnoreDataMember]
+        public List<WaitResponseReceived> ResponsesToSend { get; set; } // used to communicate responses to ClientState
+
         IEnumerable<TrackedObjectKey> IRequiresPrefetch.KeysToPrefetch
         {
             get
@@ -79,6 +94,11 @@ namespace DurableTask.Netherite
         {
             // start on the sessions object; further effects are determined from there
             effects.Add(TrackedObjectKey.Sessions);
+        }
+
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
         }
 
         public IEnumerable<TaskMessage> LoopBackMessages()
@@ -110,11 +130,8 @@ namespace DurableTask.Netherite
         {
             base.ExtraTraceInformation(s);
 
-            if (this.State != null)
-            {
-                s.Append(' ');
-                s.Append(this.State.OrchestrationStatus);
-            }
+            s.Append(' ');
+            s.Append(this.OrchestrationStatus);
         }
     }
 }

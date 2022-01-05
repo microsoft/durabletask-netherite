@@ -40,7 +40,7 @@ namespace LoadGeneratorApp
         // a short human-readable string describing the test, used for filenames and in display
         public override string ToString()
         {
-            return string.Format($"{base.ToString()}-{Rate}rate-{Robots}robots-{Duration}sec");
+            return string.Format($"{base.ToString()}-{this.Rate}rate-{this.Robots}robots-{this.Duration}sec");
         }
     }
 }

@@ -324,7 +324,6 @@ namespace DurableTask.Netherite
                 RequestId = Interlocked.Increment(ref this.SequenceNumber),
                 TaskMessage = creationMessage,
                 DedupeStatuses = dedupeStatuses,
-                Timestamp = DateTime.UtcNow,
                 TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
             };
 
@@ -400,6 +399,7 @@ namespace DurableTask.Netherite
                 RequestId = Interlocked.Increment(ref this.SequenceNumber),
                 InstanceId = instanceId,
                 ExecutionId = executionId,
+                Timestamp = DateTime.UtcNow,
                 TimeoutUtc = this.GetTimeoutBucket(timeout),
             };
 

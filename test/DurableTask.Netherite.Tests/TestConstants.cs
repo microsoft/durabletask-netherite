@@ -52,6 +52,7 @@ namespace DurableTask.Netherite.Tests
             //settings.UseLocalDirectoryForPartitionStorage = $"{Environment.GetEnvironmentVariable("temp")}\\FasterTestStorage";
 
             settings.Validate((name) => Environment.GetEnvironmentVariable(name));
+            settings.TestHooks = new TestHooks();
 
             return settings;
         }

@@ -120,16 +120,16 @@ namespace DurableTask.Netherite.Tests
             };
 
             // create a cache monitor
-            var cacheDebugger = new Faster.CacheDebugger();
+            var cacheDebugger = new Faster.CacheDebugger(settings.TestHooks);
             var cts = new CancellationTokenSource();
             string reportedProblem = null;
-            cacheDebugger.OnError += (message) =>
+            settings.TestHooks.OnError += (message) =>
             {
-                this.output?.Invoke($"CACHEDEBUGGER: {message}");
+                this.output?.Invoke($"TESTHOOKS: {message}");
                 reportedProblem = reportedProblem ?? message;
                 cts.Cancel();
             };
-            settings.CacheDebugger = cacheDebugger;
+            settings.TestHooks.CacheDebugger = cacheDebugger;
 
             // we use the standard hello orchestration from the samples, which calls 5 activities in sequence
             var orchestrationType = typeof(ScenarioTests.Orchestrations.Hello5);
