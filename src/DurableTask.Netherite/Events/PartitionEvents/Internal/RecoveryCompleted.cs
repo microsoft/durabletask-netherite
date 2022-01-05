@@ -56,6 +56,11 @@ namespace DurableTask.Netherite
             s.Append(this.MaxSessionDequeueCount);
         }
 
+        public override void OnSubmit(Partition partition)
+        {
+            partition.EventTraceHelper.TraceEventProcessingDetail($"Submitted {this}");
+        }
+
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakePartitionInternalEventId($"Recovered-{this.WorkerId}-{this.Timestamp:o}");
 

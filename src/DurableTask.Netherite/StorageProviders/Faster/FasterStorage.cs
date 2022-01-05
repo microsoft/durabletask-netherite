@@ -72,7 +72,7 @@ namespace DurableTask.Netherite.Faster
                 this.pageBlobStorageAccount,
                 this.localFileDirectory,
                 this.taskHubName,
-                partition.Settings.FaultInjector,
+                partition.Settings.TestHooks?.FaultInjector,
                 this.logger,
                 this.partition.Settings.StorageLogLevelLimit,
                 partition.PartitionId,

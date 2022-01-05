@@ -194,12 +194,6 @@ namespace DurableTask.Netherite
         public TestHooks TestHooks { get; set; } = null;
 
         /// <summary>
-        /// Whether to attach a fault injector. Used only for testing and debugging.
-        /// </summary>
-        [JsonIgnore]
-        public Faster.FaultInjector FaultInjector { get; set; } = null;
-
-        /// <summary>
         /// A lower limit on the severity level of trace events emitted by the transport layer.
         /// </summary>
         /// <remarks>This level applies to both ETW events and ILogger events.</remarks>

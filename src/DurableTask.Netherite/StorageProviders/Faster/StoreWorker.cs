@@ -451,7 +451,7 @@ namespace DurableTask.Netherite.Faster
             {
                 PartitionId = this.partition.PartitionId,
                 RecoveredPosition = this.CommitLogPosition,
-                Timestamp= DateTime.UtcNow,
+                Timestamp = DateTime.UtcNow,
                 WorkerId = this.partition.Settings.WorkerId,
             };
 

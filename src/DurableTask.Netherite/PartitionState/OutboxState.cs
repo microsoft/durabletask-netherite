@@ -35,7 +35,7 @@ namespace DurableTask.Netherite
                 kvp.Value.Partition = this.Partition;
 
                 // resend (anything we have recovered is of course persisted)
-                effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent {kvp.Key:D10} ({kvp.Value} messages)");
+                effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent batch {kvp.Key:D10} ({kvp.Value.OutgoingMessages.Count} messages, {kvp.Value.OutgoingResponses.Count} responses)");
                 this.Send(kvp.Value);
             }
         }

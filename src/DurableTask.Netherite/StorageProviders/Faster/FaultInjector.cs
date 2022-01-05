@@ -24,6 +24,7 @@ namespace DurableTask.Netherite.Faster
         }
 
         InjectionMode mode;
+        bool injectDuringStartup;
         int countdown;
         int nextrun;
 
@@ -32,11 +33,12 @@ namespace DurableTask.Netherite.Faster
             System.Diagnostics.Trace.TraceInformation($"FaultInjector: StartNewTest");
         }
 
-        public void SetMode(InjectionMode mode)
+        public IDisposable WithMode(InjectionMode mode, bool injectDuringStartup = false)
         {
             System.Diagnostics.Trace.TraceInformation($"FaultInjector: SetMode {mode}");
 
             this.mode = mode;
+            this.injectDuringStartup = injectDuringStartup;
 
             switch (mode)
             {
@@ -48,13 +50,26 @@ namespace DurableTask.Netherite.Faster
                 default:
                     break;
             }
+
+            return new ResetMode() { FaultInjector = this };
+        }
+
+        class ResetMode : IDisposable
+        {
+            public FaultInjector FaultInjector { get; set; }
+
+            public void Dispose()
+            {
+                System.Diagnostics.Trace.TraceInformation($"FaultInjector: Reset");
+
+                this.FaultInjector.mode = InjectionMode.None;
+                this.FaultInjector.injectDuringStartup = false;
+            }
         }
 
         readonly Dictionary<int, TaskCompletionSource<object>> startupWaiters = new Dictionary<int, TaskCompletionSource<object>>();
-        readonly HashSet<string> excludedIntent = new HashSet<string>();
         readonly HashSet<BlobManager> startedPartitions = new HashSet<BlobManager>();
 
-        public bool InjectOnStartup { get; set; }
 
         public Task WaitForStartup(int numPartitions)
         {
@@ -71,11 +86,6 @@ namespace DurableTask.Netherite.Faster
         public async Task BreakLease(Microsoft.Azure.Storage.Blob.CloudBlockBlob blob)
         {
             await blob.BreakLeaseAsync(TimeSpan.Zero);
-        }
-
-        public void Exclude(string intent)
-        {
-            this.excludedIntent.Add(intent);
         }
 
         public void Starting(BlobManager blobManager)
@@ -100,13 +110,11 @@ namespace DurableTask.Netherite.Faster
             this.startedPartitions.Remove(blobManager);
         }
 
-
         public void StorageAccess(BlobManager blobManager, string name, string intent, string target)
         {
             bool pass = true;
 
-            if (!this.excludedIntent.Contains(intent) 
-                && (this.InjectOnStartup || this.startedPartitions.Contains(blobManager)))
+            if (this.injectDuringStartup || this.startedPartitions.Contains(blobManager))
             {
                 if (this.mode == InjectionMode.IncrementSuccessRuns)
                 {
