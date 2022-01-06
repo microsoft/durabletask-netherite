@@ -140,7 +140,11 @@ namespace DurableTask.Netherite
         {
             if (!condition)
             {
-                if (System.Diagnostics.Debugger.IsAttached)
+                if (this.Settings.TestHooks != null)
+                {
+                    this.Settings.TestHooks.Error("Partition.Assert", "Assertion Failed");
+                }
+                else if (System.Diagnostics.Debugger.IsAttached)
                 {
                     System.Diagnostics.Debugger.Break();
                 }
