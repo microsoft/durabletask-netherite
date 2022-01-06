@@ -75,7 +75,10 @@ namespace DurableTask.Netherite
             {
                 kvp.Value.DequeueCount++;
 
-                new OrchestrationMessageBatch(kvp.Key, kvp.Value, this.Partition, evt);
+                if (!effects.IsReplaying) // during replay, we don't start work items until end of recovery
+                {
+                    new OrchestrationMessageBatch(kvp.Key, kvp.Value, this.Partition, evt);
+                }
             }
         }
 
