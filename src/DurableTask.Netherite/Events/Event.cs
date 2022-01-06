@@ -74,6 +74,7 @@ namespace DurableTask.Netherite
             yield return typeof(BatchProcessed);
             yield return typeof(OffloadDecision);
             yield return typeof(PurgeBatchIssued);
+            yield return typeof(RecoveryCompleted);
             yield return typeof(SendConfirmed);
             yield return typeof(TimerFired);
         }
