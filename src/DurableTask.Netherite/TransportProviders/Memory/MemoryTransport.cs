@@ -61,7 +61,6 @@ namespace DurableTask.Netherite.Emulated
         Task ITaskHub.DeleteAsync()
         {
             this.clientQueues = null;
-
             return this.host.StorageProvider.DeleteAllPartitionStatesAsync();
         }
 
@@ -120,33 +119,42 @@ namespace DurableTask.Netherite.Emulated
 
         async Task StartOrRecoverAsync(int epoch)
         {
-           await Task.Yield();
-           System.Diagnostics.Debug.Assert(this.startOrRecoverTask != null);
+            await Task.Yield();
+            System.Diagnostics.Debug.Assert(this.startOrRecoverTask != null);
 
-           if (epoch > 0)
-           {
+            if (epoch > 0)
+            {
                 if (this.settings.TestHooks != null && this.settings.TestHooks.FaultInjector == null)
                 {
                     this.settings.TestHooks.Error("MemoryTransport", "Unexpected partition termination");
                 }
 
                 // stop all partitions that are not already terminated
-                var stoptasks = new List<Task>();
                 foreach (var partition in this.partitions)
                 {
-                    if (! partition.ErrorHandler.IsTerminated)
+                    if (!partition.ErrorHandler.IsTerminated)
                     {
-                        stoptasks.Add(partition.StopAsync(true));
+                        partition.ErrorHandler.HandleError("MemoryTransport.StartOrRecoverAsync", "recovering all partitions", null, true, true);
                     }
                 }
-                await Task.WhenAll(stoptasks);
-           }
+            }
 
-            var partitions = new TransportAbstraction.IPartition[this.numberPartitions];
-            var partitionQueues = new IMemoryQueue<PartitionEvent>[this.numberPartitions];
+            var partitions = this.partitions = new TransportAbstraction.IPartition[this.numberPartitions];
+            var partitionQueues = this.partitionQueues = new IMemoryQueue<PartitionEvent>[this.numberPartitions];
             var partitionSenders = new SendWorker[this.numberPartitions];
 
-            // create the partitions and partition queues
+            if (epoch == 0)
+            {
+                this.loadMonitorSender.Resume();
+                this.loadMonitorQueue.Resume();
+                this.clientSender.Resume();
+                foreach (var clientQueue in this.clientQueues.Values)
+                {
+                    clientQueue.Resume();
+                }
+            }
+
+            // create the partitions, partition senders, and partition queues
             for (int i = 0; i < this.numberPartitions; i++)
             {
                 var partitionSender = partitionSenders[i] = new SendWorker(this.shutdownTokenSource.Token);
@@ -171,39 +179,22 @@ namespace DurableTask.Netherite.Emulated
             async Task StartPartition(int i)
             {
                 partitionSenders[i].Resume();
+
                 var errorHandler = this.host.CreateErrorHandler((uint)i);
                 if (this.faultInjector != null)
                 {
                     errorHandler.Token.Register(() => this.RecoveryHandler(epoch));
                 }
                 var nextInputQueuePosition = await partitions[i].CreateOrRestoreAsync(errorHandler, 0);
-                partitionQueues[i].FirstInputQueuePosition = nextInputQueuePosition;
-            };
 
-            // replace the arrays so the new queues and partitions are now receiving new client and load monitor requests
-            this.partitions = partitions;
-            this.partitionQueues = partitionQueues;
+                // start delivering events to the partition
+                partitionQueues[i].FirstInputQueuePosition = nextInputQueuePosition;
+                partitionQueues[i].Resume();
+            };
 
             this.shutdownTokenSource?.Token.ThrowIfCancellationRequested();
 
             System.Diagnostics.Trace.TraceInformation($"MemoryTransport: Recovered epoch={epoch}");
-
-            // start all the emulated queues
-            foreach (var partitionQueue in partitionQueues)
-            {
-                partitionQueue.Resume();
-            }
-
-            if (epoch == 0)
-            {
-                this.loadMonitorSender.Resume();
-                this.loadMonitorQueue.Resume();
-                this.clientSender.Resume();
-                foreach (var clientQueue in this.clientQueues.Values)
-                {
-                    clientQueue.Resume();
-                }
-            }
         }
 
         async Task ITaskHub.StopAsync()
