@@ -54,6 +54,7 @@ namespace DurableTask.Netherite.Tests
         {
             var fixture = new SingleHostFixture(settings, useReplayChecker, output);
             var startupTask = fixture.Host.StartAsync(); 
+            timeout = TestOrchestrationClient.AdjustTimeout(timeout);
             var timeoutTask = Task.Delay(timeout);
             await Task.WhenAny(timeoutTask, startupTask);
             if (!startupTask.IsCompleted)

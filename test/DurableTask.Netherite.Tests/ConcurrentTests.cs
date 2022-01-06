@@ -68,7 +68,7 @@ namespace DurableTask.Netherite.Tests
         public async Task EachScenarioOnce()
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(1));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, false, TimeSpan.FromSeconds(30), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, false, TimeSpan.FromMinutes(3), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = scenarios.StartAllScenarios().ToList();
@@ -80,7 +80,7 @@ namespace DurableTask.Netherite.Tests
         public async Task SmallOnesWithReplayCheck()
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(1));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, true, TimeSpan.FromSeconds(30), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, true, TimeSpan.FromMinutes(3), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = scenarios.StartAllScenarios(false, false).ToList();
@@ -92,7 +92,7 @@ namespace DurableTask.Netherite.Tests
         public async Task SmallOnesTimesTwenty()
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(1));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, false, TimeSpan.FromSeconds(30), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, false, TimeSpan.FromMinutes(3), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = new List<(string, Task)>();
