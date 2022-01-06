@@ -14,6 +14,8 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
     using Xunit;
     using Xunit.Abstractions;
 
+    [Collection("NetheriteTests")]
+    [Trait("AnyTransport", "true")]
     public class CoreScenarios : IntegrationTestBase
     {
         public CoreScenarios(ITestOutputHelper output)

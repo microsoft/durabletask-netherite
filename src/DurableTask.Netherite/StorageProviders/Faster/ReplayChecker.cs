@@ -270,11 +270,11 @@ namespace DurableTask.Netherite.Faster
                 return (this.info.CommitLogPosition, this.info.InputQueuePosition);
             }
 
-            public override void Assert(bool condition)
+            public override void Assert(bool condition, string message)
             {
                 if (!condition)
                 {
-                    this.replayChecker.testHooks.Error(this.replayChecker.GetType().Name, "assertion failed");
+                    this.replayChecker.testHooks.Error(this.replayChecker.GetType().Name, $"assertion failed: {message}");
                 }
             }
 

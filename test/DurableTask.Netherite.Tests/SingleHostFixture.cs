@@ -8,6 +8,7 @@ namespace DurableTask.Netherite.Tests
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Text;
+    using System.Threading.Tasks;
     using Xunit.Abstractions;
 
     /// <summary>
@@ -23,23 +24,45 @@ namespace DurableTask.Netherite.Tests
         internal string TestHooksError { get; private set; }
 
         public SingleHostFixture()
+            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, null)
+        {
+            this.Host.StartAsync().Wait();
+        }
+
+        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, Action<string> output)
         {
             this.LoggerFactory = new LoggerFactory();
             this.loggerProvider = new XunitLoggerProvider();
             this.LoggerFactory.AddProvider(this.loggerProvider);
+            this.traceListener = new TestTraceListener() { Output = output };
+            Trace.Listeners.Add(this.traceListener);
             TestConstants.ValidateEnvironment();
-            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
-            settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
+            if (useReplayChecker)
+            {
+                settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
+            }
             settings.TestHooks.OnError += (message) =>
             {
                 System.Diagnostics.Trace.WriteLine($"TESTHOOKS: {message}");
                 this.TestHooksError ??= message;
             };
             this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
-            this.Host.StartAsync().Wait();
-            this.traceListener = new TestTraceListener();
-            Trace.Listeners.Add(this.traceListener);
+        }
+
+        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, TimeSpan timeout, Action<string> output)
+        {
+            var fixture = new SingleHostFixture(settings, useReplayChecker, output);
+            var startupTask = fixture.Host.StartAsync(); 
+            timeout = TestOrchestrationClient.AdjustTimeout(timeout);
+            var timeoutTask = Task.Delay(timeout);
+            await Task.WhenAny(timeoutTask, startupTask);
+            if (!startupTask.IsCompleted)
+            {
+                throw new TimeoutException($"SingleHostFixture.StartNew timed out after {timeout}");
+            }
+            await startupTask;
+            return fixture;
         }
 
         public void Dispose()
@@ -51,7 +74,6 @@ namespace DurableTask.Netherite.Tests
 
         public void SetOutput(Action<string> output)
         {
-            this.loggerProvider.Output = output;
             this.traceListener.Output = output;
             this.TestHooksError = null;
         }

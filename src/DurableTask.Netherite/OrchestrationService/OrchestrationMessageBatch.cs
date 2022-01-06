@@ -24,8 +24,8 @@ namespace DurableTask.Netherite
         public string WorkItemId;
         public double? WaitingSince; // measures time waiting to execute
 
-        // enforces that the activity cannot start executing before the issuing event is persisted
-        public readonly TaskCompletionSource<object> WaitForDequeueCountPersistence;
+        readonly PartitionUpdateEvent waitForDequeueCountPersistence;
+        OrchestrationWorkItem workItem;
 
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.WorkItemId);
 
@@ -46,21 +46,15 @@ namespace DurableTask.Netherite
 
             session.CurrentBatch = this;
 
-            if (partition.Settings.PersistDequeueCountBeforeStartingWorkItem)
+            if (partition.Settings.PersistDequeueCountBeforeStartingWorkItem || filingEvent is RecoveryCompleted)
             {
-                this.WaitForDequeueCountPersistence = new TaskCompletionSource<object>();
-                DurabilityListeners.Register(filingEvent, this);
+                this.waitForDequeueCountPersistence = filingEvent;
             }
- 
+
             partition.EventDetailTracer?.TraceEventProcessingDetail($"OrchestrationMessageBatch is prefetching instance={this.InstanceId} batch={this.WorkItemId}");
 
             // continue when we have the history state loaded, which gives us the latest state and/or cursor
             partition.SubmitEvent(this);
-        }
-
-        public void ConfirmDurable(Event evt)
-        {
-            this.WaitForDequeueCountPersistence.TrySetResult(null);
         }
 
         public IEnumerable<(TaskMessage, string)> TracedMessages
@@ -87,53 +81,52 @@ namespace DurableTask.Netherite
         public override void OnReadComplete(TrackedObject s, Partition partition)
         {
             var historyState = (HistoryState)s;
-            OrchestrationWorkItem workItem;
-
+            
             if (this.ForceNewExecution || historyState == null)
             {
                 // we either have no previous instance, or want to replace the previous instance
-                workItem = new OrchestrationWorkItem(partition, this, previousHistory: null);
-                workItem.Type = OrchestrationWorkItem.ExecutionType.Fresh;
-                workItem.HistorySize = 0;
+                this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: null);
+                this.workItem.Type = OrchestrationWorkItem.ExecutionType.Fresh;
+                this.workItem.HistorySize = 0;
             }
             else if (historyState.CachedOrchestrationWorkItem != null)
             {
                 // we have a cached cursor and can resume where we left off
-                workItem = historyState.CachedOrchestrationWorkItem;
-                workItem.SetNextMessageBatch(this);
-                workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromCursor;
-                workItem.HistorySize = workItem.OrchestrationRuntimeState?.Events?.Count ?? 0;
+                this.workItem = historyState.CachedOrchestrationWorkItem;
+                this.workItem.SetNextMessageBatch(this);
+                this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromCursor;
+                this.workItem.HistorySize = this.workItem.OrchestrationRuntimeState?.Events?.Count ?? 0;
 
                 // sanity check: it appears cursor is sometimes corrupted, in that case, construct fresh
                 // TODO investigate reasons and fix root cause
-                if (workItem.HistorySize != historyState.History?.Count
-                    || workItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId != historyState.ExecutionId)
+                if (this.workItem.HistorySize != historyState.History?.Count
+                    || this.workItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId != historyState.ExecutionId)
                 {
-                    partition.EventTraceHelper.TraceEventProcessingWarning($"Fixing bad workitem cache instance={this.InstanceId} batch={this.WorkItemId} expected_size={historyState.History?.Count} actual_size={workItem.OrchestrationRuntimeState?.Events?.Count} expected_executionid={historyState.ExecutionId} actual_executionid={workItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId}");
+                    partition.EventTraceHelper.TraceEventProcessingWarning($"Fixing bad workitem cache instance={this.InstanceId} batch={this.WorkItemId} expected_size={historyState.History?.Count} actual_size={this.workItem.OrchestrationRuntimeState?.Events?.Count} expected_executionid={historyState.ExecutionId} actual_executionid={this.workItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId}");
 
                     // we create a new work item and rehydrate the instance from its history
-                    workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History);
-                    workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
-                    workItem.HistorySize = historyState.History?.Count ?? 0;
+                    this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History);
+                    this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
+                    this.workItem.HistorySize = historyState.History?.Count ?? 0;
                 }
             }
             else
             {
                 // we have to rehydrate the instance from its history
-                workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History);
-                workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
-                workItem.HistorySize = historyState.History?.Count ?? 0;
+                this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History);
+                this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
+                this.workItem.HistorySize = historyState.History?.Count ?? 0;
             }
 
-            if (!this.IsExecutableInstance(workItem, out var reason))
+            if (!this.IsExecutableInstance(this.workItem, out var reason))
             {
                 // this instance cannot be executed, so we are discarding the messages
-                for (int i = 0; i < workItem.MessageBatch.MessagesToProcess.Count; i++)
+                for (int i = 0; i < this.workItem.MessageBatch.MessagesToProcess.Count; i++)
                 {
                     partition.WorkItemTraceHelper.TraceTaskMessageDiscarded(
                         this.PartitionId,
-                        workItem.MessageBatch.MessagesToProcess[i],
-                        workItem.MessageBatch.MessagesToProcessOrigin[i],
+                        this.workItem.MessageBatch.MessagesToProcess[i],
+                        this.workItem.MessageBatch.MessagesToProcessOrigin[i],
                         reason);
                 }
 
@@ -151,9 +144,22 @@ namespace DurableTask.Netherite
             }
             else
             {
-                // the work item is ready to process - put it into the OrchestrationWorkItemQueue
-                partition.EnqueueOrchestrationWorkItem(workItem);
+                if (this.waitForDequeueCountPersistence != null)
+                {
+                    // process the work item once the filing event is persisted
+                    DurabilityListeners.Register(this.waitForDequeueCountPersistence, this);
+                }
+                else
+                {
+                    // the work item is ready to process now - put it into the OrchestrationWorkItemQueue
+                    partition.EnqueueOrchestrationWorkItem(this.workItem);
+                }
             }
+        }
+
+        public void ConfirmDurable(Event evt)
+        {
+            this.workItem.Partition.EnqueueOrchestrationWorkItem(this.workItem);
         }
 
         bool IsExecutableInstance(TaskOrchestrationWorkItem workItem, out string message)

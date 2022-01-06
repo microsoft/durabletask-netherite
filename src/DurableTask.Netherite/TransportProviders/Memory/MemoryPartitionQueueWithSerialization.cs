@@ -11,24 +11,31 @@ namespace DurableTask.Netherite.Emulated
     /// <summary>
     /// Simulates a in-memory queue for delivering events. Used for local testing and debugging.
     /// </summary>
-    class MemoryPartitionQueue : MemoryQueue<PartitionEvent, PartitionEvent>, IMemoryQueue<PartitionEvent>
+    class MemoryPartitionQueueWithSerialization : MemoryQueue<PartitionEvent, byte[]>, IMemoryQueue<PartitionEvent>
     {
         readonly TransportAbstraction.IPartition partition;
 
-        public MemoryPartitionQueue(TransportAbstraction.IPartition partition, CancellationToken cancellationToken, ILogger logger)
+        public MemoryPartitionQueueWithSerialization(TransportAbstraction.IPartition partition, CancellationToken cancellationToken, ILogger logger)
             : base(cancellationToken, $"Part{partition.PartitionId:D2}", logger)
         {
             this.partition = partition;
         }
 
-        protected override PartitionEvent Serialize(PartitionEvent evt)
+        protected override byte[] Serialize(PartitionEvent evt)
         {
-            return evt;
+            var stream = new MemoryStream();
+            Packet.Serialize(evt, stream, new byte[16]);
+            DurabilityListeners.ConfirmDurable(evt);
+            return stream.ToArray();
         }
 
-        protected override PartitionEvent Deserialize(PartitionEvent evt)
+        protected override PartitionEvent Deserialize(byte[] bytes)
         {
-            return evt;
+            using (var stream = new MemoryStream(bytes, false))
+            {
+                Packet.Deserialize(stream, out PartitionEvent partitionEvent, null);
+                return partitionEvent;
+            }
         }
 
         protected override void Deliver(PartitionEvent evt)

@@ -94,7 +94,14 @@ namespace DurableTask.Netherite
 
             this.TraceHelper.TracePartitionProgress("Starting", ref this.LastTransition, this.CurrentTimeMs, "");
 
-            errorHandler.Token.Register(() => this.TraceHelper.TracePartitionProgress("Terminated", ref this.LastTransition, this.CurrentTimeMs, ""));
+            errorHandler.Token.Register(() => {
+                this.TraceHelper.TracePartitionProgress("Terminated", ref this.LastTransition, this.CurrentTimeMs, "");
+
+                if (!this.ErrorHandler.NormalTermination && this.Settings.TestHooks != null && this.Settings.TestHooks.FaultInjector == null)
+                {
+                    this.Settings.TestHooks.Error("Partition", "Unexpected partition termination during test");
+                }
+            });
 
             await MaxConcurrentStarts.WaitAsync();
 
@@ -136,18 +143,22 @@ namespace DurableTask.Netherite
         }
 
         [Conditional("DEBUG")]
-        public void Assert(bool condition)
+        public void Assert(bool condition, string message)
         {
             if (!condition)
             {
-                if (System.Diagnostics.Debugger.IsAttached)
+                if (this.Settings.TestHooks != null)
+                {
+                    this.Settings.TestHooks.Error("Partition.Assert", $"Assertion Failed: {message}");
+                }
+                else if (System.Diagnostics.Debugger.IsAttached)
                 {
                     System.Diagnostics.Debugger.Break();
                 }
 
                 var stacktrace = System.Environment.StackTrace;
 
-                this.ErrorHandler.HandleError(stacktrace, "Assertion failed", null, false, false);
+                this.ErrorHandler.HandleError(stacktrace, $"Assertion Failed: {message}", null, false, false);
             }
         }
 
@@ -176,7 +187,7 @@ namespace DurableTask.Netherite
                 }
 
                 // at this point, the partition has been terminated (either cleanly or by exception)
-                this.Assert(this.ErrorHandler.IsTerminated);
+                this.Assert(this.ErrorHandler.IsTerminated, "expect termination to be complete");
 
                 // tell the load publisher to send all buffered info
                 if (this.LoadPublisher != null)
@@ -257,7 +268,7 @@ namespace DurableTask.Netherite
 
         public void SubmitParallelEvent(PartitionEvent partitionEvent)
         {
-            this.Assert(!(partitionEvent is PartitionUpdateEvent));
+            this.Assert(!(partitionEvent is PartitionUpdateEvent), "SubmitParallelEvent must not be called with update event");
             partitionEvent.ReceivedTimestamp = this.CurrentTimeMs;
             this.State.SubmitParallelEvent(partitionEvent);
         }
@@ -279,7 +290,7 @@ namespace DurableTask.Netherite
 
         public void EnqueueActivityWorkItem(ActivityWorkItem item)
         {
-            this.Assert(!string.IsNullOrEmpty(item.OriginWorkItem));
+            this.Assert(!string.IsNullOrEmpty(item.OriginWorkItem), "null work item in EnqueueActivityWorkItem");
 
             this.WorkItemTraceHelper.TraceWorkItemQueued(
                 this.PartitionId,

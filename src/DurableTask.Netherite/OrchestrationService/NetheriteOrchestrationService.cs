@@ -608,11 +608,6 @@ namespace DurableTask.Netherite
 
             if (nextOrchestrationWorkItem != null) 
             {
-                if (nextOrchestrationWorkItem.MessageBatch.WaitForDequeueCountPersistence != null)
-                {
-                    await nextOrchestrationWorkItem.MessageBatch.WaitForDequeueCountPersistence.Task;
-                }
-
                 nextOrchestrationWorkItem.MessageBatch.WaitingSince = null;
 
                 this.workItemTraceHelper.TraceWorkItemStarted(
@@ -653,8 +648,8 @@ namespace DurableTask.Netherite
 
             // all continue as new requests are processed immediately (DurableTask.Core always uses "fast" continue-as-new)
             // so by the time we get here, it is not a continue as new
-            partition.Assert(continuedAsNewMessage == null);
-            partition.Assert(workItem.OrchestrationRuntimeState.OrchestrationStatus != OrchestrationStatus.ContinuedAsNew);
+            partition.Assert(continuedAsNewMessage == null, "unexpected continueAsNew message");
+            partition.Assert(workItem.OrchestrationRuntimeState.OrchestrationStatus != OrchestrationStatus.ContinuedAsNew, "unexpected continueAsNew status");
 
             // we assign sequence numbers to all outgoing messages, to help us track them using unique message ids
             long sequenceNumber = 0;

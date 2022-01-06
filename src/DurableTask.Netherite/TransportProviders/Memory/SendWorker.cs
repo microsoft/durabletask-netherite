@@ -13,7 +13,7 @@ namespace DurableTask.Netherite.Emulated
         Action<IEnumerable<Event>> sendHandler;
 
         public SendWorker(CancellationToken token)
-            : base(nameof(SendWorker), false, int.MaxValue, token, null)
+            : base(nameof(SendWorker), true, int.MaxValue, token, null)
         {
         }
 

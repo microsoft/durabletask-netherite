@@ -59,7 +59,7 @@ namespace DurableTask.Netherite
 
         protected abstract void HandleError(string where, string message, Exception e, bool terminatePartition, bool reportAsWarning);
 
-        public abstract void Assert(bool condition);
+        public abstract void Assert(bool condition, string message);
 
         public abstract uint PartitionId { get; }
 
@@ -103,7 +103,7 @@ namespace DurableTask.Netherite
                 {
                     this.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, updateEvent, EventTraceHelper.EventCategory.UpdateEvent, this.IsReplaying);
 
-                    this.Assert(updateEvent != null);
+                    this.Assert(updateEvent != null, "null event in ProcessUpdate");
 
                     this.SetCurrentUpdateEvent(updateEvent);
 
@@ -165,7 +165,7 @@ namespace DurableTask.Netherite
         public void ProcessReadResult(PartitionReadEvent readEvent, TrackedObjectKey key, TrackedObject target)
         {
             (long commitLogPosition, long inputQueuePosition) = this.GetPositions();
-            this.Assert(!this.IsReplaying); // read events are never part of the replay
+            this.Assert(!this.IsReplaying, "read events are not part of the replay");
             double startedTimestamp = this.CurrentTimeMs;
 
             using (EventTraceContext.MakeContext(commitLogPosition, readEvent.EventIdString))
@@ -223,7 +223,7 @@ namespace DurableTask.Netherite
         public async Task ProcessQueryResultAsync(PartitionQueryEvent queryEvent, IAsyncEnumerable<OrchestrationState> instances)
         {
             (long commitLogPosition, long inputQueuePosition) = this.GetPositions();
-            this.Assert(!this.IsReplaying); // query events are never part of the replay
+            this.Assert(!this.IsReplaying, "query events are never part of the replay");
             double startedTimestamp = this.CurrentTimeMs;
 
             using (EventTraceContext.MakeContext(commitLogPosition, queryEvent.EventIdString))

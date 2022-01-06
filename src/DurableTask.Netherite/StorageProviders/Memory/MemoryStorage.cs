@@ -26,12 +26,10 @@ namespace DurableTask.Netherite
         public MemoryStorage(ILogger logger) : base(nameof(MemoryStorage), true, int.MaxValue, CancellationToken.None, null)
         {
             this.logger = logger;
-            this.GetOrAdd(TrackedObjectKey.Activities);
-            this.GetOrAdd(TrackedObjectKey.Dedup);
-            this.GetOrAdd(TrackedObjectKey.Outbox);
-            this.GetOrAdd(TrackedObjectKey.Reassembly);
-            this.GetOrAdd(TrackedObjectKey.Sessions);
-            this.GetOrAdd(TrackedObjectKey.Timers);
+            foreach (var k in TrackedObjectKey.GetSingletons())
+            {
+                this.GetOrAdd(k);
+            }
         }
         public CancellationToken Termination => CancellationToken.None;
 
@@ -134,7 +132,7 @@ namespace DurableTask.Netherite
                                     DurabilityListeners.ConfirmDurable(updateEvent);
                                     if (updateEvent.NextCommitLogPosition > 0)
                                     {
-                                        this.partition.Assert(updateEvent.NextCommitLogPosition > this.commitPosition);
+                                        this.partition.Assert(updateEvent.NextCommitLogPosition > this.commitPosition, "updateEvent.NextCommitLogPosition > this.commitPosition in MemoryStorage.Process");
                                         this.commitPosition = updateEvent.NextCommitLogPosition;
                                     }
                                     break;
@@ -160,7 +158,7 @@ namespace DurableTask.Netherite
 
                             if (partitionEvent.NextInputQueuePosition > 0)
                             {
-                                this.partition.Assert(partitionEvent.NextInputQueuePosition > this.inputQueuePosition);
+                                this.partition.Assert(partitionEvent.NextInputQueuePosition > this.inputQueuePosition, "partitionEvent.NextInputQueuePosition > this.inputQueuePosition in MemoryStorage");
                                 this.inputQueuePosition = partitionEvent.NextInputQueuePosition;
                             }
                         }

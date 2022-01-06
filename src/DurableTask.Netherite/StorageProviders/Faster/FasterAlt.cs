@@ -352,7 +352,7 @@ namespace DurableTask.Netherite.Faster
         {
             if (!this.cache.TryGetValue(key, out var cacheEntry))
             {
-                this.partition.Assert(!this.pendingLoads.ContainsKey(key));
+                this.partition.Assert(!this.pendingLoads.ContainsKey(key), "key already there in FasterAlt");
                 var storageRecord = await this.LoadAsync(key);
                 cacheEntry = this.ProcessStorageRecord(key, storageRecord);
                 this.cache.Add(key, cacheEntry);

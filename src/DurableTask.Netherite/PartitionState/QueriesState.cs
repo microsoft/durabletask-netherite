@@ -55,13 +55,13 @@ namespace DurableTask.Netherite
         {
             if (clientRequestEvent.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query)
             {           
-                this.Partition.Assert(!this.PendingQueries.ContainsKey(clientRequestEvent.EventIdString));
+                this.Partition.Assert(!this.PendingQueries.ContainsKey(clientRequestEvent.EventIdString), "key already there in QueriesState");
                 // Buffer this request in the pending list so we can recover it.
                 this.PendingQueries.Add(clientRequestEvent.EventIdString, clientRequestEvent);
             }
             else 
             {
-                this.Partition.Assert(clientRequestEvent.Phase == ClientRequestEventWithQuery.ProcessingPhase.Confirm);
+                this.Partition.Assert(clientRequestEvent.Phase == ClientRequestEventWithQuery.ProcessingPhase.Confirm, "wrong phase in QueriesState");
                 this.PendingQueries.Remove(clientRequestEvent.EventIdString);
             }
         }
@@ -103,7 +103,7 @@ namespace DurableTask.Netherite
 
             public override async Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition)
             {
-                partition.Assert(this.request.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query);
+                partition.Assert(this.request.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query, "wrong phase in QueriesState.OnQueryCompleteAsync");
 
                 await this.request.OnQueryCompleteAsync(result, partition);
 
