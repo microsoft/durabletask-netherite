@@ -21,6 +21,7 @@ namespace DurableTask.Netherite.Tests
     using Xunit.Abstractions;
 
     [Collection("NetheriteTests")]
+    [Trait("AnyTransport", "true")]
     public partial class ConcurrentTests : IDisposable
     {
         ITestOutputHelper outputHelper;

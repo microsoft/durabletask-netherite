@@ -11,6 +11,7 @@ namespace DurableTask.Netherite.Tests
     using Xunit.Abstractions;
 
     [Collection("NetheriteTests")]
+    [Trait("AnyTransport", "false")]
     public class FaultInjectionTests : IDisposable
     {
         ITestOutputHelper outputHelper;
@@ -49,7 +50,7 @@ namespace DurableTask.Netherite.Tests
             // inject faults with growing success runs until the partition has successfully started
             using (this.faultInjector.WithMode(Faster.FaultInjector.InjectionMode.IncrementSuccessRuns, injectDuringStartup: true))
             {
-                fixture = await SingleHostFixture.StartNew(this.settings, false, TimeSpan.FromMinutes(2), (msg) => this.outputHelper.WriteLine(msg));
+                fixture = await SingleHostFixture.StartNew(this.settings, true, TimeSpan.FromMinutes(2), (msg) => this.outputHelper.WriteLine(msg));
                 await this.faultInjector.WaitForStartup(this.settings.PartitionCount, TimeSpan.FromMinutes(2));
             }
 
@@ -66,7 +67,7 @@ namespace DurableTask.Netherite.Tests
         [Fact]
         public async Task InjectHelloCreation()
         {
-            using (var fixture = await SingleHostFixture.StartNew(this.settings, false, TimeSpan.FromMinutes(1), (msg) => this.outputHelper?.WriteLine(msg)))
+            using (var fixture = await SingleHostFixture.StartNew(this.settings, true, TimeSpan.FromMinutes(1), (msg) => this.outputHelper?.WriteLine(msg)))
             {
                 await this.faultInjector.WaitForStartup(this.settings.PartitionCount, TimeSpan.FromSeconds(30));
 
@@ -90,7 +91,7 @@ namespace DurableTask.Netherite.Tests
         [Fact]
         public async Task InjectHelloCompletion()
         {
-            using (var fixture = await SingleHostFixture.StartNew(this.settings, false, TimeSpan.FromMinutes(1), (msg) => this.outputHelper.WriteLine(msg)))
+            using (var fixture = await SingleHostFixture.StartNew(this.settings, true, TimeSpan.FromMinutes(1), (msg) => this.outputHelper.WriteLine(msg)))
             {
                 // do not start injecting until all partitions have started
                 await this.faultInjector.WaitForStartup(this.settings.PartitionCount, TimeSpan.FromSeconds(30));

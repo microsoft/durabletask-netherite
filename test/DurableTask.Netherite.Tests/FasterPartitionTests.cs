@@ -18,6 +18,7 @@ namespace DurableTask.Netherite.Tests
     using Xunit.Abstractions;
 
     [Collection("NetheriteTests")]
+    [Trait("AnyTransport", "false")]
     public class FasterPartitionTests : IDisposable
     {
         readonly SingleHostFixture.TestTraceListener traceListener;

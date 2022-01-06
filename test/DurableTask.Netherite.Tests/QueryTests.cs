@@ -20,6 +20,7 @@ namespace DurableTask.Netherite.Tests
 
     // These tests are copied from AzureStorageScenarioTests
     [Collection("NetheriteTests")]
+    [Trait("AnyTransport", "true")]
     public partial class QueryTests : IClassFixture<SingleHostFixture>, IDisposable
     {
         readonly SingleHostFixture fixture;
@@ -216,6 +217,7 @@ namespace DurableTask.Netherite.Tests
     }
 
     [Collection("NetheriteTests")]
+    [Trait("AnyTransport", "true")]
     public partial class NonFixtureQueryTests : IDisposable
     {
         readonly TestTraceListener traceListener;

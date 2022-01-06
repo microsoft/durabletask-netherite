@@ -23,6 +23,7 @@ namespace DurableTask.Netherite.Tests
     // The majority of these tests were ported from AzureStorageScenarioTests in the azure/durabletask repository
 
     [Collection("NetheriteTests")]
+    [Trait("AnyTransport", "true")]
     public partial class ScenarioTests : IClassFixture<SingleHostFixture>, IDisposable
     {
         readonly SingleHostFixture fixture;

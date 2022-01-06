@@ -151,7 +151,7 @@ namespace DurableTask.Netherite.Tests
             DateTime creationTime = DateTime.UtcNow;
 
             TimeSpan timeout = TimeSpan.FromSeconds(50);
-            TestOrchestrationClient.AdjustTimeout(timeout);
+            timeout = TestOrchestrationClient.AdjustTimeout(timeout);
             Task timeoutTask = Task.Delay(timeout);
 
             bool duplicate;
