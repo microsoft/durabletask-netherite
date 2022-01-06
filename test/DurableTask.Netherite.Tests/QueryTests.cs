@@ -217,16 +217,19 @@ namespace DurableTask.Netherite.Tests
     }
 
     [Collection("NetheriteTests")]
-    [Trait("AnyTransport", "true")]
+    [Trait("AnyTransport", "false")]
     public partial class NonFixtureQueryTests : IDisposable
     {
         readonly TestTraceListener traceListener;
         readonly ILoggerFactory loggerFactory;
         readonly XunitLoggerProvider provider;
+        
+        ITestOutputHelper outputHelper;
 
         public NonFixtureQueryTests(ITestOutputHelper outputHelper)
         {
-            Action<string> output = (string message) => outputHelper.WriteLine(message);
+            this.outputHelper = outputHelper;
+            Action<string> output = (string message) => this.outputHelper?.WriteLine(message);
            
             TestConstants.ValidateEnvironment();
             this.traceListener = new TestTraceListener() { Output = output };
@@ -238,8 +241,8 @@ namespace DurableTask.Netherite.Tests
 
         public void Dispose()
         {
-            this.traceListener.Output = null;
             Trace.Listeners.Remove(this.traceListener);
+            this.outputHelper = null;
         }
 
         /// <summary>

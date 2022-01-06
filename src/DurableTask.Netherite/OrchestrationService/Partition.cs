@@ -97,7 +97,7 @@ namespace DurableTask.Netherite
             errorHandler.Token.Register(() => {
                 this.TraceHelper.TracePartitionProgress("Terminated", ref this.LastTransition, this.CurrentTimeMs, "");
 
-                if (!errorHandler.NormalTermination && this.Settings.TestHooks != null && this.Settings.TestHooks.FaultInjector == null)
+                if (!this.ErrorHandler.NormalTermination && this.Settings.TestHooks != null && this.Settings.TestHooks.FaultInjector == null)
                 {
                     this.Settings.TestHooks.Error("Partition", "Unexpected partition termination during test");
                 }
