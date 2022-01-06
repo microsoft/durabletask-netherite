@@ -24,12 +24,12 @@ namespace DurableTask.Netherite.Tests
         internal string TestHooksError { get; private set; }
 
         public SingleHostFixture()
-            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), null)
+            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, null)
         {
             this.Host.StartAsync().Wait();
         }
 
-        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, Action<string> output)
+        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, Action<string> output)
         {
             this.LoggerFactory = new LoggerFactory();
             this.loggerProvider = new XunitLoggerProvider();
@@ -38,7 +38,10 @@ namespace DurableTask.Netherite.Tests
             Trace.Listeners.Add(this.traceListener);
             TestConstants.ValidateEnvironment();
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
-            settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
+            if (useReplayChecker)
+            {
+                settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
+            }
             settings.TestHooks.OnError += (message) =>
             {
                 System.Diagnostics.Trace.WriteLine($"TESTHOOKS: {message}");
@@ -47,10 +50,17 @@ namespace DurableTask.Netherite.Tests
             this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
         }
 
-        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, Action<string> output)
+        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, TimeSpan timeout, Action<string> output)
         {
-            var fixture = new SingleHostFixture(settings, output);
-            await fixture.Host.StartAsync();
+            var fixture = new SingleHostFixture(settings, useReplayChecker, output);
+            var startupTask = fixture.Host.StartAsync(); 
+            var timeoutTask = Task.Delay(timeout);
+            await Task.WhenAny(timeoutTask, startupTask);
+            if (!startupTask.IsCompleted)
+            {
+                throw new TimeoutException($"SingleHostFixture.StartNew timed out after {timeout}");
+            }
+            await startupTask;
             return fixture;
         }
 

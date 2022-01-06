@@ -50,7 +50,7 @@ namespace DurableTask.Netherite.Tests
 
         public async Task StartAsync()
         {
-            Trace.TraceInformation($"Test progress: Started {this.orchestrationService}");
+            Trace.TraceInformation($"TestProgress: Started {this.orchestrationService}");
 
             await this.worker.StartAsync();
         }
@@ -108,19 +108,36 @@ namespace DurableTask.Netherite.Tests
             this.AddTypes(orchestrationType);
             DateTime creationTime = DateTime.UtcNow;
 
-            OrchestrationInstance instance = startAt.HasValue ?
-                await this.client.CreateScheduledOrchestrationInstanceAsync(
+            TimeSpan timeout = TimeSpan.FromSeconds(50);
+            timeout = TestOrchestrationClient.AdjustTimeout(timeout);
+            Task timeoutTask = Task.Delay(timeout);
+
+            Task<OrchestrationInstance>  startTask = startAt.HasValue ?
+                this.client.CreateScheduledOrchestrationInstanceAsync(
                     orchestrationType,
                     instanceId,
                     input,
                     startAt.Value)
                     :
-                await this.client.CreateOrchestrationInstanceAsync(
+                this.client.CreateOrchestrationInstanceAsync(
                     orchestrationType,
                     instanceId,
                     input);
 
-            Trace.TraceInformation($"Test progress: Started {orchestrationType.Name}, Instance ID = {instance.InstanceId}");
+            await Task.WhenAny(timeoutTask, startTask);
+
+            if (!startTask.IsCompleted)
+            {
+                Trace.TraceWarning( "TestProgress: Timed out {0} failed to start after {1}",
+                                    orchestrationType.Name,
+                                    timeout);
+
+                throw new TimeoutException($"Orchestration {orchestrationType.Name} failed to start after {timeout}.");
+            }
+
+            var instance = await startTask;
+
+            Trace.TraceInformation($"TestProgress: Started {orchestrationType.Name} id={instance.InstanceId}");
             return new TestOrchestrationClient(this.client, orchestrationType, instance.InstanceId, creationTime);
         }
 
@@ -132,29 +149,47 @@ namespace DurableTask.Netherite.Tests
         {
             this.AddTypes(orchestrationType);
             DateTime creationTime = DateTime.UtcNow;
-            OrchestrationInstance instance = null;
+
+            TimeSpan timeout = TimeSpan.FromSeconds(50);
+            TestOrchestrationClient.AdjustTimeout(timeout);
+            Task timeoutTask = Task.Delay(timeout);
+
             bool duplicate;
-            stati = stati ?? this.dedupeStatuses;
+            stati ??= this.dedupeStatuses;
 
             try
             {
-                instance = await this.client.CreateOrchestrationInstanceAsync(
+                var startTask = this.client.CreateOrchestrationInstanceAsync(
                          orchestrationType,
                          instanceId,
                          input,
                          stati);
                 duplicate = false;
+
+                await Task.WhenAny(timeoutTask, startTask);
+
+                if (!startTask.IsCompleted)
+                {
+                    Trace.TraceWarning("TestProgress: Timed out {0} id={1} failed to start after {2}",
+                                        orchestrationType.Name,
+                                        instanceId,
+                                        timeout);
+
+                    throw new TimeoutException($"Orchestration {orchestrationType.Name} id={instanceId} failed to start after {timeout}.");
+                }
+
+                await startTask;
             }
             catch (InvalidOperationException e) when (e.Message.Contains("already exists"))
             {
-                instance = new OrchestrationInstance() { InstanceId = instanceId };
+                var instance = new OrchestrationInstance() { InstanceId = instanceId };
                 var state = await this.client.GetOrchestrationStateAsync(instance);
                 creationTime = state.CreatedTime;
                 duplicate = true;
             }
 
-            Trace.TraceInformation($"Test progress: Started {orchestrationType.Name}, Instance ID = {instance.InstanceId}, duplicate = {duplicate}");
-            return (!duplicate, new TestOrchestrationClient(this.client, orchestrationType, instance.InstanceId, creationTime));
+            Trace.TraceInformation($"TestProgress: Started {orchestrationType.Name} id={instanceId} duplicate={duplicate}");
+            return (!duplicate, new TestOrchestrationClient(this.client, orchestrationType, instanceId, creationTime));
         }
 
         public async Task<TestOrchestrationClient> StartOrchestrationWithRetriesAsync(
@@ -193,17 +228,17 @@ namespace DurableTask.Netherite.Tests
         public async Task<IList<OrchestrationState>> GetAllOrchestrationInstancesAsync()
         {
             // This API currently only exists in the service object and is not yet exposed on the TaskHubClient
-            Trace.TraceInformation($"Test progress: Querying all instances...");
+            Trace.TraceInformation($"TestProgress: Querying all instances...");
             var instances = await this.orchestrationService.GetAllOrchestrationStatesAsync(CancellationToken.None);
-            Trace.TraceInformation($"Test progress: Found {instances.Count} in the task hub instance store.");
+            Trace.TraceInformation($"TestProgress: Found {instances.Count} in the task hub instance store.");
             return instances;
         }
 
         public async Task PurgeAllAsync()
         {
-            Trace.TraceInformation($"Test progress: Purging all instances...");
+            Trace.TraceInformation($"TestProgress: Purging all instances...");
             var purgeResult = await this.orchestrationService.PurgeInstanceHistoryAsync(default, default, null);
-            Trace.TraceInformation($"Test progress: Purged {purgeResult} instances.");
+            Trace.TraceInformation($"TestProgress: Purged {purgeResult} instances.");
         }
 
         public async Task<IList<OrchestrationState>> GetOrchestrationStateAsync(DateTime? CreatedTimeFrom = default,
@@ -213,9 +248,9 @@ namespace DurableTask.Netherite.Tests
                                                                                 CancellationToken CancellationToken = default)
         {
             // This API currently only exists in the service object and is not yet exposed on the TaskHubClient
-            Trace.TraceInformation($"Test progress: Querying instances...");
+            Trace.TraceInformation($"TestProgress: Querying instances...");
             var instances = await this.orchestrationService.GetOrchestrationStateAsync(CreatedTimeFrom, CreatedTimeTo, RuntimeStatus, InstanceIdPrefix, CancellationToken);
-            Trace.TraceInformation($"Test progress: Found {instances.Count} in the task hub instance store.");
+            Trace.TraceInformation($"TestProgress: Found {instances.Count} in the task hub instance store.");
             return instances;
         }
     }
