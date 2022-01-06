@@ -25,6 +25,7 @@ namespace DurableTask.Netherite.Faster
 
         InjectionMode mode;
         bool injectDuringStartup;
+        bool injectLeaseRenewals;
         int countdown;
         int nextrun;
 
@@ -33,12 +34,13 @@ namespace DurableTask.Netherite.Faster
             System.Diagnostics.Trace.TraceInformation($"FaultInjector: StartNewTest");
         }
 
-        public IDisposable WithMode(InjectionMode mode, bool injectDuringStartup = false)
+        public IDisposable WithMode(InjectionMode mode, bool injectDuringStartup = false, bool injectLeaseRenewals = false)
         {
             System.Diagnostics.Trace.TraceInformation($"FaultInjector: SetMode {mode}");
 
             this.mode = mode;
             this.injectDuringStartup = injectDuringStartup;
+            this.injectLeaseRenewals = injectLeaseRenewals;
 
             switch (mode)
             {
@@ -71,7 +73,7 @@ namespace DurableTask.Netherite.Faster
         readonly HashSet<BlobManager> startedPartitions = new HashSet<BlobManager>();
 
 
-        public Task WaitForStartup(int numPartitions)
+        public async Task WaitForStartup(int numPartitions, TimeSpan timeout)
         {
             var tasks = new Task[numPartitions];
             for (int i = 0; i < numPartitions; i++)
@@ -80,7 +82,14 @@ namespace DurableTask.Netherite.Faster
                 this.startupWaiters.Add(i, tcs);
                 tasks[i] = tcs.Task;
             }
-            return Task.WhenAll(tasks);
+            var timeoutTask = Task.Delay(timeout);
+            var allDone = Task.WhenAll(tasks);
+            await Task.WhenAny(timeoutTask, allDone);
+            if (!allDone.IsCompleted)
+            {
+                throw new TimeoutException($"FaultInjector.WaitForStartup timed out after {timeout}");
+            }
+            await allDone;
         }
 
         public async Task BreakLease(Microsoft.Azure.Storage.Blob.CloudBlockBlob blob)
@@ -114,14 +123,17 @@ namespace DurableTask.Netherite.Faster
         {
             bool pass = true;
 
-            if (this.injectDuringStartup || this.startedPartitions.Contains(blobManager))
+            if (this.injectLeaseRenewals || (intent != "RenewLease"))
             {
-                if (this.mode == InjectionMode.IncrementSuccessRuns)
+                if (this.injectDuringStartup || this.startedPartitions.Contains(blobManager))
                 {
-                    if (this.countdown-- <= 0)
+                    if (this.mode == InjectionMode.IncrementSuccessRuns)
                     {
-                        pass = false;
-                        this.countdown = this.nextrun++;
+                        if (this.countdown-- <= 0)
+                        {
+                            pass = false;
+                            this.countdown = this.nextrun++;
+                        }
                     }
                 }
             }
