@@ -608,11 +608,6 @@ namespace DurableTask.Netherite
 
             if (nextOrchestrationWorkItem != null) 
             {
-                if (nextOrchestrationWorkItem.MessageBatch.WaitForDequeueCountPersistence != null)
-                {
-                    await nextOrchestrationWorkItem.MessageBatch.WaitForDequeueCountPersistence.Task;
-                }
-
                 nextOrchestrationWorkItem.MessageBatch.WaitingSince = null;
 
                 this.workItemTraceHelper.TraceWorkItemStarted(
