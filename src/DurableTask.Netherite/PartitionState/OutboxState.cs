@@ -306,7 +306,7 @@ namespace DurableTask.Netherite
 
         public override void Process(WaitRequestReceived evt, EffectTracker effects)
         {
-            this.Partition.Assert(evt.ResponseToSend != null);
+            this.Partition.Assert(evt.ResponseToSend != null, "null ResponseToSend in OutboxState.Process");
             var batch = new Batch();
             batch.OutgoingResponses.Add(evt.ResponseToSend);
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
@@ -314,7 +314,7 @@ namespace DurableTask.Netherite
 
         public override void Process(CreationRequestReceived evt, EffectTracker effects)
         {
-            this.Partition.Assert(evt.ResponseToSend != null);
+            this.Partition.Assert(evt.ResponseToSend != null, "null ResponseToSend in OutboxState.Process");
             var batch = new Batch();
             batch.OutgoingResponses.Add(evt.ResponseToSend);
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
@@ -322,7 +322,7 @@ namespace DurableTask.Netherite
 
         public override void Process(DeletionRequestReceived evt, EffectTracker effects)
         {
-            this.Partition.Assert(evt.ResponseToSend != null);
+            this.Partition.Assert(evt.ResponseToSend != null, "null ResponseToSend in OutboxState.Process");
             var batch = new Batch();
             batch.OutgoingResponses.Add(evt.ResponseToSend);
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);

@@ -132,7 +132,7 @@ namespace DurableTask.Netherite
                                     DurabilityListeners.ConfirmDurable(updateEvent);
                                     if (updateEvent.NextCommitLogPosition > 0)
                                     {
-                                        this.partition.Assert(updateEvent.NextCommitLogPosition > this.commitPosition);
+                                        this.partition.Assert(updateEvent.NextCommitLogPosition > this.commitPosition, "updateEvent.NextCommitLogPosition > this.commitPosition in MemoryStorage.Process");
                                         this.commitPosition = updateEvent.NextCommitLogPosition;
                                     }
                                     break;
@@ -158,7 +158,7 @@ namespace DurableTask.Netherite
 
                             if (partitionEvent.NextInputQueuePosition > 0)
                             {
-                                this.partition.Assert(partitionEvent.NextInputQueuePosition > this.inputQueuePosition);
+                                this.partition.Assert(partitionEvent.NextInputQueuePosition > this.inputQueuePosition, "partitionEvent.NextInputQueuePosition > this.inputQueuePosition in MemoryStorage");
                                 this.inputQueuePosition = partitionEvent.NextInputQueuePosition;
                             }
                         }

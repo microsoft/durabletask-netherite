@@ -68,7 +68,7 @@ namespace DurableTask.Netherite
 
         public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            effects.Partition.Assert(evt.NumSessions == this.Sessions.Count);
+            effects.Partition.Assert(evt.NumSessions == this.Sessions.Count, "mismatching count in SessionsState.RecoveryCompleted");
 
             // restart work items for all sessions
             foreach (var kvp in this.Sessions)
@@ -119,7 +119,7 @@ namespace DurableTask.Netherite
         {
             string instanceId = message.OrchestrationInstance.InstanceId;
             bool forceNewExecution = message.Event is ExecutionStartedEvent;
-            this.Partition.Assert(!string.IsNullOrEmpty(originWorkItemId));
+            this.Partition.Assert(!string.IsNullOrEmpty(originWorkItemId), "null originWorkItem");
 
             if (this.Sessions.TryGetValue(instanceId, out var session) && !forceNewExecution)
             {
@@ -160,7 +160,7 @@ namespace DurableTask.Netherite
 
         void AddMessagesToSession(string instanceId, string originWorkItemId, IEnumerable<TaskMessage> messages, bool isReplaying, PartitionUpdateEvent filingEvent)
         {
-            this.Partition.Assert(!string.IsNullOrEmpty(originWorkItemId));
+            this.Partition.Assert(!string.IsNullOrEmpty(originWorkItemId), "null originWorkItem");
             int? forceNewExecution = FindLastExecutionStartedEvent(messages);
 
             if (this.Sessions.TryGetValue(instanceId, out var session) && forceNewExecution == null)
@@ -366,9 +366,9 @@ namespace DurableTask.Netherite
             }
 
             // remove processed messages from this batch
-            effects.Assert(session != null);
-            effects.Assert(session.SessionId == evt.SessionId);
-            effects.Assert(session.BatchStartPosition == evt.BatchStartPosition);
+            effects.Assert(session != null, "null session in SessionsState.Process(BatchProcessed)");
+            effects.Assert(session.SessionId == evt.SessionId, "wrong session id in SessionsState.Process(BatchProcessed)");
+            effects.Assert(session.BatchStartPosition == evt.BatchStartPosition, "wrong start position in SessionsState.Process(BatchProcessed)");
             session.Batch.RemoveRange(0, evt.BatchLength);
             session.BatchStartPosition += evt.BatchLength;
             session.DequeueCount = 1;

@@ -60,7 +60,7 @@ namespace DurableTask.Netherite
         {
             if (clientRequestEvent.Phase == ClientRequestEventWithPrefetch.ProcessingPhase.Read)
             {           
-                this.Partition.Assert(!this.PendingPrefetches.ContainsKey(clientRequestEvent.EventIdString));
+                this.Partition.Assert(!this.PendingPrefetches.ContainsKey(clientRequestEvent.EventIdString), "PendingPrefetches.ContainsKey(clientRequestEvent.EventIdString)");
 
                 // Issue a read request that fetches the instance state.
                 // We have to buffer this request in the pending list so we can recover it.
@@ -102,7 +102,7 @@ namespace DurableTask.Netherite
 
             public override void OnReadComplete(TrackedObject target, Partition partition)
             {
-                partition.Assert(this.request.Phase == ClientRequestEventWithPrefetch.ProcessingPhase.Read);
+                partition.Assert(this.request.Phase == ClientRequestEventWithPrefetch.ProcessingPhase.Read, "wrong phase in PrefetchState");
 
                 bool requiresProcessing = this.request.OnReadComplete(target, partition);
 

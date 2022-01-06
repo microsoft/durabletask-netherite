@@ -75,7 +75,7 @@ namespace DurableTask.Netherite
 
         public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            effects.Partition.Assert(this.Pending.Count == evt.NumActivities);
+            effects.Partition.Assert(this.Pending.Count == evt.NumActivities, "count does not match in ActivitiesState.Process(RecoveryCompleted)");
 
             foreach (var kvp in this.Pending)
             {
