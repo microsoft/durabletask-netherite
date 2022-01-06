@@ -51,40 +51,41 @@ namespace DurableTask.Netherite.Tests
             this.outputHelper = null;
         }
 
-        public IEnumerable<Task> AllTests()
+        public IEnumerable<(string, Task)> StartAllScenarios(bool includeTimers = true, bool includeLarge = true)
         {
-            yield return this.HelloWorldOrchestration_Inline();
-            yield return this.HelloWorldOrchestration_Activity();
-            yield return this.SequentialOrchestration();
-            yield return this.EventConversation();
-            yield return this.AutoStart();
-            yield return this.ContinueAsNewThenTimer();
-            yield return this.ParallelOrchestration();
-            yield return this.LargeFanOutOrchestration();
-            yield return this.FanOutOrchestration_LargeHistoryBatches();
-            yield return this.ActorOrchestration();
-            yield return this.TerminateOrchestration();
-            yield return this.RecreateCompletedInstance();
-            yield return this.RecreateCompletedInstanceWithSuborchestration();
-            yield return this.RecreateFailedInstance();
-            yield return this.RecreateTerminatedInstance();
-            yield return this.RecreateRunningInstance();
-            yield return this.TimerCancellation();
-            yield return this.TimerExpiration();
-            yield return this.LargeInputAndOutput();
-            yield return this.HandledActivityException();
-            yield return this.UnhandledOrchestrationException();
-            yield return this.UnhandledActivityException();
-            yield return this.FanOutToTableStorage();
-            yield return this.SmallTextMessagePayloads();
-            yield return this.DoubleFanOut();
-        }
+            yield return ("HelloWorldOrchestration_Inline", this.HelloWorldOrchestration_Inline());
+            yield return ("HelloWorldOrchestration_Activity", this.HelloWorldOrchestration_Activity());
+            yield return ("SequentialOrchestration", this.SequentialOrchestration());
+            yield return ("EventConversation", this.EventConversation());
+            yield return ("AutoStart", this.AutoStart());
+            yield return ("ContinueAsNewThenTimer", this.ContinueAsNewThenTimer());
+            yield return ("ParallelOrchestration", this.ParallelOrchestration());
+            yield return ("ActorOrchestration", this.ActorOrchestration());
+            yield return ("TerminateOrchestration", this.TerminateOrchestration());
+            yield return ("RecreateCompletedInstance", this.RecreateCompletedInstance());
+            yield return ("RecreateCompletedInstanceWithSuborchestration", this.RecreateCompletedInstanceWithSuborchestration());
+            yield return ("RecreateFailedInstance", this.RecreateFailedInstance());
+            yield return ("RecreateTerminatedInstance", this.RecreateTerminatedInstance());
+            yield return ("RecreateRunningInstance", this.RecreateRunningInstance());
+            yield return ("HandledActivityException", this.HandledActivityException());
+            yield return ("UnhandledOrchestrationException", this.UnhandledOrchestrationException());
+            yield return ("UnhandledActivityException", this.UnhandledActivityException());
+            yield return ("SmallTextMessagePayloads", this.SmallTextMessagePayloads());
+            yield return ("DoubleFanOut", this.DoubleFanOut());
 
-        [Fact]
-        public async Task RunConcurrent()
-        {
-            var tests = this.AllTests().ToList();
-            await Task.WhenAll(tests);
+            if (includeTimers)
+            {
+                yield return ("TimerCancellation", this.TimerCancellation());
+                yield return ("TimerExpiration", this.TimerExpiration());
+            }
+
+            if (includeLarge)
+            {
+                yield return ("LargeInputAndOutput", this.LargeInputAndOutput());
+                yield return ("FanOutToTableStorage", this.FanOutToTableStorage());
+                yield return ("LargeFanOutOrchestration", this.LargeFanOutOrchestration());
+                yield return ("FanOutOrchestration_LargeHistoryBatches", this.FanOutOrchestration_LargeHistoryBatches());
+            }
         }
 
         /// <summary>
