@@ -446,7 +446,7 @@ namespace DurableTask.Netherite.EventHubs
                 this.traceHelper.LogDebug("Client{clientId}.ch{index} establishing connection", Client.GetShortId(this.ClientId), index);
                 // receive a dummy packet to establish connection
                 // (the packet, if any, cannot be for this receiver because it is fresh)
-                await receiver.ReceiveAsync(1);
+                await receiver.ReceiveAsync(1, TimeSpan.FromMilliseconds(1));
             }
             catch (Exception exception)
             {
