@@ -645,7 +645,22 @@ namespace DurableTask.Netherite.Faster
                 {
                     while (iter1.GetNext(out RecordInfo recordInfo, out var key, out var value) && !recordInfo.Tombstone)
                     {
-                        emitItem(key, value);
+                        if (value.Val == null)
+                        {
+                            emitItem(key, null);
+                        }
+                        else if (value.Val is TrackedObject t)
+                        {
+                            emitItem(key, t);
+                        }
+                        else if (value.Val is byte[] bytes)
+                        {
+                            var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                        }
+                        else
+                        {
+                            throw new InvalidCastException("cannot cast value to TrackedObject");
+                        }
                     }
                 }
             }
@@ -770,7 +785,6 @@ namespace DurableTask.Netherite.Faster
 
             public int Version; // we use this validate consistency of read/write updates in FASTER, it is not otherwise needed
 
-            public static implicit operator TrackedObject(Value v) => (TrackedObject)v.Val;
             public static implicit operator Value(TrackedObject v) => new Value() { Val = v };
 
             public override string ToString() => this.Val.ToString();
@@ -817,7 +831,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     else
                     {
-                        TrackedObject trackedObject = obj;
+                        TrackedObject trackedObject = (TrackedObject) obj.Val;
                         DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
                         this.storeStats.Serialize++;
                         this.writer.Write(trackedObject.SerializationCache.Length);
