@@ -403,15 +403,15 @@ namespace DurableTask.Netherite
                 TimeoutUtc = this.GetTimeoutBucket(timeout),
             };
 
-            try
-            {
+            //try
+            //{
                 var response = await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false).ConfigureAwait(false);
                 return ((WaitResponseReceived)response)?.OrchestrationState;
-            }
-            catch(TimeoutException)
-            {
-                return null; // to match semantics of other backends, wait returns null when timing out
-            }
+            //}
+            //catch(TimeoutException)
+            //{
+            //    return null; // to match semantics of other backends, wait returns null when timing out
+            //}
         }
 
         public async Task<OrchestrationState> GetOrchestrationStateAsync(uint partitionId, string instanceId, bool fetchInput = true, bool fetchOutput = true)
