@@ -160,6 +160,7 @@ namespace DurableTask.Netherite.EventHubs
             // check that we are not already shutting down before even starting this
             if (this.eventProcessorShutdown.IsCancellationRequested)
             {
+                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is cancelling startup of incarnation {incarnation}", this.eventHubName, this.eventHubPartition, c.Incarnation);
                 return null;
             }
 
@@ -188,14 +189,21 @@ namespace DurableTask.Netherite.EventHubs
                 // receive packets already sitting in the buffer; use lock to prevent race with new packets being delivered
                 using (await this.deliveryLock.LockAsync())
                 {
+                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} checking for packets requiring redelivery (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, c.Incarnation);
                     var batch = this.pendingDelivery.Select(triple => triple.Item1).Where(evt => evt.NextInputQueuePosition > c.NextPacketToReceive).ToList();
                     if (batch.Count > 0)
                     {
                         c.NextPacketToReceive = batch[batch.Count - 1].NextInputQueuePosition;
                         c.Partition.SubmitEvents(batch);
-                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} received {batchsize} packets, starting with #{seqno}, next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, batch.Count, batch[0].NextInputQueuePosition - 1, c.NextPacketToReceive);
+                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} redelivered {batchsize} packets, starting with #{seqno}, next expected packet is #{nextSeqno} (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, batch.Count, batch[0].NextInputQueuePosition - 1, c.NextPacketToReceive, c.Incarnation);
+                    }
+                    else
+                    {
+                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} has no packets requiring redelivery ", this.eventHubName, this.eventHubPartition);
                     }
                 }
+
+                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} completed partition startup (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, c.Incarnation);
             }
             catch (OperationCanceledException) when (c.ErrorHandler.IsTerminated)
             {
@@ -206,7 +214,7 @@ namespace DurableTask.Netherite.EventHubs
             {
                 c.ErrorHandler.HandleError("EventHubsProcessor.StartPartitionAsync", "failed to start partition", e, true, false);
                 this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} failed during startup (incarnation {incarnation}): {exception}", this.eventHubName, this.eventHubPartition, c.Incarnation, e);
-            }
+            }        
 
             return c;
         }
@@ -242,10 +250,14 @@ namespace DurableTask.Netherite.EventHubs
 
             using (await this.deliveryLock.LockAsync())
             {
+                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} starting shutdown task", this.eventHubName, this.eventHubPartition);
+
                 if (this.shutdownTask == null)
                 {
                     this.shutdownTask = Task.Run(() => ShutdownAsync());
                 }
+
+                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} started shutdown task", this.eventHubName, this.eventHubPartition);
             }
 
             await this.shutdownTask;
@@ -320,7 +332,7 @@ namespace DurableTask.Netherite.EventHubs
 
         async Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
         {
-            this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} receiving #{seqno}", this.eventHubName, this.eventHubPartition, packets.First().SystemProperties.SequenceNumber);
+            this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} is receiving #{seqno}", this.eventHubName, this.eventHubPartition, packets.First().SystemProperties.SequenceNumber);
 
             if (!this.lastCheckpointedOffset.HasValue)
             {
@@ -336,10 +348,15 @@ namespace DurableTask.Netherite.EventHubs
                 current = await current.Next.ConfigureAwait(false);
             }
 
+
             if (current == null)
             {
                 this.traceHelper.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition} received packets for closed processor, discarded", this.eventHubName, this.eventHubPartition);
                 return;
+            }
+            else
+            {
+                this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} is delivering to incarnation {seqno}", this.eventHubName, this.eventHubPartition, current.Incarnation);
             }
 
             try
@@ -349,6 +366,8 @@ namespace DurableTask.Netherite.EventHubs
 
                 using (await this.deliveryLock.LockAsync()) // must prevent rare race with a partition that is currently restarting. Contention is very unlikely.
                 {
+                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is processing packets (incarnation {seqno})", this.eventHubName, this.eventHubPartition, current.Incarnation);
+
                     foreach (var eventData in packets)
                     {
                         var seqno = eventData.SystemProperties.SequenceNumber;
@@ -404,6 +423,8 @@ namespace DurableTask.Netherite.EventHubs
                         }
                     }
                 }
+
+                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} finished processing packets", this.eventHubName, this.eventHubPartition);
 
                 if (batch.Count > 0)
                 {
