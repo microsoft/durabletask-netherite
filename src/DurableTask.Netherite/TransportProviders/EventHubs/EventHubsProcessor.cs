@@ -281,7 +281,9 @@ namespace DurableTask.Netherite.EventHubs
 
         async ValueTask SaveEventHubsReceiverCheckpoint(PartitionContext context, long byteThreshold)
         {
-            if (this.lastCheckpointedOffset.HasValue && this.persistedOffset - this.lastCheckpointedOffset.Value > byteThreshold)
+            if (this.lastCheckpointedOffset.HasValue
+                && this.persistedOffset - this.lastCheckpointedOffset.Value > byteThreshold
+                && !context.CancellationToken.IsCancellationRequested)
             {
                 var checkpoint = new Checkpoint(this.partitionId.ToString(), this.persistedOffset.ToString(), this.persistedSequenceNumber);
 
