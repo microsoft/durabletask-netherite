@@ -98,7 +98,9 @@ namespace DurableTask.Netherite.Emulated
 
             // we finish the (possibly lengthy) partition loading asynchronously so it is possible to receive 
             // stop signals before partitions are fully recovered
-            this.startOrRecoverTask = this.StartOrRecoverAsync(0);
+            var tcs = new TaskCompletionSource<object>();
+            this.startOrRecoverTask = this.StartOrRecoverAsync(0, tcs.Task);
+            tcs.SetResult(null);
 
             return Task.CompletedTask;
         }
@@ -113,14 +115,15 @@ namespace DurableTask.Netherite.Emulated
 
             if (this.shutdownTokenSource?.IsCancellationRequested == false)
             {
-                this.startOrRecoverTask = this.StartOrRecoverAsync(epoch + 1);
+                var tcs = new TaskCompletionSource<object>();
+                this.startOrRecoverTask = this.StartOrRecoverAsync(epoch + 1, tcs.Task);
+                tcs.SetResult(null);
             }
         }
 
-        async Task StartOrRecoverAsync(int epoch)
+        async Task StartOrRecoverAsync(int epoch, Task continueStart)
         {
-            await Task.Yield();
-            System.Diagnostics.Debug.Assert(this.startOrRecoverTask != null);
+            await continueStart;
 
             if (epoch > 0)
             {
