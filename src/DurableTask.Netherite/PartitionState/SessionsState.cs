@@ -324,13 +324,15 @@ namespace DurableTask.Netherite
             // a different session id
             if (!this.Sessions.TryGetValue(evt.InstanceId, out var session) || session.SessionId != evt.SessionId)
             {
-                this.Partition.WorkItemTraceHelper.TraceWorkItemDiscarded(
-                    this.Partition.PartitionId, 
-                    WorkItemTraceHelper.WorkItemType.Orchestration, 
-                    evt.WorkItemId, evt.InstanceId, 
-                    session != null ? this.GetSessionPosition(session) : null,
-                    "session was replaced"); 
-                
+                if (!effects.IsReplaying)
+                {
+                    this.Partition.WorkItemTraceHelper.TraceWorkItemDiscarded(
+                        this.Partition.PartitionId,
+                        WorkItemTraceHelper.WorkItemType.Orchestration,
+                        evt.WorkItemId, evt.InstanceId,
+                        session != null ? this.GetSessionPosition(session) : null,
+                        "session was replaced");
+                }
                 return;
             };
 

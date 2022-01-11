@@ -117,7 +117,7 @@ namespace DurableTask.Netherite.Faster
 
         static readonly int[] StorageFormatVersion = new int[] {
             1, //initial version
-            2, //separate singletons
+            2, //0.7.0-beta changed singleton storage, and adds dequeue count
         }; 
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
@@ -164,7 +164,7 @@ namespace DurableTask.Netherite.Faster
                 }
                 if (taskhubFormat.FormatVersion != StorageFormatVersion.Last())
                 {
-                    throw new InvalidOperationException($"The current storage format version (={StorageFormatVersion}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
+                    throw new InvalidOperationException($"The current storage format version (={StorageFormatVersion.Last()}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
                 }
             }
             catch(Exception e)
