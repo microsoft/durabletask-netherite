@@ -202,7 +202,7 @@ namespace DurableTask.Netherite.AzureFunctions
                 ScaleRecommendation recommendation;               
                 try
                 { 
-                    if (metrics.Length == 0)
+                    if (metrics == null || metrics.Length == 0)
                     {
                         recommendation = new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: "missing metrics");
                     }
