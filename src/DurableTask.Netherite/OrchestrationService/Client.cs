@@ -116,9 +116,15 @@ namespace DurableTask.Netherite
 
                 if (!fragment.IsLast)
                 {
-                    if (!this.Fragments.TryGetValue(originalEventString, out var stream))
+                    MemoryStream stream;
+
+                    if (fragment.Fragment == 0)
                     {
                         this.Fragments[originalEventString] = stream = new MemoryStream();
+                    }
+                    else
+                    {
+                        stream = this.Fragments[originalEventString];
                     }
                     stream.Write(fragment.Bytes, 0, fragment.Bytes.Length);
                 }

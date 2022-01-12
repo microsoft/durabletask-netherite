@@ -57,10 +57,17 @@ namespace DurableTask.Netherite
             }
             else
             {
-                if (!this.Fragments.TryGetValue(originalEventString, out var list))
+                List<PartitionEventFragment> list;
+
+                if (evt.Fragment == 0)
                 {
                     this.Fragments[originalEventString] = list = new List<PartitionEventFragment>();
                 }
+                else
+                {
+                    list = this.Fragments[originalEventString];
+                }
+
                 list.Add(evt);
             }
         } 
