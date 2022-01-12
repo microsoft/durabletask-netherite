@@ -148,12 +148,16 @@ namespace DurableTask.Netherite.Scaling
                         reason: "Task hub is idle");
                 }
 
-                int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.MediumLatency);
+                bool isSlowPartition(PartitionLoadInfo info)
+                {
+                    char mostRecent = info.LatencyTrend.Last();
+                    return mostRecent == PartitionLoadInfo.HighLatency || mostRecent == PartitionLoadInfo.MediumLatency;
+                }
+                int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => isSlowPartition(info));
 
                 if (workerCount < numberOfSlowPartitions)
                 {
                     // scale up to the number of busy partitions
-                    var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.MediumLatency);
                     return new ScaleRecommendation(
                         ScaleAction.AddWorker,
                         keepWorkersAlive: true,
