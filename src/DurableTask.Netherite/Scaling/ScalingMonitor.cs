@@ -12,19 +12,22 @@ namespace DurableTask.Netherite.Scaling
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Netherite.EventHubs;
-    using Microsoft.Extensions.Logging;
 
     /// <summary>
     /// Monitors the performance of the Netherite backend and makes scaling decisions.
     /// </summary>
-    public class ScalingMonitor 
+    public class ScalingMonitor
     {
         readonly string storageConnectionString;
         readonly string eventHubsConnectionString;
         readonly string partitionLoadTableName;
         readonly string taskHubName;
         readonly TransportConnectionString.TransportChoices configuredTransport;
-        readonly Action<string, int, string> recommendationTracer;
+
+        // public logging actions to enable collection of scale-monitor-related logging within the Netherite infrastructure
+        public Action<string, int, string> RecommendationTracer { get; }
+        public Action<string> InformationTracer { get; }
+        public Action<string, Exception> ErrorTracer { get; }
 
         readonly ILoadMonitorService loadMonitor;
 
@@ -34,11 +37,6 @@ namespace DurableTask.Netherite.Scaling
         public string TaskHubName => this.taskHubName;
 
         /// <summary>
-        /// A logger for scaling events.
-        /// </summary>
-        public ILogger Logger { get; }
-
-        /// <summary>
         /// Creates an instance of the scaling monitor, with the given parameters.
         /// </summary>
         /// <param name="storageConnectionString">The storage connection string.</param>
@@ -46,19 +44,22 @@ namespace DurableTask.Netherite.Scaling
         /// <param name="partitionLoadTableName">The name of the storage table with the partition load information.</param>
         /// <param name="taskHubName">The name of the taskhub.</param>
         public ScalingMonitor(
-            string storageConnectionString, 
-            string eventHubsConnectionString, 
-            string partitionLoadTableName, 
+            string storageConnectionString,
+            string eventHubsConnectionString,
+            string partitionLoadTableName,
             string taskHubName,
             Action<string, int, string> recommendationTracer,
-            ILogger logger)
+            Action<string> informationTracer,
+            Action<string, Exception> errorTracer)
         {
+            this.RecommendationTracer = recommendationTracer;
+            this.InformationTracer = informationTracer;
+            this.ErrorTracer = errorTracer;
+
             this.storageConnectionString = storageConnectionString;
             this.eventHubsConnectionString = eventHubsConnectionString;
             this.partitionLoadTableName = partitionLoadTableName;
             this.taskHubName = taskHubName;
-            this.recommendationTracer = recommendationTracer;
-            this.Logger = logger;
 
             TransportConnectionString.Parse(eventHubsConnectionString, out _, out this.configuredTransport);
 
@@ -129,8 +130,6 @@ namespace DurableTask.Netherite.Scaling
         {
             var recommendation = DetermineRecommendation();
 
-            this.recommendationTracer?.Invoke(recommendation.Action.ToString(), workerCount, recommendation.Reason);
-
             return recommendation;
 
             ScaleRecommendation DetermineRecommendation()
@@ -148,12 +147,16 @@ namespace DurableTask.Netherite.Scaling
                         reason: "Task hub is idle");
                 }
 
-                int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => info.LatencyTrend.Length > 1 && info.LatencyTrend.Last() == PartitionLoadInfo.MediumLatency);
+                bool isSlowPartition(PartitionLoadInfo info)
+                {
+                    char mostRecent = info.LatencyTrend.Last();
+                    return mostRecent == PartitionLoadInfo.HighLatency || mostRecent == PartitionLoadInfo.MediumLatency;
+                }
+                int numberOfSlowPartitions = metrics.LoadInformation.Values.Count(info => isSlowPartition(info));
 
                 if (workerCount < numberOfSlowPartitions)
                 {
                     // scale up to the number of busy partitions
-                    var partition = metrics.LoadInformation.First(kvp => kvp.Value.LatencyTrend.Last() == PartitionLoadInfo.MediumLatency);
                     return new ScaleRecommendation(
                         ScaleAction.AddWorker,
                         keepWorkersAlive: true,
