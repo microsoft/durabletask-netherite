@@ -57,7 +57,7 @@ namespace LoadGeneratorApp
 
         public override string ToString()
         {
-            return string.Format($"{Prefix}-{Operation}-{RandomSeed}seed");
+            return string.Format($"{this.Prefix}-{this.Operation}-{this.RandomSeed}seed");
         }
     }
 }

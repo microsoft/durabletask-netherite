@@ -44,8 +44,8 @@ namespace LoadGeneratorApp
             resultblob.UploadText(JsonConvert.SerializeObject(results, Formatting.Indented));
         }
 
-        private static string RESULTS_CONNECTION = "ResultsConnection";
-        private static string RESULTFILE_CONTAINER = "results";
+        static readonly string RESULTS_CONNECTION = "ResultsConnection";
+        static readonly string RESULTFILE_CONTAINER = "results";
 
         public static string MakeTestName(string benchmarkname)
         {

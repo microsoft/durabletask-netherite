@@ -17,14 +17,14 @@ namespace LoadGeneratorApp
 
     public class Dispatcher
     {
-        BaseParameters parameters;
-        Random random;
-        Client client;
+        readonly BaseParameters parameters;
+        readonly Random random;
+        readonly Client client;
         int iteration;
-        int numRobots;
-        int robotNumber;
-        int privateIndex;
-        Func<Guid, string> callbackUri;
+        readonly int numRobots;
+        readonly int robotNumber;
+        readonly int privateIndex;
+        readonly Func<Guid, string> callbackUri;
 
         internal Dispatcher(BaseParameters parameters, Random random, int numRobots, Client client, int robotNumber, int privateIndex, Func<Guid, string> callbackUri)
         {
@@ -58,9 +58,9 @@ namespace LoadGeneratorApp
 
                 case Operations.Ping:
                     {
-                        string url = client.BaseUrl() + "/ping";
+                        string url = this.client.BaseUrl() + "/ping";
 
-                        string result = await client.HttpClient.GetStringAsync(url);
+                        string result = await this.client.HttpClient.GetStringAsync(url);
 
                         logger?.LogTrace(result);
                         
@@ -69,9 +69,9 @@ namespace LoadGeneratorApp
 
                 case Operations.Get:
                     {
-                        string url = client.BaseUrl();
+                        string url = this.client.BaseUrl();
 
-                        string result = await client.HttpClient.GetStringAsync(url);
+                        string result = await this.client.HttpClient.GetStringAsync(url);
 
                         logger?.LogTrace(result);
 
@@ -80,9 +80,9 @@ namespace LoadGeneratorApp
 
                 case Operations.Post:
                     {
-                        string url = client.BaseUrl();
+                        string url = this.client.BaseUrl();
 
-                        HttpResponseMessage response = await client.HttpClient.PostAsync(url, new StringContent(""));
+                        HttpResponseMessage response = await this.client.HttpClient.PostAsync(url, new StringContent(""));
 
                         string result = await response.Content.ReadAsStringAsync();
 
@@ -93,9 +93,9 @@ namespace LoadGeneratorApp
 
                 case Operations.Hello100:
                     {
-                        string url = client.BaseUrl() + "/hellocities";
+                        string url = this.client.BaseUrl() + "/hellocities";
 
-                        HttpResponseMessage response = await client.HttpClient.PostAsync(url, new StringContent("100"));
+                        HttpResponseMessage response = await this.client.HttpClient.PostAsync(url, new StringContent("100"));
 
                         string result = await response.Content.ReadAsStringAsync();
 
@@ -117,7 +117,7 @@ namespace LoadGeneratorApp
                 case Operations.HelloHttp:
                 case Operations.HelloClient:
                     {
-                        bool useReportedLatency = (operation == Operations.Hello) && string.IsNullOrEmpty(parameters.EventHubsConnection);
+                        bool useReportedLatency = (operation == Operations.Hello) && string.IsNullOrEmpty(this.parameters.EventHubsConnection);
                         bool measureClientLatency = (operation == Operations.HelloClient);
 
                         string orchestrationName = "HelloSequence3";
@@ -129,7 +129,7 @@ namespace LoadGeneratorApp
                         Stopwatch stopwatch = new Stopwatch();
                         stopwatch.Start();
 
-                        var tuple = await client.RunOrchestrationAsync(logger, orchestrationName, instanceId, input, useReportedLatency).ConfigureAwait(false);
+                        var tuple = await this.client.RunOrchestrationAsync(logger, orchestrationName, instanceId, input, useReportedLatency).ConfigureAwait(false);
 
                         stopwatch.Stop();
 
@@ -174,16 +174,16 @@ namespace LoadGeneratorApp
 
                         object input = new
                         {
-                            Length = opname.Contains("Long") ? parameters.NumberObjects : defaultLength,
-                            WorkExponent = opname.Contains("Work") ? parameters.NumberObjects : defaultWorkExponent,
-                            DataExponent = opname.Contains("Data") ? parameters.NumberObjects : defaultDataExponent,
+                            Length = opname.Contains("Long") ? this.parameters.NumberObjects : defaultLength,
+                            WorkExponent = opname.Contains("Work") ? this.parameters.NumberObjects : defaultWorkExponent,
+                            DataExponent = opname.Contains("Data") ? this.parameters.NumberObjects : defaultDataExponent,
                         };
 
                         if (!opname.Contains("Aws"))
                         {
                             logger?.LogTrace($"issued orchestration name={orchestrationName} instanceId={instanceId} input={JsonConvert.SerializeObject(input, Formatting.None)}");
 
-                            var tuple = await client.RunOrchestrationAsync(logger, orchestrationName, instanceId, input, useReportedLatency).ConfigureAwait(false);
+                            var tuple = await this.client.RunOrchestrationAsync(logger, orchestrationName, instanceId, input, useReportedLatency).ConfigureAwait(false);
 
                             logger?.LogTrace($"orchestration completed id={instanceId} result={tuple.Result}");
 
@@ -193,7 +193,7 @@ namespace LoadGeneratorApp
                         {
                             string stateMachineArn = AwsParameters.TriggeredSequence_Arn;
                             JObject jinput = JObject.FromObject(new { input = input });
-                            Client.CallbackResponse response = await client.RunWrappedStepFunctionAsync(callbackUri, stateMachineArn, jinput);
+                            Client.CallbackResponse response = await this.client.RunWrappedStepFunctionAsync(this.callbackUri, stateMachineArn, jinput);
                             return new StatTuple() { Time = response.EndTime, Duration = response.CompletionTime };
                         }
                     }
@@ -205,22 +205,22 @@ namespace LoadGeneratorApp
                         int target;
                         if (operation == Operations.BankNoConflicts || operation == Operations.BankNoConflictsHttp)
                         {
-                            target = privateIndex;
+                            target = this.privateIndex;
                         }
                         else
                         {
                             // pair of accounts is chosen randomly from available
-                            target = random.Next(parameters.NumberObjects);
+                            target = this.random.Next(this.parameters.NumberObjects);
                         }
 
                         string name = "BankTransaction";
                         var instanceId = $"Bank-{Guid.NewGuid():n}-!{target % 32:D2}";
 
-                        bool useReportedLatency = string.IsNullOrEmpty(parameters.EventHubsConnection) && operation != Operations.BankNoConflictsHttp;
+                        bool useReportedLatency = string.IsNullOrEmpty(this.parameters.EventHubsConnection) && operation != Operations.BankNoConflictsHttp;
 
                         logger?.LogTrace($"issued id={instanceId} target={target}");
 
-                        var tuple = await client.RunOrchestrationAsync(logger, name, instanceId, target, useReportedLatency).ConfigureAwait(false);
+                        var tuple = await this.client.RunOrchestrationAsync(logger, name, instanceId, target, useReportedLatency).ConfigureAwait(false);
 
                         logger?.LogTrace($"received id={instanceId} result={tuple.Result}");
 
@@ -229,9 +229,9 @@ namespace LoadGeneratorApp
 
                 case Operations.CallbackTest:
                     {
-                        string requestUri = client.BaseUrl() + "/callbackTest";
+                        string requestUri = this.client.BaseUrl() + "/callbackTest";
                         JObject input(string callbackUri) => new JObject(new JProperty("CallbackUri", callbackUri));               
-                        Client.CallbackResponse response = await client.RunRemoteRequestWithCallback(callbackUri, requestUri, input);
+                        Client.CallbackResponse response = await this.client.RunRemoteRequestWithCallback(this.callbackUri, requestUri, input);
                         return new StatTuple() { Time = response.EndTime, Duration = response.CompletionTime };
                     }
 
@@ -240,7 +240,7 @@ namespace LoadGeneratorApp
                         string stateMachineArn = AwsParameters.Hello_Arn;
                         //JObject input = JObject.Parse("{ \"array\": [ {}, {}, {} ] }");
                         JObject input = JObject.Parse("{ \"array\": [ {} ] }");
-                        Client.CallbackResponse response = await client.RunWrappedStepFunctionAsync(callbackUri, stateMachineArn, input);
+                        Client.CallbackResponse response = await this.client.RunWrappedStepFunctionAsync(this.callbackUri, stateMachineArn, input);
                         return new StatTuple() { Time = response.EndTime, Duration = response.CompletionTime };
                     }
 
@@ -251,7 +251,7 @@ namespace LoadGeneratorApp
                             new JProperty("s3Bucket", AwsParameters.Image_s3Bucket),
                             new JProperty("s3Key", AwsParameters.Image_s3Key),
                             new JProperty("objectID", AwsParameters.Image_objectID));
-                        Client.CallbackResponse response = await client.RunWrappedStepFunctionAsync(callbackUri, stateMachineArn, input);
+                        Client.CallbackResponse response = await this.client.RunWrappedStepFunctionAsync(this.callbackUri, stateMachineArn, input);
                         return new StatTuple() { Time = response.EndTime, Duration = response.CompletionTime };
                     }
 
@@ -275,7 +275,7 @@ namespace LoadGeneratorApp
 
                         logger?.LogTrace($"issued id={instanceId} ");
 
-                        var tuple = await client.RunOrchestrationAsync(logger, name, instanceId, input, true).ConfigureAwait(false);
+                        var tuple = await this.client.RunOrchestrationAsync(logger, name, instanceId, input, true).ConfigureAwait(false);
 
                         logger?.LogTrace($"received id={instanceId} result={tuple.Result}");
 
