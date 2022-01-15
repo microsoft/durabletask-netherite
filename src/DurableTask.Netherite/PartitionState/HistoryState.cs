@@ -53,11 +53,11 @@ namespace DurableTask.Netherite
             // can add events to the history, or replace it with a new history
 
             // update the stored history
-            if (this.History == null || evt.State.OrchestrationInstance.ExecutionId != this.ExecutionId)
+            if (this.History == null || evt.ExecutionId != this.ExecutionId)
             {
                 this.History = new List<HistoryEvent>();
                 this.Episode = 0;
-                this.ExecutionId = evt.State.OrchestrationInstance.ExecutionId;
+                this.ExecutionId = evt.ExecutionId;
                 this.HistorySize = 0;
             }
 
@@ -82,9 +82,9 @@ namespace DurableTask.Netherite
             {
                 this.Partition.EventTraceHelper.TraceInstanceUpdate(
                     evt.EventIdString,
-                    evt.State.OrchestrationInstance.InstanceId,
-                    evt.State.OrchestrationInstance.ExecutionId,
-                    evt.State.OrchestrationStatus,
+                    evt.InstanceId,
+                    evt.ExecutionId,
+                    evt.OrchestrationStatus,
                     this.History.Count,
                     evt.NewEvents, 
                     this.HistorySize,
@@ -94,9 +94,9 @@ namespace DurableTask.Netherite
                 this.CachedOrchestrationWorkItem = evt.WorkItemForReuse;
 
                 if (this.CachedOrchestrationWorkItem != null 
-                    && this.CachedOrchestrationWorkItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId != evt.State.OrchestrationInstance.ExecutionId)
+                    && this.CachedOrchestrationWorkItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId != evt.ExecutionId)
                 {
-                    effects.Partition.EventTraceHelper.TraceEventProcessingWarning($"Dropping bad workitem cache instance={this.InstanceId} expected_executionid={evt.State.OrchestrationInstance.ExecutionId} actual_executionid={this.CachedOrchestrationWorkItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId}");
+                    effects.Partition.EventTraceHelper.TraceEventProcessingWarning($"Dropping bad workitem cache instance={this.InstanceId} expected_executionid={evt.ExecutionId} actual_executionid={this.CachedOrchestrationWorkItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId}");
                     this.CachedOrchestrationWorkItem = null;
                 }
             }
