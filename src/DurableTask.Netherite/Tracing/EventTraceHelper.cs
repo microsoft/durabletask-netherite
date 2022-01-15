@@ -6,7 +6,6 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
     using DurableTask.Core.History;
     using Dynamitey;
-    using Dynamitey.DynamicObjects;
     using FASTER.core;
     using Microsoft.Extensions.Logging;
     using System;

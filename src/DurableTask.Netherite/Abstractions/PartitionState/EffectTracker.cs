@@ -52,24 +52,22 @@ namespace DurableTask.Netherite
 
         void SetCurrentUpdateEvent(PartitionUpdateEvent updateEvent)
         {
-            this.effect = this.currentUpdate = updateEvent;
+            this.currentUpdate = updateEvent;
         }
 
         PartitionUpdateEvent currentUpdate;
-        dynamic effect;
 
         /// <summary>
-        /// Applies the event to the given tracked object, using dynamic dispatch to 
+        /// Applies the event to the given tracked object, using visitor pattern to
         /// select the correct Process method overload for the event. 
         /// </summary>
         /// <param name="trackedObject">The tracked object on which the event should be applied.</param>
         /// <remarks>Called by the storage layer when this object calls applyToStore.</remarks>
-        public void ProcessEffectOn(dynamic trackedObject)
+        public void ProcessEffectOn(TrackedObject trackedObject)
         {
-            this.Partition.Assert(this.currentUpdate != null);
             try
             {
-                trackedObject.Process(this.effect, this);
+                this.currentUpdate.ApplyTo(trackedObject, this);
             }
             catch (Exception exception) when (!Utils.IsFatal(exception))
             {

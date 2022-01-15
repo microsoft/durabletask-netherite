@@ -48,7 +48,7 @@ namespace DurableTask.Netherite
 
         public override long EstimatedSize => 60 + 2 * ((this.InstanceId?.Length ?? 0) + (this.ExecutionId?.Length ?? 0)) + this.HistorySize;
 
-        public void Process(BatchProcessed evt, EffectTracker effects)
+        public override void Process(BatchProcessed evt, EffectTracker effects)
         {
             // can add events to the history, or replace it with a new history
 

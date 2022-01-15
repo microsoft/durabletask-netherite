@@ -19,6 +19,11 @@ namespace DurableTask.Netherite
 
         const int MaxBatchSize = 1000;
 
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
+
         public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition)
         {
             int batchCount = 0;

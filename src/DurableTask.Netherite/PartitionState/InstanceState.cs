@@ -37,7 +37,7 @@ namespace DurableTask.Netherite
 
         public override long EstimatedSize => 60 + 2 * (this.InstanceId?.Length ?? 0) + this.OrchestrationStateSize;
 
-        public void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
+        public override void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
             bool filterDuplicate = this.OrchestrationState != null
                 && creationRequestReceived.DedupeStatuses != null
@@ -90,7 +90,7 @@ namespace DurableTask.Netherite
         }
 
 
-        public void Process(BatchProcessed evt, EffectTracker effects)
+        public override void Process(BatchProcessed evt, EffectTracker effects)
         {
             // update the state of an orchestration
             this.OrchestrationState = evt.State;
@@ -110,7 +110,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(WaitRequestReceived evt, EffectTracker effects)
+        public override void Process(WaitRequestReceived evt, EffectTracker effects)
         {
             if (WaitRequestReceived.SatisfiesWaitCondition(this.OrchestrationState))
             {
@@ -137,7 +137,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(DeletionRequestReceived deletionRequest, EffectTracker effects)
+        public override void Process(DeletionRequestReceived deletionRequest, EffectTracker effects)
         {
             int numberInstancesDeleted = 0;
 
@@ -165,7 +165,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
+        public override void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
         {
             OrchestrationState state = this.OrchestrationState;
             if (this.OrchestrationState != null

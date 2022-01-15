@@ -101,13 +101,13 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(TimerFired evt, EffectTracker effects)
+        public override void Process(TimerFired evt, EffectTracker effects)
         {
             // removes the entry for the pending timer, and then adds it to the sessions queue
             this.PendingTimers.Remove(evt.TimerId);
         }
 
-        public void Process(BatchProcessed evt, EffectTracker effects)
+        public override void Process(BatchProcessed evt, EffectTracker effects)
         {
             // starts new timers as specified by the batch
             foreach (var taskMessage in evt.TimerMessages)
@@ -116,7 +116,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(TaskMessagesReceived evt, EffectTracker effects)
+        public override void Process(TaskMessagesReceived evt, EffectTracker effects)
         {
             // starts new timers as specified by the batch
             foreach (var taskMessage in evt.DelayedTaskMessages)
@@ -125,7 +125,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
+        public override void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
             this.AddTimer(creationRequestReceived.TaskMessage, creationRequestReceived.EventIdString, effects.IsReplaying);
         }
