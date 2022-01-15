@@ -919,7 +919,7 @@ namespace DurableTask.Netherite.Faster
         {
             public object Val;
 
-            public int Version; // for debugging FASTER
+            public int Version; // we use this validate consistency of read/write updates in FASTER, it is not otherwise needed
 
             public static implicit operator TrackedObject(Value v) => (TrackedObject)v.Val;
             public static implicit operator Value(TrackedObject v) => new Value() { Val = v };

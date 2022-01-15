@@ -50,13 +50,15 @@ namespace DurableTask.Netherite.Scaling
             string eventHubsConnectionString, 
             string partitionLoadTableName, 
             string taskHubName,
-            Action<string, int, string> recommendationTracer)
+            Action<string, int, string> recommendationTracer,
+            ILogger logger)
         {
             this.storageConnectionString = storageConnectionString;
             this.eventHubsConnectionString = eventHubsConnectionString;
             this.partitionLoadTableName = partitionLoadTableName;
             this.taskHubName = taskHubName;
             this.recommendationTracer = recommendationTracer;
+            this.Logger = logger;
 
             TransportConnectionString.Parse(eventHubsConnectionString, out _, out this.configuredTransport);
 

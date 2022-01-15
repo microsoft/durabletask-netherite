@@ -34,7 +34,7 @@ namespace DurableTask.Netherite
         internal byte[] SerializationCache { get; set; }
 
         [DataMember]
-        public int Version { get; set;  } // TODO removve this again
+        public int Version { get; set;  } // we use this validate consistency of read/write updates in FASTER, it is not otherwise needed
 
         /// <summary>
         /// The collection of all types of tracked objects and polymorphic members of tracked objects. Can be
