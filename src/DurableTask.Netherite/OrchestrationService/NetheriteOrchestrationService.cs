@@ -175,7 +175,8 @@ namespace DurableTask.Netherite
                     this.Settings.ResolvedTransportConnectionString, 
                     this.Settings.LoadInformationAzureTableName, 
                     this.Settings.HubName,
-                    this.TraceHelper.TraceScaleRecommendation);
+                    this.TraceHelper.TraceScaleRecommendation,
+                    this.TraceHelper.Logger);
                 return true;
             }
             else
