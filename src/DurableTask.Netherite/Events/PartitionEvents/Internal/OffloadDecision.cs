@@ -27,5 +27,10 @@ namespace DurableTask.Netherite
             // and if offloading, fills in the fields, and adds the outbox to the effects
             effects.Add(TrackedObjectKey.Activities);
         }
+
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
     }
 }

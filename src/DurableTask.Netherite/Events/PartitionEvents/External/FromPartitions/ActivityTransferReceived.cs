@@ -24,5 +24,10 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override IEnumerable<(TaskMessage message, string workItemId)> TracedTaskMessages =>
             this.TransferredActivities;
+
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
     }
 }

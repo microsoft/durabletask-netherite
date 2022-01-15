@@ -32,6 +32,11 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public int NumberMessages => (this.TaskMessages?.Count ?? 0) + (this.DelayedTaskMessages?.Count ?? 0);
 
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
+        }
+
         [IgnoreDataMember]
         public override IEnumerable<(TaskMessage message, string workItemId)> TracedTaskMessages
         {

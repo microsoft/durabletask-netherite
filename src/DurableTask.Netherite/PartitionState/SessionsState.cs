@@ -215,7 +215,7 @@ namespace DurableTask.Netherite
             return lastOccurence;
         }
 
-        public void Process(TaskMessagesReceived evt, EffectTracker effects)
+        public override void Process(TaskMessagesReceived evt, EffectTracker effects)
         {
              // queues task message (from another partition) in a new or existing session
            foreach (var group in evt.TaskMessages
@@ -225,44 +225,44 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void Process(RemoteActivityResultReceived evt, EffectTracker effects)
+        public override void Process(RemoteActivityResultReceived evt, EffectTracker effects)
         {
             // queues task message (from another partition) in a new or existing session
             this.AddMessageToSession(evt.Result, evt.WorkItemId, effects.IsReplaying);
         }
 
-        public void Process(ClientTaskMessagesReceived evt, EffectTracker effects)
+        public override void Process(ClientTaskMessagesReceived evt, EffectTracker effects)
         {
             // queues task message (from a client) in a new or existing session
             var instanceId = evt.TaskMessages[0].OrchestrationInstance.InstanceId;
             this.AddMessagesToSession(instanceId, evt.WorkItemId, evt.TaskMessages, effects.IsReplaying);
         }
 
-        public void Process(TimerFired timerFired, EffectTracker effects)
+        public override void Process(TimerFired timerFired, EffectTracker effects)
         {
             // queues a timer fired message in a session
             this.AddMessageToSession(timerFired.TaskMessage, timerFired.OriginWorkItemId, effects.IsReplaying);
         }
 
-        public void Process(ActivityCompleted activityCompleted, EffectTracker effects)
+        public override void Process(ActivityCompleted activityCompleted, EffectTracker effects)
         {
             // queues an activity-completed message in a session
             this.AddMessageToSession(activityCompleted.Response, activityCompleted.WorkItemId, effects.IsReplaying);
         }
 
-        public void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
+        public override void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
             // queues the execution started message
             this.AddMessageToSession(creationRequestReceived.TaskMessage, creationRequestReceived.WorkItemId, effects.IsReplaying);
         }
 
-        public void Process(DeletionRequestReceived deletionRequestReceived, EffectTracker effects)
+        public override void Process(DeletionRequestReceived deletionRequestReceived, EffectTracker effects)
         {
             // removing the session means that all pending messages will be deleted also.
             this.Sessions.Remove(deletionRequestReceived.InstanceId);
         }
 
-        public void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
+        public override void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
         {
             foreach (string instanceId in purgeBatchIssued.Purged)
             {
@@ -278,7 +278,7 @@ namespace DurableTask.Netherite
             this.Partition.SubmitEvent(evtCopy);
         }
 
-        public void Process(BatchProcessed evt, EffectTracker effects)
+        public override void Process(BatchProcessed evt, EffectTracker effects)
         {
             // if speculation is disabled, 
             if (evt.PersistFirst != BatchProcessed.PersistFirstStatus.NotRequired)
@@ -324,7 +324,7 @@ namespace DurableTask.Netherite
                 effects.Add(TrackedObjectKey.Timers);
             }
 
-            if (evt.RemoteMessages?.Count > 0)
+            if (evt.RemoteMessages?.Count > 0 || WaitRequestReceived.SatisfiesWaitCondition(evt.State))
             {
                 effects.Add(TrackedObjectKey.Outbox);
             }

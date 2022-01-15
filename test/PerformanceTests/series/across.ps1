@@ -26,9 +26,9 @@ if ($PrintColumnNames)
 ./series/runmany -Tag neth-loc   -HubName AC4b -Plan EP2 -NumNodes 8 -WaitForDeploy 80 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 50 -ResultsFile $ResultsFile -ThroughputUnits $tu
 ./series/runmany -Tag neth       -HubName AC4a -Plan EP2 -NumNodes 8 -WaitForDeploy 80 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 50 -ResultsFile $ResultsFile -ThroughputUnits $tu
 
-./series/runsingle -Tag neth     -HubName AC5a -Plan EP2 -NumNodes 8 -WaitForDeploy 80 -Orchestration "WordCount?shape=15x40" -Data 15 -ResultsFile $ResultsFile -ThroughputUnits $tu
-./series/runsingle -Tag neth-loc -HubName AC5b -Plan EP2 -NumNodes 8 -WaitForDeploy 80 -Orchestration "WordCount?shape=15x40" -Data 15 -ResultsFile $ResultsFile -ThroughputUnits $tu
-./series/runsingle -Tag azst-12  -HubName AC5c -Plan EP2 -NumNodes 8 -WaitForDeploy 50 -Orchestration "WordCount?shape=15x40" -Data 15 -ResultsFile $ResultsFile -ThroughputUnits $tu
+./series/runsingle -Tag neth     -HubName AC5a -Plan EP2 -NumNodes 8 -WaitForDeploy 80 -Orchestration WordCount -Data "15x40" -ResultsFile $ResultsFile -ThroughputUnits $tu
+./series/runsingle -Tag neth-loc -HubName AC5b -Plan EP2 -NumNodes 8 -WaitForDeploy 80 -Orchestration WordCount -Data "15x40" -ResultsFile $ResultsFile -ThroughputUnits $tu
+./series/runsingle -Tag azst-12  -HubName AC5c -Plan EP2 -NumNodes 8 -WaitForDeploy 50 -Orchestration WordCount -Data "15x40" -ResultsFile $ResultsFile -ThroughputUnits $tu
 
 ./series/runsingle -Tag neth-loc -HubName AC3b -Plan EP2 -NumNodes 8 -WaitForDeploy 80 -Orchestration CollisionSearch/divide-and-conquer -Data 400 -DelayAfterRun 40 -ResultsFile $ResultsFile -ThroughputUnits $tu
 ./series/runsingle -Tag neth     -HubName AC3a -Plan EP2 -NumNodes 8 -WaitForDeploy 80 -Orchestration CollisionSearch/divide-and-conquer -Data 400 -DelayAfterRun 40 -ResultsFile $ResultsFile -ThroughputUnits $tu

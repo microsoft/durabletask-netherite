@@ -66,6 +66,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override string TracedInstanceId => this.InstanceId;
 
+        [IgnoreDataMember]
+        public List<WaitResponseReceived> ResponsesToSend { get; set; } // used to communicate responses to ClientState
+
         IEnumerable<TrackedObjectKey> IRequiresPrefetch.KeysToPrefetch
         {
             get
@@ -79,6 +82,11 @@ namespace DurableTask.Netherite
         {
             // start on the sessions object; further effects are determined from there
             effects.Add(TrackedObjectKey.Sessions);
+        }
+
+        public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
+        {
+            trackedObject.Process(this, effects);
         }
 
         public IEnumerable<TaskMessage> LoopBackMessages()

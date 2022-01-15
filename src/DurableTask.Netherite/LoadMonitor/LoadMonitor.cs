@@ -94,8 +94,12 @@ namespace DurableTask.Netherite
 
         void TransportAbstraction.ILoadMonitor.Process(LoadMonitorEvent loadMonitorEvent)
         {
-            // dispatch call to matching method
-            this.Process((dynamic)loadMonitorEvent);
+            switch (loadMonitorEvent)
+            {
+                case LoadInformationReceived loadInformationReceived:
+                    this.Process(loadInformationReceived);
+                    break;
+            }
         }
 
         void SendTransferCommand(uint from, uint to, int num)
