@@ -22,6 +22,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override string TracedInstanceId => this.InstanceId;
 
+        [IgnoreDataMember]
+        public WaitResponseReceived ResponseToSend { get; set; } // used to communicate response to ClientState
+
         public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
         {
             trackedObject.Process(this, effects);
