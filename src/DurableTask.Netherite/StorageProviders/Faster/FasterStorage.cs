@@ -29,6 +29,7 @@ namespace DurableTask.Netherite.Faster
         TrackedObjectStore store;
 
         CancellationToken terminationToken;
+        Task terminationTokenTask;
 
         internal FasterTraceHelper TraceHelper { get; private set; }
 
@@ -73,10 +74,27 @@ namespace DurableTask.Netherite.Faster
             return BlobManager.DeleteTaskhubStorageAsync(storageAccount, pageBlobAccount, localFileDirectory, taskHubName);
         }
 
+        async Task<T> TerminationWrapper<T>(Task<T> what)
+        {
+            // wrap a task so the await is canceled if this partition terminates
+            await Task.WhenAny(what, this.terminationTokenTask);
+            this.terminationToken.ThrowIfCancellationRequested();
+            return await what;
+        }
+
+        async Task TerminationWrapper(Task what)
+        {
+            // wrap a task so the await is canceled if this partition terminates
+            await Task.WhenAny(what, this.terminationTokenTask);
+            this.terminationToken.ThrowIfCancellationRequested();
+            await what;
+        }
+
         public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, long firstInputQueuePosition)
         {
             this.partition = partition;
             this.terminationToken = errorHandler.Token;
+            this.terminationTokenTask = Task.Delay(-1, errorHandler.Token);
 
             int psfCount = 0;
 
@@ -96,7 +114,8 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.FaultInjector?.Starting(this.blobManager);
 
             this.TraceHelper.FasterProgress("Starting BlobManager");
-            await this.blobManager.StartAsync().ConfigureAwait(false);
+            await this.TerminationWrapper(this.blobManager.StartAsync());
+
 
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
@@ -129,12 +148,10 @@ namespace DurableTask.Netherite.Faster
                     this.TraceHelper.FasterProgress("Creating store");
 
                     // this is a fresh partition
-                    await this.storeWorker.Initialize(this.log.BeginAddress, firstInputQueuePosition).ConfigureAwait(false);
+                    await this.TerminationWrapper(this.storeWorker.Initialize(this.log.BeginAddress, firstInputQueuePosition));
 
-                    await this.storeWorker.TakeFullCheckpointAsync("initial checkpoint").ConfigureAwait(false);
+                    await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("initial checkpoint").AsTask());
                     this.TraceHelper.FasterStoreCreated(this.storeWorker.InputQueuePosition, stopwatch.ElapsedMilliseconds);
-
-                    this.partition.Assert(!FASTER.core.LightEpoch.AnyInstanceProtected(), "unexpected FASTER.AnyInstanceProtected in CreateOrRestoreAsync");
                 }
                 catch (Exception e)
                 {
@@ -149,7 +166,7 @@ namespace DurableTask.Netherite.Faster
                 try
                 {
                     // we are recovering the last checkpoint of the store
-                    (long commitLogPosition, long inputQueuePosition) = await this.store.RecoverAsync();
+                    (long commitLogPosition, long inputQueuePosition) = await this.TerminationWrapper(this.store.RecoverAsync());
                     this.storeWorker.SetCheckpointPositionsAfterRecovery(commitLogPosition, inputQueuePosition);
 
                     // truncate the log in case the truncation did not commit after the checkpoint was taken
@@ -167,8 +184,6 @@ namespace DurableTask.Netherite.Faster
                     throw;
                 }
 
-                this.partition.Assert(!FASTER.core.LightEpoch.AnyInstanceProtected(), "unexpected FASTER.AnyInstanceProtected after loading checkpoint");
-
                 this.TraceHelper.FasterProgress($"Replaying log length={this.log.TailAddress - this.storeWorker.CommitLogPosition} range={this.storeWorker.CommitLogPosition}-{this.log.TailAddress}");
 
                 try
@@ -176,7 +191,7 @@ namespace DurableTask.Netherite.Faster
                     if (this.log.TailAddress > (long)this.storeWorker.CommitLogPosition)
                     {
                         // replay log as the store checkpoint lags behind the log
-                        await this.storeWorker.ReplayCommitLog(this.logWorker).ConfigureAwait(false);
+                        await this.TerminationWrapper(this.storeWorker.ReplayCommitLog(this.logWorker));
                     }
                 }
                 catch (OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
@@ -190,7 +205,7 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 // restart pending actitivities, timers, work items etc.
-                await this.storeWorker.RestartThingsAtEndOfRecovery().ConfigureAwait(false);
+                await this.TerminationWrapper(this.storeWorker.RestartThingsAtEndOfRecovery());
 
                 this.TraceHelper.FasterProgress("Recovery complete");
             }
@@ -213,18 +228,18 @@ namespace DurableTask.Netherite.Faster
             Task t2 = this.storeWorker.CancelAndShutdown();
 
             // observe exceptions if the clean shutdown is not working correctly
-            await t1.ConfigureAwait(false);
-            await t2.ConfigureAwait(false);
+            await this.TerminationWrapper(t1);
+            await this.TerminationWrapper(t2);
 
             // if the the settings indicate we want to take a final checkpoint, do so now.
             if (takeFinalCheckpoint)
             {
                 this.TraceHelper.FasterProgress("Writing final checkpoint");
-                await this.storeWorker.TakeFullCheckpointAsync("final checkpoint").ConfigureAwait(false);
+                await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("final checkpoint").AsTask());
             }
 
             this.TraceHelper.FasterProgress("Stopping BlobManager");
-            await this.blobManager.StopAsync().ConfigureAwait(false);
+            await this.blobManager.StopAsync();
         }
 
         public void SubmitEvents(IList<PartitionEvent> evts)

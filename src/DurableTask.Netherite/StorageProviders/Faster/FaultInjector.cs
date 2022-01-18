@@ -29,6 +29,9 @@ namespace DurableTask.Netherite.Faster
         int countdown;
         int nextrun;
 
+        public int RandomProbability { get; set; }
+        readonly Random random = new Random();
+
         public void StartNewTest()
         {
             System.Diagnostics.Trace.TraceInformation($"FaultInjector: StartNewTest");
@@ -135,6 +138,17 @@ namespace DurableTask.Netherite.Faster
                             this.countdown = this.nextrun++;
                         }
                     }
+                }
+            }
+
+            if (this.RandomProbability > 0)
+            {
+                var dieRoll = this.random.Next(this.RandomProbability);
+                //Console.WriteLine(dieRoll);
+
+                if (dieRoll == 0)
+                {
+                    pass = false;
                 }
             }
 

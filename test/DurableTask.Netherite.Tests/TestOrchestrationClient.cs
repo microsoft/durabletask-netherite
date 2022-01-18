@@ -39,7 +39,13 @@ namespace DurableTask.Netherite.Tests
 
             var latestGeneration = new OrchestrationInstance { InstanceId = this.instanceId };
             Stopwatch sw = Stopwatch.StartNew();
-            OrchestrationState state = await this.client.WaitForOrchestrationAsync(latestGeneration, timeout);
+
+            OrchestrationState state = null;
+            try
+            {
+                state = await this.client.WaitForOrchestrationAsync(latestGeneration, timeout);
+            }
+            catch (TimeoutException)  { }
             if (state != null)
             {
                 Trace.TraceInformation(
@@ -78,8 +84,13 @@ namespace DurableTask.Netherite.Tests
 
             do
             {
-                state = await this.client.WaitForOrchestrationAsync(latestGeneration, period);
-
+                try
+                {
+                    state = await this.client.WaitForOrchestrationAsync(latestGeneration, period);
+                }
+                catch (TimeoutException) 
+                {
+                }
             } while (state == null && sw.Elapsed < timeout);
 
             if (state != null)

@@ -19,7 +19,7 @@ namespace DurableTask.Netherite.Faster
     /// serialize(new-state) = serialize(deserialize(old-state) + event)
     /// This class is only used for testing and debugging, as it creates lots of overhead.
     /// </summary>
-    class ReplayChecker
+    public class ReplayChecker
     {
         readonly ConcurrentDictionary<Partition, Info> partitionInfo;
         readonly TestHooks testHooks;
@@ -131,7 +131,7 @@ namespace DurableTask.Netherite.Faster
         PartitionUpdateEvent DeserializePartitionUpdateEvent(string content)
             => (PartitionUpdateEvent) JsonConvert.DeserializeObject(content, this.settings);
 
-        public void PartitionStarting(Partition partition, TrackedObjectStore store, long CommitLogPosition, long InputQueuePosition)
+        internal void PartitionStarting(Partition partition, TrackedObjectStore store, long CommitLogPosition, long InputQueuePosition)
         {
             var info = new Info()
             {
@@ -151,7 +151,7 @@ namespace DurableTask.Netherite.Faster
             info.EffectTracker = new ReplayCheckEffectTracker(this, info);
         }
 
-        public async Task CheckUpdate(Partition partition, PartitionUpdateEvent partitionUpdateEvent, TrackedObjectStore store)
+        internal async Task CheckUpdate(Partition partition, PartitionUpdateEvent partitionUpdateEvent, TrackedObjectStore store)
         {
             var info = this.partitionInfo[partition];
 
@@ -206,7 +206,7 @@ namespace DurableTask.Netherite.Faster
             System.Diagnostics.Trace.WriteLine("REPLAYCHECK DONE");
         }
 
-        public void PartitionStopped(Partition partition)
+        internal void PartitionStopped(Partition partition)
         {
             this.partitionInfo.TryRemove(partition, out _);
         }

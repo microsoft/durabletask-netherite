@@ -17,6 +17,7 @@ namespace PerformanceTests
     using Newtonsoft.Json.Linq;
     using System.Linq;
     using Newtonsoft.Json;
+    using System.Net;
 
     /// <summary>
     /// A very simple Http Trigger that is useful for testing whether the orchestration service has started correctly, and what its
@@ -34,44 +35,71 @@ namespace PerformanceTests
             log.LogInformation("C# HTTP trigger function processed a request.");
             var is64bit = Environment.Is64BitProcess;
 
-            if (int.TryParse(requestBody, out int numPartitionsToPing))
+            try
             {
-                async Task<string> Ping(int partition)
+                if (int.TryParse(requestBody, out int numPartitionsToPing))
                 {
-                    string instanceId = $"ping!{partition:D2}";
-                    await client.StartNewAsync(nameof(Pingee), instanceId);
-                    var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, instanceId, TimeSpan.FromSeconds(30));
-                    if (response is ObjectResult objectResult
-                      && objectResult.Value is HttpResponseMessage responseMessage
-                      && responseMessage.StatusCode == System.Net.HttpStatusCode.OK
-                      && responseMessage.Content is StringContent stringContent)
+                    var timeout = TimeSpan.FromSeconds(15);
+
+                    async Task<string> Ping(int partition)
                     {
-                        return (string) JToken.Parse(await stringContent.ReadAsStringAsync());
+                        string instanceId = $"ping!{partition:D2}";
+
+                        var timeoutTask = Task.Delay(timeout);
+                        var startTask = client.StartNewAsync(nameof(Pingee), instanceId);
+                        await Task.WhenAny(startTask, timeoutTask);
+                        if (!startTask.IsCompleted)
+                        {
+                            return $"starting the orchestration timed out after {timeout}";
+                        }
+                        try
+                        {
+                            await startTask;
+                        }
+                        catch(InvalidOperationException)
+                        {
+                            // if orchestration already exists
+                        }
+                        try
+                        {
+                            var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, instanceId, timeout);
+                            if (response is ObjectResult objectResult
+                              && objectResult.Value is HttpResponseMessage responseMessage
+                              && responseMessage.StatusCode == System.Net.HttpStatusCode.OK
+                              && responseMessage.Content is StringContent stringContent)
+                            {
+                                return (string)JToken.Parse(await stringContent.ReadAsStringAsync());
+                            }
+                        }
+                        catch (TimeoutException)
+                        {
+                        }
+                        return $"waiting for completion timed out after {timeout}";
                     }
-                    else
+
+                    var tasks = Enumerable.Range(0, numPartitionsToPing).Select(partition => Ping(partition)).ToList();
+
+                    await Task.WhenAll(tasks);
+
+                    JObject result = new JObject();
+                    var distinct = new HashSet<string>();
+                    for (int i = 0; i < tasks.Count; i++)
                     {
-                        return "timeout";
+                        result.Add(i.ToString(), tasks[i].Result);
+                        distinct.Add(tasks[i].Result);
                     }
+                    result.Add("distinct", distinct.Count);
+
+                    return new OkObjectResult(result.ToString());
                 }
-
-                var tasks = Enumerable.Range(0, numPartitionsToPing).Select(partition => Ping(partition)).ToList();
-
-                await Task.WhenAll(tasks);
-
-                JObject result = new JObject();
-                var distinct = new HashSet<string>();
-                for (int i = 0; i < tasks.Count; i++)
+                else
                 {
-                    result.Add(i.ToString(), tasks[i].Result);
-                    distinct.Add(tasks[i].Result);
+                    return new OkObjectResult($"Hello from {client} ({(is64bit ? "x64" : "x32")})\n");
                 }
-                result.Add("distinct", distinct.Count);
-
-                return new OkObjectResult(result.ToString());
             }
-            else
+            catch(Exception e)
             {
-                return new OkObjectResult($"Hello from {client} ({(is64bit ? "x64" : "x32")})\n");
+                return new ObjectResult($"exception: {e}") { StatusCode = (int)HttpStatusCode.InternalServerError };
             }
         }
 

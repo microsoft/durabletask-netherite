@@ -117,6 +117,7 @@ namespace DurableTask.Netherite.AzureFunctions
             if (this.Service.TryGetScalingMonitor(out var monitor))
             {
                 scaleMonitor = new ScaleMonitor(monitor);
+                monitor.InformationTracer($"ScaleMonitor Constructed Microsoft.Azure.WebJobs.Host.Scale.IScaleMonitor {scaleMonitor.Descriptor}");
                 return true;
             }
             else
@@ -158,6 +159,7 @@ namespace DurableTask.Netherite.AzureFunctions
                 var cached = cachedMetrics;
                 if (cached != null && DateTime.UtcNow - cached.Item1 < TimeSpan.FromSeconds(1.5))
                 {
+                    this.scalingMonitor.InformationTracer?.Invoke($"ScaleMonitor returned metrics cached previously, at {cached.Item2.Timestamp:o}");
                     return cached.Item2;
                 }
                 
@@ -174,13 +176,12 @@ namespace DurableTask.Netherite.AzureFunctions
                     this.serializer.WriteObject(stream, collectedMetrics);
                     metrics.Metrics = stream.ToArray();
 
-                    this.scalingMonitor.Logger.LogInformation(
-                        "Collected scale info for {partitionCount} partitions at {time:o} in {latencyMs:F2}ms.",
-                        collectedMetrics.LoadInformation.Count, collectedMetrics.Timestamp, sw.Elapsed.TotalMilliseconds);
+                    this.scalingMonitor.InformationTracer?.Invoke(
+                        $"ScaleMonitor collected metrics for {collectedMetrics.LoadInformation.Count} partitions at {collectedMetrics.Timestamp:o} in {sw.Elapsed.TotalMilliseconds:F2}ms.");
                 }
-                catch (Exception e) when (!Utils.IsFatal(e))
+                catch (Exception e)
                 {
-                    this.scalingMonitor.Logger.LogError("IScaleMonitor.GetMetricsAsync() failed: {exception}", e);
+                    this.scalingMonitor.ErrorTracer?.Invoke("ScaleMonitor failed to collect metrics", e);
                 }
 
                 cachedMetrics = new Tuple<DateTime, NetheriteScaleMetrics>(DateTime.UtcNow, metrics);
@@ -202,7 +203,7 @@ namespace DurableTask.Netherite.AzureFunctions
                 ScaleRecommendation recommendation;               
                 try
                 { 
-                    if (metrics.Length == 0)
+                    if (metrics == null || metrics.Length == 0)
                     {
                         recommendation = new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: "missing metrics");
                     }
@@ -212,12 +213,14 @@ namespace DurableTask.Netherite.AzureFunctions
                         var collectedMetrics = (ScalingMonitor.Metrics) this.serializer.ReadObject(stream);                 
                         recommendation = this.scalingMonitor.GetScaleRecommendation(workerCount, collectedMetrics);
                     }
-                 }
+                }
                 catch (Exception e) when (!Utils.IsFatal(e))
                 {
-                    this.scalingMonitor.Logger.LogError("IScaleMonitor.GetScaleStatus() failed: {exception}", e);
+                    this.scalingMonitor.ErrorTracer?.Invoke("ScaleMonitor failed to compute scale recommendation", e);
                     recommendation = new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: "unexpected error");
                 }
+               
+                this.scalingMonitor.RecommendationTracer?.Invoke(recommendation.Action.ToString(), workerCount, recommendation.Reason);
 
                 ScaleStatus scaleStatus = new ScaleStatus();
                 switch (recommendation?.Action)

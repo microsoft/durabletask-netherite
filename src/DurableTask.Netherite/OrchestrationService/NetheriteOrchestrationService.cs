@@ -170,20 +170,26 @@ namespace DurableTask.Netherite
             if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster
                 && this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
-                monitor = new ScalingMonitor(
-                    this.Settings.ResolvedStorageConnectionString, 
-                    this.Settings.ResolvedTransportConnectionString, 
-                    this.Settings.LoadInformationAzureTableName, 
-                    this.Settings.HubName,
-                    this.TraceHelper.TraceScaleRecommendation,
-                    this.TraceHelper.Logger);
-                return true;
+                try
+                {
+                    monitor = new ScalingMonitor(
+                        this.Settings.ResolvedStorageConnectionString,
+                        this.Settings.ResolvedTransportConnectionString,
+                        this.Settings.LoadInformationAzureTableName,
+                        this.Settings.HubName,
+                        this.TraceHelper.TraceScaleRecommendation,
+                        this.TraceHelper.TraceProgress,
+                        this.TraceHelper.TraceError);
+                    return true;
+                }
+                catch (Exception e)
+                {
+                    this.TraceHelper.TraceError("ScaleMonitor failure during construction", e);
+                }
             }
-            else
-            {
-                monitor = null;
-                return false;
-            }
+
+            monitor = null;
+            return false;
         }
 
        

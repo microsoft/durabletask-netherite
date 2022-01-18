@@ -12,7 +12,7 @@ namespace DurableTask.Netherite
     {
         internal Faster.CacheDebugger CacheDebugger { get; set; }
 
-        internal Faster.ReplayChecker ReplayChecker { get; set; }
+        public Faster.ReplayChecker ReplayChecker { get; set; }
 
         public Faster.FaultInjector FaultInjector { get; set; }
 
@@ -25,7 +25,12 @@ namespace DurableTask.Netherite
             {
                 System.Diagnostics.Debugger.Break();
             }
-            this.OnError($"TestHook-{source} !!! {message}");
+            if (this.OnError != null)
+            {
+                this.OnError($"TestHook-{source} !!! {message}");
+            }
+            Console.Error.WriteLine($"TestHook-{source} !!! {message}");
+            System.Diagnostics.Trace.TraceError($"TestHook-{source} !!! {message}");
         }
     }
 }

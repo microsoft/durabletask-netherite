@@ -114,6 +114,32 @@ namespace DurableTask.Netherite.AzureFunctions
 
             eventSourcedSettings.Validate((name) => this.nameResolver.Resolve(name));
 
+            int randomProbability = 0;
+            bool attachFaultInjector =
+                (this.options.StorageProvider.TryGetValue("FaultInjectionProbability", out object value)
+                && value is string str
+                && int.TryParse(str, out randomProbability));        
+
+            bool attachReplayChecker = 
+                (this.options.StorageProvider.TryGetValue("AttachReplayChecker", out object setting)
+                && setting is string s
+                && bool.TryParse(s, out bool x)
+                && x);
+                    
+            if (attachFaultInjector || attachReplayChecker)
+            {
+                eventSourcedSettings.TestHooks = new TestHooks();
+
+                if (attachFaultInjector)
+                {
+                    eventSourcedSettings.TestHooks.FaultInjector = new Faster.FaultInjector() { RandomProbability = randomProbability };
+                }
+                if (attachReplayChecker)
+                {
+                    eventSourcedSettings.TestHooks.ReplayChecker = new Faster.ReplayChecker(eventSourcedSettings.TestHooks);
+                }
+            }
+
             if (this.TraceToConsole || this.TraceToBlob)
             {
                 // capture trace events generated in the backend and redirect them to additional sinks

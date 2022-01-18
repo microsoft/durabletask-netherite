@@ -246,7 +246,8 @@ namespace DurableTask.Netherite.EventHubs
             {
                 if (this.settings.PartitionManagement != PartitionManagementOptions.Scripted)
                 {
-                    this.traceHelper.LogInformation("Registering Partition Host with EventHubs");
+                    string initialOffsets = string.Join(",", this.parameters.StartPositions.Select(x => $"#{x}"));
+                    this.traceHelper.LogInformation($"Registering Partition Host with EventHubs, initial offsets {initialOffsets}");
 
                     this.eventProcessorHost = new EventProcessorHost(
                         Guid.NewGuid().ToString(),
@@ -446,7 +447,7 @@ namespace DurableTask.Netherite.EventHubs
                 this.traceHelper.LogDebug("Client{clientId}.ch{index} establishing connection", Client.GetShortId(this.ClientId), index);
                 // receive a dummy packet to establish connection
                 // (the packet, if any, cannot be for this receiver because it is fresh)
-                await receiver.ReceiveAsync(1);
+                await receiver.ReceiveAsync(1, TimeSpan.FromMilliseconds(1));
             }
             catch (Exception exception)
             {
