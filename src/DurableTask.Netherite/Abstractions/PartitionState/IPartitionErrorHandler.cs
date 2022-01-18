@@ -24,6 +24,11 @@ namespace DurableTask.Netherite
         bool IsTerminated { get; }
 
         /// <summary>
+        /// A boolean indicating that normal termination has been initiated as part of a shutdown.
+        /// </summary>
+        bool NormalTermination { get; }
+
+        /// <summary>
         /// Error handling for the partition.
         /// </summary>
         /// <param name="where">A brief description of the component that observed the error.</param>

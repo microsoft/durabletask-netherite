@@ -85,6 +85,7 @@ namespace DurableTask.Netherite.Faster
                 this.pageBlobStorageAccount,
                 this.localFileDirectory,
                 this.taskHubName,
+                partition.Settings.TestHooks?.FaultInjector,
                 this.logger,
                 this.partition.Settings.StorageLogLevelLimit,
                 partition.PartitionId,
@@ -92,6 +93,7 @@ namespace DurableTask.Netherite.Faster
                 psfCount);
 
             this.TraceHelper = this.blobManager.TraceHelper;
+            this.blobManager.FaultInjector?.Starting(this.blobManager);
 
             this.TraceHelper.FasterProgress("Starting BlobManager");
             await this.blobManager.StartAsync().ConfigureAwait(false);
@@ -132,7 +134,7 @@ namespace DurableTask.Netherite.Faster
                     await this.storeWorker.TakeFullCheckpointAsync("initial checkpoint").ConfigureAwait(false);
                     this.TraceHelper.FasterStoreCreated(this.storeWorker.InputQueuePosition, stopwatch.ElapsedMilliseconds);
 
-                    this.partition.Assert(!FASTER.core.LightEpoch.AnyInstanceProtected());
+                    this.partition.Assert(!FASTER.core.LightEpoch.AnyInstanceProtected(), "unexpected FASTER.AnyInstanceProtected in CreateOrRestoreAsync");
                 }
                 catch (Exception e)
                 {
@@ -165,7 +167,7 @@ namespace DurableTask.Netherite.Faster
                     throw;
                 }
 
-                this.partition.Assert(!FASTER.core.LightEpoch.AnyInstanceProtected());
+                this.partition.Assert(!FASTER.core.LightEpoch.AnyInstanceProtected(), "unexpected FASTER.AnyInstanceProtected after loading checkpoint");
 
                 this.TraceHelper.FasterProgress($"Replaying log length={this.log.TailAddress - this.storeWorker.CommitLogPosition} range={this.storeWorker.CommitLogPosition}-{this.log.TailAddress}");
 
@@ -192,6 +194,7 @@ namespace DurableTask.Netherite.Faster
 
                 this.TraceHelper.FasterProgress("Recovery complete");
             }
+            this.blobManager.FaultInjector?.Started(this.blobManager);
             return this.storeWorker.InputQueuePosition;
         }
 

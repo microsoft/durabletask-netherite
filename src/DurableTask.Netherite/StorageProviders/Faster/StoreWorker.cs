@@ -306,7 +306,7 @@ namespace DurableTask.Netherite.Faster
                     // we can persist it as part of a snapshot
                     if (partitionEvent.NextInputQueuePosition > 0)
                     {
-                        this.partition.Assert(partitionEvent.NextInputQueuePosition > this.InputQueuePosition);
+                        this.partition.Assert(partitionEvent.NextInputQueuePosition > this.InputQueuePosition, "partitionEvent.NextInputQueuePosition > this.InputQueuePosition");
                         this.InputQueuePosition = partitionEvent.NextInputQueuePosition;
                     }
 
@@ -455,7 +455,7 @@ namespace DurableTask.Netherite.Faster
             {
                 PartitionId = this.partition.PartitionId,
                 RecoveredPosition = this.CommitLogPosition,
-                Timestamp= DateTime.UtcNow,
+                Timestamp = DateTime.UtcNow,
                 WorkerId = this.partition.Settings.WorkerId,
             };
 
@@ -489,7 +489,7 @@ namespace DurableTask.Netherite.Faster
             // update the commit log position
             if (partitionUpdateEvent.NextCommitLogPosition > 0)
             {
-                this.partition.Assert(partitionUpdateEvent.NextCommitLogPosition > this.CommitLogPosition);
+                this.partition.Assert(partitionUpdateEvent.NextCommitLogPosition > this.CommitLogPosition, "partitionUpdateEvent.NextCommitLogPosition > this.CommitLogPosition in ReplayUpdate");
                 this.CommitLogPosition = partitionUpdateEvent.NextCommitLogPosition;
             }
 
@@ -516,7 +516,7 @@ namespace DurableTask.Netherite.Faster
             // update the commit log position
             if (partitionUpdateEvent.NextCommitLogPosition > 0)
             {
-                this.partition.Assert(partitionUpdateEvent.NextCommitLogPosition > this.CommitLogPosition);
+                this.partition.Assert(partitionUpdateEvent.NextCommitLogPosition > this.CommitLogPosition, "partitionUpdateEvent.NextCommitLogPosition > this.CommitLogPosition in ProcessUpdate");
                 this.CommitLogPosition = partitionUpdateEvent.NextCommitLogPosition;
             }
 

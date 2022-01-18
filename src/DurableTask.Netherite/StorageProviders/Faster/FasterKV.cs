@@ -66,7 +66,7 @@ namespace DurableTask.Netherite.Faster
                 this.fht.Log.Subscribe(new ReadonlyObserver(this));
             }
 
-            partition.Assert(this.fht.ReadCache == null);
+            partition.Assert(this.fht.ReadCache == null, "Unexpected read cache");
             this.cacheTracker.Log = this.fht.Log;
 
             this.terminationToken = partition.ErrorHandler.Token;
@@ -81,8 +81,9 @@ namespace DurableTask.Netherite.Faster
                         this.blobManager.HybridLogDevice.Dispose();
                         this.blobManager.ObjectLogDevice.Dispose();
                         this.blobManager.ClosePSFDevices();
+                        this.blobManager.FaultInjector?.Disposed(this.blobManager);
                     }
-                    catch(Exception e)
+                    catch (Exception e)
                     {
                         this.blobManager.TraceHelper.FasterStorageError("Disposing FasterKV", e);
                     }
@@ -378,7 +379,7 @@ namespace DurableTask.Netherite.Faster
         // kick off a read of a tracked object on the main session, completing asynchronously if necessary
         public override void ReadAsync(PartitionReadEvent readEvent, EffectTracker effectTracker)
         {
-            this.partition.Assert(readEvent != null);
+            this.partition.Assert(readEvent != null, "null readEvent in ReadAsync");
             try
             {
                 if (readEvent.Prefetch.HasValue)
@@ -390,7 +391,7 @@ namespace DurableTask.Netherite.Faster
 
                 void TryRead(Key key)
                 {
-                    this.partition.Assert(!key.Val.IsSingleton);
+                    this.partition.Assert(!key.Val.IsSingleton, "singletons are not read asynchronously");
                     Output output = default;
                     this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.StartingRead, null, readEvent.EventIdString, 0);
                     var status = this.mainSession.Read(ref key, ref effectTracker, ref output, readEvent, 0);
@@ -456,7 +457,7 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                this.partition.Assert(!key.Val.IsSingleton);
+                this.partition.Assert(!key.Val.IsSingleton, "singletons unexpected in ReadAsync");
                 var result = await session.ReadAsync(key, effectTracker, context: null, token: this.terminationToken);
                 var (status, output) = result.Complete();
                 return output.Read(this, "q");
@@ -474,7 +475,7 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                this.partition.Assert(key.Val.IsSingleton);
+                this.partition.Assert(key.Val.IsSingleton, "only singletons expected in CreateAsync");
                 TrackedObject newObject = TrackedObjectKey.Factory(key);
                 newObject.Partition = this.partition;
                 this.singletons[(int)key.Val.ObjectType] = newObject;
@@ -572,7 +573,7 @@ namespace DurableTask.Netherite.Faster
         {
             foreach (var key in keys)
             {
-                this.partition.Assert(!key.IsSingleton);
+                this.partition.Assert(!key.IsSingleton, "singletons cannot be deleted");
                 this.mainSession.Delete(key);
             }
             return default;
@@ -1012,7 +1013,7 @@ namespace DurableTask.Netherite.Faster
                 else
                 {
                     byte[] bytes = this.Val as byte[];
-                    store.partition.Assert(bytes != null);
+                    store.partition.Assert(bytes != null, "unexpected type in Output.Read");
                     trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
                     store.StoreStats.Deserialize++;
                     store.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, null, eventId, 0);
@@ -1060,8 +1061,8 @@ namespace DurableTask.Netherite.Faster
                 value.Version++;
                 this.cacheDebugger?.UpdateReferenceValue(ref key.Val, trackedObject, value.Version);
                 this.stats.Modify++;
-                this.partition.Assert(value.Val != null);
-                this.partition.Assert(!this.isScan);
+                this.partition.Assert(value.Val != null, "null value.Val in InitialUpdater");
+                this.partition.Assert(!this.isScan, "InitialUpdater should not be called from scan");
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
             }
 
@@ -1081,7 +1082,7 @@ namespace DurableTask.Netherite.Faster
                 if (! (value.Val is TrackedObject trackedObject))
                 {
                     var bytes = (byte[])value.Val;
-                    this.partition.Assert(bytes != null);
+                    this.partition.Assert(bytes != null, "null bytes in InPlaceUpdater");
                     trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
                     this.stats.Deserialize++;
                     value.Val = trackedObject;
@@ -1094,10 +1095,10 @@ namespace DurableTask.Netherite.Faster
                 value.Version++;
                 this.cacheDebugger?.UpdateReferenceValue(ref key.Val, trackedObject, value.Version);
                 this.stats.Modify++;
-                this.partition.Assert(value.Val != null);
+                this.partition.Assert(value.Val != null, "null value.Val in InPlaceUpdater");
                 this.cacheTracker.UpdateTrackedObjectSize(value.EstimatedSize - sizeBeforeUpdate, key, address);
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
-                this.partition.Assert(!this.isScan);
+                this.partition.Assert(!this.isScan, "InPlaceUpdater should not be called from scan");
                 return true;
             }
 
@@ -1123,7 +1124,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     // create new object by deserializing old object
                     var bytes = (byte[])oldValue.Val;
-                    this.partition.Assert(bytes != null);
+                    this.partition.Assert(bytes != null, "null bytes in CopyUpdater");
                     trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
                     this.stats.Deserialize++;
                     trackedObject.Partition = this.partition;
@@ -1137,10 +1138,10 @@ namespace DurableTask.Netherite.Faster
                 newValue.Version = oldValue.Version + 1;
                 this.cacheDebugger?.UpdateReferenceValue(ref key.Val, trackedObject, newValue.Version);
                 this.stats.Modify++;
-                this.partition.Assert(newValue.Val != null);
+                this.partition.Assert(newValue.Val != null, "null newValue.Val in CopyUpdater");
                 this.cacheDebugger?.ValidateObjectVersion(oldValue, key.Val);
                 this.cacheDebugger?.ValidateObjectVersion(newValue, key.Val);
-                this.partition.Assert(!this.isScan);
+                this.partition.Assert(!this.isScan, "CopyUpdater should not be called from scan");
             }
 
             bool IFunctions<Key, Value, EffectTracker, Output, object>.PostCopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref Output output, ref RecordInfo recordInfo, long address)
@@ -1174,7 +1175,7 @@ namespace DurableTask.Netherite.Faster
                     else
                     {
                         trackedObject = (TrackedObject)value.Val;
-                        this.partition.Assert(trackedObject != null);
+                        this.partition.Assert(trackedObject != null, "null trackedObject in Reader");
 
                         if (single && !this.isScan)
                         {

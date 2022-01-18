@@ -35,7 +35,7 @@ namespace DurableTask.Netherite
                 kvp.Value.Partition = this.Partition;
 
                 // resend (anything we have recovered is of course persisted)
-                effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent {kvp.Key:D10} ({kvp.Value} messages)");
+                effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent batch {kvp.Key:D10} ({kvp.Value.OutgoingMessages.Count} messages, {kvp.Value.OutgoingResponses.Count} responses)");
                 this.Send(kvp.Value);
             }
         }
@@ -306,7 +306,7 @@ namespace DurableTask.Netherite
 
         public override void Process(WaitRequestReceived evt, EffectTracker effects)
         {
-            this.Partition.Assert(evt.ResponseToSend != null);
+            this.Partition.Assert(evt.ResponseToSend != null, "null ResponseToSend in OutboxState.Process");
             var batch = new Batch();
             batch.OutgoingResponses.Add(evt.ResponseToSend);
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
@@ -314,7 +314,7 @@ namespace DurableTask.Netherite
 
         public override void Process(CreationRequestReceived evt, EffectTracker effects)
         {
-            this.Partition.Assert(evt.ResponseToSend != null);
+            this.Partition.Assert(evt.ResponseToSend != null, "null ResponseToSend in OutboxState.Process");
             var batch = new Batch();
             batch.OutgoingResponses.Add(evt.ResponseToSend);
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);
@@ -322,7 +322,7 @@ namespace DurableTask.Netherite
 
         public override void Process(DeletionRequestReceived evt, EffectTracker effects)
         {
-            this.Partition.Assert(evt.ResponseToSend != null);
+            this.Partition.Assert(evt.ResponseToSend != null, "null ResponseToSend in OutboxState.Process");
             var batch = new Batch();
             batch.OutgoingResponses.Add(evt.ResponseToSend);
             this.SendBatchOnceEventIsPersisted(evt, effects, batch);

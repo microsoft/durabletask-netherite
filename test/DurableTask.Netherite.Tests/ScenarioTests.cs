@@ -23,6 +23,7 @@ namespace DurableTask.Netherite.Tests
     // The majority of these tests were ported from AzureStorageScenarioTests in the azure/durabletask repository
 
     [Collection("NetheriteTests")]
+    [Trait("AnyTransport", "true")]
     public partial class ScenarioTests : IClassFixture<SingleHostFixture>, IDisposable
     {
         readonly SingleHostFixture fixture;
@@ -63,6 +64,43 @@ namespace DurableTask.Netherite.Tests
 
             this.output($"Completed post-test operations on {this.fixture.GetType().Name}.");
             this.outputHelper = null;
+        }
+
+        public IEnumerable<(string, Task)> StartAllScenarios(bool includeTimers = true, bool includeLarge = true)
+        {
+            yield return ("HelloWorldOrchestration_Inline", this.HelloWorldOrchestration_Inline());
+            yield return ("HelloWorldOrchestration_Activity", this.HelloWorldOrchestration_Activity());
+            yield return ("SequentialOrchestration", this.SequentialOrchestration());
+            yield return ("EventConversation", this.EventConversation());
+            yield return ("AutoStart", this.AutoStart());
+            yield return ("ContinueAsNewThenTimer", this.ContinueAsNewThenTimer());
+            yield return ("ParallelOrchestration", this.ParallelOrchestration());
+            yield return ("ActorOrchestration", this.ActorOrchestration());
+            yield return ("TerminateOrchestration", this.TerminateOrchestration());
+            yield return ("RecreateCompletedInstance", this.RecreateCompletedInstance());
+            yield return ("RecreateCompletedInstanceWithSuborchestration", this.RecreateCompletedInstanceWithSuborchestration());
+            yield return ("RecreateFailedInstance", this.RecreateFailedInstance());
+            yield return ("RecreateTerminatedInstance", this.RecreateTerminatedInstance());
+            yield return ("RecreateRunningInstance", this.RecreateRunningInstance());
+            yield return ("HandledActivityException", this.HandledActivityException());
+            yield return ("UnhandledOrchestrationException", this.UnhandledOrchestrationException());
+            yield return ("UnhandledActivityException", this.UnhandledActivityException());
+            yield return ("SmallTextMessagePayloads", this.SmallTextMessagePayloads());
+            yield return ("DoubleFanOut", this.DoubleFanOut());
+
+            if (includeTimers)
+            {
+                yield return ("TimerCancellation", this.TimerCancellation());
+                yield return ("TimerExpiration", this.TimerExpiration());
+            }
+
+            if (includeLarge)
+            {
+                yield return ("LargeInputAndOutput", this.LargeInputAndOutput());
+                yield return ("FanOutToTableStorage", this.FanOutToTableStorage());
+                yield return ("LargeFanOutOrchestration", this.LargeFanOutOrchestration());
+                yield return ("FanOutOrchestration_LargeHistoryBatches", this.FanOutOrchestration_LargeHistoryBatches());
+            }
         }
 
         /// <summary>
@@ -298,6 +336,37 @@ namespace DurableTask.Netherite.Tests
         }
 
         /// <summary>
+        /// End-to-end test which validates that a completed singleton instance can be deduplicated.
+        /// </summary>
+        [Fact]
+        public async Task DeduplicateCompletedInstance()
+        {
+            string singletonInstanceId = $"HelloSingleton_{Guid.NewGuid():N}";
+
+            var client = await this.host.StartOrchestrationAsync(
+                typeof(Orchestrations.SayHelloWithActivity),
+                input: "One",
+                instanceId: singletonInstanceId);
+            var status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
+            var state1 = (await client.GetStateAsync(singletonInstanceId)).First();
+
+            Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
+            Assert.Equal("One", JToken.Parse(status?.Input));
+            Assert.Equal("Hello, One!", JToken.Parse(status?.Output));
+
+            (bool created, _) = await this.host.StartDeduplicatedOrchestrationAsync(
+                typeof(Orchestrations.SayHelloWithActivity),
+                input: "Two",
+                instanceId: singletonInstanceId,
+                new OrchestrationStatus[] { OrchestrationStatus.Completed });
+
+            Assert.False(created);
+
+            var state2 = (await client.GetStateAsync(singletonInstanceId)).First();
+            Assert.Equal(state1.OrchestrationInstance.ExecutionId, state2.OrchestrationInstance.ExecutionId);
+        }
+
+        /// <summary>
         /// End-to-end test which validates that a failed singleton instance can be recreated.
         /// </summary>
         [Fact]
@@ -324,6 +393,35 @@ namespace DurableTask.Netherite.Tests
         }
 
         /// <summary>
+        /// End-to-end test which validates that a failed singleton instance can be deduplicated.
+        /// </summary>
+        [Fact]
+        public async Task DeduplicateFailedInstance()
+        {
+            string singletonInstanceId = $"HelloSingleton_{Guid.NewGuid():N}";
+
+            var client = await this.host.StartOrchestrationAsync(
+                typeof(Orchestrations.SayHelloWithActivity),
+                input: null, // this will cause the orchestration to fail
+                instanceId: singletonInstanceId);
+            var status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
+            var state1 = (await client.GetStateAsync(singletonInstanceId)).First();
+
+            Assert.Equal(OrchestrationStatus.Failed, status?.OrchestrationStatus);
+
+            (bool created, _) = await this.host.StartDeduplicatedOrchestrationAsync(
+                typeof(Orchestrations.SayHelloWithActivity),
+                input: "Two",
+                instanceId: singletonInstanceId,
+                new OrchestrationStatus[] { OrchestrationStatus.Failed });
+
+            Assert.False(created);
+
+            var state2 = (await client.GetStateAsync(singletonInstanceId)).First();
+            Assert.Equal(state1.OrchestrationInstance.ExecutionId, state2.OrchestrationInstance.ExecutionId);
+        }
+
+        /// <summary>
         /// End-to-end test which validates that a terminated orchestration can be recreated.
         /// </summary>
         [Fact]
@@ -343,6 +441,7 @@ namespace DurableTask.Netherite.Tests
             await client.TerminateAsync("sayōnara");
 
             var status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(10));
+            var state1 = (await client.GetStateAsync(singletonInstanceId)).First();
 
             Assert.Equal(OrchestrationStatus.Terminated, status?.OrchestrationStatus);
             Assert.Equal("-1", status?.Input);
@@ -356,7 +455,49 @@ namespace DurableTask.Netherite.Tests
 
             Assert.Equal(OrchestrationStatus.Running, status?.OrchestrationStatus);
             Assert.Equal("0", status?.Input);
+
+            var state2 = (await client.GetStateAsync(singletonInstanceId)).First();
+            Assert.NotEqual(state1.OrchestrationInstance.ExecutionId, state2.OrchestrationInstance.ExecutionId);
         }
+
+        /// <summary>
+        /// End-to-end test which validates that a terminated orchestration can be deduplicated.
+        /// </summary>
+        [Fact]
+        public async Task DeduplicateTerminatedInstance()
+        {
+            string singletonInstanceId = $"SingletonCounter_{Guid.NewGuid():N}";
+
+            // Using the counter orchestration because it will wait indefinitely for input.
+            var client = await this.host.StartOrchestrationAsync(
+                typeof(Orchestrations.Counter),
+                input: -1,
+                instanceId: singletonInstanceId);
+
+            // Need to wait for the instance to start before we can terminate it.
+            await client.WaitForStartupAsync(TimeSpan.FromSeconds(10));
+
+            await client.TerminateAsync("sayōnara");
+
+            var status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(10));
+            var state1 = (await client.GetStateAsync(singletonInstanceId)).First();
+
+            Assert.Equal(OrchestrationStatus.Terminated, status?.OrchestrationStatus);
+            Assert.Equal("-1", status?.Input);
+            Assert.Equal("sayōnara", status?.Output);
+
+            (bool created, _) = await this.host.StartDeduplicatedOrchestrationAsync(
+                typeof(Orchestrations.SayHelloWithActivity),
+                input: "Two",
+                instanceId: singletonInstanceId,
+                new OrchestrationStatus[] { OrchestrationStatus.Terminated });
+
+            Assert.False(created);
+
+            var state2 = (await client.GetStateAsync(singletonInstanceId)).First();
+            Assert.Equal(state1.OrchestrationInstance.ExecutionId, state2.OrchestrationInstance.ExecutionId);
+        }
+
 
         /// <summary>
         /// End-to-end test which validates that a running orchestration can be recreated.
@@ -389,6 +530,39 @@ namespace DurableTask.Netherite.Tests
 
             Assert.Equal(OrchestrationStatus.Running, status?.OrchestrationStatus);
             Assert.Equal("99", status?.Input);
+        }
+
+        /// <summary>
+        /// End-to-end test which validates that a running orchestration can be deduplicated.
+        /// </summary>
+        [Fact]
+        public async Task DeduplicateRunningInstance()
+        {
+            string singletonInstanceId = $"SingletonCounter_{DateTime.Now:o}";
+
+            // Using the counter orchestration because it will wait indefinitely for input.
+            var client = await this.host.StartOrchestrationAsync(
+                typeof(Orchestrations.Counter),
+                input: 0,
+                instanceId: singletonInstanceId);
+
+            var status = await client.WaitForStartupAsync(TimeSpan.FromSeconds(10));
+            var state1 = (await client.GetStateAsync(singletonInstanceId)).First();
+
+            Assert.Equal(OrchestrationStatus.Running, status?.OrchestrationStatus);
+            Assert.Equal("0", status?.Input);
+            Assert.Null(status?.Output);
+
+            (bool created, _) = await this.host.StartDeduplicatedOrchestrationAsync(
+               typeof(Orchestrations.SayHelloWithActivity),
+               input: "Two",
+               instanceId: singletonInstanceId,
+               new OrchestrationStatus[] { OrchestrationStatus.Running });
+
+            Assert.False(created);
+
+            var state2 = (await client.GetStateAsync(singletonInstanceId)).First();
+            Assert.Equal(state1.OrchestrationInstance.ExecutionId, state2.OrchestrationInstance.ExecutionId);
         }
 
         [Fact]

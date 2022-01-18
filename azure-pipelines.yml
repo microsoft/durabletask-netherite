@@ -12,7 +12,7 @@ pool:
 variables:
   solution: 'DurableTask.Netherite.sln'
   buildPlatform: 'Any CPU'
-  buildConfiguration: 'Release'
+  buildConfiguration: 'Debug'
 
 steps:
 - task: NuGetToolInstaller@1
@@ -51,6 +51,6 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite*Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal'
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true"'
     testRunTitle: 'Netherite Unit Tests on storageAccount/EventHubs'
 

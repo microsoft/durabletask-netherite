@@ -14,7 +14,9 @@ namespace DurableTask.Netherite.Faster
 
     public partial class BlobManager
     {
-            public async Task PerformWithRetriesAsync(
+        internal FaultInjector FaultInjector { get; set; }
+
+        public async Task PerformWithRetriesAsync(
             SemaphoreSlim semaphore,
             bool requireLease,
             string name,
@@ -48,6 +50,8 @@ namespace DurableTask.Netherite.Faster
                         this.StorageTracer?.FasterStorageProgress($"storage operation {name} started attempt {numAttempts}; target={target} {data}");
 
                         stopwatch.Restart();
+
+                        this.FaultInjector?.StorageAccess(this, name, intent, target);
 
                         long size = await operation(numAttempts).ConfigureAwait(false);
 
@@ -121,6 +125,8 @@ namespace DurableTask.Netherite.Faster
 
                     this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) started attempt {numAttempts}; target={target} {data}");
                     stopwatch.Restart();
+
+                    this.FaultInjector?.StorageAccess(this, name, intent, target);
 
                     (long size, bool completed) = operation(numAttempts);
 

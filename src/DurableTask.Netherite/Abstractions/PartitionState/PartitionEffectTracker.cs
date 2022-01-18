@@ -38,8 +38,8 @@ namespace DurableTask.Netherite
         protected override void HandleError(string where, string message, Exception e, bool terminatePartition, bool reportAsWarning)
             => this.Partition.ErrorHandler.HandleError(where, message, e, terminatePartition, reportAsWarning);
 
-        public override void Assert(bool condition)
-            => this.Partition.Assert(condition);
+        public override void Assert(bool condition, string message)
+            => this.Partition.Assert(condition, message);
 
         public override uint PartitionId
             => this.Partition.PartitionId;

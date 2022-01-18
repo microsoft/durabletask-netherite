@@ -21,6 +21,8 @@ namespace DurableTask.Netherite
         public CancellationToken Token => this.cts.Token;
         public bool IsTerminated => this.cts.Token.IsCancellationRequested;
 
+        public bool NormalTermination { get; private set; }
+
         public PartitionErrorHandler(int partitionId, ILogger logger, LogLevel logLevelLimit, string storageAccountName, string taskHubName)
         {
             this.cts = new CancellationTokenSource();
@@ -62,6 +64,7 @@ namespace DurableTask.Netherite
 
         public void TerminateNormally()
         {
+            this.NormalTermination = true;
             this.Terminate();
         }
 

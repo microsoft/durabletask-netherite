@@ -43,7 +43,7 @@ namespace DurableTask.Netherite.Tests
 
         public async Task StartAsync()
         {
-            Trace.TraceInformation($"Test progress: Started {this.orchestrationService}");
+            Trace.TraceInformation($"TestProgress: Started {this.orchestrationService}");
 
             await this.worker.StartAsync();
         }
@@ -55,20 +55,18 @@ namespace DurableTask.Netherite.Tests
 
         public void AddAutoStartOrchestrator(Type type)
         {
-            this.worker.AddTaskOrchestrations(new AutoStartOrchestrationCreator(type));
-            this.addedOrchestrationTypes.Add(type);
+            if (this.addedOrchestrationTypes.Add(type))
+            {
+                this.worker.AddTaskOrchestrations(new AutoStartOrchestrationCreator(type));
+            }
         }
 
-        public async Task<TestOrchestrationClient> StartOrchestrationAsync(
-            Type orchestrationType,
-            object input,
-            string instanceId = null, 
-            DateTime? startAt = null)
+        void AddTypes(Type orchestrationType)
         {
             if (!this.addedOrchestrationTypes.Contains(orchestrationType))
             {
-                this.worker.AddTaskOrchestrations(orchestrationType);
                 this.addedOrchestrationTypes.Add(orchestrationType);
+                this.worker.AddTaskOrchestrations(orchestrationType);
             }
 
             // Allow orchestration types to declare which activity types they depend on.
@@ -92,39 +90,148 @@ namespace DurableTask.Netherite.Tests
                     this.addedActivityTypes.Add(referencedKnownType.Type);
                 }
             }
+        }
 
+        public async Task<TestOrchestrationClient> StartOrchestrationAsync(
+             Type orchestrationType,
+             object input,
+             string instanceId = null,
+             DateTime? startAt = null)
+        {
+            this.AddTypes(orchestrationType);
             DateTime creationTime = DateTime.UtcNow;
-            OrchestrationInstance instance = startAt.HasValue ?
-                await this.client.CreateScheduledOrchestrationInstanceAsync(
+
+            TimeSpan timeout = TimeSpan.FromSeconds(50);
+            timeout = TestOrchestrationClient.AdjustTimeout(timeout);
+            Task timeoutTask = Task.Delay(timeout);
+
+            Task<OrchestrationInstance>  startTask = startAt.HasValue ?
+                this.client.CreateScheduledOrchestrationInstanceAsync(
                     orchestrationType,
                     instanceId,
                     input,
                     startAt.Value)
                     :
-                await this.client.CreateOrchestrationInstanceAsync(
+                this.client.CreateOrchestrationInstanceAsync(
                     orchestrationType,
                     instanceId,
                     input);
 
+            await Task.WhenAny(timeoutTask, startTask);
 
-            Trace.TraceInformation($"Test progress: Started {orchestrationType.Name}, Instance ID = {instance.InstanceId}");
+            if (!startTask.IsCompleted)
+            {
+                Trace.TraceWarning( "TestProgress: Timed out {0} failed to start after {1}",
+                                    orchestrationType.Name,
+                                    timeout);
+
+                throw new TimeoutException($"Orchestration {orchestrationType.Name} failed to start after {timeout}.");
+            }
+
+            var instance = await startTask;
+
+            Trace.TraceInformation($"TestProgress: Started {orchestrationType.Name} id={instance.InstanceId}");
             return new TestOrchestrationClient(this.client, orchestrationType, instance.InstanceId, creationTime);
         }
+
+        public async Task<(bool, TestOrchestrationClient)> StartDeduplicatedOrchestrationAsync(
+            Type orchestrationType,
+            object input,
+            string instanceId,
+            OrchestrationStatus[] stati = null)
+        {
+            this.AddTypes(orchestrationType);
+            DateTime creationTime = DateTime.UtcNow;
+
+            TimeSpan timeout = TimeSpan.FromSeconds(50);
+            timeout = TestOrchestrationClient.AdjustTimeout(timeout);
+            Task timeoutTask = Task.Delay(timeout);
+
+            bool duplicate;
+            stati ??= this.dedupeStatuses;
+
+            try
+            {
+                var startTask = this.client.CreateOrchestrationInstanceAsync(
+                         orchestrationType,
+                         instanceId,
+                         input,
+                         stati);
+                duplicate = false;
+
+                await Task.WhenAny(timeoutTask, startTask);
+
+                if (!startTask.IsCompleted)
+                {
+                    Trace.TraceWarning("TestProgress: Timed out {0} id={1} failed to start after {2}",
+                                        orchestrationType.Name,
+                                        instanceId,
+                                        timeout);
+
+                    throw new TimeoutException($"Orchestration {orchestrationType.Name} id={instanceId} failed to start after {timeout}.");
+                }
+
+                await startTask;
+            }
+            catch (InvalidOperationException e) when (e.Message.Contains("already exists"))
+            {
+                var instance = new OrchestrationInstance() { InstanceId = instanceId };
+                var state = await this.client.GetOrchestrationStateAsync(instance);
+                creationTime = state.CreatedTime;
+                duplicate = true;
+            }
+
+            Trace.TraceInformation($"TestProgress: Started {orchestrationType.Name} id={instanceId} duplicate={duplicate}");
+            return (!duplicate, new TestOrchestrationClient(this.client, orchestrationType, instanceId, creationTime));
+        }
+
+        public async Task<TestOrchestrationClient> StartOrchestrationWithRetriesAsync(
+           TimeSpan timeout,
+           TimeSpan period,
+           Type orchestrationType,
+           object input,
+           string instanceId = null)
+        {
+            this.AddTypes(orchestrationType);
+            instanceId = instanceId ?? Guid.NewGuid().ToString("n");
+            Stopwatch sw = Stopwatch.StartNew();
+            bool created = false;
+            TestOrchestrationClient client = null;
+
+            do
+            {
+                var periodTask = Task.Delay(period);
+                async Task Invoke()
+                {
+                    (created, client) = await this.StartDeduplicatedOrchestrationAsync(orchestrationType, input, instanceId);
+                }
+                var invokeTask = Invoke();
+                var firstTask = await Task.WhenAny(invokeTask, periodTask);
+                if (firstTask == invokeTask)
+                {
+                    await invokeTask;
+                }
+            } while (client == null && (sw.Elapsed < timeout));
+
+            return client;
+        }
+
+        readonly OrchestrationStatus[] dedupeStatuses = { OrchestrationStatus.Completed, OrchestrationStatus.Terminated, OrchestrationStatus.Pending, OrchestrationStatus.Running, OrchestrationStatus.Failed };
 
         public async Task<IList<OrchestrationState>> GetAllOrchestrationInstancesAsync()
         {
             // This API currently only exists in the service object and is not yet exposed on the TaskHubClient
-            Trace.TraceInformation($"Test progress: Querying all instances...");
+            Trace.TraceInformation($"TestProgress: Querying all instances...");
             var instances = await this.orchestrationService.GetAllOrchestrationStatesAsync(CancellationToken.None);
-            Trace.TraceInformation($"Test progress: Found {instances.Count} in the task hub instance store.");
+            Trace.TraceInformation($"TestProgress: Found {instances.Count} in the task hub instance store.");
             return instances;
         }
 
         public async Task PurgeAllAsync()
         {
-            Trace.TraceInformation($"Test progress: Purging all instances...");
+            Trace.TraceInformation($"TestProgress: Purging all instances...");
             var purgeResult = await this.orchestrationService.PurgeInstanceHistoryAsync(default, default, null);
-            Trace.TraceInformation($"Test progress: Purged {purgeResult} instances.");
+            Trace.TraceInformation($"TestProgress: Purged {purgeResult} instances.");
         }
 
         public async Task<IList<OrchestrationState>> GetOrchestrationStateAsync(DateTime? CreatedTimeFrom = default,
@@ -134,9 +241,9 @@ namespace DurableTask.Netherite.Tests
                                                                                 CancellationToken CancellationToken = default)
         {
             // This API currently only exists in the service object and is not yet exposed on the TaskHubClient
-            Trace.TraceInformation($"Test progress: Querying instances...");
+            Trace.TraceInformation($"TestProgress: Querying instances...");
             var instances = await this.orchestrationService.GetOrchestrationStateAsync(CreatedTimeFrom, CreatedTimeTo, RuntimeStatus, InstanceIdPrefix, CancellationToken);
-            Trace.TraceInformation($"Test progress: Found {instances.Count} in the task hub instance store.");
+            Trace.TraceInformation($"TestProgress: Found {instances.Count} in the task hub instance store.");
             return instances;
         }
     }

@@ -33,7 +33,7 @@ namespace DurableTask.Netherite.Tests
 
         public string InstanceId => this.instanceId;
 
-        public async Task<OrchestrationState> WaitForCompletionAsync(TimeSpan timeout)
+        public async Task<OrchestrationState> WaitForCompletionAsync(TimeSpan timeout, bool tolerateTimeout = false)
         {
             timeout = AdjustTimeout(timeout);
 
@@ -43,7 +43,7 @@ namespace DurableTask.Netherite.Tests
             if (state != null)
             {
                 Trace.TraceInformation(
-                    "{0} (ID = {1}) completed after ~{2}ms. Status = {3}. Output = {4}.",
+                    "TestProgress: Completed {0} id={1} after ~{2}ms. Status = {3}. Output = {4}.",
                     this.orchestrationType.Name,
                     state.OrchestrationInstance.InstanceId,
                     sw.ElapsedMilliseconds,
@@ -53,16 +53,63 @@ namespace DurableTask.Netherite.Tests
             else
             {
                 Trace.TraceWarning(
-                    "{0} (ID = {1}) failed to complete after {2}ms.",
+                    "TestProgress: Timed out {0} id={1} failed to complete after {2}ms.",
                     this.orchestrationType.Name,
                     this.instanceId,
                     timeout.TotalMilliseconds);
+
+                if (!tolerateTimeout)
+                {
+                    throw new TimeoutException($"Orchestration {this.orchestrationType.Name} id={this.instanceId} timed out after {timeout}.");
+                }
             }
 
             return state;
         }
 
-        internal async Task<OrchestrationState> WaitForStartupAsync(TimeSpan timeout)
+        public async Task<OrchestrationState> WaitForCompletionWithRetriesAsync(TimeSpan timeout, TimeSpan period, bool tolerateTimeout = false)
+        {
+            timeout = AdjustTimeout(timeout);
+            period = AdjustTimeout(period);
+
+            var latestGeneration = new OrchestrationInstance { InstanceId = this.instanceId };
+            Stopwatch sw = Stopwatch.StartNew();
+            OrchestrationState state = null;
+
+            do
+            {
+                state = await this.client.WaitForOrchestrationAsync(latestGeneration, period);
+
+            } while (state == null && sw.Elapsed < timeout);
+
+            if (state != null)
+            {
+                Trace.TraceInformation(
+                    "TestProgress: Completed {0} id={1} after ~{2}ms. Status = {3}. Output = {4}.",
+                    this.orchestrationType.Name,
+                    state.OrchestrationInstance.InstanceId,
+                    sw.ElapsedMilliseconds,
+                    state.OrchestrationStatus,
+                    state.Output);
+            }
+            else
+            {
+                Trace.TraceWarning(
+                    "TestProgress: Timed out {0} id={1} failed to complete with retries after {2}ms.",
+                    this.orchestrationType.Name,
+                    this.instanceId,
+                    timeout.TotalMilliseconds);
+
+                if (!tolerateTimeout)
+                {
+                    throw new TimeoutException($"Orchestration {this.orchestrationType.Name} id={this.instanceId} timed out after {timeout}.");
+                }
+            }
+
+            return state;
+        }
+
+        internal async Task<OrchestrationState> WaitForStartupAsync(TimeSpan timeout, bool tolerateTimeout = false)
         {
             timeout = AdjustTimeout(timeout);
 
@@ -72,7 +119,7 @@ namespace DurableTask.Netherite.Tests
                 OrchestrationState state = await this.GetStatusAsync();
                 if (state != null && state.OrchestrationStatus != OrchestrationStatus.Pending)
                 {
-                    Trace.TraceInformation($"{state.Name} (ID = {state.OrchestrationInstance.InstanceId}) started successfully after ~{sw.ElapsedMilliseconds}ms. Status = {state.OrchestrationStatus}.");
+                    Trace.TraceInformation($"TestProgress: Started {state.Name} id={state.OrchestrationInstance.InstanceId} after ~{sw.ElapsedMilliseconds}ms. Status = {state.OrchestrationStatus}.");
                     return state;
                 }
 
@@ -80,7 +127,18 @@ namespace DurableTask.Netherite.Tests
 
             } while (sw.Elapsed < timeout);
 
-            throw new TimeoutException($"Orchestration '{this.orchestrationType.Name}' with instance ID '{this.instanceId}' failed to start.");
+            Trace.TraceWarning(
+              "TestProgress: Timed out {0} id={1} failed to start after {2}ms.",
+              this.orchestrationType.Name,
+              this.instanceId,
+              timeout.TotalMilliseconds);
+
+            if (!tolerateTimeout)
+            {
+                throw new TimeoutException($"Orchestration {this.orchestrationType.Name} id={this.instanceId} failed to start.");
+            }
+
+            return null;
         }
 
         public async Task<OrchestrationState> GetStatusAsync()
@@ -167,7 +225,7 @@ namespace DurableTask.Netherite.Tests
             return service.GetOrchestrationStateAsync(instanceId, true);
         }
 
-        static TimeSpan AdjustTimeout(TimeSpan requestedTimeout)
+        internal static TimeSpan AdjustTimeout(TimeSpan requestedTimeout)
         {
             TimeSpan timeout = requestedTimeout;
             if (Debugger.IsAttached)
@@ -179,7 +237,25 @@ namespace DurableTask.Netherite.Tests
                 }
             }
 
+            timeout = timeout + TimeoutAdjustment;
+
             return timeout;
+        }
+
+        static TimeSpan TimeoutAdjustment = TimeSpan.Zero;
+
+        public static IDisposable WithExtraTime(TimeSpan adjustment)
+        {
+            TimeoutAdjustment = adjustment;
+            return new ResetTimeoutAdjust();
+        }
+
+        class ResetTimeoutAdjust : IDisposable
+        {
+            public void Dispose()
+            {
+                TimeoutAdjustment = TimeSpan.Zero;
+            }
         }
     }
 }

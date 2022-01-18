@@ -60,6 +60,8 @@ namespace DurableTask.Netherite.Faster
         public CloudBlobContainer BlockBlobContainer => this.blockBlobContainer;
         public CloudBlobContainer PageBlobContainer => this.pageBlobContainer;
 
+        public int PartitionId => (int) this.partitionId;
+
         public IPartitionErrorHandler PartitionErrorHandler { get; private set; }
 
         internal static SemaphoreSlim AsynchronousStorageReadMaxConcurrency = new SemaphoreSlim(Math.Min(100, Environment.ProcessorCount * 10));
@@ -249,12 +251,6 @@ namespace DurableTask.Netherite.Faster
         public static TimeSpan GetDelayBetweenRetries(int numAttempts)
             => TimeSpan.FromSeconds(Math.Pow(2, (numAttempts - 1)));
 
-        // For tests only; TODO consider adding PSFs
-        internal BlobManager(CloudStorageAccount storageAccount, CloudStorageAccount pageBlobAccount, string localFileDirectory, string taskHubName, ILogger logger, Microsoft.Extensions.Logging.LogLevel logLevelLimit, uint partitionId, IPartitionErrorHandler errorHandler)
-            : this(storageAccount, pageBlobAccount, localFileDirectory, taskHubName, logger, logLevelLimit, partitionId, errorHandler, 0)
-        {
-        }
-
         /// <summary>
         /// Create a blob manager.
         /// </summary>
@@ -272,6 +268,7 @@ namespace DurableTask.Netherite.Faster
             CloudStorageAccount pageBlobAccount,
             string localFilePath,
             string taskHubName,
+            FaultInjector faultInjector,
             ILogger logger,
             Microsoft.Extensions.Logging.LogLevel logLevelLimit,
             uint partitionId, IPartitionErrorHandler errorHandler,
@@ -282,6 +279,7 @@ namespace DurableTask.Netherite.Faster
             this.UseLocalFiles = (localFilePath != null);
             this.LocalFileDirectoryForTestingAndDebugging = localFilePath;
             this.ContainerName = GetContainerName(taskHubName);
+            this.FaultInjector = faultInjector;
             this.partitionId = partitionId;
             this.CheckpointInfo = new CheckpointInfo();
             this.PsfCheckpointInfos = Enumerable.Range(0, psfGroupCount).Select(ii => new CheckpointInfo()).ToArray();
@@ -503,6 +501,7 @@ namespace DurableTask.Netherite.Faster
 
                     if (!this.UseLocalFiles)
                     {
+                        this.FaultInjector?.StorageAccess(this, "AcquireLeaseAsync", "AcquireOwnership", this.eventLogCommitBlob.Name);
                         this.leaseId = await this.eventLogCommitBlob.AcquireLeaseAsync(
                             this.LeaseDuration,
                             null,
@@ -520,6 +519,8 @@ namespace DurableTask.Netherite.Faster
                 catch (StorageException ex) when (BlobUtils.LeaseConflictOrExpired(ex))
                 {
                     this.TraceHelper.LeaseProgress("Waiting for lease");
+
+                    this.FaultInjector?.BreakLease(this.eventLogCommitBlob); // during fault injection tests, we don't want to wait
 
                     // the previous owner has not released the lease yet, 
                     // try again until it becomes available, should be relatively soon
@@ -605,6 +606,7 @@ namespace DurableTask.Netherite.Faster
                 if (!this.UseLocalFiles)
                 {
                     this.TraceHelper.LeaseProgress($"Renewing lease at {this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds}s");
+                    this.FaultInjector?.StorageAccess(this, "RenewLeaseAsync", "RenewLease", this.eventLogCommitBlob.Name);
                     await this.eventLogCommitBlob.RenewLeaseAsync(acc, this.PartitionErrorHandler.Token)
                         .ConfigureAwait(false);
                     this.TraceHelper.LeaseRenewed(this.leaseTimer.Elapsed.TotalSeconds, this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds);
@@ -685,6 +687,7 @@ namespace DurableTask.Netherite.Faster
                     {
                         this.TraceHelper.LeaseProgress("Releasing lease");
 
+                        this.FaultInjector?.StorageAccess(this, "ReleaseLeaseAsync", "ReleaseLease", this.eventLogCommitBlob.Name);
                         AccessCondition acc = new AccessCondition() { LeaseId = this.leaseId };
 
                         await this.eventLogCommitBlob.ReleaseLeaseAsync(

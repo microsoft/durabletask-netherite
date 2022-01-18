@@ -61,7 +61,7 @@ namespace DurableTask.Netherite
                 this.HistorySize = 0;
             }
 
-            this.Partition.Assert(!string.IsNullOrEmpty(this.InstanceId) || string.IsNullOrEmpty(this.ExecutionId));
+            this.Partition.Assert(!string.IsNullOrEmpty(this.InstanceId) || string.IsNullOrEmpty(this.ExecutionId), "null ids in HistoryState.Process(BatchProcessed)");
 
             // add all the new events to the history, and update episode number
             if (evt.NewEvents != null)
