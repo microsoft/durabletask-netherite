@@ -691,8 +691,10 @@ namespace DurableTask.Netherite.Faster
                     emitItem(key, singleton);
                 }
 
+                using var session = this.CreateASession($"emitCurrentState", true);
+
                 // iterate histories
-                using (var iter1 = this.mainSession.Iterate())
+                using (var iter1 = session.Iterate())
                 {
                     while (iter1.GetNext(out RecordInfo recordInfo, out var key, out var value) && !recordInfo.Tombstone)
                     {
