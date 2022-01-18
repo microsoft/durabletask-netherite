@@ -25,7 +25,7 @@ namespace DurableTask.Netherite
 
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Outbox);
 
-        public override void OnRecoveryCompleted(EffectTracker effects)
+        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
         {
             // resend all pending
             foreach (var kvp in this.Outbox)

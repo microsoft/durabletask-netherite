@@ -59,17 +59,32 @@ namespace DurableTask.Netherite
 
         const double SMOOTHING_FACTOR = 0.1;
 
-        public override void OnRecoveryCompleted(EffectTracker effects)
+        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
         {
-            // reschedule work items
-            foreach (var pending in this.Pending)
-            {
-                this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, pending.Key, pending.Value.Message, pending.Value.OriginWorkItemId));
-            }
-
             if (this.LocalBacklog.Count > 0)
             {
                 this.ScheduleNextOffloadDecision(TimeSpan.Zero);
+            }
+
+            if (this.Pending.Count > 0)
+            {
+                evt.NumActivities = this.Pending.Count;
+                evt.MaxActivityDequeueCount = this.Pending.Values.Select(val => val.DequeueCount).Max() + 1;
+            }
+        }
+
+        public override void Process(RecoveryCompleted evt, EffectTracker effects)
+        {
+            effects.Partition.Assert(this.Pending.Count == evt.NumActivities);
+
+            foreach (var kvp in this.Pending)
+            {
+                kvp.Value.DequeueCount++;
+
+                if (!effects.IsReplaying)
+                {
+                    this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, kvp.Key, kvp.Value.Message, kvp.Value.OriginWorkItemId, evt));
+                }
             }
         }
 
@@ -173,11 +188,12 @@ namespace DurableTask.Netherite
 
                 if (this.Pending.Count == 0 || this.EstimatedWorkItemQueueSize < this.WorkItemQueueLimit)
                 {
+                    activityInfo.DequeueCount++;
                     this.Pending.Add(activityInfo.ActivityId, activityInfo);
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, msg, evt.WorkItemId));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, msg, evt.WorkItemId, evt));
                     }
 
                     this.EstimatedWorkItemQueueSize++;
@@ -213,11 +229,12 @@ namespace DurableTask.Netherite
 
                 if (this.Pending.Count == 0 || this.EstimatedWorkItemQueueSize <= this.WorkItemQueueLimit)
                 {
+                    activityInfo.DequeueCount++;
                     this.Pending.Add(activityInfo.ActivityId, activityInfo);
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, msg.Item1, msg.Item2));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, msg.Item1, msg.Item2, evt));
                     }
 
                     this.EstimatedWorkItemQueueSize++;
@@ -268,11 +285,12 @@ namespace DurableTask.Netherite
             {
                 if (this.TryGetNextActivity(out var activityInfo))
                 {
+                    activityInfo.DequeueCount++;
                     this.Pending.Add(activityInfo.ActivityId, activityInfo);
 
                     if (!effects.IsReplaying)
                     {
-                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message, activityInfo.OriginWorkItemId));
+                        this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, activityInfo.ActivityId, activityInfo.Message, activityInfo.OriginWorkItemId, evt));
                     }
 
                     this.EstimatedWorkItemQueueSize++;
@@ -385,6 +403,9 @@ namespace DurableTask.Netherite
 
             [DataMember]
             public DateTime IssueTime;
+
+            [DataMember]
+            public int DequeueCount;
         }
     }
 }

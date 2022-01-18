@@ -12,7 +12,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
     using DurableTask.Core.History;
 
-    class OrchestrationMessageBatch : InternalReadEvent
+    class OrchestrationMessageBatch : InternalReadEvent, TransportAbstraction.IDurabilityListener
     {
         public string InstanceId;
         public long SessionId;
@@ -24,9 +24,12 @@ namespace DurableTask.Netherite
         public string WorkItemId;
         public double? WaitingSince; // measures time waiting to execute
 
+        // enforces that the activity cannot start executing before the issuing event is persisted
+        public readonly TaskCompletionSource<object> WaitForDequeueCountPersistence;
+
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.WorkItemId);
 
-        public OrchestrationMessageBatch(string instanceId, SessionsState.Session session, Partition partition)
+        public OrchestrationMessageBatch(string instanceId, SessionsState.Session session, Partition partition, PartitionUpdateEvent filingEvent)
         {
             this.InstanceId = instanceId;
             this.SessionId = session.SessionId;
@@ -41,12 +44,23 @@ namespace DurableTask.Netherite
             this.WorkItemId = SessionsState.GetWorkItemId(partition.PartitionId, this.SessionId, this.BatchStartPosition);
             this.WaitingSince = partition.CurrentTimeMs;
 
-            session.CurrentBatch = this; 
+            session.CurrentBatch = this;
 
+            if (partition.Settings.PersistDequeueCountBeforeStartingWorkItem)
+            {
+                this.WaitForDequeueCountPersistence = new TaskCompletionSource<object>();
+                DurabilityListeners.Register(filingEvent, this);
+            }
+ 
             partition.EventDetailTracer?.TraceEventProcessingDetail($"OrchestrationMessageBatch is prefetching instance={this.InstanceId} batch={this.WorkItemId}");
 
             // continue when we have the history state loaded, which gives us the latest state and/or cursor
             partition.SubmitEvent(this);
+        }
+
+        public void ConfirmDurable(Event evt)
+        {
+            this.WaitForDequeueCountPersistence.TrySetResult(null);
         }
 
         public IEnumerable<(TaskMessage, string)> TracedMessages
