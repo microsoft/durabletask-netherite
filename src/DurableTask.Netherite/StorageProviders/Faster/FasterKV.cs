@@ -645,7 +645,7 @@ namespace DurableTask.Netherite.Faster
                             }
                             else
                             {
-                                instanceState = (InstanceState)val;
+                                instanceState = (InstanceState)val.Val;
                             }
 
                             // reading the orchestrationState may race with updating the orchestration state
