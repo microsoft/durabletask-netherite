@@ -16,6 +16,7 @@ namespace DurableTask.Netherite.Faster
     using DurableTask.Core.Common;
     using DurableTask.Core.Tracing;
     using FASTER.core;
+    using Newtonsoft.Json;
 
     class FasterKV : TrackedObjectStore
     {
@@ -39,7 +40,7 @@ namespace DurableTask.Netherite.Faster
         {
             this.partition = partition;
             this.blobManager = blobManager;
-            this.cacheDebugger = partition.Settings.CacheDebugger;
+            this.cacheDebugger = partition.Settings.TestHooks?.CacheDebugger;
             this.cacheTracker = memoryTracker.NewCacheTracker(this, this.cacheDebugger);
 
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
@@ -676,24 +677,34 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        //private async Task<string> DumpCurrentState(EffectTracker effectTracker)    // TODO unused
-        //{
-        //    try
-        //    {
-        //        var stringBuilder = new StringBuilder();
-        //        await foreach (var trackedObject in EnumerateAllTrackedObjects(effectTracker).OrderBy(obj => obj.Key, new TrackedObjectKey.Comparer()))
-        //        {
-        //            stringBuilder.Append(trackedObject.ToString());
-        //            stringBuilder.AppendLine();
-        //        }
-        //        return stringBuilder.ToString();
-        //    }
-        //    catch (Exception exception)
-        //        when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
-        //    {
-        //        throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
-        //    }
-        //}
+        public override void EmitCurrentState(Action<TrackedObjectKey, TrackedObject> emitItem)
+        {
+            try
+            {
+                var stringBuilder = new StringBuilder();
+
+                // iterate singletons
+                foreach(var key in TrackedObjectKey.GetSingletons())
+                {
+                    var singleton = this.singletons[(int)key.ObjectType];
+                    emitItem(key, singleton);
+                }
+
+                // iterate histories
+                using (var iter1 = this.mainSession.Iterate())
+                {
+                    while (iter1.GetNext(out RecordInfo recordInfo, out var key, out var value) && !recordInfo.Tombstone)
+                    {
+                        emitItem(key, value);
+                    }
+                }
+            }
+            catch (Exception exception)
+                when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
+            {
+                throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
+            }
+        }
 
         public long MemoryUsedWithoutObjects => this.fht.IndexSize * 64 + this.fht.Log.MemorySizeBytes + this.fht.OverflowBucketCount * 64;
 
@@ -1025,7 +1036,7 @@ namespace DurableTask.Netherite.Faster
                 this.partition = partition;
                 this.store = store;
                 this.stats = store.StoreStats;
-                this.cacheDebugger = partition.Settings.CacheDebugger;
+                this.cacheDebugger = partition.Settings.TestHooks?.CacheDebugger;
                 this.cacheTracker = isScan ? null : cacheTracker;
                 this.isScan = isScan;
             }

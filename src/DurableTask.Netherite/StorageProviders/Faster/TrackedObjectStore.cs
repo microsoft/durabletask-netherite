@@ -52,6 +52,8 @@ namespace DurableTask.Netherite.Faster
 
         public abstract ValueTask RemoveKeys(IEnumerable<TrackedObjectKey> keys);
 
+        public abstract void EmitCurrentState(Action<TrackedObjectKey, TrackedObject> emitItem);     
+
         public StoreStatistics StoreStats { get; } = new StoreStatistics();
 
         public abstract double CacheSizeMB { get; }

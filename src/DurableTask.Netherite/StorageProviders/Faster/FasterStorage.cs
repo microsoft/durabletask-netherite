@@ -60,9 +60,9 @@ namespace DurableTask.Netherite.Faster
             this.memoryTracker = new MemoryTracker(this);
             this.TargetMemorySize = settings.FasterCacheSizeMB ?? 200 * 1024 * 1024;
 
-            if (settings.CacheDebugger != null)
+            if (settings.TestHooks?.CacheDebugger != null)
             {
-                settings.CacheDebugger.MemoryTracker = this.memoryTracker;
+                settings.TestHooks.CacheDebugger.MemoryTracker = this.memoryTracker;
             }
         }
 

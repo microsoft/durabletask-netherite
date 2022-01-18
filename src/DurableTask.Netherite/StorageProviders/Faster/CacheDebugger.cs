@@ -14,12 +14,18 @@ namespace DurableTask.Netherite.Faster
     /// <summary>
     /// Records cache and storage management traces for each object. This class is only used for testing and debugging, as it creates lots of overhead.
     /// </summary>
-    public class CacheDebugger
+    class CacheDebugger
     {
+        readonly TestHooks testHooks;
         readonly ConcurrentDictionary<TrackedObjectKey, ObjectInfo> Objects = new ConcurrentDictionary<TrackedObjectKey, ObjectInfo>();
 
         internal MemoryTracker MemoryTracker { get; set; }
  
+        public CacheDebugger(TestHooks testHooks)
+        {
+            this.testHooks = testHooks;
+        }
+
         public enum CacheEvent
         {
             // reads and RMWs on the main session
@@ -82,7 +88,6 @@ namespace DurableTask.Netherite.Faster
             public string PrintCacheEvents() => string.Join(",", this.CacheEvents.Select(e => e.ToString()));
         }
 
-        public event Action<string> OnError;
 
         internal ObjectInfo GetObjectInfo(TrackedObjectKey key)
         {
@@ -227,25 +232,16 @@ namespace DurableTask.Netherite.Faster
 
         internal void Fail(string message)
         {
-            if (System.Diagnostics.Debugger.IsAttached)
-            {
-                System.Diagnostics.Debugger.Break();
-            }
-
-            this.OnError(message);
+            this.testHooks.Error(this.GetType().Name, message);
         }
 
         internal void Fail(string message, TrackedObjectKey key)
         {
             this.Record(key, CacheEvent.Fail, null, null, 0);
 
-            if (System.Diagnostics.Debugger.IsAttached)
-            {
-                System.Diagnostics.Debugger.Break();
-            }
 
             var info = this.GetObjectInfo(key);
-            this.OnError($"{message} key={key} cacheEvents={info.PrintCacheEvents()}");
+            this.testHooks.Error(nameof(CacheDebugger), $"{message} key={key} cacheEvents={info.PrintCacheEvents()}");
         }
 
         internal void ValidateObjectVersion(FasterKV.Value val, TrackedObjectKey key)

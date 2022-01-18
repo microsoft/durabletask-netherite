@@ -25,7 +25,7 @@ namespace DurableTask.Netherite
 
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Outbox);
 
-        public override void OnRecoveryCompleted()
+        public override void OnRecoveryCompleted(EffectTracker effects)
         {
             // resend all pending
             foreach (var kvp in this.Outbox)
@@ -35,7 +35,7 @@ namespace DurableTask.Netherite
                 kvp.Value.Partition = this.Partition;
 
                 // resend (anything we have recovered is of course persisted)
-                this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Resent {kvp.Key:D10} ({kvp.Value} messages)");
+                effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent {kvp.Key:D10} ({kvp.Value} messages)");
                 this.Send(kvp.Value);
             }
         }
@@ -58,6 +58,12 @@ namespace DurableTask.Netherite
             this.Outbox[commitPosition] = batch;
             batch.Position = commitPosition;
             batch.Partition = this.Partition;
+
+            foreach (var partitionMessageEvent in batch.OutgoingMessages)
+            {
+                partitionMessageEvent.OriginPartition = this.Partition.PartitionId;
+                partitionMessageEvent.OriginPosition = commitPosition;
+            }
 
             if (!effects.IsReplaying)
             {
@@ -90,8 +96,6 @@ namespace DurableTask.Netherite
             foreach (var outmessage in batch.OutgoingMessages)
             {
                 DurabilityListeners.Register(outmessage, batch);
-                outmessage.OriginPartition = this.Partition.PartitionId;
-                outmessage.OriginPosition = batch.Position;
                 this.Partition.Send(outmessage);
             }
             foreach (var outresponse in batch.OutgoingResponses)
@@ -153,9 +157,9 @@ namespace DurableTask.Netherite
             }
         }
 
-        public override void Process(SendConfirmed evt, EffectTracker _)
+        public override void Process(SendConfirmed evt, EffectTracker effects)
         {
-            this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Store has sent all outbound messages by event {evt} id={evt.EventIdString}");
+            effects.EventDetailTracer?.TraceEventProcessingDetail($"Store has sent all outbound messages by event {evt} id={evt.EventIdString}");
 
             // we no longer need to keep these events around
             this.Outbox.Remove(evt.Position);

@@ -20,11 +20,10 @@ namespace DurableTask.Netherite.Tests
         readonly XunitLoggerProvider loggerProvider;
         readonly CacheDebugger cacheDebugger;
 
-        Action<string> output;
         internal TestOrchestrationHost Host { get; private set; }
         internal ILoggerFactory LoggerFactory { get; private set; }
 
-        string firstError;
+        internal string TestHooksError { get; private set; }
 
         public SingleHostFixture()
         {
@@ -36,14 +35,13 @@ namespace DurableTask.Netherite.Tests
             string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
             settings.HubName = $"SingleHostFixture-{timestamp}";
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
-            this.cacheDebugger = settings.CacheDebugger = new Faster.CacheDebugger();
-            this.cacheDebugger.OnError += (message) =>
+            settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
+            this.cacheDebugger = settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(settings.TestHooks);
+            settings.TestHooks.OnError += (message) =>
             {
-                this.loggerProvider.Output?.Invoke($"CACHEDEBUGGER: {message}");
-                this.traceListener.Output?.Invoke($"CACHEDEBUGGER: {message}");
-                this.firstError ??= message;
+                Trace.WriteLine($"TESTHOOKS: {message}");
+                this.TestHooksError ??= message;
             };
-
             // start the host
             this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
             this.Host.StartAsync().Wait();
@@ -55,7 +53,7 @@ namespace DurableTask.Netherite.Tests
         {
             foreach (var line in this.cacheDebugger.Dump())
             {
-                this.output?.Invoke(line);
+                Trace.WriteLine(line);
             }
         }
 
@@ -68,15 +66,16 @@ namespace DurableTask.Netherite.Tests
 
         public bool HasError(out string error)
         {
-            error = this.firstError;
+            error = this.TestHooksError;
             return error != null;
         }
 
+        // called before a new test, to route output to the test output
         public void SetOutput(Action<string> output)
         {
-            this.output = output;
             this.loggerProvider.Output = output;
             this.traceListener.Output = output;
+            this.TestHooksError = null;
         }
 
         internal class TestTraceListener : TraceListener

@@ -33,16 +33,7 @@ namespace DurableTask.Netherite.Tests
         public ScenarioTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
             this.outputHelper = outputHelper;
-            this.output = (string message) =>
-            {
-                try
-                {
-                    this.outputHelper?.WriteLine(message);
-                }
-                catch (Exception)
-                {
-                }
-            };
+            this.output = (string message) => this.outputHelper?.WriteLine(message);
 
             this.output($"Running pre-test operations on {fixture.GetType().Name}.");
 
@@ -67,6 +58,7 @@ namespace DurableTask.Netherite.Tests
                 throw new TimeoutException("timed out while purging instances after running test");
             }
 
+            Assert.Null(this.fixture.TestHooksError);
             this.fixture.DumpCacheDebugger();
 
             this.output($"Completed post-test operations on {this.fixture.GetType().Name}.");

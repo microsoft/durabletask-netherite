@@ -380,6 +380,13 @@ namespace DurableTask.Netherite.Faster
             throw new NotImplementedException();
         }
 
+        public override void EmitCurrentState(Action<TrackedObjectKey, TrackedObject> emitItem)
+        {
+            // TODO
+            throw new NotImplementedException();
+        }
+
+
         #region storage access operation
 
         CloudBlockBlob GetBlob(TrackedObjectKey key)

@@ -35,16 +35,7 @@ namespace DurableTask.Netherite.Tests
         public FasterPartitionTests(ITestOutputHelper outputHelper)
         {
             this.outputHelper = outputHelper;
-            this.output = (string message) =>
-            {
-                try
-                {
-                    this.outputHelper?.WriteLine(message);
-                }
-                catch (Exception)
-                {
-                }
-            };
+            this.output = (string message) => this.outputHelper?.WriteLine(message);
 
             this.loggerFactory = new LoggerFactory();
             this.provider = new XunitLoggerProvider();
@@ -58,11 +49,10 @@ namespace DurableTask.Netherite.Tests
             this.settings.HubName = $"FasterPartitionTest-{timestamp}";
             this.settings.ResolvedTransportConnectionString = "MemoryF";
             this.cts = new CancellationTokenSource();
-            this.cacheDebugger = new Faster.CacheDebugger();
-            this.settings.CacheDebugger = this.cacheDebugger;
-            this.cacheDebugger.OnError += (message) =>
+            this.cacheDebugger = this.settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(this.settings.TestHooks);
+            this.settings.TestHooks.OnError += (message) =>
             {
-                this.output?.Invoke($"CACHEDEBUGGER: {message}");
+                this.output($"TESTHOOKS: {message}");
                 this.reportedProblem = this.reportedProblem ?? message;
                 this.cts.Cancel();
             };
