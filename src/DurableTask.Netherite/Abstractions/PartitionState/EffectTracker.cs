@@ -78,6 +78,7 @@ namespace DurableTask.Netherite
             try
             {
                 this.currentUpdate.ApplyTo(trackedObject, this);
+                trackedObject.Version++;
             }
             catch (Exception exception) when (!Utils.IsFatal(exception))
             {

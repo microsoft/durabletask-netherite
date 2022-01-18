@@ -294,10 +294,6 @@ namespace DurableTask.Netherite.Faster
         {
             var info = this.GetObjectInfo(key);
             info.CurrentVersion = version; 
-            if (obj != null)
-            {
-                obj.Version = version;
-            }
         }
 
         public IEnumerable<string> Dump()
