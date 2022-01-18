@@ -8,6 +8,7 @@ namespace DurableTask.Netherite.Faster
     using System.Collections.Generic;
     using System.Linq;
     using System.Text;
+    using System.Threading;
     using System.Threading.Tasks;
     using FASTER.core;
 
@@ -192,7 +193,7 @@ namespace DurableTask.Netherite.Faster
         internal void UpdateTrackedObjectSize(long delta, TrackedObjectKey key, long address)
         {
             var info = this.GetObjectInfo(key);
-            info.Size += delta;
+            Interlocked.Add(ref info.Size, delta);
             info.CacheEvents.Enqueue(new Entry
             {
                 CacheEvent = CacheEvent.TrackSize,
@@ -204,7 +205,7 @@ namespace DurableTask.Netherite.Faster
         internal bool CheckSize(TrackedObjectKey key, long actual, string desc)
         {
             var info = this.GetObjectInfo(key);
-            long expected = info.Size;
+            long expected = Interlocked.Read(ref info.Size);
             if (expected != actual)
             {
                 this.Fail($"Size tracking is not accurate expected={expected} actual={actual} desc={desc}", key);
@@ -217,7 +218,7 @@ namespace DurableTask.Netherite.Faster
         internal void UpdateSize(TrackedObjectKey key, long delta)
         {
             var info = this.GetObjectInfo(key);
-            info.Size += delta;
+            Interlocked.Add(ref info.Size, delta);
         }
 
         internal void Reset()
