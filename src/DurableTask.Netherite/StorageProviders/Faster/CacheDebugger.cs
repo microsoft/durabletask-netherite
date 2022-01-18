@@ -221,13 +221,17 @@ namespace DurableTask.Netherite.Faster
             Interlocked.Add(ref info.Size, delta);
         }
 
-        internal void Reset()
+        internal void Reset(Func<string, bool> belongsToPartition)
         {
-            // reset all size tracking
-            foreach (var info in this.Objects.Values)
+            // reset all size tracking for instances by this partition
+            foreach (var kvp in this.Objects)
             {
-                info.CacheEvents.Enqueue(new Entry() { CacheEvent = CacheEvent.Reset });
-                info.Size = 0;
+                if (belongsToPartition(kvp.Key.InstanceId))
+                {
+                    var info = kvp.Value;
+                    info.CacheEvents.Enqueue(new Entry() { CacheEvent = CacheEvent.Reset });
+                    info.Size = 0;
+                }
             }
         }
 

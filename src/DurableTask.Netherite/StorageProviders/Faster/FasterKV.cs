@@ -807,7 +807,7 @@ namespace DurableTask.Netherite.Faster
 
         public (int numPages, long size) ComputeMemorySize()
         {
-            this.cacheDebugger?.Reset();
+            this.cacheDebugger?.Reset((string instanceId) => this.partition.PartitionFunction(instanceId) == this.partition.PartitionId);
             var inMemoryIterator = this.fht.Log.Scan(this.fht.Log.HeadAddress, this.fht.Log.TailAddress);
             long totalSize = 0;
             long firstPage = this.fht.Log.HeadAddress >> this.storelogsettings.PageSizeBits;
