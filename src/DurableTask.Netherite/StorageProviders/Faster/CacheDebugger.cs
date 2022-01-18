@@ -86,9 +86,41 @@ namespace DurableTask.Netherite.Faster
                 return $"Current=v{this.CurrentVersion} Size={this.Size} CacheEvents={this.CacheEvents.Count}";
             }
 
-            public string PrintCacheEvents() => string.Join(",", this.CacheEvents.Select(e => e.ToString()));
-        }
+            public string PrintCacheEvents()
+            {
+                var sb = new StringBuilder();
+                var entries = new SortedDictionary<long, long>();
+                foreach (var entry in this.GetCacheEvents(entries))
+                {
+                    sb.Append(" ");
+                    sb.Append(entry.ToString());
 
+                    if (entry.CacheEvent == CacheEvent.TrackSize || entry.CacheEvent == CacheEvent.Reset)
+                    {
+                        sb.Append("=");
+                        sb.Append(entries[entry.Address]);
+                    }
+                }
+                return sb.ToString();
+            }
+
+            public IEnumerable<Entry> GetCacheEvents(SortedDictionary<long, long> entrySizes)
+            {
+                foreach (var entry in this.CacheEvents)
+                {
+                    if (entry.CacheEvent == CacheEvent.TrackSize)
+                    {
+                        entrySizes.TryGetValue(entry.Address, out long current);
+                        entrySizes[entry.Address] = current + entry.Delta;
+                    }
+                    else if (entry.CacheEvent == CacheEvent.Reset)
+                    {
+                        entrySizes[entry.Address] = 0;
+                    }
+                    yield return entry;
+                }
+            }
+        }
 
         internal ObjectInfo GetObjectInfo(TrackedObjectKey key)
         {
@@ -202,13 +234,27 @@ namespace DurableTask.Netherite.Faster
             });
         }
 
-        internal bool CheckSize(TrackedObjectKey key, long actual, string desc)
+        internal bool CheckSize(TrackedObjectKey key, long actual, string actualEntries)
         {
             var info = this.GetObjectInfo(key);
             long expected = Interlocked.Read(ref info.Size);
             if (expected != actual)
             {
-                this.Fail($"Size tracking is not accurate expected={expected} actual={actual} desc={desc}", key);
+                string GetExpectedEntries()
+                {
+                    var sb = new StringBuilder();
+                    var entrySizes = new SortedDictionary<long, long>();
+                    foreach(var e in info.GetCacheEvents(entrySizes))
+                    {
+                    }
+                    foreach (var kvp in entrySizes)
+                    {
+                        sb.Append($" {kvp.Value}@{kvp.Key:x}");
+                    }
+                    return sb.ToString();
+                }
+
+                this.Fail($"Size tracking is not accurate expected={expected} actual={actual} expectedEntries={GetExpectedEntries()} actualEntries={actualEntries}", key);
                 return false;
             }
             info.CacheEvents.Enqueue(new Entry { CacheEvent = CacheEvent.SizeCheck, Delta = actual });
