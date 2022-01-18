@@ -293,6 +293,11 @@ namespace DurableTask.Netherite
 
                 this.TraceHelper.TraceProgress("Starting");
 
+                if (this.Settings.TestHooks != null)
+                {
+                    this.TraceHelper.TraceProgress(this.Settings.TestHooks.ToString());
+                }
+
                 this.serviceShutdownSource = new CancellationTokenSource();
 
                 this.ActivityWorkItemQueue = new WorkItemQueue<ActivityWorkItem>();

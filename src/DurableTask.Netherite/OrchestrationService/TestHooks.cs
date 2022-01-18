@@ -32,5 +32,10 @@ namespace DurableTask.Netherite
             Console.Error.WriteLine($"TestHook-{source} !!! {message}");
             System.Diagnostics.Trace.TraceError($"TestHook-{source} !!! {message}");
         }
+
+        public override string ToString()
+        {
+            return $"TestHooks:{(this.CacheDebugger != null ? " CacheDebugger" : "")}{(this.ReplayChecker != null ? " ReplayChecker" : "")}{(this.FaultInjector != null ? " FaultInjector" : "")}";
+        }
     }
 }
