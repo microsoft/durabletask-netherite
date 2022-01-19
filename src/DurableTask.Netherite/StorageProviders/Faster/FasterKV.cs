@@ -71,26 +71,28 @@ namespace DurableTask.Netherite.Faster
 
             this.terminationToken = partition.ErrorHandler.Token;
 
-            var _ = this.terminationToken.Register(
-                () => {
-                    try
-                    {
-                        this.cacheTracker?.Dispose();
-                        this.mainSession?.Dispose();
-                        this.fht.Dispose();
-                        this.blobManager.HybridLogDevice.Dispose();
-                        this.blobManager.ObjectLogDevice.Dispose();
-                        this.blobManager.ClosePSFDevices();
-                        this.blobManager.FaultInjector?.Disposed(this.blobManager);
-                    }
-                    catch (Exception e)
-                    {
-                        this.blobManager.TraceHelper.FasterStorageError("Disposing FasterKV", e);
-                    }
-                }, 
-                useSynchronizationContext: false);
+            var _ = this.terminationToken.Register(() => Task.Run(this.Dispose));
 
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
+        }
+
+        public void Dispose()
+        {
+            // TODO: add watchdog to catch deadlocks
+            try
+            {
+                this.cacheTracker?.Dispose();
+                this.mainSession?.Dispose();
+                this.fht.Dispose();
+                this.blobManager.HybridLogDevice.Dispose();
+                this.blobManager.ObjectLogDevice.Dispose();
+                this.blobManager.ClosePSFDevices();
+                this.blobManager.FaultInjector?.Disposed(this.blobManager);
+            }
+            catch (Exception e)
+            {
+                this.blobManager.TraceHelper.FasterStorageError("Disposing FasterKV", e);
+            }
         }
 
         ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> CreateASession(string id, bool isScan)
