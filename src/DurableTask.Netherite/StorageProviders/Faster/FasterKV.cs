@@ -78,7 +78,6 @@ namespace DurableTask.Netherite.Faster
 
         public void Dispose()
         {
-            // TODO: add watchdog to catch deadlocks
             try
             {
                 this.cacheTracker?.Dispose();
