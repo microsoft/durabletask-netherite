@@ -31,7 +31,7 @@ namespace DurableTask.Netherite.Tests
         readonly CacheDebugger cacheDebugger;
 
         ITestOutputHelper outputHelper;
-        string reportedProblem;
+        string errorInTestHooks;
 
         public FasterPartitionTests(ITestOutputHelper outputHelper)
         {
@@ -53,7 +53,7 @@ namespace DurableTask.Netherite.Tests
             this.settings.TestHooks.OnError += (message) =>
             {
                 this.output($"TESTHOOKS: {message}");
-                this.reportedProblem = this.reportedProblem ?? message;
+                this.errorInTestHooks = this.errorInTestHooks ?? message;
                 this.cts.Cancel();
             };
         }
@@ -174,7 +174,7 @@ namespace DurableTask.Netherite.Tests
                 var terminationTask = Task.Delay(timeout, this.cts.Token);
                 var completionTask = Task.WhenAll(tasks);
                 var firstTask = await Task.WhenAny(terminationTask, completionTask);
-                Assert.True(this.reportedProblem == null, $"CacheDebugger detected problem while starting orchestrations: {this.reportedProblem}");
+                Assert.True(this.errorInTestHooks == null, $"while starting orchestrations: {this.errorInTestHooks}");
                 Assert.True(firstTask != terminationTask, $"timed out after {timeout} while starting orchestrations");
             }
 
@@ -234,7 +234,7 @@ namespace DurableTask.Netherite.Tests
                 var terminationTask = Task.Delay(timeout, this.cts.Token);
                 var completionTask = Task.WhenAll(tasks);
                 var firstTask = await Task.WhenAny(terminationTask, completionTask);
-                Assert.True(this.reportedProblem == null, $"CacheDebugger detected problem while executing orchestrations: {this.reportedProblem}");
+                Assert.True(this.errorInTestHooks == null, $"while executing orchestrations: {this.errorInTestHooks}");
 
                 PrintUnfinished();
 
@@ -292,7 +292,7 @@ namespace DurableTask.Netherite.Tests
                         tasks[i] = client.CreateOrchestrationInstanceAsync(orchestrationType, InstanceId(i), null);
 
                     await Task.WhenAll(tasks);
-                    Assert.True(this.reportedProblem == null, $"CacheDebugger detected problem while starting orchestrations: {this.reportedProblem}");
+                    Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while starting orchestrations: {this.errorInTestHooks}");
                 }
 
                 // wait for all orchestrations to finish executing
@@ -313,7 +313,7 @@ namespace DurableTask.Netherite.Tests
                     for (int i = 0; i < OrchestrationCount; i++)
                         tasks[i] = WaitFor(i);
                     await Task.WhenAll(tasks);
-                    Assert.True(this.reportedProblem == null, $"CacheDebugger detected problem while executing orchestrations: {this.reportedProblem}");
+                    Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while executing orchestrations: {this.errorInTestHooks}");
                 }
 
                 this.output?.Invoke("--- test progress: BEFORE SHUTDOWN ------------------------------------");
@@ -341,7 +341,7 @@ namespace DurableTask.Netherite.Tests
                     for (int i = 0; i < OrchestrationCount; i++)
                         tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
                     await Task.WhenAll(tasks);
-                    Assert.True(this.reportedProblem == null, $"CacheDebugger detected problem while querying orchestration states: {this.reportedProblem}");
+                    Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while querying orchestration states: {this.errorInTestHooks}");
                 }
 
                 this.output?.Invoke("--- test progress: AFTER QUERIES ------------------------------------");
@@ -383,7 +383,7 @@ namespace DurableTask.Netherite.Tests
                 for (int i = 0; i < OrchestrationCount; i++)
                     tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(3));
                 await Task.WhenAll(tasks);
-                Assert.True(this.reportedProblem == null, $"CacheDebugger detected problem while starting orchestrations: {this.reportedProblem}");
+                Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while starting orchestrations: {this.errorInTestHooks}");
             }
 
             (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
@@ -429,7 +429,7 @@ namespace DurableTask.Netherite.Tests
                 for (int i = 0; i < OrchestrationCount; i++)
                     tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(3));
                 await Task.WhenAll(tasks);
-                Assert.True(this.reportedProblem == null, $"CacheDebugger detected problem while starting orchestrations: {this.reportedProblem}");
+                Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while starting orchestrations: {this.errorInTestHooks}");
             }
 
             (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
