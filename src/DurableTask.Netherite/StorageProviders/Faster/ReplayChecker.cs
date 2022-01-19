@@ -155,7 +155,7 @@ namespace DurableTask.Netherite.Faster
         {
             var info = this.partitionInfo[partition];
 
-            System.Diagnostics.Trace.WriteLine($"REPLAYCHECK STARTED {partitionUpdateEvent}");
+            partition.EventTraceHelper.TraceEventProcessingDetail($"REPLAYCHECK STARTED {partitionUpdateEvent}");
 
             var eventForReplay = this.DeserializePartitionUpdateEvent(this.Serialize(partitionUpdateEvent));
             eventForReplay.NextCommitLogPosition = partitionUpdateEvent.NextCommitLogPosition;
@@ -191,7 +191,7 @@ namespace DurableTask.Netherite.Faster
                             break;
                         }
                     }
-                    this.testHooks.Error(this.GetType().Name, $"key={key} line={i}\nexpectedline={expectedline}\nreplayedline={replayedline}\nexpected={expected}\nreplayed={replayed} ");
+                    this.testHooks.Error(this.GetType().Name, $"event={partitionUpdateEvent} pos={partitionUpdateEvent.NextCommitLogPosition} key={key} line={i}\nexpectedline={expectedline}\nreplayedline={replayedline}\nexpected={expected}\nreplayed={replayed} ");
                     info.Store[key] = expected;
                 }
             });
@@ -203,7 +203,7 @@ namespace DurableTask.Netherite.Faster
                 info.Store.Remove(key);
             }
 
-            System.Diagnostics.Trace.WriteLine("REPLAYCHECK DONE");
+            partition.EventTraceHelper.TraceEventProcessingDetail("REPLAYCHECK DONE");
         }
 
         internal void PartitionStopped(Partition partition)
