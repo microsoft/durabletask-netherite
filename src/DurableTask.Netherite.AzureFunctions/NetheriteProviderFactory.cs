@@ -126,7 +126,13 @@ namespace DurableTask.Netherite.AzureFunctions
                 && bool.TryParse(s, out bool x)
                 && x);
                     
-            if (attachFaultInjector || attachReplayChecker)
+            bool attachCacheDebugger = 
+                (this.options.StorageProvider.TryGetValue("AttachCacheDebugger", out object val2)
+                && val2 is string s2
+                && bool.TryParse(s2, out bool x2)
+                && x2);
+                    
+            if (attachFaultInjector || attachReplayChecker || attachCacheDebugger)
             {
                 eventSourcedSettings.TestHooks = new TestHooks();
 
@@ -137,6 +143,10 @@ namespace DurableTask.Netherite.AzureFunctions
                 if (attachReplayChecker)
                 {
                     eventSourcedSettings.TestHooks.ReplayChecker = new Faster.ReplayChecker(eventSourcedSettings.TestHooks);
+                }
+                if (attachCacheDebugger)
+                {
+                    eventSourcedSettings.TestHooks.CacheDebugger = new Faster.CacheDebugger(eventSourcedSettings.TestHooks);
                 }
             }
 

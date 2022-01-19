@@ -15,7 +15,7 @@ namespace DurableTask.Netherite.Faster
     /// <summary>
     /// Records cache and storage management traces for each object. This class is only used for testing and debugging, as it creates lots of overhead.
     /// </summary>
-    class CacheDebugger
+    public class CacheDebugger
     {
         readonly TestHooks testHooks;
         readonly ConcurrentDictionary<TrackedObjectKey, ObjectInfo> Objects = new ConcurrentDictionary<TrackedObjectKey, ObjectInfo>();

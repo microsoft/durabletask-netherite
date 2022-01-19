@@ -10,7 +10,7 @@ namespace DurableTask.Netherite
     /// </summary>
     public class TestHooks
     {
-        internal Faster.CacheDebugger CacheDebugger { get; set; }
+        public Faster.CacheDebugger CacheDebugger { get; set; }
 
         public Faster.ReplayChecker ReplayChecker { get; set; }
 
