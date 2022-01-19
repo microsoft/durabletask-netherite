@@ -210,8 +210,11 @@ namespace DurableTask.Netherite
         public override void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
         {
             OrchestrationState state = this.OrchestrationState;
-            if (this.OrchestrationState != null
-                && purgeBatchIssued.InstanceQuery.Matches(this.OrchestrationState))
+
+            effects.EventDetailTracer?.TraceEventProcessingDetail($"state={state?.OrchestrationStatus} matches={purgeBatchIssued.InstanceQuery.Matches(state)}");
+
+            if (state != null
+                && purgeBatchIssued.InstanceQuery.Matches(state))
             {
                 purgeBatchIssued.Purged.Add(this.InstanceId);
 

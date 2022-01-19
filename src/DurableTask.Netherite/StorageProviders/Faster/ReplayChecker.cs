@@ -157,7 +157,8 @@ namespace DurableTask.Netherite.Faster
 
             partition.EventTraceHelper.TraceEventProcessingDetail($"REPLAYCHECK STARTED {partitionUpdateEvent}");
 
-            var eventForReplay = this.DeserializePartitionUpdateEvent(this.Serialize(partitionUpdateEvent));
+            string serializedEvent = this.Serialize(partitionUpdateEvent);
+            var eventForReplay = this.DeserializePartitionUpdateEvent(serializedEvent);
             eventForReplay.NextCommitLogPosition = partitionUpdateEvent.NextCommitLogPosition;
             await info.EffectTracker.ProcessUpdate(eventForReplay);
 
@@ -191,7 +192,8 @@ namespace DurableTask.Netherite.Faster
                             break;
                         }
                     }
-                    this.testHooks.Error(this.GetType().Name, $"event={partitionUpdateEvent} pos={partitionUpdateEvent.NextCommitLogPosition} key={key} line={i}\nexpectedline={expectedline}\nreplayedline={replayedline}\nexpected={expected}\nreplayed={replayed} ");
+                    this.testHooks.Error(this.GetType().Name, $"Part{partition.PartitionId:D2} pos={partitionUpdateEvent.NextCommitLogPosition} key={key}"
+                        + $"\nline={i}\nexpectedline={expectedline}\nreplayedline={replayedline}\nexpected={expected}\nreplayed={replayed}\nevent={serializedEvent}");
                     info.Store[key] = expected;
                 }
             });
@@ -225,9 +227,9 @@ namespace DurableTask.Netherite.Faster
 
             public override Partition Partition => this.info.Partition;
 
-            public override EventTraceHelper EventTraceHelper => null;
+            public override EventTraceHelper EventTraceHelper => this.info.Partition.EventTraceHelper;
 
-            public override EventTraceHelper EventDetailTracer => null;
+            public override EventTraceHelper EventDetailTracer => this.info.Partition.EventDetailTracer;
 
             public override uint PartitionId => this.info.Partition.PartitionId;
 
