@@ -46,6 +46,7 @@ namespace DurableTask.Netherite.Faster
             SingleReader,
             SingleReaderPrefetch,
             SingleWriter,
+            SingleDeleter,
             CopyWriter,
             ConcurrentReader,
             ConcurrentReaderPrefetch,

@@ -1274,6 +1274,7 @@ namespace DurableTask.Netherite.Faster
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.SingleDeleter(ref Key key, ref Value value, ref RecordInfo recordInfo, long address)
             {
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleDeleter, null, default, address);
             }
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleDeleter(ref Key key, ref RecordInfo recordInfo, long address)
