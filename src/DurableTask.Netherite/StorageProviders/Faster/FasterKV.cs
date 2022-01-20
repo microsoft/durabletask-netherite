@@ -165,7 +165,7 @@ namespace DurableTask.Netherite.Faster
             {
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
-                if (this.fht.TakeFullCheckpoint(out checkpointGuid, CheckpointType.FoldOver))
+                if (this.fht.TryInitiateFullCheckpoint(out checkpointGuid, CheckpointType.FoldOver))
                 {
                     byte[] serializedSingletons = Serializer.SerializeSingletons(this.singletons);
                     this.persistSingletonsTask = this.blobManager.PersistSingletonsAsync(serializedSingletons, checkpointGuid);
@@ -217,7 +217,7 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                if (this.fht.TakeIndexCheckpoint(out var token))
+                if (this.fht.TryInitiateIndexCheckpoint(out var token))
                 {
                     this.persistSingletonsTask = Task.CompletedTask;
                     return token;
@@ -241,7 +241,7 @@ namespace DurableTask.Netherite.Faster
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
 
-                if (this.fht.TakeHybridLogCheckpoint(out var token, CheckpointType.FoldOver))
+                if (this.fht.TryInitiateHybridLogCheckpoint(out var token, CheckpointType.FoldOver))
                 {
                     // according to Badrish this ensures proper fencing w.r.t. session
                     this.mainSession.Refresh();
@@ -1059,9 +1059,6 @@ namespace DurableTask.Netherite.Faster
                 this.isScan = isScan;
             }
 
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.SupportsPostOperations 
-                => true;
-
             bool IFunctions<Key, Value, EffectTracker, Output, object>.NeedInitialUpdate(ref Key key, ref EffectTracker input, ref Output output)
                 => true;
 
@@ -1085,7 +1082,6 @@ namespace DurableTask.Netherite.Faster
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.PostInitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RecordInfo recordInfo, long address)
             {
-                // Note: Post operation is called only when cacheDebugger is attached.
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostInitialUpdate, value.Version, tracker.CurrentEventId, address);
                 // we have inserted a new entry at the tail
                 this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + value.EstimatedSize, key, address);
@@ -1117,6 +1113,11 @@ namespace DurableTask.Netherite.Faster
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
                 this.partition.Assert(!this.isScan, "InPlaceUpdater should not be called from scan");
                 return true;
+            }
+
+            void IFunctions<Key, Value, EffectTracker, Output, object>.CopyWriter(ref Key key, ref Value src, ref Value dst, ref RecordInfo recordInfo, long address)
+            {
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CopyWriter, src.Version, null, address);
             }
 
             bool IFunctions<Key, Value, EffectTracker, Output, object>.NeedCopyUpdate(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output) 
@@ -1263,13 +1264,16 @@ namespace DurableTask.Netherite.Faster
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, long address)
             {
-                // Note: Post operation is called only when cacheDebugger is attached.
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriter, src.Version, default, address);
                 if (!this.isScan)
                 {
                     long estimatedSize = dst.EstimatedSize;
                     this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + estimatedSize, key, address);
                 }
+            }
+
+            void IFunctions<Key, Value, EffectTracker, Output, object>.SingleDeleter(ref Key key, ref Value value, ref RecordInfo recordInfo, long address)
+            {
             }
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleDeleter(ref Key key, ref RecordInfo recordInfo, long address)
@@ -1355,41 +1359,14 @@ namespace DurableTask.Netherite.Faster
 
             #endregion
 
-            #region Locking
-
-            // We do not need to lock records, because writes and non-query reads are single-session, and query reads can only race on instance states which are immutable
-
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.SupportsLocking
-                => false;
-
-            void IFunctions<Key, Value, EffectTracker, Output, object>.LockExclusive(ref RecordInfo recordInfo, ref Key key, ref Value value, ref long lockContext)
+ 
+            void IFunctions<Key, Value, EffectTracker, Output, object>.DisposeKey(ref Key key)
             {
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.UnlockExclusive(ref RecordInfo recordInfo, ref Key key, ref Value value, long lockContext)
+            void IFunctions<Key, Value, EffectTracker, Output, object>.DisposeValue(ref Value value)
             {
             }
-
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.TryLockExclusive(ref RecordInfo recordInfo, ref Key key, ref Value value, ref long lockContext, int spinCount)
-            {
-                return true;
-            }
-
-            void IFunctions<Key, Value, EffectTracker, Output, object>.LockShared(ref RecordInfo recordInfo, ref Key key, ref Value value, ref long lockContext)
-            {
-            }
-
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.UnlockShared(ref RecordInfo recordInfo, ref Key key, ref Value value, long lockContext)
-            {
-                return true;
-            }
-
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.TryLockShared(ref RecordInfo recordInfo, ref Key key, ref Value value, ref long lockContext, int spinCount)
-            {
-                return true;
-            }
-
-            #endregion
         }
     }
 }
