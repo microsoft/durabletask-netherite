@@ -104,7 +104,16 @@ namespace DurableTask.Netherite.Tests
         {
             public Action<string> Output { get; set; }
             public override void Write(string message) {  }
-            public override void WriteLine(string message) { this.Output?.Invoke($"{DateTime.Now:o} {message}"); }
+            public override void WriteLine(string message) {
+                try
+                {
+                    this.Output?.Invoke($"{DateTime.Now:o} {message}");
+                }
+                catch(System.InvalidOperationException e) when (e.Message.Contains("There is no currently active test"))
+                {
+                    // This exception is sometimes thrown by xunit when reusing the same fixture for multiple tests.
+                }
+            }
         }
     }
 }
