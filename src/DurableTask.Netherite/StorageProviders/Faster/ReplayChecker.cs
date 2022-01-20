@@ -154,8 +154,10 @@ namespace DurableTask.Netherite.Faster
         internal async Task CheckUpdate(Partition partition, PartitionUpdateEvent partitionUpdateEvent, TrackedObjectStore store)
         {
             var info = this.partitionInfo[partition];
+            var cacheDebugger = partition.Settings.TestHooks?.CacheDebugger;
 
-            partition.EventTraceHelper.TraceEventProcessingDetail($"REPLAYCHECK STARTED {partitionUpdateEvent}");
+            partition.EventTraceHelper.TraceEventProcessingDetail($"REPLAYCHECK-STARTED {partitionUpdateEvent.NextCommitLogPosition}");
+            int errors = 0;
 
             string serializedEvent = this.Serialize(partitionUpdateEvent);
             var eventForReplay = this.DeserializePartitionUpdateEvent(serializedEvent);
@@ -168,46 +170,68 @@ namespace DurableTask.Netherite.Faster
 
             store.EmitCurrentState((TrackedObjectKey key, TrackedObject value) =>
             {
+                if (!key.IsSingleton)
+                {
+                    cacheDebugger?.CheckVersionConsistency(key, value, null);
+                }
+
                 NotVisited.Remove(key);
-                string expected = this.Serialize(value);
+                string current = this.Serialize(value);
 
                 if (!info.Store.TryGetValue(key, out var replayed))
                 {
-                    this.testHooks.Error(this.GetType().Name, $"key={key}\nexpected={expected}\nreplayed=absent");
-                    info.Store[key] = expected;
+                    this.testHooks.Error(this.GetType().Name, $"Part{partition.PartitionId:D2} pos={partitionUpdateEvent.NextCommitLogPosition} key={key}"
+                        + $"\ncurrent={current}\nreplayed=absent\nevent={serializedEvent}");
+                    info.Store[key] = current;
                 }
-                if (expected != replayed)   
+                if (current != replayed)
                 {
-                    var expectedlines = TraceUtils.GetLines(expected).ToArray();
+                    var currentlines = TraceUtils.GetLines(current).ToArray();
                     var replayedlines = TraceUtils.GetLines(replayed).ToArray();
-                    string expectedline = "";
+                    string currentline = "";
                     string replayedline = "";
                     int i = 0;
-                    for (; i < Math.Max(expectedlines.Length, replayedlines.Length); i++)
+                    for (; i < Math.Max(currentlines.Length, replayedlines.Length); i++)
                     {
-                        expectedline = i < expectedlines.Length ? expectedlines[i] : "absent";
+                        currentline = i < currentlines.Length ? currentlines[i] : "absent";
                         replayedline = i < replayedlines.Length ? replayedlines[i] : "absent";
-                        if (expectedline != replayedline)
+                        if (currentline != replayedline)
                         {
                             break;
                         }
                     }
                     this.testHooks.Error(this.GetType().Name, $"Part{partition.PartitionId:D2} pos={partitionUpdateEvent.NextCommitLogPosition} key={key}"
-                        + $"\nline={i}\nexpectedline={expectedline}\nreplayedline={replayedline}\nexpected={expected}\nreplayed={replayed}\nevent={serializedEvent}");
-                    info.Store[key] = expected;
+                        + $"\nline={i}\ncurrentline={currentline}\nreplayedline={replayedline}\ncurrent={current}\nreplayed={replayed}\nevent={serializedEvent}");
+                    info.Store[key] = current;
+                    errors++;
                 }
             });
 
-            foreach(var key in NotVisited)
+            
+            foreach (var key in NotVisited)
             {
+                if (!key.IsSingleton)
+                {
+                    cacheDebugger?.CheckVersionConsistency(key, null, 0);
+                }
+
                 string val = info.Store[key];
-                this.testHooks.Error(this.GetType().Name, $"key={key}\nexpected=absent\nreplayed={val}");
+                this.testHooks.Error(this.GetType().Name, $"Part{partition.PartitionId:D2} pos={partitionUpdateEvent.NextCommitLogPosition} key={key}"
+                        + $"\ncurrent=absent\nreplayed={val}\nevent={serializedEvent}");
                 info.Store.Remove(key);
+                errors++;
             }
 
-            partition.EventTraceHelper.TraceEventProcessingDetail("REPLAYCHECK DONE");
+            if (errors == 0)
+            {
+                partition.EventTraceHelper.TraceEventProcessingDetail($"REPLAYCHECK-SUCCEEDED {partitionUpdateEvent.NextCommitLogPosition}");
+            }
+            else
+            {
+                partition.EventTraceHelper.TraceEventProcessingDetail($"REPLAYCHECK-FAILED {partitionUpdateEvent.NextCommitLogPosition} ({errors} ERRORS)");
+            }
         }
-
+         
         internal void PartitionStopped(Partition partition)
         {
             this.partitionInfo.TryRemove(partition, out _);

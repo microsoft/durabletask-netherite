@@ -132,7 +132,7 @@ namespace DurableTask.Netherite.Tests
                 // start the service 
                 var (service, client) = await this.StartService(recover: true, orchestrationType);
                 var orchestrationState = await client.GetOrchestrationStateAsync("0");
-                Assert.Equal(OrchestrationStatus.Completed, orchestrationState.OrchestrationStatus);
+                Assert.Equal(OrchestrationStatus.Completed, orchestrationState?.OrchestrationStatus);
 
                 // stop the service
                 await service.StopAsync();

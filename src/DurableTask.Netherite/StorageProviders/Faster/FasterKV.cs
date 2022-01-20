@@ -404,7 +404,7 @@ namespace DurableTask.Netherite.Faster
                             this.StoreStats.HitCount++;
                             this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, readEvent.EventIdString, 0);
                             var target = output.Read(this, readEvent.EventIdString);
-                            this.cacheDebugger?.CheckVersionConsistency(ref key.Val, target, null);
+                            this.cacheDebugger?.CheckVersionConsistency(key.Val, target, null);
                             effectTracker.ProcessReadResult(readEvent, key, target);
                             break;
 
@@ -1066,7 +1066,7 @@ namespace DurableTask.Netherite.Faster
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.InitialUpdate, 0, tracker.CurrentEventId, address);
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
-                this.cacheDebugger?.CheckVersionConsistency(ref key.Val, null, value.Version);
+                this.cacheDebugger?.CheckVersionConsistency(key.Val, null, value.Version);
                 var trackedObject = TrackedObjectKey.Factory(key.Val);
                 this.stats.Create++;
                 trackedObject.Partition = this.partition;
@@ -1103,7 +1103,7 @@ namespace DurableTask.Netherite.Faster
                 }
                 trackedObject.SerializationCache = null; // cache is invalidated because of update
                 trackedObject.Partition = this.partition;
-                this.cacheDebugger?.CheckVersionConsistency(ref key.Val, trackedObject, value.Version);
+                this.cacheDebugger?.CheckVersionConsistency(key.Val, trackedObject, value.Version);
                 tracker.ProcessEffectOn(trackedObject);
                 value.Version++;
                 this.cacheDebugger?.UpdateReferenceValue(ref key.Val, trackedObject, value.Version);
@@ -1151,7 +1151,7 @@ namespace DurableTask.Netherite.Faster
 
                 newValue.Val = trackedObject;
                 trackedObject.SerializationCache = null; // cache is invalidated by the update which is happening below
-                this.cacheDebugger?.CheckVersionConsistency(ref key.Val, trackedObject, oldValue.Version);
+                this.cacheDebugger?.CheckVersionConsistency(key.Val, trackedObject, oldValue.Version);
                 tracker.ProcessEffectOn(trackedObject);
                 newValue.Version = oldValue.Version + 1;
                 this.cacheDebugger?.UpdateReferenceValue(ref key.Val, trackedObject, newValue.Version);

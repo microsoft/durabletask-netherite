@@ -239,8 +239,8 @@ namespace DurableTask.Netherite.Faster
         internal bool CheckSize(TrackedObjectKey key, long actual, string actualEntries)
         {
             var info = this.GetObjectInfo(key);
-            long expected = Interlocked.Read(ref info.Size);
-            if (expected != actual)
+            long reference = Interlocked.Read(ref info.Size);
+            if (reference != actual)
             {
                 string GetExpectedEntries()
                 {
@@ -256,7 +256,7 @@ namespace DurableTask.Netherite.Faster
                     return sb.ToString();
                 }
 
-                this.Fail($"Size tracking is not accurate expected={expected} actual={actual} expectedEntries={GetExpectedEntries()} actualEntries={actualEntries}", key);
+                this.Fail($"Size tracking is not accurate reference={reference} actual={actual} referenceEntries={GetExpectedEntries()} actualEntries={actualEntries}", key);
                 return false;
             }
             info.CacheEvents.Enqueue(new Entry { CacheEvent = CacheEvent.SizeCheck, Delta = actual });
@@ -324,22 +324,22 @@ namespace DurableTask.Netherite.Faster
             if (val.Version != versionOfObject)
             {
                 var info = this.GetObjectInfo(key);
-                this.Fail($"incorrect version: reference=v{val.Version} actual=v{versionOfObject} obj={val.Val} cacheEvents={info.PrintCacheEvents()}");
+                this.Fail($"incorrect version: model=v{val.Version} actual=v{versionOfObject} obj={val.Val} cacheEvents={info.PrintCacheEvents()}");
             }
         }
 
-        internal void CheckVersionConsistency(ref TrackedObjectKey key, TrackedObject obj, int? version)
+        internal void CheckVersionConsistency(TrackedObjectKey key, TrackedObject obj, int? version)
         {
             var info = this.GetObjectInfo(key);
 
             if (version != null && version.Value != info.CurrentVersion)
             {
-                this.Fail($"Read validation on version failed: expected=v{info.CurrentVersion} actual=v{version} obj={obj} cacheEvents={info.PrintCacheEvents()}");
+                this.Fail($"Read validation on version failed: reference=v{info.CurrentVersion} actual=v{version} obj={obj} cacheEvents={info.PrintCacheEvents()}");
             }
 
             if ((obj?.Version ?? 0) != info.CurrentVersion)
             {
-                this.Fail($"Read validation on object failed: expected=v{info.CurrentVersion} actual=v{obj?.Version ?? 0} obj={obj} cacheEvents={info.PrintCacheEvents()}");
+                this.Fail($"Read validation on object failed: reference=v{info.CurrentVersion} actual=v{obj?.Version ?? 0} obj={obj} cacheEvents={info.PrintCacheEvents()}");
             }
         }
 

@@ -32,6 +32,9 @@ namespace DurableTask.Netherite.Tests
             this.outputHelper = outputHelper;
             this.settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             this.settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(this.settings.TestHooks);
+            this.settings.FasterCacheSizeMB = 1;
+            string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
+            this.settings.HubName = $"ConcurrentTests-{timestamp}";
         }
 
         public void Dispose()
@@ -73,58 +76,40 @@ namespace DurableTask.Netherite.Tests
             await Task.WhenAll(alldone); // to propagate exceptions
         }
 
-        [Fact]
-        public async Task EachScenarioOnce()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task EachScenarioOnce(bool restrictMemory)
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(1));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, false, TimeSpan.FromMinutes(3), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker: true, restrictMemory, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = scenarios.StartAllScenarios().ToList();
             await this.WaitForCompletion(tests);
         }
 
-
-        [Fact]
-        public async Task SmallOnesWithReplayCheck()
+        [Theory]
+        [InlineData(false, false, 1)]
+        [InlineData(false, true, 1)]
+        [InlineData(true, false, 1)]
+        [InlineData(true, true, 1)]
+        [InlineData(false, false, 20)]
+        [InlineData(false, true, 20)]
+        [InlineData(true, false, 20)]
+        [InlineData(true, true, 20)]
+        public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(1));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, true, TimeSpan.FromMinutes(3), (msg) => this.outputHelper?.WriteLine(msg));
-            var scenarios = new ScenarioTests(fixture, this.outputHelper);
-
-            var tests = scenarios.StartAllScenarios(false, false).ToList();
-
-            await this.WaitForCompletion(tests);
-        }
-
-        [Fact]
-        public async Task SmallOnesTimesTwenty()
-        {
-            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(1));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, false, TimeSpan.FromMinutes(3), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker, restrictMemory, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = new List<(string, Task)>();
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
-            tests.AddRange(scenarios.StartAllScenarios(false, false));
+
+            for (int i = 0; i < multiplicity; i++)
+            {
+                tests.AddRange(scenarios.StartAllScenarios(false, false));
+            }
 
             await this.WaitForCompletion(tests);
         }

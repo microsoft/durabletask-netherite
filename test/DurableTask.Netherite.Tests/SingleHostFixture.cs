@@ -27,12 +27,12 @@ namespace DurableTask.Netherite.Tests
         internal string TestHooksError { get; private set; }
 
         public SingleHostFixture()
-            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, null)
+            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, false, null)
         {
             this.Host.StartAsync().Wait();
         }
 
-        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, Action<string> output)
+        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, bool restrictMemory, Action<string> output)
         {
             this.LoggerFactory = new LoggerFactory();
             this.loggerProvider = new XunitLoggerProvider();
@@ -43,6 +43,7 @@ namespace DurableTask.Netherite.Tests
             string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
             settings.HubName = $"SingleHostFixture-{timestamp}";
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
+            settings.FasterCacheSizeMB = restrictMemory ? (int?) 1 : null;
             this.cacheDebugger = settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(settings.TestHooks);
             if (useReplayChecker)
             {
@@ -57,9 +58,9 @@ namespace DurableTask.Netherite.Tests
             this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
         }
 
-        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, TimeSpan timeout, Action<string> output)
+        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, bool restrictMemory, TimeSpan timeout, Action<string> output)
         {
-            var fixture = new SingleHostFixture(settings, useReplayChecker, output);
+            var fixture = new SingleHostFixture(settings, useReplayChecker, restrictMemory, output);
             var startupTask = fixture.Host.StartAsync(); 
             timeout = TestOrchestrationClient.AdjustTimeout(timeout);
             var timeoutTask = Task.Delay(timeout);
