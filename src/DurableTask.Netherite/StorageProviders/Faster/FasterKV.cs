@@ -951,6 +951,8 @@ namespace DurableTask.Netherite.Faster
 
             public int Version; // we use this validate consistency of read/write updates in FASTER, it is not otherwise needed
 
+            public TrackedObject to;// TODO REMOVE THIS HORRIBLE THING
+
             public static implicit operator Value(TrackedObject v) => new Value() { Val = v };
 
             public override string ToString() => this.Val.ToString();
@@ -1092,7 +1094,7 @@ namespace DurableTask.Netherite.Faster
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.InPlaceUpdate, value.Version, tracker.CurrentEventId, address);
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
                 long sizeBeforeUpdate = value.EstimatedSize;
-                if (! (value.Val is TrackedObject trackedObject))
+                if (!(value.Val is TrackedObject trackedObject))
                 {
                     var bytes = (byte[])value.Val;
                     this.partition.Assert(bytes != null, "null bytes in InPlaceUpdater");
@@ -1115,12 +1117,7 @@ namespace DurableTask.Netherite.Faster
                 return true;
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.CopyWriter(ref Key key, ref Value src, ref Value dst, ref RecordInfo recordInfo, long address)
-            {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CopyWriter, src.Version, null, address);
-            }
-
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.NeedCopyUpdate(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output) 
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.NeedCopyUpdate(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output)
                 => true;
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref Output output, ref RecordInfo recordInfo, long address)
@@ -1170,21 +1167,59 @@ namespace DurableTask.Netherite.Faster
                 return true;
             }
 
-            bool Reader(ref Key key, ref EffectTracker tracker, ref Value value, ref Output dst, ref RecordInfo recordInfo, long address, bool single)
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.SingleReader(ref Key key, ref EffectTracker tracker, ref Value src, ref Output dst, ref RecordInfo recordInfo, long address)
             {
-                this.cacheDebugger?.Record(key.Val, single ? CacheDebugger.CacheEvent.SingleReader : CacheDebugger.CacheEvent.ConcurrentReader, value.Version, default, address);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleReader, src.Version, default, address);
+                this.cacheDebugger?.ValidateObjectVersion(src, key.Val);
+           
+                if (src.Val == null)
+                {
+                    dst.Val = null;
+                }
+                else if (src.Val is byte[] bytes)
+                {
+                    var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                    this.stats.Deserialize++;
+                    this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, src.Version, null, 0);
+                    trackedObject.Partition = this.partition;
+                    dst.Val = trackedObject;
+                }
+                else if (src.Val is TrackedObject trackedObject)
+                {
+                    if (!this.isScan)
+                    {
+                        // replace src with a serialized snapshot of the object, so it does not get mutated
+                        long oldValueSizeBefore = src.EstimatedSize;
+                        DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
+                        this.stats.Serialize++;
+                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, src.Version, null, 0);
+                        src.Val = trackedObject.SerializationCache;
+                        this.cacheTracker.UpdateTrackedObjectSize(src.EstimatedSize - oldValueSizeBefore, key, address);
+                        this.stats.Copy++;
+                    }
+                    dst.Val = trackedObject;
+                }
+
+                src.to = (TrackedObject) dst.Val;
+
+                this.stats.Read++;
+                return true;
+            }
+
+
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentReader(ref Key key, ref EffectTracker tracker, ref Value value, ref Output dst, ref RecordInfo recordInfo, long address)
+            {
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.ConcurrentReader, value.Version, default, address);
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
 
                 TrackedObject trackedObject = null;
-
                 if (value.Val != null)
                 {
                     if (value.Val is byte[] bytes)
                     {
-                        if (!single)
-                        {
-                            this.cacheDebugger?.Fail("Unexpected byte[] state in mutable section");
-                        }
+                        this.cacheDebugger?.Fail("Unexpected byte[] state in mutable section");
+
+                        // we should never get here but for robustness we still continue as best as possible
                         trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
                         this.stats.Deserialize++;
                         trackedObject.Partition = this.partition;
@@ -1194,18 +1229,6 @@ namespace DurableTask.Netherite.Faster
                     {
                         trackedObject = (TrackedObject)value.Val;
                         this.partition.Assert(trackedObject != null, "null trackedObject in Reader");
-
-                        if (single && !this.isScan)
-                        {
-                            // replace old object with its serialized snapshot
-                            long valueSizeBefore = value.EstimatedSize;
-                            DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
-                            this.stats.Serialize++;
-                            this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, value.Version, null, 0);
-                            value.Val = trackedObject.SerializationCache;
-                            this.cacheTracker.UpdateTrackedObjectSize(value.EstimatedSize - valueSizeBefore, key, address);
-                            this.stats.Copy++;
-                        }
                     }
                 }
 
@@ -1213,53 +1236,32 @@ namespace DurableTask.Netherite.Faster
                 this.stats.Read++;
                 return true;
             }
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.SingleReader(ref Key key, ref EffectTracker tracker, ref Value value, ref Output dst, ref RecordInfo recordInfo, long address)
+
+            void IFunctions<Key, Value, EffectTracker, Output, object>.CopyWriter(ref Key key, ref Value src, ref Value dst, ref RecordInfo recordInfo, long address)
             {
-                return this.Reader(ref key, ref tracker, ref value, ref dst, ref recordInfo, address, true);
-            }
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentReader(ref Key key, ref EffectTracker tracker, ref Value value, ref Output dst, ref RecordInfo recordInfo, long address)
-            {
-                return this.Reader(ref key, ref tracker, ref value, ref dst, ref recordInfo, address, false);
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CopyWriter, src.Version, null, address);
+                //this.CopyToTail(ref key, ref src, ref dst, ref recordInfo, address);
+                dst.Val = src.to;
+                dst.Version = src.Version;
+                this.cacheDebugger?.ValidateObjectVersion(dst, key.Val);
+                src.to = null;
+
+                // TODO this will go into PostCopyWriter once we have that in IFunctions
+                if (!this.isScan)
+                {
+                    long estimatedSize = dst.EstimatedSize;
+                    this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + estimatedSize, key, address);
+                }
             }
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.SingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, long address)
             {
-                // This is called when a read copies the value to the tail. 
-
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriter, src.Version, default, address);
-                this.cacheDebugger?.ValidateObjectVersion(src, key.Val);
-
-                if (output.Val != null)
-                {
-                    // this is called after SingleReader and has a tracked object ready to use
-                    dst.Val = output.Val;
-                }
-                else
-                {
-                    if (src.Val == null)
-                    {
-                        dst.Val = src.Val;
-                    }
-                    else if (src.Val is byte[] bytes)
-                    {
-                        var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
-                        this.stats.Deserialize++;
-                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, src.Version, null, 0);
-                        trackedObject.Partition = this.partition;
-                        dst.Val = trackedObject;
-                    }
-                    else 
-                    {
-                        if (!this.isScan)
-                        {
-                            this.cacheDebugger?.Fail("SingleWriter should not be called with mutable source", key);
-                        }
-                        dst.Val = src.Val;
-                    }
-                }
+                //this.CopyToTail(ref key, ref src, ref dst, ref recordInfo, address);
+                dst.Val = src.to;
                 dst.Version = src.Version;
-
                 this.cacheDebugger?.ValidateObjectVersion(dst, key.Val);
+                src.to = null;
             }
 
             void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, long address)
