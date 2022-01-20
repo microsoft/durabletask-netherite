@@ -77,6 +77,8 @@
         //"FaultInjectionProbability": 250,
         // set this to true to attach replay checker
         //"AttachReplayChecker": true,
+        // set this to true to attach replay checker
+        //"AttachCacheDebugger": true,
 
         // set this to "Scripted" to control the scenario with a partition script
         // or to "ClientOnly" to run only the client
