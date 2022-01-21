@@ -23,8 +23,7 @@ namespace DurableTask.Netherite.Faster
 
         public override ValueTask ApplyToStore(TrackedObjectKey key, EffectTracker tracker)
         {
-            this.store.ProcessEffectOnTrackedObject(key, tracker);
-            return default;
+            return this.store.ProcessEffectOnTrackedObject(key, tracker);
         }
 
         public override (long, long) GetPositions()
