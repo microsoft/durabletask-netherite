@@ -49,9 +49,8 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
         public async Task CanPurgeAndListInstances()
         {
             await this.PurgeAllAsync();
-            OrchestrationStatusQueryResult result = await this.GetInstancesAsync(new OrchestrationStatusQueryCondition());  
-            Assert.Null(result.ContinuationToken);
-            Assert.Empty(result.DurableOrchestrationState); 
+            var results = await this.GetInstancesAsync(new OrchestrationStatusQueryCondition());  
+            Assert.Empty(results); 
         }
 
         [Fact]

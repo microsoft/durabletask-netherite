@@ -24,6 +24,7 @@ namespace DurableTask.Netherite
     public class NetheriteOrchestrationService : 
         IOrchestrationService, 
         IOrchestrationServiceClient, 
+        IOrchestrationServiceQueryClient,
         TransportAbstraction.IHost,
         IStorageProvider,
         IDisposable
@@ -542,64 +543,30 @@ namespace DurableTask.Netherite
             return this.CheckedClient.PurgeInstanceHistoryAsync(thresholdDateTimeUtc, null, null);
         }
 
-        /// <summary>
-        /// Gets the current state of an instance.
-        /// </summary>
-        /// <param name="instanceId">Instance ID of the orchestration.</param>
-        /// <param name="fetchInput">If set, fetch and return the input for the orchestration instance.</param>
-        /// <param name="fetchOutput">If set, fetch and return the output for the orchestration instance.</param>
-        /// <returns>The state of the instance, or null if not found.</returns>
-        public Task<OrchestrationState> GetOrchestrationStateAsync(string instanceId, bool fetchInput = true, bool fetchOutput = true)
+        /// <inheritdoc />
+        Task<OrchestrationState> IOrchestrationServiceQueryClient.GetOrchestrationStateAsync(string instanceId, bool fetchInput, bool fetchOutput)
         {
             return this.CheckedClient.GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, fetchInput, fetchOutput);
         }
 
-        /// <summary>
-        /// Gets the state of all orchestration instances.
-        /// </summary>
-        /// <returns>List of <see cref="OrchestrationState"/></returns>
-        public Task<IList<OrchestrationState>> GetAllOrchestrationStatesAsync(CancellationToken cancellationToken)
+        /// <inheritdoc />
+        Task<IList<OrchestrationState>> IOrchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken cancellationToken)
             => this.CheckedClient.GetOrchestrationStateAsync(cancellationToken);
 
-        /// <summary>
-        /// Gets the state of selected orchestration instances.
-        /// </summary>
-        /// <returns>List of <see cref="OrchestrationState"/></returns>
-        public Task<IList<OrchestrationState>> GetOrchestrationStateAsync(DateTime? CreatedTimeFrom = default,
-                                                                          DateTime? CreatedTimeTo = default,
-                                                                          IEnumerable<OrchestrationStatus> RuntimeStatus = default,
-                                                                          string InstanceIdPrefix = default,
-                                                                          CancellationToken CancellationToken = default)
+        /// <inheritdoc />
+        Task<IList<OrchestrationState>> IOrchestrationServiceQueryClient.GetOrchestrationStateAsync(DateTime? CreatedTimeFrom, DateTime? CreatedTimeTo, IEnumerable<OrchestrationStatus> RuntimeStatus, string InstanceIdPrefix, CancellationToken CancellationToken)
             => this.CheckedClient.GetOrchestrationStateAsync(CreatedTimeFrom, CreatedTimeTo, RuntimeStatus, InstanceIdPrefix, CancellationToken);
 
-
-        /// <summary>
-        /// Purge history for an orchestration with a specified instance id.
-        /// </summary>
-        /// <param name="instanceId">Instance ID of the orchestration.</param>
-        /// <returns>Class containing number of storage requests sent, along with instances and rows deleted/purged</returns>
-        public Task<int> PurgeInstanceHistoryAsync(string instanceId)
+        /// <inheritdoc />
+        Task<int> IOrchestrationServiceQueryClient.PurgeInstanceHistoryAsync(string instanceId)
             => this.CheckedClient.DeleteAllDataForOrchestrationInstance(this.GetPartitionId(instanceId), instanceId);
 
-        /// <summary>
-        /// Purge history for orchestrations that match the specified parameters.
-        /// </summary>
-        /// <param name="createdTimeFrom">CreatedTime of orchestrations. Purges history grater than this value.</param>
-        /// <param name="createdTimeTo">CreatedTime of orchestrations. Purges history less than this value.</param>
-        /// <param name="runtimeStatus">RuntimeStatus of orchestrations. You can specify several status.</param>
-        /// <returns>Class containing number of storage requests sent, along with instances and rows deleted/purged</returns>
-        public Task<int> PurgeInstanceHistoryAsync(DateTime createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus)
+        /// <inheritdoc />
+        Task<int> IOrchestrationServiceQueryClient.PurgeInstanceHistoryAsync(DateTime createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus)
             => this.CheckedClient.PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus);
 
-        /// <summary>
-        /// Query orchestration instance states.
-        /// </summary>
-        /// <param name="instanceQuery">The query to perform.</param>
-        /// <param name="pageSize">The page size.</param>
-        /// <param name="continuationToken">The continuation token.</param>
-        /// <param name="cancellationToken">A cancellation token.</param>
-        /// <returns>The result of the query.</returns>
-        public Task<InstanceQueryResult> QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
+        /// <inheritdoc />
+        Task<InstanceQueryResult> IOrchestrationServiceQueryClient.QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
             => this.CheckedClient.QueryOrchestrationStatesAsync(instanceQuery, pageSize, continuationToken, cancellationToken);
 
         /******************************/

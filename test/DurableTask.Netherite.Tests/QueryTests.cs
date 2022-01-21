@@ -258,7 +258,7 @@ namespace DurableTask.Netherite.Tests
             await service.StartAsync();
             Trace.WriteLine("Orchestration service is started.");
 
-            var _ = await service.GetOrchestrationStateAsync();
+            var _ = await ((IOrchestrationServiceQueryClient)service).GetOrchestrationStateAsync();
 
             Trace.WriteLine("shutting down the orchestration service...");
             await service.StopAsync();
