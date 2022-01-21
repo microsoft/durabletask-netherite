@@ -21,5 +21,8 @@ namespace DurableTask.Netherite.Faster
 
         [JsonProperty]
         public long InputQueuePosition { get; set; }
+
+        [JsonProperty]
+        public long NumberInstances { get; set; }
     }
 }
