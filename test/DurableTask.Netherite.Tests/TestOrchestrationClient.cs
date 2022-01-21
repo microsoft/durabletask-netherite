@@ -199,7 +199,7 @@ namespace DurableTask.Netherite.Tests
             Trace.TraceInformation($"Purging history for instance with id - {this.instanceId}");
 
             var instance = new OrchestrationInstance { InstanceId = this.instanceId };
-            var service = (NetheriteOrchestrationService)this.client.ServiceClient;
+            var service = (IOrchestrationServiceQueryClient)this.client.ServiceClient;
             return service.PurgeInstanceHistoryAsync(this.instanceId);
         }
 
@@ -207,7 +207,7 @@ namespace DurableTask.Netherite.Tests
         {
             Trace.TraceInformation($"Purging history from {createdTimeFrom} to {createdTimeTo}");
 
-            var service = (NetheriteOrchestrationService)this.client.ServiceClient;
+            var service = (IOrchestrationServiceQueryClient)this.client.ServiceClient;
             return service.PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus);
         }
 
@@ -215,7 +215,7 @@ namespace DurableTask.Netherite.Tests
         {
             Trace.TraceInformation($"Getting history for instance with id - {this.instanceId}");
 
-            var service = (NetheriteOrchestrationService)this.client.ServiceClient;
+            var service = (IOrchestrationServiceQueryClient)this.client.ServiceClient;
             var state = await service.GetOrchestrationStateAsync(instanceId, false, false);
             if (state == null)
             {
