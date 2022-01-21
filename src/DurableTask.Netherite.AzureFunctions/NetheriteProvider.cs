@@ -51,7 +51,7 @@ namespace DurableTask.Netherite.AzureFunctions
         public async override Task<string> RetrieveSerializedEntityState(EntityId entityId, JsonSerializerSettings serializerSettings)
         {
             var instanceId = ProviderUtils.GetSchedulerIdFromEntityId(entityId);
-            OrchestrationState state = await this.Service.GetOrchestrationStateAsync(instanceId, true, true);
+            OrchestrationState state = await ((IOrchestrationServiceQueryClient)this.Service).GetOrchestrationStateAsync(instanceId, true, true);
             if (ProviderUtils.TryGetEntityStateFromSerializedSchedulerState(state, serializerSettings, out string result))
             {
                 return result;
@@ -66,7 +66,7 @@ namespace DurableTask.Netherite.AzureFunctions
         public async override Task<IList<OrchestrationState>> GetOrchestrationStateWithInputsAsync(string instanceId, bool showInput = true)
         {
             var result = new List<OrchestrationState>();
-            var state = await this.Service.GetOrchestrationStateAsync(instanceId, showInput, true);
+            var state = await ((IOrchestrationServiceQueryClient)this.Service).GetOrchestrationStateAsync(instanceId, showInput, true);
             if (state != null)
             {
                 result.Add(state);
@@ -78,14 +78,14 @@ namespace DurableTask.Netherite.AzureFunctions
         /// <inheritdoc/>
         public async override Task<PurgeHistoryResult> PurgeInstanceHistoryByInstanceId(string instanceId)
         {
-            var numberInstancesDeleted = await this.Service.PurgeInstanceHistoryAsync(instanceId);
+            var numberInstancesDeleted = await ((IOrchestrationServiceQueryClient)this.Service).PurgeInstanceHistoryAsync(instanceId);
             return new PurgeHistoryResult(numberInstancesDeleted);
         }
 
         /// <inheritdoc/>
         public override Task<int> PurgeHistoryByFilters(DateTime createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus)
         {
-            return this.Service.PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus);
+            return ((IOrchestrationServiceQueryClient)this.Service).PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus);
         }
 
         /// <inheritdoc/>
@@ -98,7 +98,7 @@ namespace DurableTask.Netherite.AzureFunctions
                     instanceIdPrefix: condition.InstanceIdPrefix,
                     fetchInput: condition.ShowInput);
 
-            InstanceQueryResult result = await this.Service.QueryOrchestrationStatesAsync(instanceQuery, condition.PageSize, condition.ContinuationToken, cancellationToken);
+            InstanceQueryResult result = await ((IOrchestrationServiceQueryClient)this.Service).QueryOrchestrationStatesAsync(instanceQuery, condition.PageSize, condition.ContinuationToken, cancellationToken);
 
             return new OrchestrationStatusQueryResult()
             {

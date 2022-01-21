@@ -116,10 +116,18 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             return status;
         }
 
-        protected async Task<OrchestrationStatusQueryResult> GetInstancesAsync(OrchestrationStatusQueryCondition condition)
+        protected async Task<List<DurableOrchestrationStatus>> GetInstancesAsync(OrchestrationStatusQueryCondition condition)
         {
+            var results = new List<DurableOrchestrationStatus>();
             IDurableClient client = await this.GetDurableClientAsync();
-            return await client.ListInstancesAsync(condition, CancellationToken.None);
+            do
+            {
+                var response = await client.ListInstancesAsync(condition, CancellationToken.None);
+                results.AddRange(response.DurableOrchestrationState);
+                condition.ContinuationToken = response.ContinuationToken;
+            } 
+            while (condition.ContinuationToken != null);
+            return results;
         }
 
         protected async Task<PurgeHistoryResult> PurgeAllAsync()
