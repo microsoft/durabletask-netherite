@@ -1258,7 +1258,7 @@ namespace DurableTask.Netherite.Faster
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriter, src.Version, default, address);
                 //this.CopyToTail(ref key, ref src, ref dst, ref recordInfo, address);
-                dst.Val = src.to;
+                dst.Val = this.isScan ? src.Val : src.to;
                 dst.Version = src.Version;
                 this.cacheDebugger?.ValidateObjectVersion(dst, key.Val);
                 src.to = null;
