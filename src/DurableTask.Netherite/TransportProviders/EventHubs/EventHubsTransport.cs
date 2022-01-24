@@ -101,7 +101,7 @@ namespace DurableTask.Netherite.EventHubs
         {
             await this.cloudBlobContainer.CreateIfNotExistsAsync().ConfigureAwait(false);
 
-            // ensure the task hubs exist, creating them if necessary
+            // ensure the event hubs exist, creating them if necessary
             var tasks = new List<Task>();
             tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, PartitionHubs[0], this.settings.PartitionCount));
             if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
@@ -117,6 +117,8 @@ namespace DurableTask.Netherite.EventHubs
             // determine the start positions and the creation timestamps
             (long[] startPositions, DateTime[] creationTimestamps, string namespaceEndpoint)
                 = await EventHubsConnections.GetPartitionInfo(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHubs);
+
+            this.traceHelper.LogInformation("Confirmed eventhubs positions=[{positions}] endpoint={endpoint}", string.Join(",", startPositions.Select(x => $"#{x}")), namespaceEndpoint);
 
             var taskHubParameters = new TaskhubParameters()
             {
@@ -267,6 +269,8 @@ namespace DurableTask.Netherite.EventHubs
                     await this.eventProcessorHost.RegisterEventProcessorFactoryAsync(
                         new PartitionEventProcessorFactory(this), 
                         processorOptions).ConfigureAwait(false);
+
+                    this.traceHelper.LogInformation($"Partition Host started");
                 }
                 else
                 {
@@ -448,6 +452,7 @@ namespace DurableTask.Netherite.EventHubs
                 // receive a dummy packet to establish connection
                 // (the packet, if any, cannot be for this receiver because it is fresh)
                 await receiver.ReceiveAsync(1, TimeSpan.FromMilliseconds(1));
+                this.traceHelper.LogDebug("Client{clientId}.ch{index} connection established", Client.GetShortId(this.ClientId), index);
             }
             catch (Exception exception)
             {

@@ -254,14 +254,15 @@ namespace DurableTask.Netherite.Tests
             Trace.WriteLine("Starting the orchestration service...");
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-            await service.CreateAsync(true);
-            await service.StartAsync();
+            var orchestrationService = (IOrchestrationService)service;
+            await orchestrationService.CreateAsync(true);
+            await orchestrationService.StartAsync();
             Trace.WriteLine("Orchestration service is started.");
 
             var _ = await ((IOrchestrationServiceQueryClient)service).GetOrchestrationStateAsync();
 
             Trace.WriteLine("shutting down the orchestration service...");
-            await service.StopAsync();
+            await orchestrationService.StopAsync();
             Trace.WriteLine("Orchestration service is shut down.");
         }
     }

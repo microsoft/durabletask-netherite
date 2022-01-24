@@ -62,8 +62,10 @@ namespace DurableTask.Netherite.Tests
             {
                 // start the service 
                 var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-                await service.CreateAsync();
-                await service.StartAsync();
+                var orchestrationService = (IOrchestrationService)service;
+                var orchestrationServiceClient = (IOrchestrationServiceClient)service;
+                await orchestrationService.CreateAsync();
+                await orchestrationService.StartAsync();
                 var host = (TransportAbstraction.IHost)service;
                 Assert.Equal(1u, service.NumberPartitions);
                 var worker = new TaskHubWorker(service);
@@ -76,22 +78,24 @@ namespace DurableTask.Netherite.Tests
                 await client.WaitForOrchestrationAsync(instance, TimeSpan.FromSeconds(20));
 
                 // stop the service
-                await service.StopAsync();
+                await orchestrationService.StopAsync();
             }
             {
                 // start the service 
                 var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-                await service.CreateAsync();
-                await service.StartAsync();
+                var orchestrationService = (IOrchestrationService)service;
+                var orchestrationServiceClient = (IOrchestrationServiceClient)service;
+                await orchestrationService.CreateAsync();
+                await orchestrationService.StartAsync();
                 var host = (TransportAbstraction.IHost)service;
                 Assert.Equal(1u, service.NumberPartitions);
-                var client = new TaskHubClient(service);
+                var client = new TaskHubClient(orchestrationServiceClient);
 
                 var orchestrationState = await client.GetOrchestrationStateAsync("0");
                 Assert.Equal(OrchestrationStatus.Completed, orchestrationState.OrchestrationStatus);
 
                 // stop the service
-                await service.StopAsync();
+                await orchestrationService.StopAsync();
             }
         }
 
@@ -140,8 +144,9 @@ namespace DurableTask.Netherite.Tests
 
             // start the service 
             var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-            await service.CreateAsync();
-            await service.StartAsync();
+            var orchestrationService = (IOrchestrationService)service;
+            await orchestrationService.CreateAsync();
+            await orchestrationService.StartAsync();
             var host = (TransportAbstraction.IHost)service;
             Assert.Equal(1u, service.NumberPartitions);
             var worker = new TaskHubWorker(service);
@@ -242,7 +247,7 @@ namespace DurableTask.Netherite.Tests
             }
 
             // shut down the service
-            await service.StopAsync();
+            await orchestrationService.StopAsync();
         }
     }
 }
