@@ -11,23 +11,20 @@ namespace DurableTask.Netherite.Darq
 
     public interface IEvent
     {
-        long Id { get; }
-        string Destination { get; }
-    }
-
-    public interface IRequestEvent<TResult> : IEvent
-    {
     }
 
     public interface IContext
     {
-        ValueTask SignalAsync(IEvent evt);
-        ValueTask SignalSelfAsync(IEvent evt);
-        ValueTask<TResult> CallAsync<TResult>(IRequestEvent<TResult> evt);
+        // deterministic signal to some component
+        void SignalAsync(IEvent evt, string destination);
+
+        // nondeterministic signal to self
+        void SignalSelfAsync(IEvent evt);
     }
 
     public abstract class Component
-     {
-        public abstract void Process(Tin inEvent, IContext<Tin,Tout> context);
+    {
+        public string ComponentId { get; }
+        public abstract void Process(IContext context, IEvent evt, long pos);
     }
 }
