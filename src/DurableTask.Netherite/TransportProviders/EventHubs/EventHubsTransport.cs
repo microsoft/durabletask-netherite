@@ -261,7 +261,17 @@ namespace DurableTask.Netherite.EventHubs
 
                     var processorOptions = new EventProcessorOptions()
                     {
-                        InitialOffsetProvider = (s) => EventPosition.FromSequenceNumber(this.parameters.StartPositions[int.Parse(s)] - 1),
+                        InitialOffsetProvider = (s) => {
+                            var pos = this.parameters.StartPositions[int.Parse(s)];
+                            if (pos > 0)
+                            {
+                                return EventPosition.FromSequenceNumber(pos - 1, inclusive: false);
+                            }
+                            else
+                            {
+                                return EventPosition.FromStart();
+                            }
+                        },
                         MaxBatchSize = 300,
                         PrefetchCount = 500,
                     };
