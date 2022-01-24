@@ -250,11 +250,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(245, Account, TaskHub, PartitionId, PartitionEventId, ReportedLocalLoad, Pending, Backlog, Remotes, Distribution, AppName, ExtensionVersion);
         }
 
-        [Event(246, Level = EventLevel.Informational, Version = 1)]
-        public void PartitionLoadPublished(string Account, string TaskHub, int PartitionId, int WorkItems, int Activities, int Timers, int Requests, int Outbox, string NextTimer, string WorkerId, string LatencyTrend, double MissRate, long InputQueuePosition, long CommitLogPosition, string AppName, string ExtensionVersion)
+        [Event(246, Level = EventLevel.Informational, Version = 2)]
+        public void PartitionLoadPublished(string Account, string TaskHub, int PartitionId, int WorkItems, int Activities, int Timers, int Requests, int Outbox, long Instances, string NextTimer, string WorkerId, string LatencyTrend, double MissRate, long InputQueuePosition, long CommitLogPosition, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(246, Account, TaskHub, PartitionId, WorkItems, Activities, Timers, Requests, Outbox, NextTimer, WorkerId, LatencyTrend, MissRate, InputQueuePosition, CommitLogPosition, AppName, ExtensionVersion);
+            this.WriteEvent(246, Account, TaskHub, PartitionId, WorkItems, Activities, Timers, Requests, Outbox, Instances, NextTimer, WorkerId, LatencyTrend, MissRate, InputQueuePosition, CommitLogPosition, AppName, ExtensionVersion);
         }
 
         [Event(247, Level = EventLevel.Verbose, Version = 2)]
