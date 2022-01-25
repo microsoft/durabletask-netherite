@@ -151,6 +151,12 @@ namespace DurableTask.Netherite.Faster
             return true;
         }
 
+        public override Task RemoveObsoleteCheckpoints()
+        {
+            //TODO
+            return Task.CompletedTask;
+        }
+
         public async override ValueTask CompleteCheckpointAsync()
         {
             await this.checkpointTask.ConfigureAwait(false);
