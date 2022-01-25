@@ -26,6 +26,11 @@ namespace DurableTask.Netherite
             uint NumberPartitions { set; }
 
             /// <summary>
+            /// Assigned by the transport backend to inform the host about the file/blob paths for the partitition state in storage.
+            /// </summary>
+            string PathPrefix { set; }
+
+            /// <summary>
             /// Returns the storage provider for storing the partition states.
             /// </summary>
             IStorageProvider StorageProvider { get; }

@@ -75,6 +75,10 @@ namespace DurableTask.Netherite.EventHubs
         public static string ClientConsumerGroup = "$Default";
         public static string LoadMonitorConsumerGroup = "$Default";
 
+        // the path prefix is used to prevent some issues (races, partial deletions) when recreating a taskhub of the same name
+        // since it is a rare circumstance, taking six characters of the Guid is unique enough
+        public static string TaskhubPathPrefix(Guid taskhubGuid) => $"{taskhubGuid.ToString()}/";
+
         static string GetContainerName(string taskHubName) => taskHubName.ToLowerInvariant() + "-storage";
 
         async Task<TaskhubParameters> TryLoadExistingTaskhubAsync()
@@ -169,13 +173,17 @@ namespace DurableTask.Netherite.EventHubs
 
         async Task DeleteAsync()
         {
-            if (await this.taskhubParameters.ExistsAsync())
-            {
-                await BlobUtils.ForceDeleteAsync(this.taskhubParameters);
-            }
+            var parameters = await this.TryLoadExistingTaskhubAsync();
 
-            // todo delete consumption checkpoints
-            await this.host.StorageProvider.DeleteAllPartitionStatesAsync();
+            if (parameters != null)
+            {           
+                // first, delete the parameters file which deletes the taskhub logically
+                await BlobUtils.ForceDeleteAsync(this.taskhubParameters);
+
+                // delete all the files/blobs in the directory/container that represents this taskhub
+                // If this does not complete successfully, some garbage may be left behind.
+                await this.host.StorageProvider.DeleteTaskhubAsync(TaskhubPathPrefix(parameters.TaskhubGuid));
+            }
         }
 
         async Task StartAsync()
@@ -197,6 +205,7 @@ namespace DurableTask.Netherite.EventHubs
             BlobManager.CheckStorageFormat(this.parameters.StorageFormat, this.settings);
 
             this.host.NumberPartitions = (uint)this.parameters.StartPositions.Length;
+            this.host.PathPrefix = TaskhubPathPrefix(this.parameters.TaskhubGuid);
            
             this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs, LoadMonitorHub)
             {
@@ -268,7 +277,8 @@ namespace DurableTask.Netherite.EventHubs
                         EventHubsTransport.PartitionConsumerGroup,
                         this.settings.ResolvedTransportConnectionString,
                         this.settings.ResolvedStorageConnectionString,
-                        this.cloudBlobContainer.Name);
+                        this.cloudBlobContainer.Name,
+                        $"{TaskhubPathPrefix(this.parameters.TaskhubGuid)}eh-checkpoints/{(PartitionHubs[0])}");
 
                     var processorOptions = new EventProcessorOptions()
                     {
@@ -327,7 +337,7 @@ namespace DurableTask.Netherite.EventHubs
                         this.settings.ResolvedTransportConnectionString,
                         this.settings.ResolvedStorageConnectionString,
                         this.cloudBlobContainer.Name,
-                        LoadMonitorHub);
+                        $"{TaskhubPathPrefix(this.parameters.TaskhubGuid)}eh-checkpoints/{LoadMonitorHub}");
 
                 var processorOptions = new EventProcessorOptions()
                 {

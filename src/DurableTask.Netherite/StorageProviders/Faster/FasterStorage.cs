@@ -18,6 +18,7 @@ namespace DurableTask.Netherite.Faster
         readonly string localFileDirectory;
         readonly CloudStorageAccount pageBlobStorageAccount;
         readonly string taskHubName;
+        readonly string pathPrefix;
         readonly ILogger logger;
 
         Partition partition;
@@ -32,7 +33,7 @@ namespace DurableTask.Netherite.Faster
 
         internal FasterTraceHelper TraceHelper { get; private set; }
 
-        public FasterStorage(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, ILoggerFactory loggerFactory)
+        public FasterStorage(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, string pathPrefix, ILoggerFactory loggerFactory)
         {
             if (!string.IsNullOrEmpty(localFileDirectory))
             {
@@ -51,14 +52,15 @@ namespace DurableTask.Netherite.Faster
                 this.pageBlobStorageAccount = this.storageAccount;
             }
             this.taskHubName = taskHubName;
+            this.pathPrefix = pathPrefix;
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
         }
 
-        public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName)
+        public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, string pathPrefix)
         {
             var storageAccount = string.IsNullOrEmpty(connectionString) ? null : CloudStorageAccount.Parse(connectionString);
             var pageBlobAccount = string.IsNullOrEmpty(pageBlobConnectionString) ? storageAccount : CloudStorageAccount.Parse(pageBlobConnectionString);
-            return BlobManager.DeleteTaskhubStorageAsync(storageAccount, pageBlobAccount, localFileDirectory, taskHubName);
+            return BlobManager.DeleteTaskhubStorageAsync(storageAccount, pageBlobAccount, localFileDirectory, taskHubName, pathPrefix);
         }
 
         async Task<T> TerminationWrapper<T>(Task<T> what)
@@ -90,6 +92,7 @@ namespace DurableTask.Netherite.Faster
                 this.pageBlobStorageAccount,
                 this.localFileDirectory,
                 this.taskHubName,
+                this.pathPrefix,
                 partition.Settings.TestHooks?.FaultInjector,
                 this.logger,
                 this.partition.Settings.StorageLogLevelLimit,

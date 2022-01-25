@@ -29,6 +29,7 @@ namespace DurableTask.Netherite.Faster
         readonly CancellationTokenSource shutDownOrTermination;
         readonly CloudStorageAccount cloudStorageAccount;
         readonly CloudStorageAccount pageBlobAccount;
+        readonly string taskHubPrefix;
 
         readonly CloudBlobContainer blockBlobContainer;
         readonly CloudBlobContainer pageBlobContainer;
@@ -118,6 +119,7 @@ namespace DurableTask.Netherite.Faster
         static readonly int[] StorageFormatVersion = new int[] {
             1, //initial version
             2, //0.7.0-beta changed singleton storage, and adds dequeue count
+            3, //changed naming of files
         }; 
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
@@ -245,6 +247,7 @@ namespace DurableTask.Netherite.Faster
             CloudStorageAccount pageBlobAccount,
             string localFilePath,
             string taskHubName,
+            string taskHubPrefix,
             FaultInjector faultInjector,
             ILogger logger,
             Microsoft.Extensions.Logging.LogLevel logLevelLimit,
@@ -256,6 +259,7 @@ namespace DurableTask.Netherite.Faster
             this.UseLocalFiles = (localFilePath != null);
             this.LocalFileDirectoryForTestingAndDebugging = localFilePath;
             this.ContainerName = GetContainerName(taskHubName);
+            this.taskHubPrefix = taskHubPrefix;
             this.FaultInjector = faultInjector;
             this.partitionId = partitionId;
             this.CheckpointInfo = new CheckpointInfo();
@@ -289,7 +293,7 @@ namespace DurableTask.Netherite.Faster
             this.shutDownOrTermination = CancellationTokenSource.CreateLinkedTokenSource(errorHandler.Token);
         }
 
-        string PartitionFolderName => $"p{this.partitionId:D2}";
+        string PartitionFolderName => $"{this.taskHubPrefix}p{this.partitionId:D2}";
         string PsfGroupFolderName(int groupOrdinal) => $"psfgroup.{groupOrdinal:D3}";
 
         // For testing and debugging with local files
@@ -400,13 +404,13 @@ namespace DurableTask.Netherite.Faster
             await this.LeaseMaintenanceLoopTask; // wait for loop to terminate cleanly
         }
 
-        public static async Task DeleteTaskhubStorageAsync(CloudStorageAccount account, CloudStorageAccount pageBlobAccount, string localFileDirectoryPath, string taskHubName)
+        public static async Task DeleteTaskhubStorageAsync(CloudStorageAccount account, CloudStorageAccount pageBlobAccount, string localFileDirectoryPath, string taskHubName, string pathPrefix)
         {
             var containerName = GetContainerName(taskHubName);
 
             if (!string.IsNullOrEmpty(localFileDirectoryPath))
             {
-                DirectoryInfo di = new DirectoryInfo($"{localFileDirectoryPath}\\{containerName}");
+                DirectoryInfo di = new DirectoryInfo($"{localFileDirectoryPath}\\{containerName}"); //TODO fine-grained deletion
                 if (di.Exists)
                 {
                     di.Delete(true);
@@ -421,16 +425,33 @@ namespace DurableTask.Netherite.Faster
 
                     if (await blobContainer.ExistsAsync())
                     {
-                        // do a complete deletion of all contents of this directory
-                        var tasks = blobContainer.ListBlobs(null, true)
-                                                 .Where(blob => blob.GetType() == typeof(CloudBlob) || blob.GetType().BaseType == typeof(CloudBlob))
-                                                 .Select(blob => BlobUtils.ForceDeleteAsync((CloudBlob)blob))
-                                                 .ToArray();
-                        await Task.WhenAll(tasks);
+                        BlobContinuationToken continuationToken = null;
+                        var deletionTasks = new List<Task>();
+
+                        do
+                        {
+                            var listingResult = await blobContainer.ListBlobsSegmentedAsync(
+                                pathPrefix,
+                                useFlatBlobListing: true,
+                                BlobListingDetails.None, 50, continuationToken, null, null);
+                                
+                            continuationToken = listingResult.ContinuationToken;
+                             
+                            foreach (var result in listingResult.Results)
+                            {
+                                if (result is CloudBlob blob)
+                                {
+                                    deletionTasks.Add(BlobUtils.ForceDeleteAsync(blob));
+                                }
+                            }
+
+                            await Task.WhenAll(deletionTasks);
+                        }
+                        while (continuationToken != null);
                     }
 
                     // We are not deleting the container itself because it creates problems when trying to recreate
-                    // the same container soon afterwards so we leave an empty container behind. Oh well.
+                    // the same container.
                 }
 
                 await DeleteContainerContents(account);
