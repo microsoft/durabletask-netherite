@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite
 {
+    using System;
     using System.Threading.Tasks;
 
     /// <summary>
@@ -20,6 +21,6 @@ namespace DurableTask.Netherite
         /// Deletes all partition states.
         /// </summary>
         /// <returns></returns>
-        Task DeleteAllPartitionStatesAsync();
+        Task DeleteTaskhubAsync(string pathPrefix);
     }
 }

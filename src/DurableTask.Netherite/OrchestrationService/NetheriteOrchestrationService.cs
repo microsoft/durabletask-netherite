@@ -64,6 +64,8 @@ namespace DurableTask.Netherite
         internal NetheriteOrchestrationServiceSettings Settings { get; private set; }
         internal uint NumberPartitions { get; private set; }
         uint TransportAbstraction.IHost.NumberPartitions { set => this.NumberPartitions = value; }
+        internal string PathPrefix { get;  private set; }
+        string TransportAbstraction.IHost.PathPrefix { set => this.PathPrefix = value; }
         internal string StorageAccountName { get; private set; }
 
         internal WorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; private set; }
@@ -207,14 +209,20 @@ namespace DurableTask.Netherite
                     return new MemoryStorage(this.TraceHelper.Logger);
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    return new Faster.FasterStorage(this.Settings.ResolvedStorageConnectionString, this.Settings.ResolvedPageBlobStorageConnectionString, this.Settings.UseLocalDirectoryForPartitionStorage, this.Settings.HubName, this.LoggerFactory);
+                    return new Faster.FasterStorage(
+                        this.Settings.ResolvedStorageConnectionString, 
+                        this.Settings.ResolvedPageBlobStorageConnectionString, 
+                        this.Settings.UseLocalDirectoryForPartitionStorage, 
+                        this.Settings.HubName, 
+                        this.PathPrefix,
+                        this.LoggerFactory);
 
                 default:
                     throw new NotImplementedException("no such storage choice");
             }
         }
 
-        async Task IStorageProvider.DeleteAllPartitionStatesAsync()
+        async Task IStorageProvider.DeleteTaskhubAsync(string pathPrefix)
         {
             if (!(this.LoadMonitorService is null))
                 await this.LoadMonitorService.DeleteIfExistsAsync(CancellationToken.None).ConfigureAwait(false);
@@ -230,7 +238,8 @@ namespace DurableTask.Netherite
                         this.Settings.ResolvedStorageConnectionString, 
                         this.Settings.ResolvedPageBlobStorageConnectionString, 
                         this.Settings.UseLocalDirectoryForPartitionStorage, 
-                        this.Settings.HubName).ConfigureAwait(false);
+                        this.Settings.HubName,
+                        pathPrefix).ConfigureAwait(false);
                     break;
 
                 default:
