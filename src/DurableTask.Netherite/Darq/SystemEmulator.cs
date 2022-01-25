@@ -9,13 +9,26 @@
 
     class SystemEmulator
     {
-        readonly Dictionary<string, ComponentInfo> components = new Dictionary<string, ComponentInfo>();
-        readonly Dictionary<(string, string), Queue<IEvent>> nonEmptyChannels = new Dictionary<(string, string), Queue<IEvent>>();
         readonly Random random;
+
+        readonly Dictionary<string, ComponentInfo> components = new Dictionary<string, ComponentInfo>();
+
+        readonly SortedDictionary<(string, string), Queue<IEvent>> nonEmptyChannels = new SortedDictionary<(string, string), Queue<IEvent>>();
+        readonly SortedDictionary<(string, long), Func<IEvent>> pendingTasks = new SortedDictionary<(string, long), Func<IEvent>>();
+
+        bool nondeterministicContext = false; // used to check determinism constraint
 
         public SystemEmulator(int randomSeed = 0)
         {
             this.random = new Random(randomSeed);
+        }
+
+        public void AddComponent(Component component)
+        {
+            if (!this.components.TryAdd(component.ComponentId, new ComponentInfo(this, component)))
+            {
+                throw new InvalidOperationException("component must have unique id");
+            }
         }
 
         class ComponentInfo : IContext
@@ -24,7 +37,7 @@
             readonly Component component;
             readonly string componentId;
 
-            public long Position;
+            public long HistoryPosition { get; private set; }
 
             public ComponentInfo(SystemEmulator emulator, Component component)
             {
@@ -32,27 +45,24 @@
                 this.component = component;
             }
 
-            void IContext.SignalAsync(IEvent evt, string destination)
+            public void SendSignal(IEvent evt, string destination)
             {
+                if (this.emulator.nondeterministicContext) throw new InvalidOperationException("signals cannot be sent in nondeterministic context");
+                this.HistoryPosition++;
                 this.emulator.Enqueue(evt, this.component.ComponentId, destination);
             }
 
-            void IContext.SignalSelfAsync(IEvent evt)
+            public void RunTask(Func<IEvent> task)
             {
-                this.emulator.Enqueue(evt, this.component.ComponentId, this.component.ComponentId);
+                if (this.emulator.nondeterministicContext) throw new InvalidOperationException("tasks cannot be run in nondeterministic context");
+                var taskId = this.HistoryPosition++;
+                this.emulator.pendingTasks.Add((this.component.ComponentId, taskId), task);
             }
 
             public void Deliver(IEvent message)
             {
-                this.component.Process(this, message, this.Position++);
-            }
-        }
-
-        public void AddComponent(Component component)
-        {
-            if (!this.components.TryAdd(component.ComponentId, new ComponentInfo(this, component)))
-            {
-                throw new InvalidOperationException("component must have unique id");
+                var pos = this.HistoryPosition++;
+                this.component.Process(this, message, pos);
             }
         }
 
@@ -67,22 +77,36 @@
 
         public bool ProcessNext()
         {
-            if (this.nonEmptyChannels.Count == 0)
-            {
-                return false;
-            }
-            else
-            {
-                int choice = this.random.Next(this.nonEmptyChannels.Count);
-                var kvp = this.nonEmptyChannels.ElementAt(choice);
-                (string source, string destination) = kvp.Key;
-                var queue = kvp.Value;
-                this.components[destination].Deliver(queue.Dequeue());
-                if (queue.Count == 0)
+            int numChoices = this.nonEmptyChannels.Count + this.pendingTasks.Count;
+
+            if (numChoices > 0)
+            {               
+                int choice = this.random.Next(numChoices);
+
+                if (choice < this.nonEmptyChannels.Count)
                 {
-                    this.nonEmptyChannels.Remove((source, destination));
+                    var kvp = this.nonEmptyChannels.ElementAt(choice);
+                    (string source, string destination) = kvp.Key;
+                    var queue = kvp.Value;
+                    this.components[destination].Deliver(queue.Dequeue());
+                    if (queue.Count == 0)
+                    {
+                        this.nonEmptyChannels.Remove((source, destination));
+                    }
+                }
+                else
+                {
+                    choice -= this.nonEmptyChannels.Count;
+                    var kvp = this.pendingTasks.ElementAt(choice);
+                    (string componentId, long taskId) = kvp.Key;
+                    this.nondeterministicContext = true;
+                    var result = kvp.Value();
+                    this.nondeterministicContext = false;
+                    this.Enqueue(result, componentId, componentId);
                 }
             }
+
+            return this.nonEmptyChannels.Count + this.pendingTasks.Count > 0;
         }
     }
 }

@@ -9,22 +9,33 @@ namespace DurableTask.Netherite.Darq
     using System.Threading;
     using System.Threading.Tasks;
 
+    public interface ISystemEmulator
+    {
+        void AddComponent(Component component);
+
+        void Start(int randomSeed);
+    }
+
     public interface IEvent
     {
     }
 
-    public interface IContext
+    public interface IContext 
     {
-        // deterministic signal to some component
-        void SignalAsync(IEvent evt, string destination);
+        // the current position in the history
+        long HistoryPosition { get; }
 
-        // nondeterministic signal to self
-        void SignalSelfAsync(IEvent evt);
+        // signal a component
+        void SendSignal(IEvent evt, string destination);
+
+        // execute a local task asynchronously, and process the result event when complete
+        void RunTask(Func<IEvent> task);
     }
-
+    
     public abstract class Component
     {
         public string ComponentId { get; }
+
         public abstract void Process(IContext context, IEvent evt, long pos);
     }
 }
