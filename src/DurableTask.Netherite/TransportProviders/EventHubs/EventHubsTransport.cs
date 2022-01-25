@@ -99,7 +99,15 @@ namespace DurableTask.Netherite.EventHubs
 
         async Task<bool> CreateIfNotExistsAsync()
         {
-            await this.cloudBlobContainer.CreateIfNotExistsAsync();
+            bool containerCreated = await this.cloudBlobContainer.CreateIfNotExistsAsync();
+            if (containerCreated)
+            {
+                this.traceHelper.LogInformation("Created new blob container at {container}", this.cloudBlobContainer.Uri);
+            }
+            else
+            {
+                this.traceHelper.LogInformation("Using existing blob container at {container}", this.cloudBlobContainer.Uri);
+            }
 
             // ensure the event hubs exist, creating them if necessary
             var tasks = new List<Task>();
@@ -145,10 +153,13 @@ namespace DurableTask.Netherite.EventHubs
 
                 var noOverwrite = AccessCondition.GenerateIfNoneMatchCondition("*");
                 await this.taskhubParameters.UploadTextAsync(jsonText, null, noOverwrite, null, null);
+                this.traceHelper.LogInformation("Created new taskhub");
             }
-            catch(StorageException e) when (BlobUtils.BlobAlreadyExists(e))
+            catch (StorageException e) when (BlobUtils.BlobAlreadyExists(e))
             {
                 // taskhub already exists, possibly because a different node created it faster
+                this.traceHelper.LogInformation("Confirmed existing taskhub");
+
                 return false;
             }
 
