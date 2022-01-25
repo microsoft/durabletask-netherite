@@ -119,7 +119,7 @@ namespace DurableTask.Netherite.Faster
         static readonly int[] StorageFormatVersion = new int[] {
             1, //initial version
             2, //0.7.0-beta changed singleton storage, and adds dequeue count
-            3, //changed naming of files
+            3, //changed organization of files
         };
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
@@ -433,10 +433,10 @@ namespace DurableTask.Netherite.Faster
                             var listingResult = await blobContainer.ListBlobsSegmentedAsync(
                                 pathPrefix,
                                 useFlatBlobListing: true,
-                                BlobListingDetails.None, 40, continuationToken, null, null);
-
+                                BlobListingDetails.None, 50, continuationToken, null, null);
+                                
                             continuationToken = listingResult.ContinuationToken;
-
+                             
                             foreach (var result in listingResult.Results)
                             {
                                 if (result is CloudBlob blob)
