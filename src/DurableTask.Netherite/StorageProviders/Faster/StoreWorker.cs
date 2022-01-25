@@ -420,6 +420,8 @@ namespace DurableTask.Netherite.Faster
  
             this.traceHelper.FasterCheckpointPersisted(checkpointToken, description, commitLogPosition, inputQueuePosition, stopwatch.ElapsedMilliseconds);
 
+            await this.store.RemoveObsoleteCheckpoints();
+
             this.Notify();
             return (commitLogPosition, inputQueuePosition);
         }
