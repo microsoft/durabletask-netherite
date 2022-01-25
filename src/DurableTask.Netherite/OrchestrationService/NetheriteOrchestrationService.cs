@@ -243,45 +243,47 @@ namespace DurableTask.Netherite
         /******************************/
 
         /// <inheritdoc />
-        public async Task CreateAsync() => await ((IOrchestrationService)this).CreateAsync(true).ConfigureAwait(false);
+        async Task IOrchestrationService.CreateAsync() => await ((IOrchestrationService)this).CreateAsync(true);
 
         /// <inheritdoc />
-        public async Task CreateAsync(bool recreateInstanceStore)
+        async Task IOrchestrationService.CreateAsync(bool recreateInstanceStore)
         {
-            if (await this.taskHub.ExistsAsync().ConfigureAwait(false))
+            if (await this.taskHub.ExistsAsync())
             {
                 if (recreateInstanceStore)
                 {
-                    await this.taskHub.DeleteAsync().ConfigureAwait(false);
-                    await this.taskHub.CreateIfNotExistsAsync().ConfigureAwait(false);
+                    this.TraceHelper.TraceProgress("Creating");
+
+                    await this.taskHub.DeleteAsync();
+                    await this.taskHub.CreateIfNotExistsAsync();
                 }
             }
             else
             {
-                await this.taskHub.CreateIfNotExistsAsync().ConfigureAwait(false);
+                await this.taskHub.CreateIfNotExistsAsync();
             }
 
             if (!(this.LoadMonitorService is null))
-                await this.LoadMonitorService.CreateIfNotExistsAsync(CancellationToken.None).ConfigureAwait(false);
+                await this.LoadMonitorService.CreateIfNotExistsAsync(CancellationToken.None);
         }
 
         /// <inheritdoc />
-        public async Task CreateIfNotExistsAsync() => await ((IOrchestrationService)this).CreateAsync(false).ConfigureAwait(false);
+        async Task IOrchestrationService.CreateIfNotExistsAsync() => await ((IOrchestrationService)this).CreateAsync(false);
 
         /// <inheritdoc />
-        public async Task DeleteAsync()
+        async Task IOrchestrationService.DeleteAsync()
         {
-            await this.taskHub.DeleteAsync().ConfigureAwait(false);
+            await this.taskHub.DeleteAsync();
 
             if (!(this.LoadMonitorService is null))
-                await this.LoadMonitorService.DeleteIfExistsAsync(CancellationToken.None).ConfigureAwait(false);
+                await this.LoadMonitorService.DeleteIfExistsAsync(CancellationToken.None);
         }
 
         /// <inheritdoc />
-        public async Task DeleteAsync(bool deleteInstanceStore) => await this.DeleteAsync().ConfigureAwait(false);
+        async Task IOrchestrationService.DeleteAsync(bool deleteInstanceStore) => await ((IOrchestrationService)this).DeleteAsync();
 
         /// <inheritdoc />
-        public async Task StartAsync()
+        async Task IOrchestrationService.StartAsync()
         {
             try
             {
@@ -343,7 +345,7 @@ namespace DurableTask.Netherite
         }
 
         /// <inheritdoc />
-        public async Task StopAsync(bool quickly)
+        async Task IOrchestrationService.StopAsync(bool quickly)
         {
             try
             {
@@ -375,7 +377,7 @@ namespace DurableTask.Netherite
         }
 
         /// <inheritdoc />
-        public Task StopAsync() => ((IOrchestrationService)this).StopAsync(false);
+        Task IOrchestrationService.StopAsync() => ((IOrchestrationService)this).StopAsync(false);
 
         /// <inheritdoc/>
         public void Dispose() => this.taskHub.StopAsync();
