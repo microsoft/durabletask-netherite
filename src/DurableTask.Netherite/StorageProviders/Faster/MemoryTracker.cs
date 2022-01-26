@@ -125,7 +125,7 @@ namespace DurableTask.Netherite.Faster
                 this.store.AdjustPageCount(this.TargetSize, this.TrackedObjectSize);
             }
 
-            internal void UpdateTrackedObjectSize(long delta, TrackedObjectKey key, long address)
+            internal void UpdateTrackedObjectSize(long delta, TrackedObjectKey key, long? address)
             {
                 Interlocked.Add(ref this.trackedObjectSize, delta);
                 this.cacheDebugger?.UpdateTrackedObjectSize(delta, key, address);

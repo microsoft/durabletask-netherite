@@ -43,17 +43,22 @@ namespace DurableTask.Netherite.Faster
             InPlaceUpdate,
             CopyUpdate,
             PostCopyUpdate,
-            SingleReader,
-            SingleReaderPrefetch,
-            SingleWriter,
+            SingleWriterUpsert,
+            SingleWriterCopyToTail,
+            SingleWriterCopyToReadCache,
+            SingleWriterCompaction,
+            PostSingleWriterUpsert,
+            PostSingleWriterCopyToTail,
+            PostSingleWriterCopyToReadCache,
+            PostSingleWriterCompaction,
             SingleDeleter,
-            CopyWriter,
-            ConcurrentReader,
-            ConcurrentReaderPrefetch,
-            PostSingleWriter,
+            PostSingleDeleter,
             ConcurrentWriter,
             ConcurrentDeleter,
-            PostSingleDeleter,
+            SingleReader,
+            SingleReaderPrefetch,
+            ConcurrentReader,
+            ConcurrentReaderPrefetch,
 
             // subscriptions to the FASTER log accessor
             Evict,
@@ -73,7 +78,8 @@ namespace DurableTask.Netherite.Faster
             // other events
             Fail,
             Reset,
-            SizeCheck,
+            SizeCheckSuccess,
+            SizeCheckFail,
         };
 
         public class ObjectInfo
@@ -91,8 +97,8 @@ namespace DurableTask.Netherite.Faster
             public string PrintCacheEvents()
             {
                 var sb = new StringBuilder();
-                var entries = new SortedDictionary<long, long>();
-                foreach (var entry in this.GetCacheEvents(entries))
+                this.GetCacheEvents(out var events, out var entries);
+                foreach (var entry in events)
                 {
                     sb.Append(" ");
                     sb.Append(entry.ToString());
@@ -106,8 +112,10 @@ namespace DurableTask.Netherite.Faster
                 return sb.ToString();
             }
 
-            public IEnumerable<Entry> GetCacheEvents(SortedDictionary<long, long> entrySizes)
+            public void GetCacheEvents(out IList<Entry> entries, out SortedDictionary<long, long> entrySizes)
             {
+                entries = new List<Entry>();
+                entrySizes = new SortedDictionary<long, long>();
                 foreach (var entry in this.CacheEvents)
                 {
                     if (entry.CacheEvent == CacheEvent.TrackSize)
@@ -119,7 +127,7 @@ namespace DurableTask.Netherite.Faster
                     {
                         entrySizes[entry.Address] = 0;
                     }
-                    yield return entry;
+                    entries.Add(entry);
                 }
             }
         }
@@ -150,9 +158,16 @@ namespace DurableTask.Netherite.Faster
             {
                 var sb = new StringBuilder();
 
-                if (this.CacheEvent == CacheEvent.SizeCheck)
+                if (this.CacheEvent == CacheEvent.SizeCheckSuccess)
                 {
                     sb.Append('✓');
+                    sb.Append(this.Delta);
+                }
+                else if (this.CacheEvent == CacheEvent.SizeCheckFail)
+                {
+                    sb.Append("❌r");
+                    sb.Append(this.Address);
+                    sb.Append('a');
                     sb.Append(this.Delta);
                 }
                 else
@@ -224,43 +239,62 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        internal void UpdateTrackedObjectSize(long delta, TrackedObjectKey key, long address)
+        internal void UpdateTrackedObjectSize(long delta, TrackedObjectKey key, long? address)
         {
             var info = this.GetObjectInfo(key);
+
+            if (address == null)
+            {
+                info.GetCacheEvents(out _, out var entrySizes);
+                address = entrySizes.LastOrDefault().Key;               
+            }
+
             Interlocked.Add(ref info.Size, delta);
             info.CacheEvents.Enqueue(new Entry
             {
                 CacheEvent = CacheEvent.TrackSize,
                 Delta = delta,
-                Address = address,
+                Address = address.Value,
             });
         }
 
-        internal bool CheckSize(TrackedObjectKey key, long actual, string actualEntries)
+        internal bool CheckSize(TrackedObjectKey key, long actual, string actualEntries, long headAddress)
         {
             var info = this.GetObjectInfo(key);
             long reference = Interlocked.Read(ref info.Size);
-            if (reference != actual)
+
+            if (reference == actual)
             {
-                string GetExpectedEntries()
+                info.CacheEvents.Enqueue(new Entry { CacheEvent = CacheEvent.SizeCheckSuccess, Delta = actual });
+                return true;
+            }
+            else
+            {
+                info.CacheEvents.Enqueue(new Entry { CacheEvent = CacheEvent.SizeCheckFail, Delta = actual, Address = reference });
+
+                // try to account for eviction notifications that we have not received yet
+                info.GetCacheEvents(out _, out var entrySizes);
+                var adjustedReference = entrySizes.Where(kvp => kvp.Key >= headAddress).Select(kvp => kvp.Value).Sum();
+               
+                // forcefully terminate if the adjusted size does not match
+                if (adjustedReference != reference)
                 {
-                    var sb = new StringBuilder();
-                    var entrySizes = new SortedDictionary<long, long>();
-                    foreach(var e in info.GetCacheEvents(entrySizes))
+                    this.Fail($"Size tracking is not accurate reference={reference} actual={actual} referenceEntries={PrintExpectedEntries()} actualEntries={actualEntries} adjustedReference={adjustedReference} headAddress={headAddress}", key);
+                    return false;
+
+                    string PrintExpectedEntries()
                     {
+                        var sb = new StringBuilder();
+                        foreach (var kvp in entrySizes)
+                        {
+                            sb.Append($" {kvp.Value}@{kvp.Key:x}");
+                        }
+                        return sb.ToString();
                     }
-                    foreach (var kvp in entrySizes)
-                    {
-                        sb.Append($" {kvp.Value}@{kvp.Key:x}");
-                    }
-                    return sb.ToString();
                 }
 
-                this.Fail($"Size tracking is not accurate reference={reference} actual={actual} referenceEntries={GetExpectedEntries()} actualEntries={actualEntries}", key);
                 return false;
             }
-            info.CacheEvents.Enqueue(new Entry { CacheEvent = CacheEvent.SizeCheck, Delta = actual });
-            return true;
         }
 
         internal void UpdateSize(TrackedObjectKey key, long delta)
@@ -351,10 +385,19 @@ namespace DurableTask.Netherite.Faster
 
         public IEnumerable<string> Dump()
         {
+            this.SizeCheckFailed = false;
+
             foreach (var kvp in this.Objects)
             {
-                yield return $"{kvp.Key,-25} {string.Join(",", kvp.Value.CacheEvents.Select(e => e.ToString()))}";
-            }
+                string eventList = string.Join(",", kvp.Value.CacheEvents.Select(e => e.ToString()));
+
+                var lastSizeCheck = kvp.Value.CacheEvents.LastOrDefault(e => e.CacheEvent == CacheEvent.SizeCheckFail || e.CacheEvent == CacheEvent.SizeCheckSuccess);
+                bool fail = lastSizeCheck.CacheEvent == CacheEvent.SizeCheckFail;
+                this.SizeCheckFailed = this.SizeCheckFailed || fail;
+                yield return $"{kvp.Key,-25} {eventList} {(fail ? "SIZECHECKFAIL" : "")}";
+            }         
         }
+
+        public bool SizeCheckFailed { get; set; }
     }
 }

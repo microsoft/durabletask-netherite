@@ -39,6 +39,11 @@ namespace DurableTask.Netherite.Tests
 
         public void Dispose()
         {
+            this.outputHelper.WriteLine("CACHEDEBUGGER DUMP: --------------------------------------------------------------------------------------------------------------");
+            foreach (var line in this.settings.TestHooks.CacheDebugger.Dump())
+            {
+                this.outputHelper.WriteLine(line);
+            }
             this.outputHelper = null;
         }
 
@@ -81,7 +86,7 @@ namespace DurableTask.Netherite.Tests
         [InlineData(true)]
         public async Task EachScenarioOnce(bool restrictMemory)
         {
-            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(1));
+            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 5 : 1));
             using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker: true, restrictMemory, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
@@ -100,7 +105,7 @@ namespace DurableTask.Netherite.Tests
         [InlineData(true, true, 20)]
         public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
-            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(1));
+            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes((restrictMemory ? 5 : 1) + multiplicity * 0.1));
             using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker, restrictMemory, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 

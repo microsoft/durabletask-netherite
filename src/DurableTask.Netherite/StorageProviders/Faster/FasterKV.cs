@@ -794,15 +794,13 @@ namespace DurableTask.Netherite.Faster
 
             long trackedSize = this.cacheTracker.TrackedObjectSize;
 
+            bool sizeMatches = true;
             foreach (var kvp in perKeySize)
             {
-                if (!this.cacheDebugger.CheckSize(kvp.Key, kvp.Value.Size, kvp.Value.Sb.ToString()))
-                {
-                    return;
-                }
+                sizeMatches = sizeMatches && this.cacheDebugger.CheckSize(kvp.Key, kvp.Value.Size, kvp.Value.Sb.ToString(), this.fht.Log.HeadAddress);
             }
 
-            if (trackedSize != totalSize)
+            if (trackedSize != totalSize && sizeMatches)
             {
                 this.cacheDebugger.Fail("total size of tracked objects does not match");
             }
@@ -950,8 +948,6 @@ namespace DurableTask.Netherite.Faster
             public object Val;
 
             public int Version; // we use this validate consistency of read/write updates in FASTER, it is not otherwise needed
-
-            public TrackedObject to;// TODO REMOVE THIS HORRIBLE THING
 
             public static implicit operator Value(TrackedObject v) => new Value() { Val = v };
 
@@ -1124,6 +1120,7 @@ namespace DurableTask.Netherite.Faster
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CopyUpdate, oldValue.Version, tracker.CurrentEventId, address);
                 this.cacheDebugger?.ValidateObjectVersion(oldValue, key.Val);
+
                 if (oldValue.Val is TrackedObject trackedObject)
                 {
                     // replace old object with its serialized snapshot
@@ -1132,7 +1129,7 @@ namespace DurableTask.Netherite.Faster
                     this.stats.Serialize++;
                     this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, oldValue.Version, null, 0);
                     oldValue.Val = trackedObject.SerializationCache;
-                    this.cacheTracker.UpdateTrackedObjectSize(oldValue.EstimatedSize - oldValueSizeBefore, key, address);
+                    this.cacheTracker.UpdateTrackedObjectSize(oldValue.EstimatedSize - oldValueSizeBefore, key, null); // null indicates we don't know the address
                     this.stats.Copy++;
                 }
                 else
@@ -1200,12 +1197,9 @@ namespace DurableTask.Netherite.Faster
                     dst.Val = trackedObject;
                 }
 
-                src.to = (TrackedObject) dst.Val;
-
                 this.stats.Read++;
                 return true;
             }
-
 
             bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentReader(ref Key key, ref EffectTracker tracker, ref Value value, ref Output dst, ref RecordInfo recordInfo, long address)
             {
@@ -1237,40 +1231,75 @@ namespace DurableTask.Netherite.Faster
                 return true;
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.CopyWriter(ref Key key, ref Value src, ref Value dst, ref RecordInfo recordInfo, long address)
+            void IFunctions<Key, Value, EffectTracker, Output, object>.SingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, long address, WriteReason reason)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CopyWriter, src.Version, null, address);
-                //this.CopyToTail(ref key, ref src, ref dst, ref recordInfo, address);
-                dst.Val = src.to;
-                dst.Version = src.Version;
-                this.cacheDebugger?.ValidateObjectVersion(dst, key.Val);
-                src.to = null;
-
-                // TODO this will go into PostCopyWriter once we have that in IFunctions
-                if (!this.isScan)
+                switch (reason)
                 {
-                    long estimatedSize = dst.EstimatedSize;
-                    this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + estimatedSize, key, address);
+                    case WriteReason.Upsert:
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterUpsert, src.Version, default, address);
+                        if (!this.isScan)
+                        {
+                            //TEMP until fixed
+                            //this.cacheDebugger?.Fail("Do not expect SingleWriter-Upsert outside of scans", key);
+                        }
+                        break;
+
+                    case WriteReason.CopyToReadCache:
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCopyToReadCache, src.Version, default, address);
+                        //TEMP until fixed
+                        //this.cacheDebugger?.Fail("Do not expect SingleWriter-CopyToReadCache", key);
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCopyToTail, src.Version, default, address);
+                        break;
+
+                    case WriteReason.CopyToTail:
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCopyToTail, src.Version, default, address);
+                        break;
+
+                    case WriteReason.Compaction:
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCompaction, src.Version, default, address);
+                        break;
                 }
-            }
-
-            void IFunctions<Key, Value, EffectTracker, Output, object>.SingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, long address)
-            {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriter, src.Version, default, address);
-                //this.CopyToTail(ref key, ref src, ref dst, ref recordInfo, address);
-                dst.Val = this.isScan ? src.Val : src.to;
+                dst.Val = output.Val ?? src.Val;
                 dst.Version = src.Version;
                 this.cacheDebugger?.ValidateObjectVersion(dst, key.Val);
-                src.to = null;
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, long address)
+            void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, long address, WriteReason reason)
             {
-                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriter, src.Version, default, address);
-                if (!this.isScan)
+                switch (reason)
                 {
-                    long estimatedSize = dst.EstimatedSize;
-                    this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + estimatedSize, key, address);
+                    case WriteReason.Upsert:
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriterUpsert, src.Version, default, address);
+                        if (!this.isScan)
+                        {
+                            //TEMP until fixed
+                            //this.cacheDebugger?.Fail("Do not expect PostSingleWriter-Upsert outside of scans", key);
+                            this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, address);
+                        }
+                        break;
+
+                    case WriteReason.CopyToReadCache:
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriterCopyToReadCache, src.Version, default, address);
+                        //TEMP until fixed
+                        //this.cacheDebugger?.Fail("Do not expect PostSingleWriter-CopyToReadCache", key);
+                        this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, address);
+                        break;
+
+                    case WriteReason.CopyToTail:
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriterCopyToTail, src.Version, default, address);
+                        if (!this.isScan)
+                        {
+                            this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, address);
+                        }
+                        break;
+
+                    case WriteReason.Compaction:
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriterCompaction, src.Version, default, address);
+                        if (!this.isScan)
+                        {
+                            this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, address);
+                        }
+                        break;
                 }
             }
 
