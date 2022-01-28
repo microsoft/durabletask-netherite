@@ -27,11 +27,15 @@ namespace DurableTask.Netherite.Faster
 
         public abstract Guid? StartIndexCheckpoint();
 
-        public abstract Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition);
+        public abstract Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, long? shiftBeginAddress);
 
         public abstract ValueTask CompleteCheckpointAsync();
 
         public abstract Task FinalizeCheckpointCompletedAsync(Guid guid);
+
+        public abstract long? GetCompactionTarget();
+
+        public abstract Task<long> RunCompactionAsync(long target);
 
         // perform a query
         public abstract Task QueryAsync(PartitionQueryEvent queryEvent, EffectTracker effectTracker);

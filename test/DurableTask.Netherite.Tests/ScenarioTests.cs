@@ -59,6 +59,7 @@ namespace DurableTask.Netherite.Tests
             yield return ("SequentialOrchestration", this.SequentialOrchestration());
             yield return ("EventConversation", this.EventConversation());
             yield return ("AutoStart", this.AutoStart());
+            yield return ("HelloWorldSubOrchestration_FanOutFanIn", this.HelloWorldOrchestration_Activity());
             yield return ("ContinueAsNewThenTimer", this.ContinueAsNewThenTimer());
             yield return ("ParallelOrchestration", this.ParallelOrchestration());
             yield return ("ActorOrchestration", this.ActorOrchestration());
@@ -115,6 +116,19 @@ namespace DurableTask.Netherite.Tests
             Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
             Assert.Equal("World", JToken.Parse(status?.Input));
             Assert.Equal("Hello, World!", JToken.Parse(status?.Output));
+        }
+
+        /// <summary>
+        /// End-to-end test which runs a simple orchestrator function that calls a single activity function.
+        /// </summary>
+        [Fact]
+        public async Task HelloWorldSubOrchestration_FanOutFanIn()
+        {
+            var client = await this.host.StartOrchestrationAsync(typeof(Orchestrations.SayHelloFanOutFanIn), 10);
+            var status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
+
+            Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
+            Assert.Equal("\"00000,00001,00002,00003,00004,00005,00006,00006,00008,00009\"", JToken.Parse(status?.Output));
         }
 
         /// <summary>
@@ -877,6 +891,25 @@ namespace DurableTask.Netherite.Tests
                 public override Task<string> RunTask(OrchestrationContext context, string input)
                 {
                     return Task.FromResult($"Hello, {input}!");
+                }
+            }
+
+            [KnownType(typeof(SayHelloInline))]
+            internal class SayHelloFanOutFanIn: TaskOrchestration<string, int>
+            {
+                public override async Task<string> RunTask(OrchestrationContext context, int count)
+                {
+                    if (count > 10000)
+                        throw new ArgumentException("count cannot exceed 10000", nameof(count));
+
+                    var tasks = Enumerable
+                        .Range(0, count)
+                        .Select(i => context.CreateSubOrchestrationInstance<string>(typeof(SayHelloInline), $"{i:D5}"))
+                        .ToList();
+
+                    await Task.WhenAll(tasks);
+
+                    return string.Join(',', tasks.Select(t => t.Result.Substring(7, 5)));
                 }
             }
 

@@ -168,7 +168,7 @@ namespace DurableTask.Netherite.Faster
             return default;
         }
 
-        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition)
+        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, long? shiftBeginAddress)
         {
             var guid = Guid.NewGuid();
             this.StartStoreCheckpoint(commitLogPosition, inputQueuePosition, guid);
@@ -608,6 +608,16 @@ namespace DurableTask.Netherite.Faster
         {
             //TODO
             return Task.CompletedTask;
+        }
+
+        public override long? GetCompactionTarget()
+        {
+            return null;
+        }
+
+        public override Task<long> RunCompactionAsync(long target)
+        {
+            throw new NotImplementedException();
         }
 
         #endregion
