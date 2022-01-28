@@ -128,7 +128,7 @@ namespace DurableTask.Netherite.Tests
             var status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
 
             Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
-            Assert.Equal("\"00000,00001,00002,00003,00004,00005,00006,00006,00008,00009\"", JToken.Parse(status?.Output));
+            Assert.Equal("00000,00001,00002,00003,00004,00005,00006,00007,00008,00009", JToken.Parse(status?.Output));
         }
 
         /// <summary>
