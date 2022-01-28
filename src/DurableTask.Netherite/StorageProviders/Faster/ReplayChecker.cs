@@ -170,11 +170,6 @@ namespace DurableTask.Netherite.Faster
 
             store.EmitCurrentState((TrackedObjectKey key, TrackedObject value) =>
             {
-                if (!key.IsSingleton)
-                {
-                    cacheDebugger?.CheckVersionConsistency(key, value, null);
-                }
-
                 NotVisited.Remove(key);
                 string current = this.Serialize(value);
 
@@ -212,7 +207,7 @@ namespace DurableTask.Netherite.Faster
             {
                 if (!key.IsSingleton)
                 {
-                    cacheDebugger?.CheckVersionConsistency(key, null, 0);
+                    cacheDebugger?.CheckIteratorAbsence(key);
                 }
 
                 string val = info.Store[key];

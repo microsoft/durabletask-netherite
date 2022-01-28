@@ -368,12 +368,22 @@ namespace DurableTask.Netherite.Faster
 
             if (version != null && version.Value != info.CurrentVersion)
             {
-                this.Fail($"Read validation on version failed: reference=v{info.CurrentVersion} actual=v{version} obj={obj} cacheEvents={info.PrintCacheEvents()}");
+                this.Fail($"Read validation on version failed: reference=v{info.CurrentVersion} actual=v{version} obj={obj} key={key} cacheEvents={info.PrintCacheEvents()}");
             }
 
             if ((obj?.Version ?? 0) != info.CurrentVersion)
             {
-                this.Fail($"Read validation on object failed: reference=v{info.CurrentVersion} actual=v{obj?.Version ?? 0} obj={obj} cacheEvents={info.PrintCacheEvents()}");
+                this.Fail($"Read validation on object failed: reference=v{info.CurrentVersion} actual=v{obj?.Version ?? 0} obj={obj} key={key} cacheEvents={info.PrintCacheEvents()}");
+            }
+        }
+
+        internal void CheckIteratorAbsence(TrackedObjectKey key)
+        {
+            var info = this.GetObjectInfo(key);
+
+            if (info.CurrentVersion != 0)
+            {
+                this.Fail($"scan iterator missed object v{info.CurrentVersion} key={key} cacheEvents={info.PrintCacheEvents()}");
             }
         }
 

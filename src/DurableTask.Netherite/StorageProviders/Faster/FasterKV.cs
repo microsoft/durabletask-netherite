@@ -699,22 +699,26 @@ namespace DurableTask.Netherite.Faster
                 {
                     while (iter1.GetNext(out RecordInfo recordInfo, out var key, out var value) && !recordInfo.Tombstone)
                     {
+                        TrackedObject trackedObject;
                         if (value.Val == null)
                         {
-                            emitItem(key, null);
+                            trackedObject = null;
                         }
                         else if (value.Val is TrackedObject t)
                         {
-                            emitItem(key, t);
+                            trackedObject = t;
                         }
                         else if (value.Val is byte[] bytes)
                         {
-                            var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                            trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
                         }
                         else
                         {
                             throw new InvalidCastException("cannot cast value to TrackedObject");
                         }
+
+                        this.cacheDebugger?.CheckVersionConsistency(key, trackedObject, value.Version);
+                        emitItem(key, trackedObject);
                     }
                 }
             }
@@ -1239,16 +1243,13 @@ namespace DurableTask.Netherite.Faster
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterUpsert, src.Version, default, address);
                         if (!this.isScan)
                         {
-                            //TEMP until fixed
-                            //this.cacheDebugger?.Fail("Do not expect SingleWriter-Upsert outside of scans", key);
+                            this.cacheDebugger?.Fail("Do not expect SingleWriter-Upsert outside of scans", key);
                         }
                         break;
 
                     case WriteReason.CopyToReadCache:
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCopyToReadCache, src.Version, default, address);
-                        //TEMP until fixed
-                        //this.cacheDebugger?.Fail("Do not expect SingleWriter-CopyToReadCache", key);
-                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCopyToTail, src.Version, default, address);
+                        this.cacheDebugger?.Fail("Do not expect SingleWriter-CopyToReadCache", key);
                         break;
 
                     case WriteReason.CopyToTail:
@@ -1272,34 +1273,26 @@ namespace DurableTask.Netherite.Faster
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriterUpsert, src.Version, default, address);
                         if (!this.isScan)
                         {
-                            //TEMP until fixed
-                            //this.cacheDebugger?.Fail("Do not expect PostSingleWriter-Upsert outside of scans", key);
-                            this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, address);
+                            this.cacheDebugger?.Fail("Do not expect PostSingleWriter-Upsert outside of scans", key);
                         }
                         break;
 
                     case WriteReason.CopyToReadCache:
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriterCopyToReadCache, src.Version, default, address);
-                        //TEMP until fixed
-                        //this.cacheDebugger?.Fail("Do not expect PostSingleWriter-CopyToReadCache", key);
-                        this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, address);
+                        this.cacheDebugger?.Fail("Do not expect PostSingleWriter-CopyToReadCache", key);
                         break;
 
                     case WriteReason.CopyToTail:
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriterCopyToTail, src.Version, default, address);
-                        if (!this.isScan)
-                        {
-                            this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, address);
-                        }
                         break;
 
                     case WriteReason.Compaction:
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriterCompaction, src.Version, default, address);
-                        if (!this.isScan)
-                        {
-                            this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, address);
-                        }
                         break;
+                }
+                if (!this.isScan)
+                {
+                    this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, address);
                 }
             }
 
