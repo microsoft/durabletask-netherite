@@ -47,14 +47,13 @@ namespace DurableTask.Netherite.Tests
             this.outputHelper = null;
         }
 
-        async Task WaitForCompletion(List<(string, Task)> tests)
+        async Task WaitForCompletion(List<(string, Task)> tests, TimeSpan timeout)
         {
             var alldone = Task.WhenAll(tests.Select(x => x.Item2));
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
             string errorInTestHooks = null;
-            TimeSpan timeout = TimeSpan.FromMinutes(5);
 
             this.settings.TestHooks.OnError += (string message) =>
             {
@@ -86,26 +85,26 @@ namespace DurableTask.Netherite.Tests
         [InlineData(true)]
         public async Task EachScenarioOnce(bool restrictMemory)
         {
-            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 5 : 2));
+            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
             using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker: true, restrictMemory, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
-            var tests = scenarios.StartAllScenarios().ToList();
-            await this.WaitForCompletion(tests);
+            var tests = scenarios.StartAllScenarios(includeTimers: !restrictMemory, includeLarge: true).ToList();
+            await this.WaitForCompletion(tests, TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
         }
 
         [Theory]
-        [InlineData(false, false, 1)]
-        [InlineData(false, true, 1)]
-        [InlineData(true, false, 1)]
-        [InlineData(true, true, 1)]
+        [InlineData(false, false, 4)]
+        [InlineData(false, true, 4)]
+        [InlineData(true, false, 4)]
+        [InlineData(true, true, 4)]
         [InlineData(false, false, 20)]
         [InlineData(false, true, 20)]
         [InlineData(true, false, 20)]
         [InlineData(true, true, 20)]
         public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
-            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes((restrictMemory ? 5 : 2) + multiplicity * 0.1));
+            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes((restrictMemory ? 5 : 2) + multiplicity * (restrictMemory ? 0.5 : 0.1)));
             using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker, restrictMemory, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
@@ -116,7 +115,7 @@ namespace DurableTask.Netherite.Tests
                 tests.AddRange(scenarios.StartAllScenarios(false, false));
             }
 
-            await this.WaitForCompletion(tests);
+            await this.WaitForCompletion(tests, TimeSpan.FromMinutes((restrictMemory ? 10 : 5) + multiplicity * (restrictMemory ? 0.5 : 0.1)));
         }
     }
 }
