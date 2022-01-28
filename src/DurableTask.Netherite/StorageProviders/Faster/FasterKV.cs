@@ -515,58 +515,64 @@ namespace DurableTask.Netherite.Faster
 
         async ValueTask PerformFasterRMWAsync(Key k, EffectTracker tracker)
         {
-            try
+            int numTries = 10;
+
+            while (true)
             {
-                var rmwAsyncResult = await this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken);
-
-                bool IsComplete()
+                try
                 {
-                    switch (rmwAsyncResult.Status)
+                    var rmwAsyncResult = await this.mainSession.RMWAsync(ref k, ref tracker, token: this.terminationToken);
+
+                    bool IsComplete()
                     {
-                        case Status.NOTFOUND:
-                        case Status.OK:
-                            return true;
+                        switch (rmwAsyncResult.Status)
+                        {
+                            case Status.NOTFOUND:
+                            case Status.OK:
+                                return true;
 
-                        case Status.PENDING:
-                            return false;
+                            case Status.PENDING:
+                                return false;
 
-                        case Status.ERROR:
-                        default:
-                            string msg = $"Could not execute RMW in Faster, received status={rmwAsyncResult.Status}";
-                            this.cacheDebugger?.Fail(msg, k);
-                            throw new FasterException(msg);
+                            case Status.ERROR:
+                            default:
+                                string msg = $"Could not execute RMW in Faster, received status={rmwAsyncResult.Status}";
+                                this.cacheDebugger?.Fail(msg, k);
+                                throw new FasterException(msg);
+                        }
                     }
-                }
-
-                if (IsComplete())
-                {
-                    return;
-                }
-
-                int numTries = 10;
-
-                while (true)
-                {
-                    this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.PendingRMW, null, tracker.CurrentEventId, 0);
-
-                    rmwAsyncResult = await rmwAsyncResult.CompleteAsync();
 
                     if (IsComplete())
                     {
                         return;
                     }
 
-                    if (--numTries == 0)
+                    while (true)
                     {
-                        this.cacheDebugger?.Fail($"Failed to execute RMW in Faster: status={rmwAsyncResult.Status.ToString()}", k);
-                        throw new FasterException("Could not complete RMW even after all retries");
+                        this.cacheDebugger?.Record(k, CacheDebugger.CacheEvent.PendingRMW, null, tracker.CurrentEventId, 0);
+
+                        rmwAsyncResult = await rmwAsyncResult.CompleteAsync();
+
+                        if (IsComplete())
+                        {
+                            return;
+                        }
+
+                        if (--numTries == 0)
+                        {
+                            this.cacheDebugger?.Fail($"Failed to execute RMW in Faster: status={rmwAsyncResult.Status.ToString()}", k);
+                            throw new FasterException("Could not complete RMW even after all retries");
+                        }
                     }
                 }
-            }
-            catch (Exception exception) when (!Utils.IsFatal(exception)) // this is a workaround that is not completely safe and should be removed when possible
-            {
-                this.cacheDebugger?.Fail($"Failed to execute RMW in Faster, encountered exception: {exception}", k);
-                throw;
+                catch (Exception exception) when (!Utils.IsFatal(exception))
+                {
+                    if (--numTries == 0)
+                    {
+                        this.cacheDebugger?.Fail($"Failed to execute RMW in Faster, encountered exception: {exception}", k);
+                        throw;
+                    }
+                }
             }
         }
 
