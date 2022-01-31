@@ -32,7 +32,7 @@ namespace DurableTask.Netherite.Tests
             this.outputHelper = outputHelper;
             this.settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             this.settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(this.settings.TestHooks);
-            this.settings.FasterCacheSizeMB = 1;
+            this.settings.FasterCacheSizeMB = 5;
             string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
             this.settings.HubName = $"ConcurrentTests-{timestamp}";
         }
