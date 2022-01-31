@@ -25,7 +25,10 @@ namespace DurableTask.Netherite.Tests
         public TestOrchestrationHost(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory)
         {
             this.orchestrationService = new Netherite.NetheriteOrchestrationService(settings, loggerFactory);
-            this.orchestrationService.CreateAsync(false).GetAwaiter().GetResult();
+            var orchestrationService = (IOrchestrationService)this.orchestrationService;
+
+            orchestrationService.CreateAsync(false).GetAwaiter().GetResult();
+
             this.settings = settings;
 
             this.worker = new TaskHubWorker(this.orchestrationService);
@@ -222,7 +225,7 @@ namespace DurableTask.Netherite.Tests
         {
             // This API currently only exists in the service object and is not yet exposed on the TaskHubClient
             Trace.TraceInformation($"TestProgress: Querying all instances...");
-            var instances = await this.orchestrationService.GetAllOrchestrationStatesAsync(CancellationToken.None);
+            var instances = await ((IOrchestrationServiceQueryClient)this.orchestrationService).GetAllOrchestrationStatesAsync(CancellationToken.None);
             Trace.TraceInformation($"TestProgress: Found {instances.Count} in the task hub instance store.");
             return instances;
         }
@@ -230,7 +233,7 @@ namespace DurableTask.Netherite.Tests
         public async Task PurgeAllAsync()
         {
             Trace.TraceInformation($"TestProgress: Purging all instances...");
-            var purgeResult = await this.orchestrationService.PurgeInstanceHistoryAsync(default, default, null);
+            var purgeResult = await ((IOrchestrationServiceQueryClient)this.orchestrationService).PurgeInstanceHistoryAsync(default, default, null);
             Trace.TraceInformation($"TestProgress: Purged {purgeResult} instances.");
         }
 
@@ -242,7 +245,7 @@ namespace DurableTask.Netherite.Tests
         {
             // This API currently only exists in the service object and is not yet exposed on the TaskHubClient
             Trace.TraceInformation($"TestProgress: Querying instances...");
-            var instances = await this.orchestrationService.GetOrchestrationStateAsync(CreatedTimeFrom, CreatedTimeTo, RuntimeStatus, InstanceIdPrefix, CancellationToken);
+            var instances = await ((IOrchestrationServiceQueryClient)this.orchestrationService).GetOrchestrationStateAsync(CreatedTimeFrom, CreatedTimeTo, RuntimeStatus, InstanceIdPrefix, CancellationToken);
             Trace.TraceInformation($"TestProgress: Found {instances.Count} in the task hub instance store.");
             return instances;
         }

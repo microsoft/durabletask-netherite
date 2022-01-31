@@ -61,7 +61,7 @@ namespace DurableTask.Netherite.Emulated
         Task ITaskHub.DeleteAsync()
         {
             this.clientQueues = null;
-            return this.host.StorageProvider.DeleteAllPartitionStatesAsync();
+            return this.host.StorageProvider.DeleteTaskhubAsync("");
         }
 
         async Task<bool> ITaskHub.ExistsAsync()

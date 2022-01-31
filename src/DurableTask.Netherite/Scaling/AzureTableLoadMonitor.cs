@@ -92,6 +92,7 @@ namespace DurableTask.Netherite.Scaling
                         Requests = e.Requests,
                         Wakeup = e.NextTimer,
                         Outbox = e.Outbox,
+                        Instances = e.Instances,
                         InputQueuePosition = e.InputQueuePosition,
                         CommitLogPosition = e.CommitLogPosition,
                         WorkerId = e.WorkerId,
@@ -112,6 +113,7 @@ namespace DurableTask.Netherite.Scaling
             public int Timers { get; set; }
             public int Requests { get; set; }
             public int Outbox { get; set; }
+            public long Instances { get; set; }
             public DateTime? NextTimer { get; set; }
             public long InputQueuePosition { get; set; }
             public long CommitLogPosition { get; set; }
@@ -141,6 +143,7 @@ namespace DurableTask.Netherite.Scaling
                 this.Requests = info.Requests;
                 this.NextTimer = info.Wakeup;
                 this.Outbox = info.Outbox;
+                this.Instances = info.Instances;
                 this.InputQueuePosition = info.InputQueuePosition;
                 this.CommitLogPosition = info.CommitLogPosition;
                 this.WorkerId = info.WorkerId;

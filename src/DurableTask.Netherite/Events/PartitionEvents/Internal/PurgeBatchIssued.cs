@@ -58,9 +58,10 @@ namespace DurableTask.Netherite
 
         public override void DetermineEffects(EffectTracker effects)
         {
-            // the last-added effects are processed first
-            // so they can set the Purged list to contain only the instance ids that are actually purged
+            // the following singletons are added first, so they are processed last, and can thus
+            // access the Purged list that contains only the instance ids that were actually purged
 
+            effects.Add(TrackedObjectKey.Stats);
             effects.Add(TrackedObjectKey.Queries);
             effects.Add(TrackedObjectKey.Sessions);
 

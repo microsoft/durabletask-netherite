@@ -46,6 +46,12 @@ namespace DurableTask.Netherite.Scaling
         public int Outbox { get; set; }
 
         /// <summary>
+        /// The total number of orchestration and entity instances
+        /// </summary>
+        [DataMember]
+        public long Instances { get; set; }
+
+        /// <summary>
         /// The next time on which to wake up.
         /// </summary>
         [DataMember]

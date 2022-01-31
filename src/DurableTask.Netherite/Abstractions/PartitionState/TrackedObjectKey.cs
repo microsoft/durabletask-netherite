@@ -32,6 +32,7 @@ namespace DurableTask.Netherite
             Timers,
             Prefetch,
             Queries,
+            Stats,
 
             // non-singletons
             History,
@@ -48,6 +49,7 @@ namespace DurableTask.Netherite
             { TrackedObjectType.Timers, typeof(TimersState) },
             { TrackedObjectType.Prefetch, typeof(PrefetchState) },
             { TrackedObjectType.Queries, typeof(QueriesState) },
+            { TrackedObjectType.Stats, typeof(StatsState) },
             
             // non-singletons
             { TrackedObjectType.History, typeof(HistoryState) },
@@ -91,6 +93,7 @@ namespace DurableTask.Netherite
         public static TrackedObjectKey Timers = new TrackedObjectKey() { ObjectType = TrackedObjectType.Timers };
         public static TrackedObjectKey Prefetch = new TrackedObjectKey() { ObjectType = TrackedObjectType.Prefetch };
         public static TrackedObjectKey Queries = new TrackedObjectKey() { ObjectType = TrackedObjectType.Queries };
+        public static TrackedObjectKey Stats = new TrackedObjectKey() { ObjectType = TrackedObjectType.Stats };
 
         // convenient constructors for non-singletons
 
@@ -115,6 +118,7 @@ namespace DurableTask.Netherite
                 TrackedObjectType.Timers => new TimersState(),
                 TrackedObjectType.Prefetch => new PrefetchState(),
                 TrackedObjectType.Queries => new QueriesState(),
+                TrackedObjectType.Stats => new StatsState(),
                 TrackedObjectType.History => new HistoryState() { InstanceId = key.InstanceId },
                 TrackedObjectType.Instance => new InstanceState() { InstanceId = key.InstanceId },
                 _ => throw new ArgumentException("invalid key", nameof(key)),

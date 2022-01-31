@@ -5,6 +5,7 @@ namespace ScalingTests
 {
     using System;
     using System.Threading.Tasks;
+    using DurableTask.Core;
     using DurableTask.Netherite;
     using DurableTask.Netherite.Scaling;
     using Microsoft.Extensions.Logging;
@@ -31,7 +32,8 @@ namespace ScalingTests
 
             logger.LogInformation("Starting OrchestrationService...");
             var service = new NetheriteOrchestrationService(settings, loggerFactory);
-            await service.StartAsync();
+            var orchestrationService = (IOrchestrationService)service;
+            await orchestrationService.StartAsync();
 
             if (service.TryGetScalingMonitor(out ScalingMonitor scalingMonitor))
             {
@@ -65,7 +67,7 @@ namespace ScalingTests
 
             // shut down
             logger.LogInformation("OchestrationService stopping...");
-            await service.StopAsync();
+            await orchestrationService.StopAsync();
             logger.LogInformation("Done");
         }
     }

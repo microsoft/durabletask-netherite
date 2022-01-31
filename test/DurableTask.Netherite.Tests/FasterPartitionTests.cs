@@ -91,11 +91,13 @@ namespace DurableTask.Netherite.Tests
             }
         }
 
-        async Task<(NetheriteOrchestrationService service, TaskHubClient client)> StartService(bool recover, Type orchestrationType, Type activityType = null)
+        async Task<(IOrchestrationService orchestrationService, TaskHubClient client)> StartService(bool recover, Type orchestrationType, Type activityType = null)
         {
             var service = new NetheriteOrchestrationService(this.settings, this.loggerFactory);
-            await service.CreateAsync();
-            await service.StartAsync();
+            var orchestrationService = (IOrchestrationService)service;
+            var orchestrationServiceClient = (IOrchestrationServiceClient)service;
+            await orchestrationService.CreateAsync();
+            await orchestrationService.StartAsync();
             var host = (TransportAbstraction.IHost)service;
             Assert.Equal(this.settings.PartitionCount, (int)service.NumberPartitions);
             var worker = new TaskHubWorker(service);

@@ -142,7 +142,7 @@ namespace DurableTask.Netherite.EventHubs
             {
                 try
                 {
-                    await Task.Delay(-1, prior.ErrorHandler.Token).ConfigureAwait(false);
+                    await Task.Delay(-1, prior.ErrorHandler.Token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -153,7 +153,7 @@ namespace DurableTask.Netherite.EventHubs
                     // we are now becoming the current incarnation
                     this.currentIncarnation = prior.Next;
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is restarting partition (incarnation {incarnation}) soon", this.eventHubName, this.eventHubPartition, c.Incarnation);
-                    await Task.Delay(TimeSpan.FromSeconds(12), this.eventProcessorShutdown.Token).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromSeconds(12), this.eventProcessorShutdown.Token);
                 }
             }
 
@@ -182,7 +182,7 @@ namespace DurableTask.Netherite.EventHubs
 
                 // start this partition (which may include waiting for the lease to become available)
                 c.Partition = this.host.AddPartition(this.partitionId, this.sender);
-                c.NextPacketToReceive = await c.Partition.CreateOrRestoreAsync(c.ErrorHandler, this.parameters.StartPositions[this.partitionId]).ConfigureAwait(false);
+                c.NextPacketToReceive = await c.Partition.CreateOrRestoreAsync(c.ErrorHandler, this.parameters.StartPositions[this.partitionId]);
 
                 this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} started partition (incarnation {incarnation}), next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, c.Incarnation, c.NextPacketToReceive);
 
@@ -241,7 +241,7 @@ namespace DurableTask.Netherite.EventHubs
                 else
                 {
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopping partition (incarnation: {incarnation}, quickly: {quickly})", this.eventHubName, this.eventHubPartition, current.Incarnation, quickly);
-                    await current.Partition.StopAsync(quickly).ConfigureAwait(false);
+                    await current.Partition.StopAsync(quickly);
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopped partition (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, current.Incarnation);
                 }
 
@@ -269,7 +269,7 @@ namespace DurableTask.Netherite.EventHubs
 
             if (reason != CloseReason.LeaseLost)
             {
-                await this.SaveEventHubsReceiverCheckpoint(context, 0).ConfigureAwait(false);
+                await this.SaveEventHubsReceiverCheckpoint(context, 0);
             }
 
             await this.IdempotentShutdown("CloseAsync", reason == CloseReason.LeaseLost);
@@ -290,7 +290,7 @@ namespace DurableTask.Netherite.EventHubs
                 this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is checkpointing receive position through #{seqno}", this.eventHubName, this.eventHubPartition, checkpoint.SequenceNumber);
                 try
                 {
-                    await context.CheckpointAsync(checkpoint).ConfigureAwait(false);
+                    await context.CheckpointAsync(checkpoint);
                     this.lastCheckpointedOffset = long.Parse(checkpoint.Offset);
                 }
                 catch (Exception e) when (!Utils.IsFatal(e))
@@ -334,7 +334,7 @@ namespace DurableTask.Netherite.EventHubs
 
         async Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
         {
-            this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} is receiving #{seqno}", this.eventHubName, this.eventHubPartition, packets.First().SystemProperties.SequenceNumber);
+            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is receiving events starting with #{seqno}", this.eventHubName, this.eventHubPartition, packets.First().SystemProperties.SequenceNumber);
 
             if (!this.lastCheckpointedOffset.HasValue)
             {
@@ -343,11 +343,11 @@ namespace DurableTask.Netherite.EventHubs
                 this.lastCheckpointedOffset = first == null ? null : long.Parse(first.SystemProperties.Offset);
             }
 
-            PartitionIncarnation current = await this.currentIncarnation.ConfigureAwait(false);
+            PartitionIncarnation current = await this.currentIncarnation;
 
             while (current != null && current.ErrorHandler.IsTerminated)
             {
-                current = await current.Next.ConfigureAwait(false);
+                current = await current.Next;
             }
 
 
@@ -434,7 +434,7 @@ namespace DurableTask.Netherite.EventHubs
                     current.Partition.SubmitEvents(batch);
                 }
 
-                await this.SaveEventHubsReceiverCheckpoint(context, 600000).ConfigureAwait(false);
+                await this.SaveEventHubsReceiverCheckpoint(context, 600000);
 
                 // can use this for testing: terminates partition after every one packet received, but
                 // that packet is then processed once the partition recovers, so in the end there is progress

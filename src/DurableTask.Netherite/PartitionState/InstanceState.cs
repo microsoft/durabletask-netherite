@@ -39,7 +39,8 @@ namespace DurableTask.Netherite
 
         public override void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
-            bool filterDuplicate = this.OrchestrationState != null
+            bool exists = this.OrchestrationState != null;
+            bool filterDuplicate = exists
                 && creationRequestReceived.DedupeStatuses != null
                 && creationRequestReceived.DedupeStatuses.Contains(this.OrchestrationState.OrchestrationStatus);
 
@@ -74,6 +75,11 @@ namespace DurableTask.Netherite
                 {
                     effects.Add(TrackedObjectKey.Timers);
                 }
+
+                if (!exists)
+                {
+                    effects.Add(TrackedObjectKey.Stats);
+                }
             }
 
             effects.Add(TrackedObjectKey.Outbox);
@@ -99,6 +105,13 @@ namespace DurableTask.Netherite
 
         public override void Process(BatchProcessed evt, EffectTracker effects)
         {
+            if (this.OrchestrationState == null)
+            {
+                // a new instance is created (this can happen for suborchestrations or for entities)
+                this.OrchestrationState = new OrchestrationState();
+                effects.Add(TrackedObjectKey.Stats);
+            }
+
             // update the current orchestration state based on the new events
             this.OrchestrationState = UpdateOrchestrationState(this.OrchestrationState, evt.NewEvents);
 
@@ -129,10 +142,6 @@ namespace DurableTask.Netherite
 
         static OrchestrationState UpdateOrchestrationState(OrchestrationState orchestrationState, List<HistoryEvent> events)
         {
-            if (orchestrationState == null)
-            {
-                orchestrationState = new OrchestrationState();
-            }
             foreach (var evt in events)
             {
                 if (evt is ExecutionStartedEvent executionStartedEvent)
@@ -181,6 +190,16 @@ namespace DurableTask.Netherite
             }
         }
 
+        void DeleteState(EffectTracker effects)
+        {
+            // delete instance object and history object
+            effects.AddDeletion(this.Key);
+            effects.AddDeletion(TrackedObjectKey.History(this.InstanceId));
+
+            this.OrchestrationState = null;
+            this.Waiters = null;
+        }
+
         public override void Process(DeletionRequestReceived deletionRequest, EffectTracker effects)
         {
             int numberInstancesDeleted = 0;
@@ -190,12 +209,13 @@ namespace DurableTask.Netherite
             {
                 numberInstancesDeleted++;
 
-                // delete instance object and history object
-                effects.AddDeletion(this.Key);
-                effects.AddDeletion(TrackedObjectKey.History(this.InstanceId));
+                this.DeleteState(effects);
 
                 // also delete all task messages headed for this instance
                 effects.Add(TrackedObjectKey.Sessions);
+
+                // update the instance count
+                effects.Add(TrackedObjectKey.Stats);
             }
 
             effects.Add(TrackedObjectKey.Outbox);
@@ -218,9 +238,7 @@ namespace DurableTask.Netherite
             {
                 purgeBatchIssued.Purged.Add(this.InstanceId);
 
-                // delete instance object and history object
-                effects.AddDeletion(this.Key);
-                effects.AddDeletion(TrackedObjectKey.History(this.InstanceId));
+                this.DeleteState(effects);
             }
         }
     }

@@ -200,6 +200,11 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        public override async Task RemoveObsoleteCheckpoints()
+        {
+            await this.blobManager.RemoveObsoleteCheckpoints();
+        }
+
         public async static Task RunOnDedicatedThreadAsync(Func<Task> asyncAction)
         {
             Task<Task> tasktask = new Task<Task>(() => asyncAction());

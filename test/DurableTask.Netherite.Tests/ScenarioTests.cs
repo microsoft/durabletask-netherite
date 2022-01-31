@@ -207,7 +207,7 @@ namespace DurableTask.Netherite.Tests
         public async Task LargeFanOutOrchestration()
         {
             var client = await this.host.StartOrchestrationAsync(typeof(Orchestrations.FanOutFanIn), 1000);
-            var status = await client.WaitForCompletionAsync(TimeSpan.FromMinutes(5));
+            var status = await client.WaitForCompletionAsync(TimeSpan.FromMinutes(8));
 
             Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
         }
