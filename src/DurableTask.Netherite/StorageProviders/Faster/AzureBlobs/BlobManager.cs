@@ -142,7 +142,6 @@ namespace DurableTask.Netherite.Faster
         static readonly int[] StorageFormatVersion = new int[] {
             1, //initial version
             2, //0.7.0-beta changed singleton storage, and adds dequeue count
-            2, //separate singletons
             3, //changed organization of files
             4, //use Faster v2, reduced page size
         }; 
