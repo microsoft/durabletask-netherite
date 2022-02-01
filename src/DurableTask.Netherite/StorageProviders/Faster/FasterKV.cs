@@ -1053,7 +1053,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public class Functions : IFunctions<Key, Value, EffectTracker, Output, object>
+        public class Functions : IFunctions<Key, Value, EffectTracker, Output, object>, ITraceListener<Key>
         {
             readonly Partition partition;
             readonly FasterKV store;
@@ -1070,6 +1070,11 @@ namespace DurableTask.Netherite.Faster
                 this.cacheDebugger = partition.Settings.TestHooks?.CacheDebugger;
                 this.cacheTracker = isScan ? null : cacheTracker;
                 this.isScan = isScan;
+            }
+
+            public void Trace(Key key, string message)
+            {
+                this.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.Faster, null, message, 0);
             }
 
             bool IFunctions<Key, Value, EffectTracker, Output, object>.NeedInitialUpdate(ref Key key, ref EffectTracker input, ref Output output)

@@ -80,6 +80,7 @@ namespace DurableTask.Netherite.Faster
             Reset,
             SizeCheckSuccess,
             SizeCheckFail,
+            Faster,
         };
 
         public class ObjectInfo
@@ -169,6 +170,10 @@ namespace DurableTask.Netherite.Faster
                     sb.Append(this.Address);
                     sb.Append('a');
                     sb.Append(this.Delta);
+                }
+                else if (this.CacheEvent == CacheEvent.Faster)
+                {
+                    sb.Append(this.EventId);
                 }
                 else
                 {

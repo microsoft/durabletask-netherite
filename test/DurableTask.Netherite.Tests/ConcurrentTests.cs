@@ -86,7 +86,7 @@ namespace DurableTask.Netherite.Tests
         public async Task EachScenarioOnce(bool restrictMemory)
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker: true, restrictMemory, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker: true, restrictMemory ? (int?) 1 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = scenarios.StartAllScenarios(includeTimers: !restrictMemory, includeLarge: true).ToList();
@@ -105,7 +105,7 @@ namespace DurableTask.Netherite.Tests
         public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes((restrictMemory ? 5 : 2) + multiplicity * (restrictMemory ? 0.5 : 0.1)));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker, restrictMemory, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker, restrictMemory ? (int?)3 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = new List<(string, Task)>();
@@ -116,6 +116,34 @@ namespace DurableTask.Netherite.Tests
             }
 
             await this.WaitForCompletion(tests, TimeSpan.FromMinutes((restrictMemory ? 10 : 5) + multiplicity * (restrictMemory ? 0.5 : 0.1)));
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(3)]
+        [InlineData(4)]
+        [InlineData(5)]
+        [InlineData(6)]
+        [InlineData(7)]
+        [InlineData(8)]
+        public async Task ReproHangingReads(int sequenceNumber)
+        {
+            // running a single test is usually not enough to repro, so we run the same test multiple times
+            this.outputHelper.WriteLine($"starting test {sequenceNumber}");
+
+            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(8));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, false, 1, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            var scenarios = new ScenarioTests(fixture, this.outputHelper);
+
+            var tests = new List<(string, Task)>();
+
+            for (int i = 0; i < 30; i++)
+            {
+                tests.AddRange(scenarios.StartAllScenarios(false, false));
+            }
+
+            await this.WaitForCompletion(tests, TimeSpan.FromMinutes(20));
         }
     }
 }
