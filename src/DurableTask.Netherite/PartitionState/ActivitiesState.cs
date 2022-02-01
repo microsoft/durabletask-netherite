@@ -276,7 +276,6 @@ namespace DurableTask.Netherite
             else
             {
                 // the response must be sent to a remote partition
-                evt.ReportedLoad = this.LocalBacklog.Count + this.QueuedRemotes.Count;
                 effects.Add(TrackedObjectKey.Outbox);
             }
 
