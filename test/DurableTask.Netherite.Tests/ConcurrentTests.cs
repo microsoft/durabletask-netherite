@@ -32,7 +32,6 @@ namespace DurableTask.Netherite.Tests
             this.outputHelper = outputHelper;
             this.settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
             this.settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(this.settings.TestHooks);
-            this.settings.FasterCacheSizeMB = 1;
             string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
             this.settings.HubName = $"ConcurrentTests-{timestamp}";
         }
@@ -86,7 +85,7 @@ namespace DurableTask.Netherite.Tests
         public async Task EachScenarioOnce(bool restrictMemory)
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker: true, restrictMemory ? (int?) 1 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker: true, restrictMemory ? (int?) 0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = scenarios.StartAllScenarios(includeTimers: !restrictMemory, includeLarge: true).ToList();
@@ -105,7 +104,7 @@ namespace DurableTask.Netherite.Tests
         public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes((restrictMemory ? 5 : 2) + multiplicity * (restrictMemory ? 0.5 : 0.1)));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker, restrictMemory ? (int?)3 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker, restrictMemory ? (int?)0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = new List<(string, Task)>();
@@ -133,7 +132,7 @@ namespace DurableTask.Netherite.Tests
             this.outputHelper.WriteLine($"starting test {sequenceNumber}");
 
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(8));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, false, 1, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, false, 0, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = new List<(string, Task)>();

@@ -88,7 +88,7 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterAlt");
         }
 
-        public override double CacheSizeMB => 0.0;
+        public override (double totalSizeMB, int fillPercentage) CacheSizeInfo => (0.0,0);
 
         public override void InitMainSession()
         {

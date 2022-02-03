@@ -98,7 +98,8 @@ namespace DurableTask.Netherite.Scaling
                         WorkerId = e.WorkerId,
                         LatencyTrend = e.LatencyTrend,
                         MissRate = e.MissRate,
-                        CacheSizeMB = e.CacheSizeMB,
+                        Cache = int.Parse(e.Cache),
+                        CacheMB = e.CacheMB,
                     });
                 }
             }
@@ -120,7 +121,8 @@ namespace DurableTask.Netherite.Scaling
             public string WorkerId { get; set; }
             public string LatencyTrend { get; set; }
             public double MissRate { get; set; }
-            public double CacheSizeMB { get; set; }
+            public string Cache { get; set; }
+            public double CacheMB { get; set; }
 
             public PartitionInfoEntity()
             {
@@ -149,7 +151,8 @@ namespace DurableTask.Netherite.Scaling
                 this.WorkerId = info.WorkerId;
                 this.LatencyTrend = info.LatencyTrend;
                 this.MissRate = info.MissRate;
-                this.CacheSizeMB = info.CacheSizeMB;
+                this.Cache = $"{info.Cache}%";
+                this.CacheMB = info.CacheMB;
 
                 this.ETag = "*"; // no conditions when inserting, replace existing
             }

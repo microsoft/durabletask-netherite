@@ -36,7 +36,7 @@ namespace DurableTask.Netherite.Faster
 
         public long TargetMemorySize { get; set; }
 
-        public FasterStorage(NetheriteOrchestrationServiceSettings settings, string pathPrefix, ILoggerFactory loggerFactory)
+        public FasterStorage(NetheriteOrchestrationServiceSettings settings, string pathPrefix, MemoryTracker memoryTracker, ILoggerFactory loggerFactory)
         {
             string connectionString = settings.ResolvedStorageConnectionString;
             string pageBlobConnectionString = settings.ResolvedPageBlobStorageConnectionString;
@@ -60,8 +60,7 @@ namespace DurableTask.Netherite.Faster
             this.taskHubName = settings.HubName;
             this.pathPrefix = pathPrefix;
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
-            this.memoryTracker = new MemoryTracker(this);
-            this.TargetMemorySize = settings.FasterCacheSizeMB ?? 200 * 1024 * 1024;
+            this.memoryTracker = memoryTracker;
 
             if (settings.TestHooks?.CacheDebugger != null)
             {

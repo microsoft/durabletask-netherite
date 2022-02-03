@@ -32,6 +32,7 @@ namespace DurableTask.Netherite
         readonly ITaskHub taskHub;
         readonly TransportConnectionString.StorageChoices configuredStorage;
         readonly TransportConnectionString.TransportChoices configuredTransport;
+        readonly MemoryTracker memoryTracker;
 
         readonly WorkItemTraceHelper workItemTraceHelper;
 
@@ -119,6 +120,8 @@ namespace DurableTask.Netherite
                     {
                         throw new NotSupportedException("Netherite backend requires 64bit, but current process is 32bit.");
                     }
+
+                    this.memoryTracker = new MemoryTracker((long) (settings.FasterCacheSizeMB ?? 400) * 1024 * 1024);
                 }
 
                 switch (this.configuredTransport)
@@ -209,7 +212,7 @@ namespace DurableTask.Netherite
                     return new MemoryStorage(this.TraceHelper.Logger);
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    return new Faster.FasterStorage(this.Settings, this.PathPrefix, this.LoggerFactory);
+                    return new Faster.FasterStorage(this.Settings, this.PathPrefix, this.memoryTracker, this.LoggerFactory);
 
                 default:
                     throw new NotImplementedException("no such storage choice");

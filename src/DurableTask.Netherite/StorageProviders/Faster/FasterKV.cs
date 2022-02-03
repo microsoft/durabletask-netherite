@@ -47,7 +47,7 @@ namespace DurableTask.Netherite.Faster
 
             this.storelogsettings = blobManager.GetDefaultStoreLogSettings(
                 partition.Settings.UseSeparatePageBlobStorage, 
-                this.cacheTracker.TotalAvailableMemory - BlobManager.HashTableSizeBytes, 
+                this.cacheTracker.MaxCacheSize - BlobManager.HashTableSizeBytes, 
                 partition.Settings.FasterTuningParameters);
 
             this.fht = new FasterKV<Key, Value>(
@@ -742,7 +742,18 @@ namespace DurableTask.Netherite.Faster
 
         public long MemoryUsedWithoutObjects => this.fht.IndexSize * 64 + this.fht.Log.MemorySizeBytes + this.fht.OverflowBucketCount * 64;
 
-        public override double CacheSizeMB => ((double)(this.cacheTracker.TrackedObjectSize + this.MemoryUsedWithoutObjects)) / (1024 * 1024);
+        public override (double totalSizeMB, int fillPercentage) CacheSizeInfo {
+            get 
+            {
+                double totalSize = (double)(this.cacheTracker.TrackedObjectSize + this.MemoryUsedWithoutObjects);
+                double targetSize = (double) this.cacheTracker.TargetSize;
+                int fillPercentage = (int) Math.Round(100 * (totalSize / targetSize));
+                double totalSizeMB = Math.Round(100 * totalSize / (1024 * 1024)) / 100;
+                return (totalSizeMB, fillPercentage);
+            }
+        }
+            
+            
 
         public void AdjustPageCount(long targetSize, long trackedObjectSize)
         {

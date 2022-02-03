@@ -17,12 +17,12 @@ namespace DurableTask.Netherite.Faster
     /// </summary>
     class MemoryTracker
     {
-        readonly FasterStorage fasterStorage;
+        readonly long maxCacheSize;
         readonly ConcurrentDictionary<CacheTracker, CacheTracker> stores;
 
-        public MemoryTracker(FasterStorage fasterStorage)
+        public MemoryTracker(long maxCacheSize)
         {
-            this.fasterStorage = fasterStorage;
+            this.maxCacheSize = maxCacheSize;
             this.stores = new ConcurrentDictionary<CacheTracker, CacheTracker>();
         }
 
@@ -38,15 +38,13 @@ namespace DurableTask.Netherite.Faster
         {
             if (this.stores.Count > 0)
             {
-                long targetSize = this.TotalAvailableMemory / this.stores.Count;
+                long targetSize = this.maxCacheSize / this.stores.Count;
                 foreach (var s in this.stores.Keys)
                 {
                     s.SetTargetSize(targetSize);
                 }
             }
         }
-
-        long TotalAvailableMemory => this.fasterStorage.TargetMemorySize;
 
         public (int, long) GetMemorySize()
         {
@@ -82,7 +80,7 @@ namespace DurableTask.Netherite.Faster
 
             public long TargetSize { get; set; }
 
-            public long TotalAvailableMemory => this.memoryTracker.TotalAvailableMemory;
+            public long MaxCacheSize => this.memoryTracker.maxCacheSize;
 
             public CacheTracker(MemoryTracker memoryTracker, FasterKV store, CacheDebugger cacheDebugger)
             {

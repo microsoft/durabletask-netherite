@@ -86,7 +86,7 @@ namespace DurableTask.Netherite.AzureFunctions
             JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options.StorageProvider), eventSourcedSettings);
 
             // configure the cache size if not already configured
-            eventSourcedSettings.FasterCacheSizeMB = eventSourcedSettings.FasterCacheSizeMB ?? (this.inConsumption ? 100 : 200 * Environment.ProcessorCount);
+            eventSourcedSettings.FasterCacheSizeMB ??= (this.inConsumption ? 100 : 200 * Environment.ProcessorCount);
 
             // if worker id is specified in environment, it overrides the configured setting
             string workerId = Environment.GetEnvironmentVariable("WorkerId");
