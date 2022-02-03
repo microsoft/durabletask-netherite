@@ -349,12 +349,12 @@ namespace DurableTask.Netherite.Faster
 
                         if (this.shiftPending.HasValue)
                         {
-                            // we now shift and do another checkpoint
+                            // shifting, and then a second store checkpoint, are next
                             var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, this.shiftPending);
                             if (token.HasValue)
                             {
                                 this.shiftPending = null;
-                                this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value);
+                                this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value, true);
                                 this.numberEventsSinceLastCheckpoint = 0;
                             }
                         }
@@ -373,11 +373,13 @@ namespace DurableTask.Netherite.Faster
                     if (this.pendingIndexCheckpoint.IsCompleted == true)
                     {
                         await this.pendingIndexCheckpoint; // observe exceptions here
+
+                        // the (first) store checkpoint is next
                         var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, null);
                         if (token.HasValue)
                         {
                             this.pendingIndexCheckpoint = null;
-                            this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value);
+                            this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value, !this.shiftPending.HasValue);
                             this.numberEventsSinceLastCheckpoint = 0;
                         }
                     }
@@ -386,13 +388,15 @@ namespace DurableTask.Netherite.Faster
                 {
                     if (this.pendingCompaction.IsCompleted == true)
                     {
-                        this.shiftPending = await this.pendingCompaction; // observe exceptions here
+                        // take not of the shifted begin address, we will use it when it comes time for the store checkpoint 
+                        this.shiftPending = await this.pendingCompaction; 
 
+                        // the index checkpoint is next
                         var token = this.store.StartIndexCheckpoint();
                         if (token.HasValue)
                         {
                             this.pendingCompaction = null;
-                            this.pendingIndexCheckpoint = this.WaitForCheckpointAsync(true, token.Value);
+                            this.pendingIndexCheckpoint = this.WaitForCheckpointAsync(true, token.Value, false);
                         }
                     }
                 }
@@ -444,7 +448,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
  
-        public async Task<(long,long)> WaitForCheckpointAsync(bool isIndexCheckpoint, Guid checkpointToken)
+        public async Task<(long,long)> WaitForCheckpointAsync(bool isIndexCheckpoint, Guid checkpointToken, bool removeObsoleteCheckpoints)
         {
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
@@ -470,7 +474,10 @@ namespace DurableTask.Netherite.Faster
  
             this.traceHelper.FasterCheckpointPersisted(checkpointToken, description, commitLogPosition, inputQueuePosition, stopwatch.ElapsedMilliseconds);
 
-            await this.store.RemoveObsoleteCheckpoints();
+            if (removeObsoleteCheckpoints)
+            {
+                await this.store.RemoveObsoleteCheckpoints();
+            }
 
             this.Notify();
             return (commitLogPosition, inputQueuePosition);
