@@ -726,7 +726,10 @@ namespace DurableTask.Netherite.Faster
             }
             else
             {
-                this.TraceHelper.FasterProgress("Removing obsolete checkpoints");
+                string postFix1 = $"{cprCheckpointPrefix}{this.CheckpointInfo.LogToken.ToString()}/";
+                string postFix2 = $"{indexCheckpointPrefix}{this.CheckpointInfo.IndexToken.ToString()}/";
+
+                this.TraceHelper.FasterProgress($"Removing obsolete checkpoints, keeping only {postFix1} and {postFix2}");
 
                 var tasks = new List<Task<(int,int)>>();
 
@@ -765,8 +768,6 @@ namespace DurableTask.Netherite.Faster
                             return results.Count();
                         });
 
-                    string postFix1 = $"{cprCheckpointPrefix}{this.CheckpointInfo.LogToken.ToString()}/";
-                    string postFix2 = $"{indexCheckpointPrefix}{this.CheckpointInfo.IndexToken.ToString()}/";
                     var deletionTasks = new List<Task<int>>();
 
                     foreach (var item in results)
