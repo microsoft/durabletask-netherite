@@ -125,7 +125,7 @@ namespace DurableTask.Netherite.Scaling
         /// The current size of the cache, as a percentage.
         /// </summary>
         [DataMember]
-        public int Cache { get; set; }
+        public int CachePct { get; set; }
 
         /// <summary>
         /// The current size of the cache in MB
