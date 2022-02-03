@@ -47,7 +47,7 @@ namespace DurableTask.Netherite.Faster
                             await this.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
                         }
 
-                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} started attempt {numAttempts}; target={target} {data}");
+                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) started attempt {numAttempts}; target={target} {data}");
 
                         stopwatch.Restart();
 
@@ -82,7 +82,7 @@ namespace DurableTask.Netherite.Faster
                         }
                         continue;
                     }
-                    catch (Exception exception) when (!Utils.IsFatal(exception))
+                    catch (Exception exception)
                     {
                         this.HandleStorageError(name, $"storage operation {name} ({intent}) failed on attempt {numAttempts}", target, exception, isCritical, this.PartitionErrorHandler.IsTerminated);
                         throw;
@@ -163,7 +163,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     continue;
                 }
-                catch (Exception exception) when (!Utils.IsFatal(exception))
+                catch (Exception exception)
                 {
                     this.HandleStorageError(name, $"storage operation {name} ({intent}) failed on attempt {numAttempts}", target, exception, isCritical, this.PartitionErrorHandler.IsTerminated);
                     throw;
