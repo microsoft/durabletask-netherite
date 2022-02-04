@@ -10,7 +10,7 @@ It also provides some additional, stronger guarantees:
 - All messages (between clients, orchestrations, activities, and entities) are delivered in order, because this is already guaranteed by EventHubs. For example, when sending a sequence of events or signals to an orchestration or entity, the delivery order is guaranteed to be the same as the sending order. 
 
 **Better performance**.  
-Netherite may provide higher throughput and lower latency, compared to 
+Netherite may provide higher throughput and lower latency, compared to the default Azure Storage backend.
 
 - EventHubs can scale up to 32 partitions and 20 throughput units, which allows 20 MB/s worth of messages to be processed on 32 nodes. 
 - Page Blobs allows more batching than table storage, which improves maximum throughput.

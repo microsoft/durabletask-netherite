@@ -20,7 +20,7 @@ Event counting is useful for quick back-of-the-napkin calculations to get a roug
 |<10000| start all the orchestrations directly  |
 |10000| signal 50 entities that each launches 200 orchestrations |
 
-**How throughput is defined and measured.** For these experiments we define the throughput, in events per second, as 
+**How throughput is defined and measured.** For these experiments we define the throughput, in events per second, as
 
 >  throughput = (events per orchestration) * (number of orchestrations) / (test duration)
 
@@ -55,14 +55,14 @@ For the single-node tests, we measure how much throughput a single node achieves
 
 <img src="images/hellocities5-singlenode.png" width="600px">
 
-| Compute | Backend | Total time (sec) | Events/sec |
-|-|-|-|-|
-| EP1 (1-core) | Netherite (1TU) | 17.7 | 565 |
-| EP1 (1-core) | Azure Storage   | 31.7 | 315 |
-| EP2 (2-core) | Netherite (1TU) | 5.9| 1708 |
-| EP2 (2-core) | Azure Storage   | 22.5 | 445 |
-| EP3 (4-core) | Netherite (1TU) | 3.0 | 3390 |
-| EP3 (4-core) | Azure Storage   | 20.7 | 484 |
+| Compute | Backend | Total time (sec) | Events/sec | Orchestrations/sec |
+|-|-|-|-|-|
+| EP1 (1-core) | Netherite (1TU) | 17.7 | 565 | 57 |
+| EP1 (1-core) | Azure Storage   | 31.7 | 315 | 32 |
+| EP2 (2-core) | Netherite (1TU) | 5.9| 1708 | 171 |
+| EP2 (2-core) | Azure Storage   | 22.5 | 445 | 45 |
+| EP3 (4-core) | Netherite (1TU) | 3.0 | 3390 | 339 |
+| EP3 (4-core) | Azure Storage   | 20.7 | 484 | 48 |
 
 Some takeaways:
 
@@ -75,7 +75,7 @@ Some takeaways:
 
 ### Multi-Node Throughput
 
-For the single-node tests, we measure how much throughput a single node achieves, for each backend.
+For the multi-node tests, we measure how much throughput a cluster of nodes achieves, for each backend.
 
 * Number of nodes: **4, 8, 12**
 * Scenario: **HelloCities5**
@@ -101,27 +101,25 @@ Some takeaways:
 * With Netherite, we observed some load imbalance on 8 nodes (since 12 partitions do not evenly distribute over 8 nodes), thus the 8-node throughput is lower than the average of the 4-node and 12-node throughput.
 * At high scale, Netherite outperforms Azure Storage by over an order of magnitude
 
-| Node Size | Node Count | Backend | #Orchestrations | Avg. time (sec) | Events/sec|
-|-|-|-|-|-|-|
-| EP1 (1-core) | x 4   | Azure Storage | 5000 | 49.2 | 1015 |
-| EP1 (1-core) | x 8   | Azure Storage | 5000 | 37.7 | 1326 |
-| EP1 (1-core) | x 12  | Azure Storage | 5000 | 34.2 | 1462 |
-| EP2 (2-core) | x 4   | Azure Storage | 5000 | 33.8 | 1479 |
-| EP2 (2-core) | x 8   | Azure Storage | 5000 | 31.7 | 1578 |
-| EP2 (2-core) | x 12  | Azure Storage | 5000 | 31.7 | 1576 |
-| EP3 (4-core) | x 4   | Azure Storage | 5000 | 31.6 | 1582 |
-| EP3 (4-core) | x 8   | Azure Storage | 5000 | 28.4 | 1760 |
-| EP3 (4-core) | x 12  | Azure Storage | 5000 | 26.8 | 1868 |
-| EP1 (1-core) | x 4   | Netherite (1 TU) | 5000  | 24.7 | 2027 |
-| EP1 (1-core) | x 8   | Netherite (1 TU) | 5000  | 18.3 | 2728 |
-| EP1 (1-core) | x 12  | Netherite (1 TU) | 5000  | 16.0 | 3117 |
-| EP2 (2-core) | x 4   | Netherite (1 TU) | 10000 | 17.9 | 5601 |
-| EP2 (2-core) | x 8   | Netherite (1 TU) | 10000 | 11.0 | 9055 |
-| EP2 (2-core) | x 12  | Netherite (1 TU) | 10000 | 5.86  | 17057|
-| EP2 (2-core) | x 12  | Netherite (2 TU) | 10000 | 5.75  | 17406|
-| EP3 (4-core) | x 4   | Netherite (1 TU) | 10000 | 10.7 | 9354 |
-| EP3 (4-core) | x 8   | Netherite (1 TU) | 10000 | 7.09  | 14101|
-| EP3 (4-core) | x 12  | Netherite (1 TU) | 10000 | 3.73  | 26828|
-| EP3 (4-core) | x 12  | Netherite (2 TU) | 10000 | 3.67  | 27285|
-
-
+| Node Size | Node Count | Backend | #Orchestrations | Avg. time (sec) | Events/sec| Orchestrations/sec |
+|-|-|-|-|-|-|-|
+| EP1 (1-core) | x 4   | Azure Storage | 5000 | 49.2 | 1015 | 102 |
+| EP1 (1-core) | x 8   | Azure Storage | 5000 | 37.7 | 1326 | 133 |
+| EP1 (1-core) | x 12  | Azure Storage | 5000 | 34.2 | 1462 | 146 |
+| EP2 (2-core) | x 4   | Azure Storage | 5000 | 33.8 | 1479 | 148 |
+| EP2 (2-core) | x 8   | Azure Storage | 5000 | 31.7 | 1578 | 158 |
+| EP2 (2-core) | x 12  | Azure Storage | 5000 | 31.7 | 1576 | 158 |
+| EP3 (4-core) | x 4   | Azure Storage | 5000 | 31.6 | 1582 | 158 |
+| EP3 (4-core) | x 8   | Azure Storage | 5000 | 28.4 | 1760 | 176 |
+| EP3 (4-core) | x 12  | Azure Storage | 5000 | 26.8 | 1868 | 187 |
+| EP1 (1-core) | x 4   | Netherite (1 TU) | 5000  | 24.7 | 2027 | 203 |
+| EP1 (1-core) | x 8   | Netherite (1 TU) | 5000  | 18.3 | 2728 | 273 |
+| EP1 (1-core) | x 12  | Netherite (1 TU) | 5000  | 16.0 | 3117 | 312 |
+| EP2 (2-core) | x 4   | Netherite (1 TU) | 10000 | 17.9 | 5601 | 560 |
+| EP2 (2-core) | x 8   | Netherite (1 TU) | 10000 | 11.0 | 9055 | 906 |
+| EP2 (2-core) | x 12  | Netherite (1 TU) | 10000 | 5.86  | 17057| 1706|
+| EP2 (2-core) | x 12  | Netherite (2 TU) | 10000 | 5.75  | 17406| 1740 |
+| EP3 (4-core) | x 4   | Netherite (1 TU) | 10000 | 10.7 | 9354 | 935 |
+| EP3 (4-core) | x 8   | Netherite (1 TU) | 10000 | 7.09  | 14101| 1410 |
+| EP3 (4-core) | x 12  | Netherite (1 TU) | 10000 | 3.73  | 26828| 2683 |
+| EP3 (4-core) | x 12  | Netherite (2 TU) | 10000 | 3.67  | 27285| 2729 |
