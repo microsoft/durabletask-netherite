@@ -43,7 +43,7 @@ namespace DurableTask.Netherite.Tests
             string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
             settings.HubName = $"SingleHostFixture-{timestamp}";
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
-            settings.FasterCacheSizeMB = restrictMemory;
+            settings.InstanceCacheSizeMB = restrictMemory;
             this.cacheDebugger = settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(settings.TestHooks);
             if (useReplayChecker)
             {

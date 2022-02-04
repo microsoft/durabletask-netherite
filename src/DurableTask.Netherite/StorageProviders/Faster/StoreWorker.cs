@@ -319,6 +319,8 @@ namespace DurableTask.Netherite.Faster
                     return;
                 }
 
+                this.store.AdjustCacheSize();
+
                 // handle progression of checkpointing state machine (none -> index pending -> store pending -> none)
                 if (this.pendingStoreCheckpoint != null)
                 {

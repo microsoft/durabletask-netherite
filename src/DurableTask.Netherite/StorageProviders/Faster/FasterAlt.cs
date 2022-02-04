@@ -94,6 +94,10 @@ namespace DurableTask.Netherite.Faster
         {
         }
 
+        public override void AdjustCacheSize()
+        {
+        }
+
         public override Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync()
         {
             foreach (var guid in this.ReadCheckpointIntentions())

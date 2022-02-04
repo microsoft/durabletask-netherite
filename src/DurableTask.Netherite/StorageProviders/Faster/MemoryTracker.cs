@@ -10,6 +10,7 @@ namespace DurableTask.Netherite.Faster
     using System.Linq;
     using System.Text;
     using System.Threading;
+    using System.Threading.Tasks;
     using FASTER.core;
 
     /// <summary>
@@ -26,9 +27,9 @@ namespace DurableTask.Netherite.Faster
             this.stores = new ConcurrentDictionary<CacheTracker, CacheTracker>();
         }
 
-        public CacheTracker NewCacheTracker(FasterKV store, CacheDebugger cacheDebugger)
+        public CacheTracker NewCacheTracker(FasterKV store, int partitionId, CacheDebugger cacheDebugger)
         {
-            var cacheTracker = new CacheTracker(this, store, cacheDebugger);
+            var cacheTracker = new CacheTracker(this, partitionId, store, cacheDebugger);
             this.stores.TryAdd(cacheTracker, cacheTracker);
             this.UpdateTargetSizes();
             return cacheTracker;
@@ -66,11 +67,12 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public class CacheTracker : IDisposable
+        public class CacheTracker : BatchWorker<object>, IDisposable
         {
             readonly MemoryTracker memoryTracker;
             readonly FasterKV store;
             readonly CacheDebugger cacheDebugger;
+            readonly int pageSize;
 
             long trackedObjectSize;
 
@@ -82,11 +84,13 @@ namespace DurableTask.Netherite.Faster
 
             public long MaxCacheSize => this.memoryTracker.maxCacheSize;
 
-            public CacheTracker(MemoryTracker memoryTracker, FasterKV store, CacheDebugger cacheDebugger)
+            public CacheTracker(MemoryTracker memoryTracker, int partitionId, FasterKV store, CacheDebugger cacheDebugger)
+                : base($"CacheTracker{partitionId:D2}", false, 10000, CancellationToken.None, null)
             {
                 this.memoryTracker = memoryTracker;
                 this.store = store;
                 this.cacheDebugger = cacheDebugger;
+                this.pageSize = store.PageSize;
             }
 
             public void Dispose()
@@ -109,24 +113,52 @@ namespace DurableTask.Netherite.Faster
 
             public (int, long) ComputeMemorySize() => this.store.ComputeMemorySize();
 
-            public void DecrementPages() => this.store.DecrementPages();
+            public void DecrementPages() => this.store.DecrementPages(); // used by tests only
 
             public void SetTargetSize(long newTargetSize)
             {
                 this.TargetSize = newTargetSize;
-                this.store.AdjustPageCount(this.TargetSize, this.TrackedObjectSize);
+                this.Notify();
             }
 
-            public void OnEviction(long totalSize)
+            public void OnEviction(long totalSize, long endAddress)
             {
                 Interlocked.Add(ref this.trackedObjectSize, -totalSize);
-                this.store.AdjustPageCount(this.TargetSize, this.TrackedObjectSize);
+                this.Notify();
             }
 
             internal void UpdateTrackedObjectSize(long delta, TrackedObjectKey key, long? address)
             {
                 Interlocked.Add(ref this.trackedObjectSize, delta);
                 this.cacheDebugger?.UpdateTrackedObjectSize(delta, key, address);
+            }
+
+            protected override Task Process(IList<object> _)
+            {
+                var log = this.store.Log;
+
+                if (log != null)
+                {
+                    long excess = Interlocked.Read(ref this.trackedObjectSize) + this.store.MemoryUsedWithoutObjects - this.TargetSize;
+                    int actuallyEmptyPages = (int)((log.BufferSize - ((log.TailAddress - log.HeadAddress) / this.pageSize)));
+                    int tighten = Math.Min(actuallyEmptyPages + 1, log.BufferSize - 2);
+                    int loosen = 0;
+
+                    if (excess > 50000 && log.EmptyPageCount < tighten)
+                    {
+                        this.store.TraceHelper.FasterStorageProgress($"tighten memory control: set empty pages to {tighten}");
+                        this.Log.SetEmptyPageCount(tighten, true);
+                        this.Notify();
+                    }
+                    else if (excess < -50000 && log.EmptyPageCount > loosen)
+                    {
+                        this.store.TraceHelper.FasterStorageProgress($"loosen memory control: set empty pages to {loosen}");
+                        this.Log.SetEmptyPageCount(loosen, true);
+                        this.Notify();
+                    }
+                }
+
+                return Task.CompletedTask;
             }
         }
     }

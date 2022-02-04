@@ -21,6 +21,8 @@ namespace DurableTask.Netherite.Faster
 
         public abstract ValueTask ReadyToCompletePendingAsync();
 
+        public abstract void AdjustCacheSize();
+
         public abstract bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, out Guid checkpointGuid);
 
         public abstract Task RemoveObsoleteCheckpoints();

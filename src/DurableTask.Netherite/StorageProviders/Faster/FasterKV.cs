@@ -36,12 +36,14 @@ namespace DurableTask.Netherite.Faster
 
         public FasterTraceHelper TraceHelper => this.blobManager.TraceHelper;
 
+        public int PageSize => 1 << this.storelogsettings.PageSizeBits;
+
         public FasterKV(Partition partition, BlobManager blobManager, MemoryTracker memoryTracker)
         {
             this.partition = partition;
             this.blobManager = blobManager;
             this.cacheDebugger = partition.Settings.TestHooks?.CacheDebugger;
-            this.cacheTracker = memoryTracker.NewCacheTracker(this, this.cacheDebugger);
+            this.cacheTracker = memoryTracker.NewCacheTracker(this, (int) partition.PartitionId, this.cacheDebugger);
 
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
@@ -60,11 +62,8 @@ namespace DurableTask.Netherite.Faster
                     valueSerializer = () => new Value.Serializer(this.StoreStats, partition.TraceHelper, this.cacheDebugger),
                 });
 
-            if (this.cacheDebugger != null)
-            {
-                this.fht.Log.SubscribeEvictions(new EvictionObserver(this));
-                this.fht.Log.Subscribe(new ReadonlyObserver(this));
-            }
+            this.fht.Log.SubscribeEvictions(new EvictionObserver(this));
+            this.fht.Log.Subscribe(new ReadonlyObserver(this));
 
             partition.Assert(this.fht.ReadCache == null, "Unexpected read cache");
             this.cacheTracker.Log = this.fht.Log;
@@ -99,6 +98,8 @@ namespace DurableTask.Netherite.Faster
             var functions = new Functions(this.partition, this, this.cacheTracker, isScan);
             return this.fht.NewSession(functions, id);
         }
+
+        public LogAccessor<Key, Value> Log => this.fht?.Log;
 
         public override void InitMainSession()
         {
@@ -752,27 +753,10 @@ namespace DurableTask.Netherite.Faster
                 return (totalSizeMB, fillPercentage);
             }
         }
-            
-            
 
-        public void AdjustPageCount(long targetSize, long trackedObjectSize)
+        public override void AdjustCacheSize()
         {
-            if (this.fht == null)
-            {
-                return; // this may be called during startup when the store has not been constructed yet
-            }
-
-            long totalSize = trackedObjectSize + this.MemoryUsedWithoutObjects;
-
-            // Adjust empty page count to drive towards desired memory utilization
-            if (totalSize > targetSize && this.fht.Log.AllocatableMemorySizeBytes >= this.fht.Log.MemorySizeBytes)
-            {
-                this.fht.Log.EmptyPageCount++;
-            }
-            else if (totalSize < targetSize && this.fht.Log.AllocatableMemorySizeBytes <= this.fht.Log.MemorySizeBytes)
-            {
-                this.fht.Log.EmptyPageCount--;
-            }
+            this.cacheTracker.Notify();
         }
 
         public override void CheckInvariants()
@@ -888,7 +872,8 @@ namespace DurableTask.Netherite.Faster
                     this.store.cacheDebugger?.UpdateTrackedObjectSize(-size, key, iterator.CurrentAddress);
                     totalSize += size;
                 }
-                this.store.cacheTracker.OnEviction(totalSize);
+                this.store.TraceHelper.FasterStorageProgress($"Evicted until address={iterator.EndAddress}");
+                this.store.cacheTracker.OnEviction(totalSize, iterator.EndAddress);
             }
         }
 

@@ -91,9 +91,9 @@ namespace DurableTask.Netherite
         public int ActivityDispatcherCount { get; set; } = 1;
 
         /// <summary>
-        /// Limit on the amount of memory used by the FASTER cache
+        /// Limit for how much memory on each node should be used for caching instance states and histories
         /// </summary>
-        public int? FasterCacheSizeMB { get; set; } = null;
+        public int? InstanceCacheSizeMB { get; set; } = null;
 
         /// <summary>
         /// Gets or sets the partition management option

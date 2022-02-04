@@ -121,7 +121,7 @@ namespace DurableTask.Netherite
                         throw new NotSupportedException("Netherite backend requires 64bit, but current process is 32bit.");
                     }
 
-                    this.memoryTracker = new MemoryTracker((long) (settings.FasterCacheSizeMB ?? 400) * 1024 * 1024);
+                    this.memoryTracker = new MemoryTracker((long) (settings.InstanceCacheSizeMB ?? 400) * 1024 * 1024);
                 }
 
                 switch (this.configuredTransport)

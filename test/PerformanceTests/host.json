@@ -64,6 +64,9 @@
         // set this to false to force replay on each orchestration step
         "CacheOrchestrationCursors": true,
 
+        // set this to control the max size of the orchestration instance cache
+        "InstanceCacheSizeMB": "2",
+
         // set this to true to use the PSF support in Faster. Will soon be obsolete.
         "UsePSFQueries": "false",
 
