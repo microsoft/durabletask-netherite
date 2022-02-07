@@ -56,6 +56,7 @@ namespace DurableTask.Netherite
             var commitPosition = evt.NextCommitLogPosition;
 
             this.Outbox[commitPosition] = batch;
+            batch.SendingEventId = evt.EventIdString;
             batch.Position = commitPosition;
             batch.Partition = this.Partition;
 
@@ -78,7 +79,8 @@ namespace DurableTask.Netherite
                 // register for a durability notification, at which point we will send the batch
                 evt.OutboxBatch = batch;
                 batch.ProcessedTimestamp = this.Partition.CurrentTimeMs;
-                DurabilityListeners.Register(evt, this);
+                DurabilityListeners.Register(evt, this);               
+                effects.EventDetailTracer?.TraceEventProcessingDetail($"Outbox is preparing to send for event id={batch.SendingEventId}");
             }
         }
 
@@ -91,6 +93,7 @@ namespace DurableTask.Netherite
         void Send(Batch batch)
         {
             batch.ReadyToSendTimestamp = this.Partition.CurrentTimeMs;
+            this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Outbox is sending for event id={batch.SendingEventId}");
 
             // now that we know the sending event is persisted, we can send the messages
             foreach (var outmessage in batch.OutgoingMessages)
@@ -113,6 +116,9 @@ namespace DurableTask.Netherite
 
             [DataMember]
             public List<ClientEvent> OutgoingResponses { get; set; } = new List<ClientEvent>();
+
+            [DataMember]
+            public string SendingEventId { get; set; } // for tracing
 
             [IgnoreDataMember]
             public long Position { get; set; }
@@ -150,10 +156,13 @@ namespace DurableTask.Netherite
 
                 if (currentAckCount == this.OutgoingMessages.Count + this.OutgoingResponses.Count)
                 {
+                    this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Outbox has finished sending for event id={this.SendingEventId}");
+
                     this.Partition.SubmitEvent(new SendConfirmed()
                     {
                         PartitionId = this.Partition.PartitionId,
                         Position = Position,
+                        SendingEventId = this.SendingEventId,
                     });
                 }
             }
@@ -161,9 +170,8 @@ namespace DurableTask.Netherite
 
         public override void Process(SendConfirmed evt, EffectTracker effects)
         {
-            effects.EventDetailTracer?.TraceEventProcessingDetail($"Store has sent all outbound messages by event {evt} id={evt.EventIdString}");
+            effects.EventDetailTracer?.TraceEventProcessingDetail($"Outbox is done with event id={evt.SendingEventId}");
 
-            // we no longer need to keep these events around
             this.Outbox.Remove(evt.Position);
         }
 

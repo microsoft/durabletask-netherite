@@ -7,6 +7,7 @@ namespace DurableTask.Netherite.Tests
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
+    using System.Linq;
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
@@ -450,6 +451,183 @@ namespace DurableTask.Netherite.Tests
             Assert.True(numPages2 == numPages - 1);
 
             await service.StopAsync();
+        }
+
+
+
+        /// <summary>
+        /// Test behavior of queries and point queries
+        /// </summary>
+        [Fact]
+        public async Task QueriesCopyToTail()
+        {
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            settings.ResolvedTransportConnectionString = "MemoryF";
+            settings.PartitionCount = 1;
+            settings.HubName = $"QueriesCopyToTail-{Guid.NewGuid()}";
+            var checkpointInjector = settings.TestHooks.CheckpointInjector = new Faster.CheckpointInjector(settings.TestHooks);
+
+            var orchestrationType = typeof(ScenarioTests.Orchestrations.SayHelloFanOutFanIn);
+            var orchestrationType2 = typeof(ScenarioTests.Orchestrations.SayHelloInline);
+
+            {
+                // start the service 
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                var orchestrationService = (IOrchestrationService)service;
+                var orchestrationServiceClient = (IOrchestrationServiceClient)service;
+                var orchestrationServiceQueryClient = (IOrchestrationServiceQueryClient)service;
+                await orchestrationService.CreateAsync();
+                await orchestrationService.StartAsync();
+                var host = (TransportAbstraction.IHost)service;
+                Assert.Equal(1u, service.NumberPartitions);
+                var worker = new TaskHubWorker(service);
+                var client = new TaskHubClient(service);
+                worker.AddTaskOrchestrations(orchestrationType);
+                worker.AddTaskOrchestrations(orchestrationType2);
+                await worker.StartAsync();
+
+                // create 100 instances
+                var instance = await client.CreateOrchestrationInstanceAsync(orchestrationType, "parent", 99);
+                await client.WaitForOrchestrationAsync(instance, TimeSpan.FromSeconds(40));
+                var instances = await orchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken.None);
+                Assert.Equal(100, instances.Count);
+
+                // check that log contains 200 records
+                var log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.None, null));
+                Assert.Equal(200 * log.FixedRecordSize, log.TailAddress - log.BeginAddress);
+                Assert.Equal(log.ReadOnlyAddress, log.BeginAddress);
+
+                // take a foldover checkpoint
+                log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.Idle, null));
+                Assert.Equal(200 * log.FixedRecordSize, log.TailAddress - log.BeginAddress);
+                Assert.Equal(log.ReadOnlyAddress, log.TailAddress);
+
+                // read all instances using a query and check that the log did not grow
+                // (because queries do not copy to tail)
+                instances = await orchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken.None);
+                Assert.Equal(100, instances.Count);
+                log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.Idle, null));
+                Assert.Equal(200 * log.FixedRecordSize, log.TailAddress - log.BeginAddress);
+                Assert.Equal(log.ReadOnlyAddress, log.TailAddress);
+
+                // read all instances using point queries and check that the log grew by one record per instance
+                // (because point queries read the InstanceState on the main session, which copies it to the tail)
+                var tasks = instances.Select(instance => orchestrationServiceClient.GetOrchestrationStateAsync(instance.OrchestrationInstance.InstanceId, false));
+                await Task.WhenAll(tasks);
+                log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.None, null));
+                Assert.Equal(300 * log.FixedRecordSize, log.TailAddress - log.BeginAddress);
+                Assert.Equal(log.ReadOnlyAddress, log.TailAddress - 100 * log.FixedRecordSize);
+
+                // doing the same again has no effect
+                // (because all instances are already in the mutable section)
+                tasks = instances.Select(instance => orchestrationServiceClient.GetOrchestrationStateAsync(instance.OrchestrationInstance.InstanceId, false));
+                await Task.WhenAll(tasks);
+                log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.None, null));
+                Assert.Equal(300 * log.FixedRecordSize, log.TailAddress - log.BeginAddress);
+                Assert.Equal(log.ReadOnlyAddress, log.TailAddress - 100 * log.FixedRecordSize);
+
+                // take a foldover checkpoint
+                // this moves the readonly section back to the end
+                log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.Idle, null));
+                Assert.Equal(300 * log.FixedRecordSize, log.TailAddress - log.BeginAddress);
+                Assert.Equal(log.ReadOnlyAddress, log.TailAddress);
+
+                // stop the service
+                await orchestrationService.StopAsync();
+            }
+        }
+
+        /// <summary>
+        /// Test log compaction
+        /// </summary>
+        [Fact]
+        public async Task Compaction()
+        {
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            settings.ResolvedTransportConnectionString = "MemoryF";
+            settings.PartitionCount = 1;
+            settings.HubName = $"Compaction-{Guid.NewGuid()}";
+            var checkpointInjector = settings.TestHooks.CheckpointInjector = new Faster.CheckpointInjector(settings.TestHooks);
+
+            var orchestrationType = typeof(ScenarioTests.Orchestrations.SayHelloFanOutFanIn);
+            var orchestrationType2 = typeof(ScenarioTests.Orchestrations.SayHelloInline);
+
+            long compactUntil = 0;
+
+            {
+                // start the service 
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                var orchestrationService = (IOrchestrationService)service;
+                var orchestrationServiceClient = (IOrchestrationServiceClient)service;
+                var orchestrationServiceQueryClient = (IOrchestrationServiceQueryClient)service;
+                await orchestrationService.CreateAsync();
+                await orchestrationService.StartAsync();
+                var host = (TransportAbstraction.IHost)service;
+                Assert.Equal(1u, service.NumberPartitions);
+                var worker = new TaskHubWorker(service);
+                var client = new TaskHubClient(service);
+                worker.AddTaskOrchestrations(orchestrationType);
+                worker.AddTaskOrchestrations(orchestrationType2);
+                await worker.StartAsync();
+
+                // create 100 instances
+                var instance = await client.CreateOrchestrationInstanceAsync(orchestrationType, "parent", 99);
+                await client.WaitForOrchestrationAsync(instance, TimeSpan.FromSeconds(40));
+                var instances = await orchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken.None);
+                Assert.Equal(100, instances.Count);
+
+                // repeat foldover and copy to tail to inflate the log
+                for (int i = 0; i < 4; i++)
+                {
+                    // take a foldover checkpoint
+                    var log2 = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.Idle, null));
+                    Assert.Equal((200 + (100 * i)) * log2.FixedRecordSize, log2.TailAddress - log2.BeginAddress);
+                    Assert.Equal(log2.ReadOnlyAddress, log2.TailAddress);
+
+                    // read all instances using point queries to force copy to tail
+                    var tasks = instances.Select(instance => orchestrationServiceClient.GetOrchestrationStateAsync(instance.OrchestrationInstance.InstanceId, false));
+                    await Task.WhenAll(tasks);
+                }
+
+                // do log compaction
+                var log = await checkpointInjector.InjectAsync(log =>
+                {
+                    compactUntil = 500 * log.FixedRecordSize + log.BeginAddress;
+                    Assert.Equal(compactUntil, log.SafeReadOnlyAddress);
+                    return (Faster.StoreWorker.CheckpointTrigger.Compaction, compactUntil);
+                });
+
+                // check that the compaction had the desired effect
+                Assert.Equal(200 * log.FixedRecordSize, log.TailAddress - log.BeginAddress);
+                Assert.Equal(compactUntil, log.BeginAddress);
+                Assert.Equal(log.ReadOnlyAddress, log.TailAddress);
+
+                // stop the service
+                await orchestrationService.StopAsync();
+            }
+            {
+                // recover the service
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                var orchestrationService = (IOrchestrationService)service;
+                var orchestrationServiceQueryClient = (IOrchestrationServiceQueryClient)service;
+                await orchestrationService.CreateAsync();
+                await orchestrationService.StartAsync();
+                var host = (TransportAbstraction.IHost)service;
+                Assert.Equal(1u, service.NumberPartitions);
+
+                // check the log positions
+                var log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.None, null));
+                Assert.Equal(200 * log.FixedRecordSize, log.TailAddress - log.BeginAddress);
+                Assert.Equal(compactUntil, log.BeginAddress);
+                Assert.Equal(log.ReadOnlyAddress, log.TailAddress);
+
+                // check the instance count
+                var instances = await orchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken.None);
+                Assert.Equal(100, instances.Count);
+              
+                // stop the service
+                await orchestrationService.StopAsync();
+            }
         }
     }
 }

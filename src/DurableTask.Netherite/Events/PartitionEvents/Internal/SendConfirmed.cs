@@ -11,11 +11,11 @@ namespace DurableTask.Netherite
         [DataMember]
         public long Position { get; set; }
 
-        [IgnoreDataMember]
-        public string WorkItemId => $"{this.PartitionId:D2}C{this.Position:D10}";
+        [DataMember]
+        public string SendingEventId { get; set; }
 
         [IgnoreDataMember]
-        public override EventId EventId => EventId.MakePartitionInternalEventId(this.WorkItemId);
+        public override EventId EventId => EventId.MakePartitionInternalEventId($"{this.SendingEventId}C");
 
         public override void DetermineEffects(EffectTracker effects)
         {

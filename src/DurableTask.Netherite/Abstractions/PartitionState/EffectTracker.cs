@@ -95,7 +95,7 @@ namespace DurableTask.Netherite
 
         public async Task ProcessUpdate(PartitionUpdateEvent updateEvent)
         {
-            (long commitLogPosition, long inputQueuePosition) = this.GetPositions();
+            long commitLogPosition = updateEvent.NextCommitLogPosition;
             double startedTimestamp = this.CurrentTimeMs;
 
             using (EventTraceContext.MakeContext(commitLogPosition, updateEvent.EventIdString))
