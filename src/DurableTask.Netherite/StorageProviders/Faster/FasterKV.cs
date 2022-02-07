@@ -43,13 +43,12 @@ namespace DurableTask.Netherite.Faster
             this.partition = partition;
             this.blobManager = blobManager;
             this.cacheDebugger = partition.Settings.TestHooks?.CacheDebugger;
-            this.cacheTracker = memoryTracker.NewCacheTracker(this, (int) partition.PartitionId, this.cacheDebugger);
 
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
             this.storelogsettings = blobManager.GetDefaultStoreLogSettings(
                 partition.Settings.UseSeparatePageBlobStorage, 
-                this.cacheTracker.MaxCacheSize - BlobManager.HashTableSizeBytes, 
+                memoryTracker.MaxCacheSize, 
                 partition.Settings.FasterTuningParameters);
 
             this.fht = new FasterKV<Key, Value>(
@@ -62,11 +61,12 @@ namespace DurableTask.Netherite.Faster
                     valueSerializer = () => new Value.Serializer(this.StoreStats, partition.TraceHelper, this.cacheDebugger),
                 });
 
+            this.cacheTracker = memoryTracker.NewCacheTracker(this, (int) partition.PartitionId, this.cacheDebugger);
+
             this.fht.Log.SubscribeEvictions(new EvictionObserver(this));
             this.fht.Log.Subscribe(new ReadonlyObserver(this));
 
             partition.Assert(this.fht.ReadCache == null, "Unexpected read cache");
-            this.cacheTracker.Log = this.fht.Log;
 
             this.terminationToken = partition.ErrorHandler.Token;
 

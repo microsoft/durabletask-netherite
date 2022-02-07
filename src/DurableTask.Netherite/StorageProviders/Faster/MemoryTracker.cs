@@ -21,6 +21,8 @@ namespace DurableTask.Netherite.Faster
         readonly long maxCacheSize;
         readonly ConcurrentDictionary<CacheTracker, CacheTracker> stores;
 
+        public long MaxCacheSize => this.maxCacheSize;
+
         public MemoryTracker(long maxCacheSize)
         {
             this.maxCacheSize = maxCacheSize;
@@ -75,8 +77,6 @@ namespace DurableTask.Netherite.Faster
             readonly int pageSize;
 
             long trackedObjectSize;
-
-            public LogAccessor<FasterKV.Key, FasterKV.Value> Log { private get; set; }
 
             public long TrackedObjectSize => Interlocked.Read(ref this.trackedObjectSize);
 
@@ -147,13 +147,13 @@ namespace DurableTask.Netherite.Faster
                     if (excess > 50000 && log.EmptyPageCount < tighten)
                     {
                         this.store.TraceHelper.FasterStorageProgress($"tighten memory control: set empty pages to {tighten}");
-                        this.Log.SetEmptyPageCount(tighten, true);
+                        log.SetEmptyPageCount(tighten, true);
                         this.Notify();
                     }
                     else if (excess < -50000 && log.EmptyPageCount > loosen)
                     {
                         this.store.TraceHelper.FasterStorageProgress($"loosen memory control: set empty pages to {loosen}");
-                        this.Log.SetEmptyPageCount(loosen, true);
+                        log.SetEmptyPageCount(loosen, true);
                         this.Notify();
                     }
                 }
