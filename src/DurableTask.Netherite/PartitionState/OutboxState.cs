@@ -56,6 +56,7 @@ namespace DurableTask.Netherite
             var commitPosition = evt.NextCommitLogPosition;
 
             this.Outbox[commitPosition] = batch;
+            batch.SendingEventId = evt.EventIdString;
             batch.Position = commitPosition;
             batch.Partition = this.Partition;
 
@@ -78,7 +79,6 @@ namespace DurableTask.Netherite
                 // register for a durability notification, at which point we will send the batch
                 evt.OutboxBatch = batch;
                 batch.ProcessedTimestamp = this.Partition.CurrentTimeMs;
-                batch.SendingEventId = evt.EventIdString;
                 DurabilityListeners.Register(evt, this);               
                 effects.EventDetailTracer?.TraceEventProcessingDetail($"Outbox is preparing to send for event id={batch.SendingEventId}");
             }
