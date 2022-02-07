@@ -78,6 +78,7 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
         }
 
+        public LogAccessor<Key, Value> Log => this.fht.Log;
 
         ClientSession<Key, Value, EffectTracker, TrackedObject, object, IFunctions<Key, Value, EffectTracker, TrackedObject, object>> CreateASession()
             => this.fht.NewSession<EffectTracker, TrackedObject, object>(new Functions(this.partition, this.StoreStats));
@@ -217,12 +218,17 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition)
+        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, long? shiftBeginAddress)
         {
             try
             {
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
+
+                if (shiftBeginAddress > this.fht.Log.BeginAddress)
+                {
+                    this.fht.Log.ShiftBeginAddress(shiftBeginAddress.Value);
+                }
 
                 if (this.fht.TakeHybridLogCheckpoint(out var token))
                 {
@@ -245,6 +251,74 @@ namespace DurableTask.Netherite.Faster
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
             {
                 throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
+            }
+        }
+
+        public override long? GetCompactionTarget()
+        {
+            // TODO empiric validation of the heuristics
+
+            var stats = (StatsState) this.singletons[(int)TrackedObjectKey.Stats.ObjectType];
+            long minimalLogSize = this.fht.Log.FixedRecordSize * stats.InstanceCount * 2;
+            long actualLogSize = this.fht.Log.TailAddress - this.fht.Log.BeginAddress;
+
+            if (actualLogSize < 4 * minimalLogSize)
+            {
+                return null; // we are not compacting until there is significant bloat
+            }
+
+            long compactionAreaSize = (long)(0.2 * (this.fht.Log.SafeReadOnlyAddress - this.fht.Log.BeginAddress));
+            long mutableSectionSize = (this.fht.Log.TailAddress - this.fht.Log.SafeReadOnlyAddress);
+
+            if (mutableSectionSize > compactionAreaSize)
+            {
+                return null; // the potential size reduction does not outweigh the cost of a foldover
+            }
+
+            return this.fht.Log.BeginAddress + compactionAreaSize;
+        }
+
+        readonly static SemaphoreSlim maxCompactionThreads = new SemaphoreSlim((Environment.ProcessorCount + 1) / 2);
+
+        public override async Task<long> RunCompactionAsync(long target)
+        {
+            string id = Guid.NewGuid().ToString().Substring(0, 5); // for tracing purposes
+            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} pending");
+
+            await maxCompactionThreads.WaitAsync();
+            try
+            {
+                var tcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var thread = new Thread(Run);
+                thread.Name = $"Compaction.{id}";
+                thread.Start();
+                return await tcs.Task;
+
+                void Run()
+                {
+                    this.blobManager.TraceHelper.FasterProgress($"Compaction {id} started");
+
+                    try
+                    {
+                        using var session = this.CreateASession();
+                        long compactedUntil = session.Compact(target, false);
+                        tcs.SetResult(compactedUntil);
+                    }
+                    catch (Exception exception)
+                        when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
+                    {
+                        tcs.SetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
+                    }
+                    catch (Exception e)
+                    {
+                        tcs.SetException(e);
+                    }
+                }
+            }
+            finally
+            {
+                maxCompactionThreads.Release();
+                this.blobManager.TraceHelper.FasterProgress($"Compaction {id} done");
             }
         }
 
@@ -661,6 +735,7 @@ namespace DurableTask.Netherite.Faster
                         else if (value.Val is byte[] bytes)
                         {
                             var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                            emitItem(key, trackedObject);
                         }
                         else
                         {

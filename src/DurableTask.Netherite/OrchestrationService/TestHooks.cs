@@ -16,6 +16,7 @@ namespace DurableTask.Netherite
 
         public Faster.FaultInjector FaultInjector { get; set; }
 
+        public Faster.CheckpointInjector CheckpointInjector { get; set; }
 
         internal event Action<string> OnError;
 
