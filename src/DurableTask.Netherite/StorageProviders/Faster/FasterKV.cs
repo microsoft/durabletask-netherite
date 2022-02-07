@@ -735,6 +735,7 @@ namespace DurableTask.Netherite.Faster
                         else if (value.Val is byte[] bytes)
                         {
                             var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                            emitItem(key, trackedObject);
                         }
                         else
                         {
