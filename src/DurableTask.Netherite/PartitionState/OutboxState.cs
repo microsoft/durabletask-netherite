@@ -146,7 +146,9 @@ namespace DurableTask.Netherite
                     }
                 }
 
-                if (++this.numAcks == this.OutgoingMessages.Count + this.OutgoingResponses.Count)
+                int currentAckCount = Interlocked.Increment(ref this.numAcks);
+
+                if (currentAckCount == this.OutgoingMessages.Count + this.OutgoingResponses.Count)
                 {
                     this.Partition.SubmitEvent(new SendConfirmed()
                     {
