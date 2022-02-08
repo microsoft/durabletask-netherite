@@ -148,13 +148,13 @@ namespace DurableTask.Netherite.Faster
                     int tighten = Math.Min(currentTarget + 1, log.BufferSize - 1);
                     int loosen = 0;
 
-                    if (excess > 50000 && currentTarget < tighten)
+                    if (excess > 0 && currentTarget < tighten)
                     {
                         this.store.TraceHelper.FasterStorageProgress($"tighten memory control: tighten={tighten} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
                         log.SetEmptyPageCount(tighten, true);
                         this.Notify();
                     }
-                    else if (excess < -50000 && log.EmptyPageCount > loosen)
+                    else if (excess < 0 && log.EmptyPageCount > loosen)
                     {
                         this.store.TraceHelper.FasterStorageProgress($"loosen memory control: loosen={loosen} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
                         log.SetEmptyPageCount(loosen, true);
