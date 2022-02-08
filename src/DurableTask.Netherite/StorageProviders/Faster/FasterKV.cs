@@ -909,9 +909,9 @@ namespace DurableTask.Netherite.Faster
             return ((int) (lastPage-firstPage) + 1, totalSize);
         }
 
-        public void DecrementPages()
+        public void SetEmptyPageCount(int emptyPageCount)
         {
-            this.fht.Log.SetEmptyPageCount(this.fht.Log.EmptyPageCount + 1, true);
+            this.fht.Log.SetEmptyPageCount(emptyPageCount, true);
         }
 
         class EvictionObserver : IObserver<IFasterScanIterator<Key, Value>>

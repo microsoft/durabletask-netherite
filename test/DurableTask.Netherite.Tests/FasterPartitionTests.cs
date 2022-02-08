@@ -400,7 +400,7 @@ namespace DurableTask.Netherite.Tests
 
 
         /// <summary>
-        /// Fill memory, then compute size, then reduce page count, and measure size again
+        /// Fill tiny 4-page memory, then compute size, then reduce page count, and measure size again
         /// </summary>
         [Fact]
         public async Task CheckMemoryReduction()
@@ -408,11 +408,14 @@ namespace DurableTask.Netherite.Tests
             this.settings.PartitionCount = 1;
             this.SetCheckpointFrequency(CheckpointFrequency.None);
 
+            int pageCountBits = 3;
+            int pageCount = 1 << pageCountBits;
+
             // set the memory size very small so we can force evictions
             this.settings.FasterTuningParameters = new Faster.BlobManager.FasterTuningParameters()
             {
                 StoreLogPageSizeBits = 9,       // 512 B
-                StoreLogMemorySizeBits = 9 + 2, // 16 pages
+                StoreLogMemorySizeBits = 9 + pageCountBits,  
             };
 
             // we use the standard hello orchestration from the samples, which calls 5 activities in sequence
@@ -437,20 +440,25 @@ namespace DurableTask.Netherite.Tests
                 Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while starting orchestrations: {this.errorInTestHooks}");
             }
 
-            (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
-            
             long historyAndStatusSize = OrchestrationCount * (FanOut * 50000 /* in history */ + 16000 /* in status */);
 
-            Assert.True(numPages <= 4);
-            Assert.True(memorySize < historyAndStatusSize);
+            {
+                (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
+                Assert.InRange(numPages, 1, pageCount);
+                Assert.InRange(memorySize, 0, historyAndStatusSize);
+            }
 
-            this.cacheDebugger.MemoryTracker.DecrementPages();
+            int emptyPageCount = 0;
+            int tolerance = 1;
 
-            (int numPages2, long memorySize2) = this.cacheDebugger.MemoryTracker.GetMemorySize();
-
-            historyAndStatusSize = OrchestrationCount * (FanOut * 50000 /* in history */ + 16000 /* in status */);
-
-            Assert.True(numPages2 == numPages - 1);
+            for (int i = 0; i < 4; i++)
+            {
+                emptyPageCount++;
+                this.cacheDebugger.MemoryTracker.SetEmptyPageCount(emptyPageCount);
+                (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
+                Assert.InRange(numPages, 1, pageCount - emptyPageCount + tolerance);
+                Assert.InRange(memorySize, 0, historyAndStatusSize);
+            }
 
             await service.StopAsync();
         }

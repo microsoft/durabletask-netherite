@@ -61,11 +61,11 @@ namespace DurableTask.Netherite.Faster
             return (totalPages, totalSize);
         }
 
-        public void DecrementPages()
+        internal void SetEmptyPageCount(int emptyPageCount) // used by tests only
         {
             foreach (var store in this.stores.Values)
             {
-                store.DecrementPages();
+                store.SetEmptyPageCount(emptyPageCount);
             }
         }
 
@@ -113,7 +113,7 @@ namespace DurableTask.Netherite.Faster
 
             public (int, long) ComputeMemorySize() => this.store.ComputeMemorySize();
 
-            public void DecrementPages() => this.store.DecrementPages(); // used by tests only
+            internal void SetEmptyPageCount(int emptyPageCount) => this.store.SetEmptyPageCount(emptyPageCount); // used by tests only
 
             public void SetTargetSize(long newTargetSize)
             {
