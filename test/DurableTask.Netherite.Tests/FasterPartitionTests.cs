@@ -462,37 +462,62 @@ namespace DurableTask.Netherite.Tests
         }
 
         /// <summary>
-        /// Fill up memory, then compute size, then reduce page count, and measure size again
+        /// Run orchestrations to exceed the cache size and check that things are evicted to stay within the target
         /// </summary>
-        [Fact]
-        public async Task CheckMemoryControl()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task CheckMemoryControlLarge(bool useSpaceConsumingOrchestrations)
         {
             this.settings.PartitionCount = 1;
-            this.settings.InstanceCacheSizeMB = 4;
             this.settings.FasterTuningParameters = new BlobManager.FasterTuningParameters()
             {
                 StoreLogPageSizeBits = 10
             };
             this.SetCheckpointFrequency(CheckpointFrequency.None);
 
-            var orchestrationType = typeof(ScenarioTests.Orchestrations.SemiLargePayloadFanOutFanIn);
-            var activityType = typeof(ScenarioTests.Activities.Echo);
-            int FanOut = 3;
-            long SizePerInstance = FanOut * 50000 /* in history */ + 16000 /* in status */;
- 
+            Type orchestrationType, activityType;
+            long SizePerInstance;
+            object input;
+            int portionSize;
+
+            if (useSpaceConsumingOrchestrations)
+            {
+                this.settings.InstanceCacheSizeMB = 4;
+                orchestrationType = typeof(ScenarioTests.Orchestrations.SemiLargePayloadFanOutFanIn);
+                activityType = typeof(ScenarioTests.Activities.Echo);
+                int FanOut = 3;
+                input = FanOut;
+                SizePerInstance = FanOut * 50000 /* in history */ + 16000 /* in status */;
+                portionSize = 50;
+            }
+            else
+            {
+                this.settings.InstanceCacheSizeMB = 2;
+                orchestrationType = typeof(ScenarioTests.Orchestrations.Hello5);
+                activityType = typeof(ScenarioTests.Activities.Hello);
+                SizePerInstance = 3610 /* empiric */;
+                input = null;
+                portionSize = 300;
+            }
+
             // start the service 
             var (service, client) = await this.StartService(recover: false, orchestrationType, activityType);
 
             int logBytesPerInstance = 2 * 40;
             long memoryPerPage = ((1 << this.settings.FasterTuningParameters.StoreLogPageSizeBits.Value) / logBytesPerInstance) * SizePerInstance;
-            long rangeTo = (this.settings.InstanceCacheSizeMB.Value - 1) * 1024 * 1024;
-            long rangeFrom = rangeTo - memoryPerPage;
+            double memoryRangeTo = (this.settings.InstanceCacheSizeMB.Value - 1) * 1024 * 1024;
+            double memoryRangeFrom = (memoryRangeTo - memoryPerPage);
+            memoryRangeTo = 1.1 * memoryRangeTo;
+            memoryRangeFrom = 0.9 * memoryRangeFrom;
+            double pageRangeFrom = Math.Floor(memoryRangeFrom / memoryPerPage);
+            double pageRangeTo = Math.Ceiling(memoryRangeTo / memoryPerPage);
 
             async Task AddOrchestrationsAsync(int numOrchestrations)
             { 
                 var tasks = new Task<OrchestrationInstance>[numOrchestrations];
                 for (int i = 0; i < numOrchestrations; i++)
-                    tasks[i] = client.CreateOrchestrationInstanceAsync(orchestrationType, Guid.NewGuid().ToString(), FanOut);
+                    tasks[i] = client.CreateOrchestrationInstanceAsync(orchestrationType, Guid.NewGuid().ToString(), input);
                 await Task.WhenAll(tasks);
                 var tasks2 = new Task<OrchestrationState>[numOrchestrations];
                 for (int i = 0; i < numOrchestrations; i++)
@@ -501,44 +526,22 @@ namespace DurableTask.Netherite.Tests
                 Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while starting orchestrations: {this.errorInTestHooks}");
             }
 
-            this.output("memory control ------------------- first, add 10 orchestrations which should still keep us below the 3MB limit");
+            for (int i = 0; i < 4; i++)
             {
-                await AddOrchestrationsAsync(10);
+                this.output("memory control ------------------- Add orchestrations");
+                {
+                    await AddOrchestrationsAsync(portionSize);
 
-                this.output("-------- check memory size");
-                (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
-                long expectedSize = 10 * SizePerInstance;
-                Assert.InRange(numPages, 1, 1);
-                Assert.InRange(memorySize, 0.9 * expectedSize, 1.1 * expectedSize);
-            }
+                    this.output("memory control -------- wait for effect");
+                    await Task.Delay(TimeSpan.FromSeconds(10));
 
-            this.output("memory control ------------------- next, add 50 orchestrations which should put us about 7MB above the limit");
-            {
-                await AddOrchestrationsAsync(50);
+                    this.output("memory control -------- check memory size");
+                    (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
 
-                this.output("memory control -------- wait for effect");
-                await Task.Delay(TimeSpan.FromMinutes(2));
-
-                this.output("memory control -------- check memory size");
-                (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
-
-                Assert.InRange(numPages, 1, 3);
-                Assert.InRange(memorySize, rangeFrom, rangeTo);
-            }
-
-            this.output("memory control ------------------- next, add another 60 orchestrations which should put us about 17MB above the limit");
-            {
-                await AddOrchestrationsAsync(50);
-
-                this.output("memory control -------- wait for effect");
-                await Task.Delay(TimeSpan.FromMinutes(2));
-
-                this.output("memory control -------- check memory size");
-                (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
-
-                Assert.InRange(numPages, 1, 3);
-                Assert.InRange(memorySize, rangeFrom, rangeTo);
-            }
+                    Assert.InRange(numPages, pageRangeFrom, pageRangeTo);
+                    Assert.InRange(memorySize, memoryRangeFrom, memoryRangeTo);
+                }
+            }       
 
             await service.StopAsync();
         }
