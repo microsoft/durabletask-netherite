@@ -297,7 +297,7 @@ namespace DurableTask.Netherite.Tests
                         tasks[i] = client.CreateOrchestrationInstanceAsync(orchestrationType, InstanceId(i), null);
 
                     await Task.WhenAll(tasks);
-                    Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while starting orchestrations: {this.errorInTestHooks}");
+                    Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while starting orchestrations: {this.errorInTestHooks}");
                 }
 
                 // wait for all orchestrations to finish executing
@@ -318,7 +318,7 @@ namespace DurableTask.Netherite.Tests
                     for (int i = 0; i < OrchestrationCount; i++)
                         tasks[i] = WaitFor(i);
                     await Task.WhenAll(tasks);
-                    Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while executing orchestrations: {this.errorInTestHooks}");
+                    Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while executing orchestrations: {this.errorInTestHooks}");
                 }
 
                 this.output?.Invoke("--- test progress: BEFORE SHUTDOWN ------------------------------------");
@@ -346,7 +346,7 @@ namespace DurableTask.Netherite.Tests
                     for (int i = 0; i < OrchestrationCount; i++)
                         tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(10));
                     await Task.WhenAll(tasks);
-                    Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while querying orchestration states: {this.errorInTestHooks}");
+                    Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while querying orchestration states: {this.errorInTestHooks}");
                 }
 
                 this.output?.Invoke("--- test progress: AFTER QUERIES ------------------------------------");
@@ -369,12 +369,12 @@ namespace DurableTask.Netherite.Tests
             this.settings.PartitionCount = 1;
             this.SetCheckpointFrequency(CheckpointFrequency.None);
 
-            // we use the standard hello orchestration from the samples, which calls 5 activities in sequence
             var orchestrationType = typeof(ScenarioTests.Orchestrations.SemiLargePayloadFanOutFanIn);
             var activityType = typeof(ScenarioTests.Activities.Echo);
             string InstanceId(int i) => $"Orch{i:D5}";
             int OrchestrationCount = 30;
             int FanOut = 7;
+            long historyAndStatusSize = OrchestrationCount * (FanOut * 50000 /* in history */ + 16000 /* in status */);
 
             // start the service 
             var (service, client) = await this.StartService(recover: false, orchestrationType, activityType);
@@ -388,19 +388,18 @@ namespace DurableTask.Netherite.Tests
                 for (int i = 0; i < OrchestrationCount; i++)
                     tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(3));
                 await Task.WhenAll(tasks);
-                Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while starting orchestrations: {this.errorInTestHooks}");
+                Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while starting orchestrations: {this.errorInTestHooks}");
             }
 
             (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
 
-            long historyAndStatusSize = OrchestrationCount * (FanOut * 50000 /* in history */ + 16000 /* in status */);
             Assert.InRange(memorySize, historyAndStatusSize, 1.05 * historyAndStatusSize);
             await service.StopAsync();
         }
 
 
         /// <summary>
-        /// Fill tiny 4-page memory, then compute size, then reduce page count, and measure size again
+        /// Fill up memory, then compute size, then reduce page count, and measure size again
         /// </summary>
         [Fact]
         public async Task CheckMemoryReduction()
@@ -418,12 +417,12 @@ namespace DurableTask.Netherite.Tests
                 StoreLogMemorySizeBits = 9 + pageCountBits,  
             };
 
-            // we use the standard hello orchestration from the samples, which calls 5 activities in sequence
             var orchestrationType = typeof(ScenarioTests.Orchestrations.SemiLargePayloadFanOutFanIn);
             var activityType = typeof(ScenarioTests.Activities.Echo);
             string InstanceId(int i) => $"Orch{i:D5}";
             int OrchestrationCount = 50;
             int FanOut = 3;
+            long historyAndStatusSize = OrchestrationCount * (FanOut * 50000 /* in history */ + 16000 /* in status */);
 
             // start the service 
             var (service, client) = await this.StartService(recover: false, orchestrationType, activityType);
@@ -437,10 +436,9 @@ namespace DurableTask.Netherite.Tests
                 for (int i = 0; i < OrchestrationCount; i++)
                     tasks[i] = client.WaitForOrchestrationAsync(new OrchestrationInstance { InstanceId = InstanceId(i) }, TimeSpan.FromMinutes(3));
                 await Task.WhenAll(tasks);
-                Assert.True(this.errorInTestHooks == null, $"CacheDebugger detected problem while starting orchestrations: {this.errorInTestHooks}");
+                Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while starting orchestrations: {this.errorInTestHooks}");
             }
 
-            long historyAndStatusSize = OrchestrationCount * (FanOut * 50000 /* in history */ + 16000 /* in status */);
 
             {
                 (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
@@ -463,7 +461,87 @@ namespace DurableTask.Netherite.Tests
             await service.StopAsync();
         }
 
+        /// <summary>
+        /// Fill up memory, then compute size, then reduce page count, and measure size again
+        /// </summary>
+        [Fact]
+        public async Task CheckMemoryControl()
+        {
+            this.settings.PartitionCount = 1;
+            this.settings.InstanceCacheSizeMB = 4;
+            this.settings.FasterTuningParameters = new BlobManager.FasterTuningParameters()
+            {
+                StoreLogPageSizeBits = 10
+            };
+            this.SetCheckpointFrequency(CheckpointFrequency.None);
 
+            var orchestrationType = typeof(ScenarioTests.Orchestrations.SemiLargePayloadFanOutFanIn);
+            var activityType = typeof(ScenarioTests.Activities.Echo);
+            int FanOut = 3;
+            long SizePerInstance = FanOut * 50000 /* in history */ + 16000 /* in status */;
+ 
+            // start the service 
+            var (service, client) = await this.StartService(recover: false, orchestrationType, activityType);
+
+            int logBytesPerInstance = 2 * 40;
+            long memoryPerPage = ((1 << this.settings.FasterTuningParameters.StoreLogPageSizeBits.Value) / logBytesPerInstance) * SizePerInstance;
+            long rangeTo = (this.settings.InstanceCacheSizeMB.Value - 1) * 1024 * 1024;
+            long rangeFrom = rangeTo - memoryPerPage;
+
+            async Task AddOrchestrationsAsync(int numOrchestrations)
+            { 
+                var tasks = new Task<OrchestrationInstance>[numOrchestrations];
+                for (int i = 0; i < numOrchestrations; i++)
+                    tasks[i] = client.CreateOrchestrationInstanceAsync(orchestrationType, Guid.NewGuid().ToString(), FanOut);
+                await Task.WhenAll(tasks);
+                var tasks2 = new Task<OrchestrationState>[numOrchestrations];
+                for (int i = 0; i < numOrchestrations; i++)
+                    tasks2[i] = client.WaitForOrchestrationAsync(tasks[i].Result, TimeSpan.FromMinutes(3));
+                await Task.WhenAll(tasks2);
+                Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while starting orchestrations: {this.errorInTestHooks}");
+            }
+
+            this.output("memory control ------------------- first, add 10 orchestrations which should still keep us below the 3MB limit");
+            {
+                await AddOrchestrationsAsync(10);
+
+                this.output("-------- check memory size");
+                (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
+                long expectedSize = 10 * SizePerInstance;
+                Assert.InRange(numPages, 1, 1);
+                Assert.InRange(memorySize, 0.9 * expectedSize, 1.1 * expectedSize);
+            }
+
+            this.output("memory control ------------------- next, add 50 orchestrations which should put us about 7MB above the limit");
+            {
+                await AddOrchestrationsAsync(50);
+
+                this.output("memory control -------- wait for effect");
+                await Task.Delay(TimeSpan.FromMinutes(2));
+
+                this.output("memory control -------- check memory size");
+                (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
+
+                Assert.InRange(numPages, 1, 3);
+                Assert.InRange(memorySize, rangeFrom, rangeTo);
+            }
+
+            this.output("memory control ------------------- next, add another 60 orchestrations which should put us about 17MB above the limit");
+            {
+                await AddOrchestrationsAsync(50);
+
+                this.output("memory control -------- wait for effect");
+                await Task.Delay(TimeSpan.FromMinutes(2));
+
+                this.output("memory control -------- check memory size");
+                (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
+
+                Assert.InRange(numPages, 1, 3);
+                Assert.InRange(memorySize, rangeFrom, rangeTo);
+            }
+
+            await service.StopAsync();
+        }
 
         /// <summary>
         /// Test behavior of queries and point queries
