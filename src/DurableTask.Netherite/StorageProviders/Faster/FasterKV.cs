@@ -889,9 +889,10 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public (int numPages, long size) ComputeMemorySize()
+        internal (int numPages, long size) ComputeMemorySize(bool resetCacheDebugger)
         {
-            this.cacheDebugger?.Reset((string instanceId) => this.partition.PartitionFunction(instanceId) == this.partition.PartitionId);
+            var cacheDebugger = resetCacheDebugger ? this.cacheDebugger : null;
+            cacheDebugger?.Reset((string instanceId) => this.partition.PartitionFunction(instanceId) == this.partition.PartitionId);
             var inMemoryIterator = this.fht.Log.Scan(this.fht.Log.HeadAddress, this.fht.Log.TailAddress);
             long totalSize = 0;
             long firstPage = this.fht.Log.HeadAddress >> this.storelogsettings.PageSizeBits;
@@ -903,7 +904,7 @@ namespace DurableTask.Netherite.Faster
                     delta += value.EstimatedSize;
                 }
                 totalSize += delta;
-                this.cacheDebugger?.UpdateSize(key, delta);
+                cacheDebugger?.UpdateSize(key, delta);
             }
             long lastPage = this.fht.Log.TailAddress >> this.storelogsettings.PageSizeBits;
             return ((int) (lastPage-firstPage) + 1, totalSize);

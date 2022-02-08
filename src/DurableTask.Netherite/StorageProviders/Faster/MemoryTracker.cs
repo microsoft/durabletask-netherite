@@ -49,7 +49,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public (int, long) GetMemorySize()
+        internal (int, long) GetMemorySize() // used for testing only
         {
             (int totalPages, long totalSize) = (0, 0);
             foreach(var store in this.stores.Values)
@@ -105,13 +105,13 @@ namespace DurableTask.Netherite.Faster
             {
                 Stopwatch stopwatch = new Stopwatch();
                 stopwatch.Start();
-                (int numPages, long size) = this.store.ComputeMemorySize();
+                (int numPages, long size) = this.store.ComputeMemorySize(true);
                 double MB(long bytes) => (double)bytes / (1024 * 1024);
                 this.store.TraceHelper.FasterProgress($"CacheSize: numPages={numPages} objectSize={MB(size):F2}MB totalSize={MB(size + this.store.MemoryUsedWithoutObjects):F2}MB elapsedMs={stopwatch.Elapsed.TotalMilliseconds:F2}");
                 this.trackedObjectSize = size;
             }
 
-            public (int, long) ComputeMemorySize() => this.store.ComputeMemorySize();
+            public (int, long) ComputeMemorySize() => this.store.ComputeMemorySize(false); // used by tests only
 
             internal void SetEmptyPageCount(int emptyPageCount) => this.store.SetEmptyPageCount(emptyPageCount); // used by tests only
 
