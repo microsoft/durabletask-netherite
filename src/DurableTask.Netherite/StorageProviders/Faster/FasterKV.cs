@@ -36,7 +36,7 @@ namespace DurableTask.Netherite.Faster
 
         public FasterTraceHelper TraceHelper => this.blobManager.TraceHelper;
 
-        public int PageSize => 1 << this.storelogsettings.PageSizeBits;
+        public int PageSizeBits => this.storelogsettings.PageSizeBits;
 
         public FasterKV(Partition partition, BlobManager blobManager, MemoryTracker memoryTracker)
         {

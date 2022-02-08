@@ -74,7 +74,7 @@ namespace DurableTask.Netherite.Faster
             readonly MemoryTracker memoryTracker;
             readonly FasterKV store;
             readonly CacheDebugger cacheDebugger;
-            readonly int pageSize;
+            readonly int pageSizeBits;
 
             long trackedObjectSize;
 
@@ -90,7 +90,7 @@ namespace DurableTask.Netherite.Faster
                 this.memoryTracker = memoryTracker;
                 this.store = store;
                 this.cacheDebugger = cacheDebugger;
-                this.pageSize = store.PageSize;
+                this.pageSizeBits = store.PageSizeBits;
             }
 
             public void Dispose()
@@ -140,21 +140,29 @@ namespace DurableTask.Netherite.Faster
                 if (log != null)
                 {
                     long excess = Interlocked.Read(ref this.trackedObjectSize) + this.store.MemoryUsedWithoutObjects - this.TargetSize;
-                    int actuallyEmptyPages = (int)((log.BufferSize - ((log.TailAddress - log.HeadAddress) / this.pageSize)));
-                    int tighten = Math.Min(actuallyEmptyPages + 1, log.BufferSize - 2);
+                    long firstPage = this.store.Log.HeadAddress >> this.pageSizeBits;
+                    long lastPage = this.store.Log.TailAddress >> this.pageSizeBits;
+                    int numUsedPages = (int) ((lastPage - firstPage) + 1);
+                    int actuallyEmptyPages = log.BufferSize - numUsedPages;
+                    int currentTarget = Math.Max(log.EmptyPageCount, actuallyEmptyPages);
+                    int tighten = Math.Min(currentTarget + 1, log.BufferSize - 1);
                     int loosen = 0;
 
-                    if (excess > 50000 && log.EmptyPageCount < tighten)
+                    if (excess > 50000 && currentTarget < tighten)
                     {
-                        this.store.TraceHelper.FasterStorageProgress($"tighten memory control: set empty pages to {tighten}");
+                        this.store.TraceHelper.FasterStorageProgress($"tighten memory control: tighten={tighten} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
                         log.SetEmptyPageCount(tighten, true);
                         this.Notify();
                     }
                     else if (excess < -50000 && log.EmptyPageCount > loosen)
                     {
-                        this.store.TraceHelper.FasterStorageProgress($"loosen memory control: set empty pages to {loosen}");
+                        this.store.TraceHelper.FasterStorageProgress($"loosen memory control: loosen={loosen} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
                         log.SetEmptyPageCount(loosen, true);
                         this.Notify();
+                    }
+                    else
+                    {
+                        this.store.TraceHelper.FasterStorageProgress($"keep memory control: EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB tighten={tighten} loosen={loosen} actuallyEmptyPages={actuallyEmptyPages}");
                     }
                 }
 
