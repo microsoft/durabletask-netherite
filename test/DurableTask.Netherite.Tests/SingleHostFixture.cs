@@ -27,12 +27,12 @@ namespace DurableTask.Netherite.Tests
         internal string TestHooksError { get; private set; }
 
         public SingleHostFixture()
-            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, null, null)
+            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, true, null, null)
         {
             this.Host.StartAsync().Wait();
         }
 
-        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, int? restrictMemory, Action<string> output)
+        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, Action<string> output)
         {
             this.LoggerFactory = new LoggerFactory();
             this.loggerProvider = new XunitLoggerProvider();
@@ -44,7 +44,10 @@ namespace DurableTask.Netherite.Tests
             settings.HubName = $"SingleHostFixture-{timestamp}";
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
             settings.InstanceCacheSizeMB = restrictMemory;
-            this.cacheDebugger = settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(settings.TestHooks);
+            if (useCacheDebugger)
+            {
+                this.cacheDebugger = settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(settings.TestHooks);
+            }
             if (useReplayChecker)
             {
                 settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
@@ -58,9 +61,9 @@ namespace DurableTask.Netherite.Tests
             this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
         }
 
-        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, int? restrictMemory, TimeSpan timeout, Action<string> output)
+        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, TimeSpan timeout, Action<string> output)
         {
-            var fixture = new SingleHostFixture(settings, useReplayChecker, restrictMemory, output);
+            var fixture = new SingleHostFixture(settings, useCacheDebugger, useReplayChecker, restrictMemory, output);
             var startupTask = fixture.Host.StartAsync(); 
             timeout = TestOrchestrationClient.AdjustTimeout(timeout);
             var timeoutTask = Task.Delay(timeout);

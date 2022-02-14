@@ -447,12 +447,13 @@ namespace DurableTask.Netherite.Tests
             }
 
             int emptyPageCount = 0;
-            int tolerance = 1;
+            int tolerance = 1; 
 
             for (int i = 0; i < 4; i++)
             {
                 emptyPageCount++;
                 this.cacheDebugger.MemoryTracker.SetEmptyPageCount(emptyPageCount);
+                await Task.Delay(TimeSpan.FromSeconds(20));
                 (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
                 Assert.InRange(numPages, 1, pageCount - emptyPageCount + tolerance);
                 Assert.InRange(memorySize, 0, historyAndStatusSize);
@@ -467,7 +468,7 @@ namespace DurableTask.Netherite.Tests
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
-        public async Task CheckMemoryControlLarge(bool useSpaceConsumingOrchestrations)
+        public async Task CheckMemoryControl(bool useSpaceConsumingOrchestrations)
         {
             this.settings.PartitionCount = 1;
             this.settings.FasterTuningParameters = new BlobManager.FasterTuningParameters()
@@ -486,7 +487,7 @@ namespace DurableTask.Netherite.Tests
                 this.settings.InstanceCacheSizeMB = 4;
                 orchestrationType = typeof(ScenarioTests.Orchestrations.SemiLargePayloadFanOutFanIn);
                 activityType = typeof(ScenarioTests.Activities.Echo);
-                int FanOut = 3;
+                int FanOut = 1;
                 input = FanOut;
                 SizePerInstance = FanOut * 50000 /* in history */ + 16000 /* in status */;
                 portionSize = 50;
@@ -508,9 +509,10 @@ namespace DurableTask.Netherite.Tests
             long memoryPerPage = ((1 << this.settings.FasterTuningParameters.StoreLogPageSizeBits.Value) / logBytesPerInstance) * SizePerInstance;
             double memoryRangeTo = (this.settings.InstanceCacheSizeMB.Value - 1) * 1024 * 1024;
             double memoryRangeFrom = (memoryRangeTo - memoryPerPage);
+            memoryRangeTo = Math.Max(memoryRangeTo, MemoryTracker.MinimumMemoryPages * memoryPerPage);
             memoryRangeTo = 1.1 * memoryRangeTo;
             memoryRangeFrom = 0.9 * memoryRangeFrom;
-            double pageRangeFrom = Math.Floor(memoryRangeFrom / memoryPerPage);
+            double pageRangeFrom = Math.Max(MemoryTracker.MinimumMemoryPages, Math.Floor(memoryRangeFrom / memoryPerPage));
             double pageRangeTo = Math.Ceiling(memoryRangeTo / memoryPerPage);
 
             async Task AddOrchestrationsAsync(int numOrchestrations)

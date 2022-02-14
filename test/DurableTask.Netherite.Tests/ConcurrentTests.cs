@@ -31,17 +31,19 @@ namespace DurableTask.Netherite.Tests
         {
             this.outputHelper = outputHelper;
             this.settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
-            this.settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(this.settings.TestHooks);
             string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
-            this.settings.HubName = $"ConcurrentTests-{timestamp}";
+            this.settings.HubName = $"ConcurrentTests-{Guid.NewGuid().ToString("n")}";
         }
 
         public void Dispose()
         {
-            this.outputHelper.WriteLine("CACHEDEBUGGER DUMP: --------------------------------------------------------------------------------------------------------------");
-            foreach (var line in this.settings.TestHooks.CacheDebugger.Dump())
+            if (this.settings.TestHooks.CacheDebugger != null)
             {
-                this.outputHelper.WriteLine(line);
+                this.outputHelper.WriteLine("CACHEDEBUGGER DUMP: --------------------------------------------------------------------------------------------------------------");
+                foreach (var line in this.settings.TestHooks.CacheDebugger.Dump())
+                {
+                    this.outputHelper.WriteLine(line);
+                }
             }
             this.outputHelper = null;
         }
@@ -85,7 +87,7 @@ namespace DurableTask.Netherite.Tests
         public async Task EachScenarioOnce(bool restrictMemory)
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker: true, restrictMemory ? (int?) 0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, useCacheDebugger: true, useReplayChecker: true, restrictMemory ? (int?) 0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = scenarios.StartAllScenarios(includeTimers: !restrictMemory, includeLarge: true).ToList();
@@ -104,7 +106,7 @@ namespace DurableTask.Netherite.Tests
         public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes((restrictMemory ? 5 : 2) + multiplicity * (restrictMemory ? 0.5 : 0.1)));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, useReplayChecker, restrictMemory ? (int?)0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, true, useReplayChecker, restrictMemory ? (int?)0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = new List<(string, Task)>();
@@ -131,18 +133,29 @@ namespace DurableTask.Netherite.Tests
             // running a single test is usually not enough to repro, so we run the same test multiple times
             this.outputHelper.WriteLine($"starting test {sequenceNumber}");
 
-            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(8));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, false, 0, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            // disable checkpoints since they are not needed to trigger the bug
+            this.settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 * 1024 * 1024;
+            this.settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
+            this.settings.IdleCheckpointFrequencyMs = (long)TimeSpan.FromDays(1).TotalMilliseconds;
+
+            this.settings.PartitionCount = 4;
+
+
+            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(2));
+            using var fixture = await SingleHostFixture.StartNew(this.settings, true, false, 0, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+
+            this.settings.TestHooks.CacheDebugger.EnableSizeChecking = false;
+
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = new List<(string, Task)>();
 
-            for (int i = 0; i < 30; i++)
+            for (int i = 0; i < 20; i++)
             {
                 tests.AddRange(scenarios.StartAllScenarios(false, false));
             }
 
-            await this.WaitForCompletion(tests, TimeSpan.FromMinutes(20));
+            await this.WaitForCompletion(tests, TimeSpan.FromMinutes(10));
         }
     }
 }
