@@ -16,6 +16,7 @@ namespace DurableTask.Netherite.Faster
     using DurableTask.Core.Common;
     using DurableTask.Core.Tracing;
     using FASTER.core;
+    using Microsoft.Azure.Storage.Blob.Protocol;
     using Newtonsoft.Json;
 
     class FasterKV : TrackedObjectStore
@@ -99,12 +100,14 @@ namespace DurableTask.Netherite.Faster
             return this.fht.NewSession(functions, id);
         }
 
+        string RandomSuffix() => Guid.NewGuid().ToString().Substring(0, 5);
+
         public LogAccessor<Key, Value> Log => this.fht?.Log;
 
         public override void InitMainSession()
         {
             this.singletons = new TrackedObject[TrackedObjectKey.NumberSingletonTypes];
-            this.mainSession = this.CreateASession("main", false);
+            this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
             this.cacheTracker.MeasureCacheSize();
             this.CheckInvariants();
         }
@@ -129,7 +132,7 @@ namespace DurableTask.Netherite.Faster
                 // recover Faster
                 this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
                 await this.fht.RecoverAsync();
-                this.mainSession = this.CreateASession("main", false);
+                this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
                 this.cacheTracker.MeasureCacheSize();
                 this.CheckInvariants();
 
@@ -304,7 +307,7 @@ namespace DurableTask.Netherite.Faster
 
         public override async Task<long> RunCompactionAsync(long target)
         {
-            string id = Guid.NewGuid().ToString().Substring(0, 5); // for tracing purposes
+            string id = this.RandomSuffix(); // for tracing purposes
             this.blobManager.TraceHelper.FasterProgress($"Compaction {id} pending");
 
             await maxCompactionThreads.WaitAsync();
@@ -322,7 +325,7 @@ namespace DurableTask.Netherite.Faster
 
                     try
                     {
-                        using var session = this.CreateASession("compaction", false);
+                        using var session = this.CreateASession($"compaction-{id}", false);
                         long compactedUntil = session.Compact(target, CompactionType.Lookup);
                         tcs.SetResult(compactedUntil);
                     }
@@ -387,7 +390,7 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 // these are disposed after the prefetch thread is done
-                using var prefetchSession = this.CreateASession($"prefetch-{Guid.NewGuid():N}", false);
+                using var prefetchSession = this.CreateASession($"prefetch-{this.RandomSuffix()}", false);
 
                 // for each key, issue a prefetch
                 await foreach (TrackedObjectKey key in keys)
@@ -646,7 +649,7 @@ namespace DurableTask.Netherite.Faster
             void RunScan()
             {
                 using var _ = EventTraceContext.MakeContext(0, queryId);
-                using var session = this.CreateASession($"scan-{Guid.NewGuid():N}", true);
+                using var session = this.CreateASession($"scan-{queryId}-{this.RandomSuffix()}", true);
 
                 // get the unique set of keys appearing in the log and emit them
                 using var iter1 = session.Iterate();
@@ -740,7 +743,7 @@ namespace DurableTask.Netherite.Faster
                     emitItem(key, singleton);
                 }
 
-                using var session = this.CreateASession($"emitCurrentState", true);
+                using var session = this.CreateASession($"emitCurrentState-{this.RandomSuffix()}", true);
 
                 // iterate histories
                 using (var iter1 = session.Iterate())

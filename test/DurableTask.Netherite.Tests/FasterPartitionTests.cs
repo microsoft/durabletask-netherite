@@ -476,6 +476,7 @@ namespace DurableTask.Netherite.Tests
                 StoreLogPageSizeBits = 10
             };
             this.SetCheckpointFrequency(CheckpointFrequency.None);
+            this.settings.TestHooks.CacheDebugger.EnableSizeChecking = false; // our size checker is not entirely accurate in low-memory situationss
 
             Type orchestrationType, activityType;
             long SizePerInstance;
