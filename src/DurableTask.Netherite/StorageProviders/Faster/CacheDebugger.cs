@@ -27,6 +27,8 @@ namespace DurableTask.Netherite.Faster
             this.testHooks = testHooks;
         }
 
+        public bool EnableSizeChecking { get; set; } = true;
+
         public enum CacheEvent
         {
             // reads and RMWs on the main session
@@ -263,10 +265,16 @@ namespace DurableTask.Netherite.Faster
             });
         }
 
-        internal bool CheckSize(TrackedObjectKey key, long actual, string actualEntries, long headAddress)
+        internal bool CheckSize(TrackedObjectKey key, List<(long delta, long address, string desc)> entries, long headAddress)
         {
+            if (!this.EnableSizeChecking)
+            {
+                return false;
+            }
+
             var info = this.GetObjectInfo(key);
             long reference = Interlocked.Read(ref info.Size);
+            long actual = entries.Select(e => e.delta).Sum();
 
             if (reference == actual)
             {
@@ -277,14 +285,21 @@ namespace DurableTask.Netherite.Faster
             {
                 info.CacheEvents.Enqueue(new Entry { CacheEvent = CacheEvent.SizeCheckFail, Delta = actual, Address = reference });
 
-                // try to account for eviction notifications that we have not received yet
+                // adjust the actual
+                var firstActual = entries.FirstOrDefault().address;
+                var firstReference = entries.FirstOrDefault().address;
+                var latestReadonly = info.CacheEvents.Where(e => e.CacheEvent == CacheEvent.Readonly).Select(e => e.Address).LastOrDefault();
+                var adjustedHead = Math.Max(Math.Max(firstActual, firstReference), latestReadonly + 1);
+
+                // try to account for concurrent eviction processing by using the latest head address
                 info.GetCacheEvents(out _, out var entrySizes);
-                var adjustedReference = entrySizes.Where(kvp => kvp.Key >= headAddress).Select(kvp => kvp.Value).Sum();
-               
+                var adjustedReference = entrySizes.Where(kvp => kvp.Key > adjustedHead).Select(kvp => kvp.Value).Sum();
+                var adjustedActual = entries.Where(e => e.address > adjustedHead).Select(e => e.delta).Sum();
+
                 // forcefully terminate if the adjusted size does not match
-                if (adjustedReference != reference)
+                if (adjustedReference != adjustedActual)
                 {
-                    this.Fail($"Size tracking is not accurate reference={reference} actual={actual} referenceEntries={PrintExpectedEntries()} actualEntries={actualEntries} adjustedReference={adjustedReference} headAddress={headAddress}", key);
+                    this.Fail($"Size tracking is not accurate reference={reference} actual={actual} referenceEntries={PrintExpectedEntries()} actualEntries={PrintActualEntries()} adjustedReference={adjustedReference} adjustedActual={adjustedActual} adjustedHead={adjustedHead:x} headAddress={headAddress:x}", key);
                     return false;
 
                     string PrintExpectedEntries()
@@ -293,6 +308,16 @@ namespace DurableTask.Netherite.Faster
                         foreach (var kvp in entrySizes)
                         {
                             sb.Append($" {kvp.Value}@{kvp.Key:x}");
+                        }
+                        return sb.ToString();
+                    }
+                    string PrintActualEntries()
+                    {
+                        StringBuilder sb = new StringBuilder();
+                        foreach (var e in entries)
+                        {
+                            sb.Append(' ');
+                            sb.Append(e.desc);
                         }
                         return sb.ToString();
                     }
