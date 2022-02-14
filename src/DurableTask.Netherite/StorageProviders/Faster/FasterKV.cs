@@ -142,11 +142,11 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override void CompletePending()
+        public override bool CompletePending()
         {
             try
             {
-                this.mainSession.CompletePending(false, false);
+                return this.mainSession.CompletePending(false, false);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -457,7 +457,7 @@ namespace DurableTask.Netherite.Faster
         }
 
         // kick off a read of a tracked object on the main session, completing asynchronously if necessary
-        public override void ReadAsync(PartitionReadEvent readEvent, EffectTracker effectTracker)
+        public override void Read(PartitionReadEvent readEvent, EffectTracker effectTracker)
         {
             this.partition.Assert(readEvent != null, "null readEvent in ReadAsync");
             try
@@ -507,55 +507,18 @@ namespace DurableTask.Netherite.Faster
         }
 
         // read a tracked object on the main session and wait for the response (only one of these is executing at a time)
-        public override async ValueTask<TrackedObject> ReadAsync(Key key, EffectTracker effectTracker)
+        public override ValueTask<TrackedObject> ReadAsync(Key key, EffectTracker effectTracker)
         {
-            try
-            {
-                if (key.Val.IsSingleton)
-                {
-                    return this.singletons[(int)key.Val.ObjectType];
-                }
-                else
-                {
-                    var result = await this.mainSession.ReadAsync(key, effectTracker, context: null, token: this.terminationToken);
-                    var (status, output) = result.Complete();
-                    return output.Read(this, null);
-                }
-            }
-            catch (Exception exception)
-                when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
-            {
-                throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
-            }
+            this.partition.Assert(key.Val.IsSingleton, "only singletons expected in ReadAsync");
+            return new ValueTask<TrackedObject>(this.singletons[(int)key.Val.ObjectType]);
         }
-
-        // read a tracked object on a query session
-        async ValueTask<TrackedObject> ReadAsync(
-            ClientSession<Key, Value, EffectTracker, Output, object, Functions> session,
-            Key key,
-            EffectTracker effectTracker)
-        {
-            try
-            {
-                this.partition.Assert(!key.Val.IsSingleton, "singletons unexpected in ReadAsync");
-                var result = await session.ReadAsync(key, effectTracker, context: null, token: this.terminationToken);
-                var (status, output) = result.Complete();
-                return output.Read(this, "q");
-            }
-            catch (Exception exception)
-                when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
-            {
-                throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
-            }
-        }
-
 
         // create a tracked object on the main session (only one of these is executing at a time)
         public override ValueTask<TrackedObject> CreateAsync(Key key)
         {
+            this.partition.Assert(key.Val.IsSingleton, "only singletons expected in CreateAsync");
             try
             {
-                this.partition.Assert(key.Val.IsSingleton, "only singletons expected in CreateAsync");
                 TrackedObject newObject = TrackedObjectKey.Factory(key);
                 newObject.Partition = this.partition;
                 this.singletons[(int)key.Val.ObjectType] = newObject;
@@ -847,24 +810,19 @@ namespace DurableTask.Netherite.Faster
             var inMemoryIterator = this.fht.Log.Scan(this.fht.Log.HeadAddress, this.fht.Log.TailAddress);
 
             long totalSize = 0;
-            Dictionary<TrackedObjectKey, (long Size, StringBuilder Sb)> perKeySize = new Dictionary<TrackedObjectKey, (long Size, StringBuilder Sb)>();
-            void Add(TrackedObjectKey key, long delta, string desc)
+            Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>> perKey = new Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>>();
+            void Add(TrackedObjectKey key, long delta, long address, string desc)
             {
-                perKeySize.TryGetValue(key, out (long size, StringBuilder sb) current);
-                current.size += delta;
-                if (current.sb == null)
+                perKey.TryGetValue(key, out var current);
+                if (current == null)
                 {
-                    current.sb = new StringBuilder();
-                }
-                else
-                {
-                    current.sb.Append(',');
-                }
-                current.sb.Append(desc);
-                perKeySize[key] = current;
+                    current = perKey[key] = new List<(long delta, long address, string desc)>();
+                }       
+                current.Add((delta, address, desc));
                 totalSize += delta;
             }
 
+            
             while (inMemoryIterator.GetNext(out RecordInfo recordInfo, out Key key, out Value value))
             {
                 long delta = key.Val.EstimatedSize;
@@ -872,15 +830,15 @@ namespace DurableTask.Netherite.Faster
                 {
                     delta += value.EstimatedSize;
                 }
-                Add(key, delta, $"{(recordInfo.Invalid ? "I" : "")}{(recordInfo.Tombstone ? "T" : "")}{delta}@{inMemoryIterator.CurrentAddress.ToString("x")}");
+                Add(key, delta, inMemoryIterator.CurrentAddress, $"{(recordInfo.Invalid ? "I" : "")}{(recordInfo.Tombstone ? "T" : "")}{delta}@{inMemoryIterator.CurrentAddress.ToString("x")}");
             }
 
             long trackedSize = this.cacheTracker.TrackedObjectSize;
 
             bool sizeMatches = true;
-            foreach (var kvp in perKeySize)
+            foreach (var kvp in perKey)
             {
-                sizeMatches = sizeMatches && this.cacheDebugger.CheckSize(kvp.Key, kvp.Value.Size, kvp.Value.Sb.ToString(), this.fht.Log.HeadAddress);
+                sizeMatches = sizeMatches && this.cacheDebugger.CheckSize(kvp.Key, kvp.Value, this.Log.HeadAddress);
             }
 
             if (trackedSize != totalSize && sizeMatches)
@@ -1123,7 +1081,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public class Functions : IFunctions<Key, Value, EffectTracker, Output, object>, ITraceListener<Key>
+        public class Functions : IFunctions<Key, Value, EffectTracker, Output, object>
         {
             readonly Partition partition;
             readonly FasterKV store;
@@ -1141,11 +1099,21 @@ namespace DurableTask.Netherite.Faster
                 this.cacheTracker = isScan ? null : cacheTracker;
                 this.isScan = isScan;
             }
-
-            public void Trace(Key key, string message)
-            {
-                this.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.Faster, null, message, 0);
-            }
+            
+            // for use with ITraceListener on a modified FASTER branch with extra instrumentation
+            //public void TraceKey(Key key, string message)
+            //{
+            //    this.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.Faster, null, message, 0);
+            //}
+            //public void TraceRequest(Key key, long id, string message)
+            //{
+            //    this.cacheDebugger?.Record(key, CacheDebugger.CacheEvent.Faster, null, $"{id:D10}-{message}", 0);
+            //    this.store.TraceHelper.FasterStorageProgress($"FASTER: {id:D10}-{message} key={key}");
+            //}
+            //public void Trace(long id, string message)
+            //{
+            //    this.store.TraceHelper.FasterStorageProgress($"FASTER: {id:D10}-{message}");
+            //}
 
             bool IFunctions<Key, Value, EffectTracker, Output, object>.NeedInitialUpdate(ref Key key, ref EffectTracker input, ref Output output)
                 => true;
@@ -1463,7 +1431,7 @@ namespace DurableTask.Netherite.Faster
                 }
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.CheckpointCompletionCallback(string sessionId, CommitPoint commitPoint) { }
+            void IFunctions<Key, Value, EffectTracker, Output, object>.CheckpointCompletionCallback(int sessionId, string sessionName, CommitPoint commitPoint) { }
             void IFunctions<Key, Value, EffectTracker, Output, object>.RMWCompletionCallback(ref Key key, ref EffectTracker input, ref Output output, object ctx, Status status, RecordMetadata recordMetadata) { }
             void IFunctions<Key, Value, EffectTracker, Output, object>.UpsertCompletionCallback(ref Key key, ref EffectTracker input, ref Value value, object ctx) { }
             void IFunctions<Key, Value, EffectTracker, Output, object>.DeleteCompletionCallback(ref Key key, object ctx) { }

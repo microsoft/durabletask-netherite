@@ -197,9 +197,10 @@ namespace DurableTask.Netherite
                             break;
                     }
 
+                    this.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, false);
+                    
                     if (isReady)
                     {
-                        this.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, false);
                         readEvent.Fire(this.Partition);
                     }
                 }

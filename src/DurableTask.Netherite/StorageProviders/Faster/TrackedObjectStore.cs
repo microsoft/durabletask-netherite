@@ -17,7 +17,7 @@ namespace DurableTask.Netherite.Faster
 
         public abstract Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync();
 
-        public abstract void CompletePending();
+        public abstract bool CompletePending();
 
         public abstract ValueTask ReadyToCompletePendingAsync();
 
@@ -48,7 +48,7 @@ namespace DurableTask.Netherite.Faster
         public abstract Task RunPrefetchSession(IAsyncEnumerable<TrackedObjectKey> keys);
 
         // kick off a read of a tracked object, completing asynchronously if necessary
-        public abstract void ReadAsync(PartitionReadEvent readEvent, EffectTracker effectTracker);
+        public abstract void Read(PartitionReadEvent readEvent, EffectTracker effectTracker);
 
         // read a singleton tracked object on the main session and wait for the response (only one of these is executing at a time)
         public abstract ValueTask<TrackedObject> ReadAsync(FasterKV.Key key, EffectTracker effectTracker);

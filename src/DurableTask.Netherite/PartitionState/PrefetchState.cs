@@ -92,6 +92,7 @@ namespace DurableTask.Netherite
             {
                 s.Append(':');
                 s.Append(this.request.ToString());
+                base.ExtraTraceInformation(s);
             }
 
             public override TrackedObjectKey ReadTarget => this.request.Target;
