@@ -23,6 +23,8 @@ namespace DurableTask.Netherite.Faster
 
         public long MaxCacheSize => this.maxCacheSize;
 
+        public const int MinimumMemoryPages = 1;
+
         public MemoryTracker(long maxCacheSize)
         {
             this.maxCacheSize = maxCacheSize;
@@ -145,18 +147,18 @@ namespace DurableTask.Netherite.Faster
                     int numUsedPages = (int) ((lastPage - firstPage) + 1);
                     int actuallyEmptyPages = log.BufferSize - numUsedPages;
                     int currentTarget = Math.Max(log.EmptyPageCount, actuallyEmptyPages);
-                    int tighten = Math.Min(currentTarget + 1, log.BufferSize - 1);
+                    int tighten = Math.Min(currentTarget + 1, log.BufferSize - MinimumMemoryPages);
                     int loosen = 0;
 
                     if (excess > 0 && currentTarget < tighten)
                     {
-                        this.store.TraceHelper.FasterStorageProgress($"tighten memory control: tighten={tighten} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
+                        this.store.TraceHelper.FasterStorageProgress($"engage memory control: tighten={tighten} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
                         log.SetEmptyPageCount(tighten, true);
                         this.Notify();
                     }
                     else if (excess < 0 && log.EmptyPageCount > loosen)
                     {
-                        this.store.TraceHelper.FasterStorageProgress($"loosen memory control: loosen={loosen} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
+                        this.store.TraceHelper.FasterStorageProgress($"release memory control: loosen={loosen} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
                         log.SetEmptyPageCount(loosen, true);
                         this.Notify();
                     }
