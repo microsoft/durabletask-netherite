@@ -364,6 +364,42 @@ namespace DurableTask.Netherite.Tests
         /// Fill memory, then compute size, then reduce page count, and measure size again
         /// </summary>
         [Fact]
+        public async Task PipelinedStart()
+        {
+            this.settings.PartitionCount = 1;
+            this.settings.InstanceCacheSizeMB = 2;
+            this.SetCheckpointFrequency(CheckpointFrequency.Frequent);
+
+            var orchestrationType = typeof(ScenarioTests.Orchestrations.Hello5);
+            var activityType = typeof(ScenarioTests.Activities.Hello);
+            string InstanceId(int i) => $"Orch{i:D5}";
+            int numOrchestrations = 500;
+
+            // start the service 
+            var (service, client) = await this.StartService(recover: false, orchestrationType, activityType);
+
+            // start all orchestrations and then get the status of each one
+            {
+                var orchestrations = await Enumerable.Range(0, numOrchestrations).ParallelForEachAsync(200, true, (iteration) =>
+                {
+                    var orchestrationInstanceId = InstanceId(iteration);
+                    return client.CreateOrchestrationInstanceAsync(orchestrationType, orchestrationInstanceId, null);
+                });
+                Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while starting orchestrations: {this.errorInTestHooks}");
+                await Enumerable.Range(0, numOrchestrations).ParallelForEachAsync(200, true, (iteration) =>
+                {
+                    return client.GetOrchestrationStateAsync(orchestrations[iteration]);
+                });  
+                Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while checking progress of orchestrations: {this.errorInTestHooks}");
+            }
+
+            await service.StopAsync();
+        }
+
+        /// <summary>
+        /// Repro fail on basic 1000 * hello
+        /// </summary>
+        [Fact]
         public async Task CheckMemorySize()
         {
             this.settings.PartitionCount = 1;
@@ -482,6 +518,8 @@ namespace DurableTask.Netherite.Tests
             long SizePerInstance;
             object input;
             int portionSize;
+            double uppertolerance;
+            double lowertolerance;
 
             if (useSpaceConsumingOrchestrations)
             {
@@ -492,6 +530,9 @@ namespace DurableTask.Netherite.Tests
                 input = FanOut;
                 SizePerInstance = FanOut * 50000 /* in history */ + 16000 /* in status */;
                 portionSize = 50;
+                uppertolerance = 1.1;
+                lowertolerance = 0;
+
             }
             else
             {
@@ -501,6 +542,8 @@ namespace DurableTask.Netherite.Tests
                 SizePerInstance = 3610 /* empiric */;
                 input = null;
                 portionSize = 300;
+                uppertolerance = 1.1;
+                lowertolerance = 0.9;
             }
 
             // start the service 
@@ -511,8 +554,8 @@ namespace DurableTask.Netherite.Tests
             double memoryRangeTo = (this.settings.InstanceCacheSizeMB.Value - 1) * 1024 * 1024;
             double memoryRangeFrom = (memoryRangeTo - memoryPerPage);
             memoryRangeTo = Math.Max(memoryRangeTo, MemoryTracker.MinimumMemoryPages * memoryPerPage);
-            memoryRangeTo = 1.1 * memoryRangeTo;
-            memoryRangeFrom = 0.9 * memoryRangeFrom;
+            memoryRangeTo = uppertolerance * memoryRangeTo;
+            memoryRangeFrom = lowertolerance * memoryRangeFrom;
             double pageRangeFrom = Math.Max(MemoryTracker.MinimumMemoryPages, Math.Floor(memoryRangeFrom / memoryPerPage));
             double pageRangeTo = Math.Ceiling(memoryRangeTo / memoryPerPage);
 
@@ -522,11 +565,12 @@ namespace DurableTask.Netherite.Tests
                 for (int i = 0; i < numOrchestrations; i++)
                     tasks[i] = client.CreateOrchestrationInstanceAsync(orchestrationType, Guid.NewGuid().ToString(), input);
                 await Task.WhenAll(tasks);
+                Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while starting orchestrations: {this.errorInTestHooks}");
                 var tasks2 = new Task<OrchestrationState>[numOrchestrations];
                 for (int i = 0; i < numOrchestrations; i++)
                     tasks2[i] = client.WaitForOrchestrationAsync(tasks[i].Result, TimeSpan.FromMinutes(3));
                 await Task.WhenAll(tasks2);
-                Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while starting orchestrations: {this.errorInTestHooks}");
+                Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while waiting for orchestrations: {this.errorInTestHooks}");
             }
 
             for (int i = 0; i < 4; i++)
