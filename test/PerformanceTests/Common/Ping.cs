@@ -60,19 +60,13 @@ namespace PerformanceTests
                         {
                             // if orchestration already exists
                         }
-                        try
+                        var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, instanceId, timeout);
+                        if (response is ObjectResult objectResult
+                            && objectResult.Value is HttpResponseMessage responseMessage
+                            && responseMessage.StatusCode == System.Net.HttpStatusCode.OK
+                            && responseMessage.Content is StringContent stringContent)
                         {
-                            var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, instanceId, timeout);
-                            if (response is ObjectResult objectResult
-                              && objectResult.Value is HttpResponseMessage responseMessage
-                              && responseMessage.StatusCode == System.Net.HttpStatusCode.OK
-                              && responseMessage.Content is StringContent stringContent)
-                            {
-                                return (string)JToken.Parse(await stringContent.ReadAsStringAsync());
-                            }
-                        }
-                        catch (TimeoutException)
-                        {
+                            return (string)JToken.Parse(await stringContent.ReadAsStringAsync());
                         }
                         return $"waiting for completion timed out after {timeout}";
                     }
