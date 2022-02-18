@@ -70,7 +70,7 @@ namespace DurableTask.Netherite.Emulated
             return this.clientQueues != null;
         }
 
-        Task ITaskHub.StartAsync()
+        Task ITaskHub.StartClientAsync()
         {
             this.shutdownTokenSource = new CancellationTokenSource();
 
@@ -86,6 +86,11 @@ namespace DurableTask.Netherite.Emulated
             this.clientQueues[clientId] = clientQueue;
             this.clientSender.SetHandler(list => this.SendEvents(this.client, list));
 
+            return Task.CompletedTask;
+        }
+
+        Task ITaskHub.StartWorkersAsync()
+        {
             // create a load monitor
             if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
             {
@@ -98,9 +103,9 @@ namespace DurableTask.Netherite.Emulated
 
             // we finish the (possibly lengthy) partition loading asynchronously so it is possible to receive 
             // stop signals before partitions are fully recovered
-            var tcs = new TaskCompletionSource<object>();
-            this.startOrRecoverTask = this.StartOrRecoverAsync(0, tcs.Task);
-            tcs.SetResult(null);
+            var greenLight = new TaskCompletionSource<bool>();
+            this.startOrRecoverTask = this.StartOrRecoverAsync(0, greenLight.Task);
+            greenLight.SetResult(true);
 
             return Task.CompletedTask;
         }
@@ -115,15 +120,15 @@ namespace DurableTask.Netherite.Emulated
 
             if (this.shutdownTokenSource?.IsCancellationRequested == false)
             {
-                var tcs = new TaskCompletionSource<object>();
-                this.startOrRecoverTask = this.StartOrRecoverAsync(epoch + 1, tcs.Task);
-                tcs.SetResult(null);
+                var greenLight = new TaskCompletionSource<bool>();
+                this.startOrRecoverTask = this.StartOrRecoverAsync(epoch + 1, greenLight.Task);
+                greenLight.SetResult(true);
             }
         }
 
-        async Task StartOrRecoverAsync(int epoch, Task continueStart)
+        async Task StartOrRecoverAsync(int epoch, Task<bool> greenLight)
         {
-            await continueStart;
+            if (!await greenLight) return;
 
             if (epoch > 0)
             {

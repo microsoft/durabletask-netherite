@@ -45,19 +45,22 @@ namespace DurableTask.Netherite
         CancellationTokenSource serviceShutdownSource;
         Exception startupException;
 
-        //internal Dictionary<uint, Partition> Partitions { get; private set; }
-        internal Client CheckedClient
+        internal async ValueTask<Client> GetClientAsync()
         {
-            get
+            if (this.checkedClient == null)
             {
-                if (this.client == null)
-                {
-                    throw new InvalidOperationException($"failed to start: {this.startupException.Message}", this.startupException);
-                }
-                return this.client;
+                // we need to wait till the startup of the client is complete
+                await this.TryStartAsync(true);
             }
+            if (this.startupException != null)
+            {
+                // to help observability we expose backend startup exceptions to client API calls
+                throw new InvalidOperationException($"Netherite backend failed to start: {this.startupException.Message}", this.startupException);
+            }
+            return this.checkedClient;
         }
         Client client;
+        Client checkedClient;
 
         internal ILoadMonitorService LoadMonitorService { get; private set; }
 
@@ -292,20 +295,120 @@ namespace DurableTask.Netherite
         async Task IOrchestrationService.DeleteAsync(bool deleteInstanceStore) => await ((IOrchestrationService)this).DeleteAsync();
 
         /// <inheritdoc />
-        async Task IOrchestrationService.StartAsync()
+        Task IOrchestrationService.StartAsync()
         {
-            try
+            return this.TryStartAsync(false);
+        }
+
+        /// <inheritdoc />
+        Task IOrchestrationService.StopAsync(bool quickly)
+        {
+            return this.currentTransition = this.TryStopAsync(quickly);
+        }
+
+        /// <inheritdoc />
+        Task IOrchestrationService.StopAsync()
+        {
+            return this.currentTransition = this.TryStopAsync(false);
+        }
+
+        /// <inheritdoc/>
+        public void Dispose() => this.taskHub.StopAsync();
+
+        enum ServiceState
+        {
+            None, Client, Full
+        }
+
+        Task<ServiceState> currentTransition = Task.FromResult(ServiceState.None);        
+
+        public async Task TryStartAsync(bool clientOnly)
+        {
+            while (true)
             {
-                if (this.serviceShutdownSource != null)
+                var currentTransition = this.currentTransition;
+                var currentState = await currentTransition;
+
+                if (currentState == ServiceState.None)
                 {
-                    // we left the service running. No need to start it again.
-                    this.TraceHelper.TraceProgress("Reusing");
-                    return;
+                    var greenLight = new TaskCompletionSource<bool>();
+                    var startTask = this.StartClientAsync(greenLight.Task);
+                    var nextTransition = Interlocked.CompareExchange<Task<ServiceState>>(ref this.currentTransition, startTask, currentTransition);
+                    greenLight.SetResult(nextTransition == currentTransition);
+
+                    continue;
                 }
 
-                this.TraceHelper.TraceProgress("Starting");
+                if (currentState == ServiceState.Client)
+                {
+                    if (clientOnly)
+                    {
+                        return;
+                    }
+
+                    var greenLight = new TaskCompletionSource<bool>();
+                    var startTask = this.StartWorkersAsync(greenLight.Task);
+                    var nextTransition = Interlocked.CompareExchange<Task<ServiceState>>(ref this.currentTransition, startTask, currentTransition);
+                    greenLight.SetResult(nextTransition == currentTransition);
+
+                    continue;
+                }
+
+                return;
+            }
+        }
+
+        async Task<ServiceState> StartClientAsync(Task<bool> greenLight)
+        {
+            if (!await greenLight) return ServiceState.None; 
+
+            try
+            {
+               this.TraceHelper.TraceProgress("Starting Client");
 
                 this.serviceShutdownSource = new CancellationTokenSource();
+
+                await this.taskHub.StartClientAsync();
+
+                System.Diagnostics.Debug.Assert(this.client != null, "Backend should have added client");
+               
+                this.checkedClient = this.client;
+
+                this.TraceHelper.TraceProgress($"Started client");
+
+                return ServiceState.Client;
+            }
+            catch (Exception e) when (!Utils.IsFatal(e))
+            {
+                this.startupException = e;
+
+                this.TraceHelper.TraceError($"Failed to start: {e.Message}", e);
+
+                // invoke cancellation so that any partially-started partitions and event loops are terminated
+                try
+                {
+                    this.serviceShutdownSource.Cancel();
+                    this.serviceShutdownSource.Dispose();
+                    this.serviceShutdownSource = null;
+                }
+                catch (Exception shutdownException)
+                {
+                    this.TraceHelper.TraceError($"Exception while shutting down service: {shutdownException.Message}", shutdownException);
+                }
+
+                throw;
+            }
+        }
+        
+        async Task<ServiceState> StartWorkersAsync(Task<bool> greenLight)
+        {
+            if (!await greenLight) return ServiceState.Client;
+
+            try
+            {
+                System.Diagnostics.Debug.Assert(this.client != null, "Backend should have added client");
+
+                this.TraceHelper.TraceProgress("Starting Workers");
 
                 this.ActivityWorkItemQueue = new WorkItemQueue<ActivityWorkItem>();
                 this.OrchestrationWorkItemQueue = new WorkItemQueue<OrchestrationWorkItem>();
@@ -319,17 +422,16 @@ namespace DurableTask.Netherite
                     this.LoadPublisher = new LoadPublisher(this.LoadMonitorService, CancellationToken.None, this.TraceHelper);
                 }
 
-                this.TraceHelper.TraceProgress("Starting TaskHub");
-                await this.taskHub.StartAsync();
+                await this.taskHub.StartWorkersAsync();
 
                 if (this.Settings.PartitionCount != this.NumberPartitions)
                 {
                     this.TraceHelper.TraceWarning($"Ignoring configuration setting partitionCount={this.Settings.PartitionCount} because existing TaskHub has {this.NumberPartitions} partitions");
                 }
 
-                System.Diagnostics.Debug.Assert(this.client != null, "Backend should have added client");
-
                 this.TraceHelper.TraceProgress($"Started partitionCount={this.NumberPartitions}");
+
+                return ServiceState.Full;
             }
             catch (Exception e) when (!Utils.IsFatal(e))
             {
@@ -353,14 +455,16 @@ namespace DurableTask.Netherite
             }
         }
 
-        /// <inheritdoc />
-        async Task IOrchestrationService.StopAsync(bool quickly)
+        async Task<ServiceState> TryStopAsync(bool quickly)
         {
             try
             {
                 this.TraceHelper.TraceProgress($"Stopping quickly={quickly}");
 
-                if (!this.Settings.KeepServiceRunning && this.serviceShutdownSource != null)
+                this.checkedClient = null;
+                this.client = null;
+
+                if (this.serviceShutdownSource != null)
                 {
                     this.serviceShutdownSource.Cancel();
                     this.serviceShutdownSource.Dispose();
@@ -373,6 +477,8 @@ namespace DurableTask.Netherite
                 }
 
                 this.TraceHelper.TraceProgress("Stopped cleanly");
+
+                return ServiceState.None;
             }
             catch (Exception e) when (!Utils.IsFatal(e))
             {
@@ -384,12 +490,6 @@ namespace DurableTask.Netherite
                 this.TraceHelper.TraceStopped();
             }
         }
-
-        /// <inheritdoc />
-        Task IOrchestrationService.StopAsync() => ((IOrchestrationService)this).StopAsync(false);
-
-        /// <inheritdoc/>
-        public void Dispose() => this.taskHub.StopAsync();
 
         /// <summary>
         /// Computes the partition for the given instance.
@@ -452,41 +552,46 @@ namespace DurableTask.Netherite
         /******************************/
 
         /// <inheritdoc />
-        Task IOrchestrationServiceClient.CreateTaskOrchestrationAsync(TaskMessage creationMessage)
-            => this.CheckedClient.CreateTaskOrchestrationAsync(
+        async Task IOrchestrationServiceClient.CreateTaskOrchestrationAsync(TaskMessage creationMessage)
+            => await (await this.GetClientAsync()).CreateTaskOrchestrationAsync(
                 this.GetPartitionId(creationMessage.OrchestrationInstance.InstanceId),
                 creationMessage,
                 null);
 
         /// <inheritdoc />
-        Task IOrchestrationServiceClient.CreateTaskOrchestrationAsync(TaskMessage creationMessage, OrchestrationStatus[] dedupeStatuses)
-            => this.CheckedClient.CreateTaskOrchestrationAsync(
+        async Task IOrchestrationServiceClient.CreateTaskOrchestrationAsync(TaskMessage creationMessage, OrchestrationStatus[] dedupeStatuses)
+            => await (await this.GetClientAsync()).CreateTaskOrchestrationAsync(
                 this.GetPartitionId(creationMessage.OrchestrationInstance.InstanceId),
                 creationMessage,
                 dedupeStatuses);
 
         /// <inheritdoc />
-        Task IOrchestrationServiceClient.SendTaskOrchestrationMessageAsync(TaskMessage message)
-            => this.CheckedClient.SendTaskOrchestrationMessageBatchAsync(
+        async Task IOrchestrationServiceClient.SendTaskOrchestrationMessageAsync(TaskMessage message)
+            => await (await this.GetClientAsync()).SendTaskOrchestrationMessageBatchAsync(
                 this.GetPartitionId(message.OrchestrationInstance.InstanceId),
                 new[] { message });
 
         /// <inheritdoc />
-        Task IOrchestrationServiceClient.SendTaskOrchestrationMessageBatchAsync(params TaskMessage[] messages)
-            => messages.Length == 0
-                ? Task.CompletedTask
-                : Task.WhenAll(messages
+        async Task IOrchestrationServiceClient.SendTaskOrchestrationMessageBatchAsync(params TaskMessage[] messages)
+        {
+            var client = await this.GetClientAsync();
+            if (messages.Length != 0)
+            {
+                await Task.WhenAll(messages
                     .GroupBy(tm => this.GetPartitionId(tm.OrchestrationInstance.InstanceId))
-                    .Select(group => this.CheckedClient.SendTaskOrchestrationMessageBatchAsync(group.Key, group))
+                    .Select(group => client.SendTaskOrchestrationMessageBatchAsync(group.Key, group))
                     .ToList());
+            }
+        }
+           
 
         /// <inheritdoc />
-        Task<OrchestrationState> IOrchestrationServiceClient.WaitForOrchestrationAsync(
+        async Task<OrchestrationState> IOrchestrationServiceClient.WaitForOrchestrationAsync(
                 string instanceId,
                 string executionId,
                 TimeSpan timeout,
                 CancellationToken cancellationToken) 
-            => this.CheckedClient.WaitForOrchestrationAsync(
+            => await (await this.GetClientAsync()).WaitForOrchestrationAsync(
                 this.GetPartitionId(instanceId),
                 instanceId,
                 executionId,
@@ -498,7 +603,7 @@ namespace DurableTask.Netherite
             string instanceId, 
             string executionId)
         {
-            var state = await this.CheckedClient.GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, true).ConfigureAwait(false);
+            var state = await (await this.GetClientAsync()).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, true).ConfigureAwait(false);
             return state != null && (executionId == null || executionId == state.OrchestrationInstance.ExecutionId)
                 ? state
                 : null;
@@ -510,25 +615,26 @@ namespace DurableTask.Netherite
             bool allExecutions)
         {
             // note: allExecutions is always ignored because storage contains never more than one execution.
-            var state = await this.CheckedClient.GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, true).ConfigureAwait(false);
+            var state = await (await this.GetClientAsync()).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, true).ConfigureAwait(false);
             return state != null 
                 ? (new[] { state }) 
                 : (new OrchestrationState[0]);
         }
 
         /// <inheritdoc />
-        Task IOrchestrationServiceClient.ForceTerminateTaskOrchestrationAsync(
+        async Task IOrchestrationServiceClient.ForceTerminateTaskOrchestrationAsync(
                 string instanceId, 
                 string message)
-            => this.CheckedClient.ForceTerminateTaskOrchestrationAsync(this.GetPartitionId(instanceId), instanceId, message);
+            => await (await this.GetClientAsync()).ForceTerminateTaskOrchestrationAsync(this.GetPartitionId(instanceId), instanceId, message);
 
         /// <inheritdoc />
         async Task<string> IOrchestrationServiceClient.GetOrchestrationHistoryAsync(
             string instanceId, 
             string executionId)
         {
+            var client = await this.GetClientAsync();
             (string actualExecutionId, IList<HistoryEvent> history) = 
-                await this.CheckedClient.GetOrchestrationHistoryAsync(this.GetPartitionId(instanceId), instanceId).ConfigureAwait(false);
+                await client.GetOrchestrationHistoryAsync(this.GetPartitionId(instanceId), instanceId).ConfigureAwait(false);
 
             if (history != null && (executionId == null || executionId == actualExecutionId))
             {
@@ -541,7 +647,7 @@ namespace DurableTask.Netherite
         }
 
         /// <inheritdoc />
-        Task IOrchestrationServiceClient.PurgeOrchestrationHistoryAsync(
+        async Task IOrchestrationServiceClient.PurgeOrchestrationHistoryAsync(
             DateTime thresholdDateTimeUtc, 
             OrchestrationStateTimeRangeFilterType 
             timeRangeFilterType)
@@ -551,34 +657,34 @@ namespace DurableTask.Netherite
                 throw new NotSupportedException("Purging is supported only for Orchestration created time filter.");
             }
 
-            return this.CheckedClient.PurgeInstanceHistoryAsync(thresholdDateTimeUtc, null, null);
+            await (await this.GetClientAsync()).PurgeInstanceHistoryAsync(thresholdDateTimeUtc, null, null);
         }
 
         /// <inheritdoc />
-        Task<OrchestrationState> IOrchestrationServiceQueryClient.GetOrchestrationStateAsync(string instanceId, bool fetchInput, bool fetchOutput)
+        async Task<OrchestrationState> IOrchestrationServiceQueryClient.GetOrchestrationStateAsync(string instanceId, bool fetchInput, bool fetchOutput)
         {
-            return this.CheckedClient.GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, fetchInput, fetchOutput);
+            return await (await this.GetClientAsync()).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, fetchInput, fetchOutput);
         }
 
         /// <inheritdoc />
-        Task<IList<OrchestrationState>> IOrchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken cancellationToken)
-            => this.CheckedClient.GetOrchestrationStateAsync(cancellationToken);
+        async Task<IList<OrchestrationState>> IOrchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken cancellationToken)
+            => await (await this.GetClientAsync()).GetOrchestrationStateAsync(cancellationToken);
 
         /// <inheritdoc />
-        Task<IList<OrchestrationState>> IOrchestrationServiceQueryClient.GetOrchestrationStateAsync(DateTime? CreatedTimeFrom, DateTime? CreatedTimeTo, IEnumerable<OrchestrationStatus> RuntimeStatus, string InstanceIdPrefix, CancellationToken CancellationToken)
-            => this.CheckedClient.GetOrchestrationStateAsync(CreatedTimeFrom, CreatedTimeTo, RuntimeStatus, InstanceIdPrefix, CancellationToken);
+        async Task<IList<OrchestrationState>> IOrchestrationServiceQueryClient.GetOrchestrationStateAsync(DateTime? CreatedTimeFrom, DateTime? CreatedTimeTo, IEnumerable<OrchestrationStatus> RuntimeStatus, string InstanceIdPrefix, CancellationToken CancellationToken)
+            => await (await this.GetClientAsync()).GetOrchestrationStateAsync(CreatedTimeFrom, CreatedTimeTo, RuntimeStatus, InstanceIdPrefix, CancellationToken);
 
         /// <inheritdoc />
-        Task<int> IOrchestrationServiceQueryClient.PurgeInstanceHistoryAsync(string instanceId)
-            => this.CheckedClient.DeleteAllDataForOrchestrationInstance(this.GetPartitionId(instanceId), instanceId);
+        async Task<int> IOrchestrationServiceQueryClient.PurgeInstanceHistoryAsync(string instanceId)
+            => await (await this.GetClientAsync()).DeleteAllDataForOrchestrationInstance(this.GetPartitionId(instanceId), instanceId);
 
         /// <inheritdoc />
-        Task<int> IOrchestrationServiceQueryClient.PurgeInstanceHistoryAsync(DateTime createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus)
-            => this.CheckedClient.PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus);
+        async Task<int> IOrchestrationServiceQueryClient.PurgeInstanceHistoryAsync(DateTime createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus)
+            => await (await this.GetClientAsync()).PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus);
 
         /// <inheritdoc />
-        Task<InstanceQueryResult> IOrchestrationServiceQueryClient.QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
-            => this.CheckedClient.QueryOrchestrationStatesAsync(instanceQuery, pageSize, continuationToken, cancellationToken);
+        async Task<InstanceQueryResult> IOrchestrationServiceQueryClient.QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
+            => await (await this.GetClientAsync()).QueryOrchestrationStatesAsync(instanceQuery, pageSize, continuationToken, cancellationToken);
 
         /******************************/
         // Task orchestration methods

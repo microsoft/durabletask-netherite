@@ -34,6 +34,7 @@ namespace DurableTask.Netherite.EventHubs
         EventProcessorHost eventProcessorHost;
         EventProcessorHost loadMonitorHost;
         TransportAbstraction.IClient client;
+        bool hasWorkers;
 
         TaskhubParameters parameters;
         byte[] taskhubGuid;
@@ -186,14 +187,21 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        async Task StartAsync()
+        async Task StartClientAsync()
         {
             this.shutdownSource = new CancellationTokenSource();
 
             // load the taskhub parameters
-            var jsonText = await this.taskhubParameters.DownloadTextAsync();
-            this.parameters = JsonConvert.DeserializeObject<TaskhubParameters>(jsonText);
-            this.taskhubGuid = this.parameters.TaskhubGuid.ToByteArray();
+            try
+            {
+                var jsonText = await this.taskhubParameters.DownloadTextAsync();
+                this.parameters = JsonConvert.DeserializeObject<TaskhubParameters>(jsonText);
+                this.taskhubGuid = this.parameters.TaskhubGuid.ToByteArray();
+            }
+            catch(StorageException e) when (e.RequestInformation.HttpStatusCode == (int) System.Net.HttpStatusCode.NotFound)
+            {
+                throw new InvalidOperationException($"The specified taskhub does not exist (TaskHub={this.settings.HubName}, StorageConnectionName={this.settings.StorageConnectionName}, EventHubsConnectionName={this.settings.EventHubsConnectionName})");
+            }
 
             // check that we are the correct taskhub!
             if (this.parameters.TaskhubName != this.settings.HubName)
@@ -217,9 +225,10 @@ namespace DurableTask.Netherite.EventHubs
 
             this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
 
-            var channel = Channel.CreateBounded<ClientEvent>(new BoundedChannelOptions(500) {
-                SingleReader = true, 
-                AllowSynchronousContinuations = true 
+            var channel = Channel.CreateBounded<ClientEvent>(new BoundedChannelOptions(500)
+            {
+                SingleReader = true,
+                AllowSynchronousContinuations = true
             });
 
             var clientReceivers = this.connections.CreateClientReceivers(this.ClientId, EventHubsTransport.ClientConsumerGroup);
@@ -236,6 +245,13 @@ namespace DurableTask.Netherite.EventHubs
 
             this.clientProcessTask = this.ClientProcessLoopAsync(channel.Reader);
 
+            // we must wait for the client receive connections to be established before continuing
+            // otherwise, we may miss messages that are sent before the client receiver establishes the receive position
+            await Task.WhenAll(this.clientConnectionsEstablished);
+        }
+
+        async Task StartWorkersAsync()
+        {
             if (PartitionHubs.Length > 1)
             {
                 throw new NotSupportedException("Using multiple eventhubs for partitions is not yet supported.");
@@ -250,6 +266,8 @@ namespace DurableTask.Netherite.EventHubs
             
             if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
+                this.hasWorkers = true;
+
                 if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
                 {
                     await Task.WhenAll(StartPartitionHost(), StartLoadMonitorHost());
@@ -259,10 +277,6 @@ namespace DurableTask.Netherite.EventHubs
                     await StartPartitionHost();
                 }
             }
-
-            // we must wait for the client receive connections to be established before continuing
-            // otherwise, we may miss messages that are sent before the client receiver establishes the receive position
-            await Task.WhenAll(this.clientConnectionsEstablished);
 
             async Task StartPartitionHost()
             {
@@ -405,7 +419,7 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper.LogDebug("Stopping client");
             await this.client.StopAsync();
 
-            if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
+            if (this.hasWorkers)
             {
                 if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
                 {
@@ -621,17 +635,32 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        async Task ITaskHub.StartAsync()
+        async Task ITaskHub.StartClientAsync()
         {
             try
             {
-                this.traceHelper.LogDebug("ITaskHub.StartAsync called");
-                await this.StartAsync();
-                this.traceHelper.LogDebug("ITaskHub.StartAsync returned");
+                this.traceHelper.LogDebug("ITaskHub.StartClientAsync called");
+                await this.StartClientAsync();
+                this.traceHelper.LogDebug("ITaskHub.StartClientAsync returned");
             }
             catch (Exception e)
             {
-                this.traceHelper.LogError("ITaskHub.StartAsync failed with exception: {exception}", e);
+                this.traceHelper.LogError("ITaskHub.StartClientAsync failed with exception: {exception}", e);
+                throw;
+            }
+        }
+
+        async Task ITaskHub.StartWorkersAsync()
+        {
+            try
+            {
+                this.traceHelper.LogDebug("ITaskHub.StartWorkersAsync called");
+                await this.StartWorkersAsync();
+                this.traceHelper.LogDebug("ITaskHub.StartWorkersAsync returned");
+            }
+            catch (Exception e)
+            {
+                this.traceHelper.LogError("ITaskHub.StartWorkersAsync failed with exception: {exception}", e);
                 throw;
             }
         }

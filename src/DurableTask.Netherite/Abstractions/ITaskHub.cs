@@ -29,10 +29,16 @@ namespace DurableTask.Netherite
         Task DeleteAsync();
 
         /// <summary>
-        /// Starts the transport backend. Creates a client and registers with the transport provider so partitions may be placed on this host.
+        /// Starts the transport backend and creates a client. 
         /// </summary>
         /// <returns>After the transport backend has started and created the client.</returns>
-        Task StartAsync();
+        Task StartClientAsync();
+
+        /// <summary>
+        /// Starts the workers that process work items.
+        /// </summary>
+        /// <returns>After the transport backend has started and created the client.</returns>
+        Task StartWorkersAsync();
 
         /// <summary>
         /// Stops the transport backend.
