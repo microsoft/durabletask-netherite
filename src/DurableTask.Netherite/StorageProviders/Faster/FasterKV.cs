@@ -408,23 +408,19 @@ namespace DurableTask.Netherite.Faster
                     var status = prefetchSession.Read(ref k, ref noInput, ref ignoredOutput, userContext: prefetchSemaphore, 0);
                     numberIssued++;
 
-                    switch (status)
+                    if (status.CompletedSuccessfully)
                     {
-                        case Status.NOTFOUND:
-                        case Status.OK:
-                            // fast path: we hit in the cache and complete the read
-                            numberHits++;
-                            prefetchSemaphore.Release();
-                            break;
-
-                        case Status.PENDING:
-                            // slow path: upon completion
-                            numberMisses++;
-                            break;
-
-                        case Status.ERROR:
-                            this.partition.ErrorHandler.HandleError(nameof(RunPrefetchSession), "FASTER reported ERROR status", null, true, this.partition.ErrorHandler.IsTerminated);
-                            break;
+                        numberHits++;
+                        prefetchSemaphore.Release();
+                    }
+                    else if (status.Pending)
+                    {
+                        // slow path: upon completion
+                        numberMisses++;
+                    }
+                    else
+                    {
+                        this.partition.ErrorHandler.HandleError(nameof(RunPrefetchSession), $"FASTER reported ERROR status 0x{status.Value:X2}", null, true, this.partition.ErrorHandler.IsTerminated);
                     }
 
                     this.terminationToken.ThrowIfCancellationRequested();
@@ -478,27 +474,25 @@ namespace DurableTask.Netherite.Faster
                     Output output = default;
                     this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.StartingRead, null, readEvent.EventIdString, 0);
                     var status = this.mainSession.Read(ref key, ref effectTracker, ref output, readEvent, 0);
-                    switch (status)
+
+                    if (status.CompletedSuccessfully)
                     {
-                        case Status.NOTFOUND:
-                        case Status.OK:
-                            // fast path: we hit in the cache and complete the read
-                            this.StoreStats.HitCount++;
-                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, readEvent.EventIdString, 0);
-                            var target = output.Read(this, readEvent.EventIdString);
-                            this.cacheDebugger?.CheckVersionConsistency(key.Val, target, null);
-                            effectTracker.ProcessReadResult(readEvent, key, target);
-                            break;
-
-                        case Status.PENDING:
-                            // slow path: read continuation will be called when complete
-                            this.StoreStats.MissCount++;
-                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PendingRead, null, readEvent.EventIdString, 0);
-                            break;
-
-                        case Status.ERROR:
-                            this.partition.ErrorHandler.HandleError(nameof(ReadAsync), "FASTER reported ERROR status", null, true, this.partition.ErrorHandler.IsTerminated);
-                            break;
+                        // fast path: we hit in the cache and complete the read
+                        this.StoreStats.HitCount++;
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, readEvent.EventIdString, 0);
+                        var target = status.Found ? output.Read(this, readEvent.EventIdString) : null;
+                        this.cacheDebugger?.CheckVersionConsistency(key.Val, target, null);
+                        effectTracker.ProcessReadResult(readEvent, key, target);
+                    }
+                    else if (status.Pending)
+                    {
+                        // slow path: read continuation will be called when complete
+                        this.StoreStats.MissCount++;
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PendingRead, null, readEvent.EventIdString, 0);
+                    }
+                    else
+                    { 
+                        this.partition.ErrorHandler.HandleError(nameof(ReadAsync), $"FASTER reported ERROR status 0x{status.Value:X2}", null, true, this.partition.ErrorHandler.IsTerminated);
                     }
                 }
             }
@@ -570,20 +564,19 @@ namespace DurableTask.Netherite.Faster
 
                     bool IsComplete()
                     {
-                        switch (rmwAsyncResult.Status)
+                        if (rmwAsyncResult.Status.CompletedSuccessfully)
                         {
-                            case Status.NOTFOUND:
-                            case Status.OK:
-                                return true;
-
-                            case Status.PENDING:
-                                return false;
-
-                            case Status.ERROR:
-                            default:
-                                string msg = $"Could not execute RMW in Faster, received status={rmwAsyncResult.Status}";
-                                this.cacheDebugger?.Fail(msg, k);
-                                throw new FasterException(msg);
+                            return true;
+                        }
+                        else if (rmwAsyncResult.Status.Pending)
+                        {
+                            return false;
+                        }
+                        else
+                        {
+                            string msg = $"Could not execute RMW in Faster, received status=0x{rmwAsyncResult.Status:X2}";
+                            this.cacheDebugger?.Fail(msg, k);
+                            throw new FasterException(msg);
                         }
                     }
 
@@ -1410,25 +1403,19 @@ namespace DurableTask.Netherite.Faster
                 {
                     // the result is passed on to the read event
                     var partitionReadEvent = (PartitionReadEvent)context;
-                    switch (status)
+
+                    if (status.CompletedSuccessfully)
                     {
-                        case Status.NOTFOUND:
-                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, partitionReadEvent.EventIdString, recordMetadata.Address);
-                            tracker.ProcessReadResult(partitionReadEvent, key, null);
-                            break;
-
-                        case Status.OK:
-                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, partitionReadEvent.EventIdString, recordMetadata.Address);
-                            tracker.ProcessReadResult(partitionReadEvent, key, output.Read(this.store, partitionReadEvent.EventIdString));
-                            break;
-
-                        case Status.PENDING:
-                            this.partition.ErrorHandler.HandleError("ReadCompletionCallback", "invalid FASTER result code", null, true, false);
-                            break;
-
-                        case Status.ERROR:
-                            this.partition.ErrorHandler.HandleError("ReadCompletionCallback", "FASTER reported ERROR status", null, true, this.partition.ErrorHandler.IsTerminated);
-                            break;
+                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, partitionReadEvent.EventIdString, recordMetadata.Address);
+                        tracker.ProcessReadResult(partitionReadEvent, key, status.Found ? output.Read(this.store, partitionReadEvent.EventIdString) : null);
+                    }
+                    else if (status.Pending)
+                    {
+                        this.partition.ErrorHandler.HandleError("ReadCompletionCallback", $"unexpected FASTER pending status 0x{status.Value:X2}", null, true, false);
+                    }
+                    else
+                    {
+                        this.partition.ErrorHandler.HandleError("ReadCompletionCallback", $"FASTER returned error status 0x{status.Value:X2}", null, true, this.partition.ErrorHandler.IsTerminated);
                     }
                 }
             }
