@@ -18,8 +18,11 @@ namespace DurableTask.Netherite.AzureFunctions
 
     public class NetheriteProviderFactory : IDurabilityProviderFactory
     {
-        readonly ConcurrentDictionary<(string taskhub, string storage, string transport), NetheriteProvider> cachedProviders
+        readonly static ConcurrentDictionary<(string taskhub, string storage, string transport), NetheriteProvider> CachedProviders
             = new ConcurrentDictionary<(string taskhub, string storage, string transport), NetheriteProvider>();
+
+        static (string taskhub, string storage, string transport) CacheKey(NetheriteOrchestrationServiceSettings settings)
+            => (settings.HubName, settings.StorageConnectionName, settings.EventHubsConnectionName);
 
         readonly DurableTaskOptions options;
         readonly INameResolver nameResolver;
@@ -157,14 +160,11 @@ namespace DurableTask.Netherite.AzureFunctions
             return netheriteSettings;
         }
 
-        static (string taskhub, string storage, string transport) CacheKey(NetheriteOrchestrationServiceSettings settings) 
-            => (settings.HubName, settings.StorageConnectionName, settings.EventHubsConnectionName);
-
         NetheriteProvider GetOrCreateProvider(NetheriteOrchestrationServiceSettings settings)
         {
             var key = CacheKey(settings);
 
-            var service = this.cachedProviders.GetOrAdd(key, _ =>
+            var service = CachedProviders.GetOrAdd(key, _ =>
             {
                 if (this.TraceToBlob && BlobLogger == null)
                 {
