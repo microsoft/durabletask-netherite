@@ -173,11 +173,10 @@ namespace DurableTask.Netherite.AzureFunctions
 
                 var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
 
+                service.OnStopping += () => CachedProviders.TryRemove(key, out var _);
+
                 return new NetheriteProvider(service, settings);
             });
-
-            // we wait until the client is ready. Unfortunately this blocks the thread but we don't really have a choice
-            // since the extension can call into the client before calling StartAsync on the orchestration service.
 
             return service;
         }

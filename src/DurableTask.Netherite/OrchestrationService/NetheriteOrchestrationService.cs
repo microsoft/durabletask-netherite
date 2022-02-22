@@ -26,8 +26,7 @@ namespace DurableTask.Netherite
         IOrchestrationServiceClient, 
         IOrchestrationServiceQueryClient,
         TransportAbstraction.IHost,
-        IStorageProvider,
-        IDisposable
+        IStorageProvider
     {
         readonly ITaskHub taskHub;
         readonly TransportConnectionString.StorageChoices configuredStorage;
@@ -77,6 +76,8 @@ namespace DurableTask.Netherite
 
         internal ILoggerFactory LoggerFactory { get; }
         internal OrchestrationServiceTraceHelper TraceHelper { get; private set; }
+
+        public event Action OnStopping;
 
         /// <inheritdoc/>
         public override string ToString()
@@ -303,17 +304,11 @@ namespace DurableTask.Netherite
         /// <inheritdoc />
         Task IOrchestrationService.StopAsync(bool quickly)
         {
-            return this.currentTransition = this.TryStopAsync(quickly);
+            return this.TryStopAsync(quickly);
         }
 
         /// <inheritdoc />
-        Task IOrchestrationService.StopAsync()
-        {
-            return this.currentTransition = this.TryStopAsync(false);
-        }
-
-        /// <inheritdoc/>
-        public void Dispose() => this.taskHub.StopAsync();
+        Task IOrchestrationService.StopAsync() => this.TryStopAsync(false);
 
         enum ServiceState
         {
@@ -460,6 +455,8 @@ namespace DurableTask.Netherite
             try
             {
                 this.TraceHelper.TraceProgress($"Stopping quickly={quickly}");
+
+                this.OnStopping?.Invoke();
 
                 this.checkedClient = null;
                 this.client = null;
