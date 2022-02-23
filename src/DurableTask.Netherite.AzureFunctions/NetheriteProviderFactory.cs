@@ -18,8 +18,11 @@ namespace DurableTask.Netherite.AzureFunctions
 
     public class NetheriteProviderFactory : IDurabilityProviderFactory
     {
-        readonly ConcurrentDictionary<DurableClientAttribute, NetheriteProvider> cachedProviders
-            = new ConcurrentDictionary<DurableClientAttribute, NetheriteProvider>();
+        readonly static ConcurrentDictionary<(string taskhub, string storage, string transport), NetheriteProvider> CachedProviders
+            = new ConcurrentDictionary<(string taskhub, string storage, string transport), NetheriteProvider>();
+
+        static (string taskhub, string storage, string transport) CacheKey(NetheriteOrchestrationServiceSettings settings)
+            => (settings.HubName, settings.StorageConnectionName, settings.EventHubsConnectionName);
 
         readonly DurableTaskOptions options;
         readonly INameResolver nameResolver;
@@ -65,12 +68,12 @@ namespace DurableTask.Netherite.AzureFunctions
             this.TraceToBlob = ReadBooleanSetting(nameof(this.TraceToBlob));
         }
 
-        NetheriteOrchestrationServiceSettings GetNetheriteOrchestrationServiceSettings(string taskHubNameOverride = null)
+        NetheriteOrchestrationServiceSettings GetNetheriteOrchestrationServiceSettings(string taskHubNameOverride = null, string connectionName = null)
         {
-            var eventSourcedSettings = new NetheriteOrchestrationServiceSettings();
+            var netheriteSettings = new NetheriteOrchestrationServiceSettings();
 
             // override DTFx defaults to the defaults we want to use in DF
-            eventSourcedSettings.ThrowExceptionOnInvalidDedupeStatus = true;
+            netheriteSettings.ThrowExceptionOnInvalidDedupeStatus = true;
 
             // The consumption plan has different performance characteristics so we provide
             // different defaults for key configuration values.
@@ -82,8 +85,8 @@ namespace DurableTask.Netherite.AzureFunctions
             this.options.MaxConcurrentActivityFunctions = this.options.MaxConcurrentActivityFunctions ?? maxConcurrentActivitiesDefault;
 
             // copy all applicable fields from both the options and the storageProvider options
-            JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options), eventSourcedSettings);
-            JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options.StorageProvider), eventSourcedSettings);
+            JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options), netheriteSettings);
+            JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options.StorageProvider), netheriteSettings);
  
             // if worker id is specified in environment, it overrides the configured setting
             string workerId = Environment.GetEnvironmentVariable("WorkerId");
@@ -93,23 +96,34 @@ namespace DurableTask.Netherite.AzureFunctions
                 {
                     workerId = this.hostIdProvider.GetHostIdAsync(CancellationToken.None).GetAwaiter().GetResult();
                 }
-                eventSourcedSettings.WorkerId = workerId;
+                netheriteSettings.WorkerId = workerId;
             }
 
-            eventSourcedSettings.HubName = this.options.HubName;
+            netheriteSettings.HubName = this.options.HubName;
 
             if (taskHubNameOverride != null)
             {
-                eventSourcedSettings.HubName = taskHubNameOverride;
+                netheriteSettings.HubName = taskHubNameOverride;
+            }
+
+            if (!string.IsNullOrEmpty(connectionName))
+            {
+                int pos = connectionName.IndexOf(',');
+                if (pos == -1 || pos == 0 || pos == connectionName.Length - 1 || pos != connectionName.LastIndexOf(','))
+                {
+                    throw new ArgumentException("For Netherite, connection name must contain both StorageConnectionName and EventHubsConnectionName, separated by a comma", "connectionName");
+                }
+                netheriteSettings.StorageConnectionName = connectionName.Substring(0, pos).Trim();
+                netheriteSettings.EventHubsConnectionName = connectionName.Substring(pos + 1).Trim();
             }
 
             string runtimeLanguage = this.nameResolver.Resolve("FUNCTIONS_WORKER_RUNTIME");
             if (runtimeLanguage != null && !string.Equals(runtimeLanguage, "dotnet", StringComparison.OrdinalIgnoreCase))
             {
-                eventSourcedSettings.CacheOrchestrationCursors = false; // cannot resume orchestrations in the middle
+                netheriteSettings.CacheOrchestrationCursors = false; // cannot resume orchestrations in the middle
             }
 
-            eventSourcedSettings.Validate((name) => this.nameResolver.Resolve(name));
+            netheriteSettings.Validate((name) => this.nameResolver.Resolve(name));
 
             int randomProbability = 0;
             bool attachFaultInjector =
@@ -125,25 +139,46 @@ namespace DurableTask.Netherite.AzureFunctions
                     
             if (attachFaultInjector || attachReplayChecker)
             {
-                eventSourcedSettings.TestHooks = new TestHooks();
+                netheriteSettings.TestHooks = new TestHooks();
 
                 if (attachFaultInjector)
                 {
-                    eventSourcedSettings.TestHooks.FaultInjector = new Faster.FaultInjector() { RandomProbability = randomProbability };
+                    netheriteSettings.TestHooks.FaultInjector = new Faster.FaultInjector() { RandomProbability = randomProbability };
                 }
                 if (attachReplayChecker)
                 {
-                    eventSourcedSettings.TestHooks.ReplayChecker = new Faster.ReplayChecker(eventSourcedSettings.TestHooks);
+                    netheriteSettings.TestHooks.ReplayChecker = new Faster.ReplayChecker(netheriteSettings.TestHooks);
                 }
             }
 
             if (this.TraceToConsole || this.TraceToBlob)
             {
                 // capture trace events generated in the backend and redirect them to additional sinks
-                this.loggerFactory = new LoggerFactoryWrapper(this.loggerFactory, eventSourcedSettings.HubName, eventSourcedSettings.WorkerId, this);
+                this.loggerFactory = new LoggerFactoryWrapper(this.loggerFactory, netheriteSettings.HubName, netheriteSettings.WorkerId, this);
             }
 
-            return eventSourcedSettings;
+            return netheriteSettings;
+        }
+
+        NetheriteProvider GetOrCreateProvider(NetheriteOrchestrationServiceSettings settings)
+        {
+            var key = CacheKey(settings);
+
+            var service = CachedProviders.GetOrAdd(key, _ =>
+            {
+                if (this.TraceToBlob && BlobLogger == null)
+                {
+                    BlobLogger = new BlobLogger(settings.ResolvedStorageConnectionString, settings.HubName, settings.WorkerId);
+                }
+
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+
+                service.OnStopping += () => CachedProviders.TryRemove(key, out var _);
+
+                return new NetheriteProvider(service, settings);
+            });
+
+            return service;
         }
 
         /// <inheritdoc/>
@@ -152,52 +187,16 @@ namespace DurableTask.Netherite.AzureFunctions
             if (this.defaultProvider == null)
             {
                 var settings = this.GetNetheriteOrchestrationServiceSettings();
-
-                if (this.TraceToBlob && BlobLogger == null)
-                {
-                    BlobLogger = new BlobLogger(settings.ResolvedStorageConnectionString, settings.HubName, settings.WorkerId);
-                }
-
-                var key = new DurableClientAttribute()
-                {
-                    TaskHub = settings.HubName,
-                    ConnectionName = settings.StorageConnectionName,
-                };
- 
-                this.defaultProvider = this.cachedProviders.GetOrAdd(key, _ =>
-                {
-                    var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-                    return new NetheriteProvider(service, settings);
-                });
+                this.defaultProvider = this.GetOrCreateProvider(settings);
             }
-
             return this.defaultProvider;
         }
 
         // Called by the Durable client binding infrastructure
         public DurabilityProvider GetDurabilityProvider(DurableClientAttribute attribute)
         {
-            var settings = this.GetNetheriteOrchestrationServiceSettings(attribute.TaskHub);
-
-            if (string.Equals(this.defaultProvider.Settings.HubName, settings.HubName, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(this.defaultProvider.Settings.StorageConnectionName, settings.StorageConnectionName, StringComparison.OrdinalIgnoreCase))
-            {
-                return this.defaultProvider;
-            }
-
-            DurableClientAttribute key = new DurableClientAttribute()
-            {
-                TaskHub = settings.HubName,
-                ConnectionName = settings.StorageConnectionName,
-            };
-
-            return this.cachedProviders.GetOrAdd(key, _ =>
-            {
-                //TODO support client-only version
-                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-                return new NetheriteProvider(service, settings);
-            });
+            var settings = this.GetNetheriteOrchestrationServiceSettings(attribute?.TaskHub, attribute?.ConnectionName);
+            return this.GetOrCreateProvider(settings);
         }
-
     }
 }
