@@ -71,7 +71,8 @@ namespace DurableTask.Netherite.Tests
         {
             None,
             Default,
-            Frequent
+            Frequent,
+            Crazy
         }
 
         void SetCheckpointFrequency(CheckpointFrequency frequency)
@@ -86,6 +87,10 @@ namespace DurableTask.Netherite.Tests
                     return;
 
                 case CheckpointFrequency.Frequent:
+                    this.settings.MaxNumberEventsBetweenCheckpoints = 100;
+                    return;
+
+                case CheckpointFrequency.Crazy:
                     this.settings.MaxNumberEventsBetweenCheckpoints = 1;
                     return;
 
@@ -410,7 +415,7 @@ namespace DurableTask.Netherite.Tests
             string InstanceId(int i) => $"Orch{i:D5}";
             int OrchestrationCount = 30;
             int FanOut = 7;
-            long historyAndStatusSize = OrchestrationCount * (FanOut * 50000 /* in history */ + 16000 /* in status */);
+            long historyAndStatusSize = OrchestrationCount * (FanOut * 50000 /* in history */ + 2 * 16000 /* in status */);
 
             // start the service 
             var (service, client) = await this.StartService(recover: false, orchestrationType, activityType);
@@ -458,7 +463,7 @@ namespace DurableTask.Netherite.Tests
             string InstanceId(int i) => $"Orch{i:D5}";
             int OrchestrationCount = 50;
             int FanOut = 3;
-            long historyAndStatusSize = OrchestrationCount * (FanOut * 50000 /* in history */ + 16000 /* in status */);
+            long historyAndStatusSize = OrchestrationCount * (FanOut * 50000 /* in history */ + 2*16000 /* in status */);
 
             // start the service 
             var (service, client) = await this.StartService(recover: false, orchestrationType, activityType);
