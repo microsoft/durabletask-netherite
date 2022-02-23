@@ -12,13 +12,16 @@ namespace DurableTask.Netherite.Faster
     class LocalFileCheckpointManager : ICheckpointManager
     {
         readonly CheckpointInfo checkpointInfo;
-        readonly LocalCheckpointManager localCheckpointManager;
+        readonly ICheckpointManager localCheckpointManager;
         readonly string checkpointCompletedFilename;
 
         internal LocalFileCheckpointManager(CheckpointInfo ci, string checkpointDir, string checkpointCompletedBlobName)
         {
             this.checkpointInfo = ci;
-            this.localCheckpointManager = new LocalCheckpointManager(checkpointDir);
+            this.localCheckpointManager = new DeviceLogCommitCheckpointManager
+                (new LocalStorageNamedDeviceFactory(),
+                    new DefaultCheckpointNamingScheme(
+                        new DirectoryInfo(checkpointDir).FullName), removeOutdated: true);
             this.checkpointCompletedFilename = Path.Combine(checkpointDir, checkpointCompletedBlobName);
         }
 
@@ -40,7 +43,7 @@ namespace DurableTask.Netherite.Faster
             this.checkpointInfo.LogToken = logToken;
         }
 
-        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
+        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, long version, byte[] commitMetadata, DeltaLog deltaLog)
         {
             throw new NotImplementedException("incremental checkpointing is not implemented");
         }

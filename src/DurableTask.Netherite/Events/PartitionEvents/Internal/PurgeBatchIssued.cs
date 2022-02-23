@@ -47,7 +47,6 @@ namespace DurableTask.Netherite
                 foreach (var instanceId in this.InstanceIds)
                 {
                     yield return TrackedObjectKey.Instance(instanceId);
-                    yield return TrackedObjectKey.History(instanceId);
                 }
             }
         }

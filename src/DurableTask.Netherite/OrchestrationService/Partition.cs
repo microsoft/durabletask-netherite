@@ -31,7 +31,8 @@ namespace DurableTask.Netherite
         public IPartitionErrorHandler ErrorHandler { get; private set; }
         public PartitionTraceHelper TraceHelper { get; private set; }
         public WorkItemTraceHelper WorkItemTraceHelper { get; private set; }
-        public Faster.CacheDebugger CacheDebugger { get; private set; }
+
+        public Faster.MemoryTracker CacheTracker { get; private set; }
 
         public double CurrentTimeMs => this.stopwatch.Elapsed.TotalMilliseconds;
 
@@ -66,6 +67,7 @@ namespace DurableTask.Netherite
             WorkItemQueue<ActivityWorkItem> activityWorkItemQueue,
             WorkItemQueue<OrchestrationWorkItem> orchestrationWorkItemQueue,
             LoadPublisher loadPublisher,
+
             WorkItemTraceHelper workItemTraceHelper)
         {
             this.host = host;
@@ -83,7 +85,6 @@ namespace DurableTask.Netherite
             this.WorkItemTraceHelper = workItemTraceHelper;
             this.stopwatch.Start();
             this.LastTransition = this.CurrentTimeMs;
-            this.CacheDebugger = this.Settings.TestHooks?.CacheDebugger;
         }
 
         public async Task<long> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, long firstInputQueuePosition)

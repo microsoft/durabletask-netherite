@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite.Tests
 {
+    using DurableTask.Netherite.Faster;
     using Microsoft.Extensions.Logging;
     using System;
     using System.Collections.Generic;
@@ -18,18 +19,20 @@ namespace DurableTask.Netherite.Tests
     {
         readonly TestTraceListener traceListener;
         readonly XunitLoggerProvider loggerProvider;
+        readonly CacheDebugger cacheDebugger;
+
         internal TestOrchestrationHost Host { get; private set; }
         internal ILoggerFactory LoggerFactory { get; private set; }
 
         internal string TestHooksError { get; private set; }
 
         public SingleHostFixture()
-            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, null)
+            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, true, null, null)
         {
             this.Host.StartAsync().Wait();
         }
 
-        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, Action<string> output)
+        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, Action<string> output)
         {
             this.LoggerFactory = new LoggerFactory();
             this.loggerProvider = new XunitLoggerProvider();
@@ -37,22 +40,30 @@ namespace DurableTask.Netherite.Tests
             this.traceListener = new TestTraceListener() { Output = output };
             Trace.Listeners.Add(this.traceListener);
             TestConstants.ValidateEnvironment();
+            string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
+            settings.HubName = $"SingleHostFixture-{timestamp}";
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
+            settings.InstanceCacheSizeMB = restrictMemory;
+            if (useCacheDebugger)
+            {
+                this.cacheDebugger = settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(settings.TestHooks);
+            }
             if (useReplayChecker)
             {
                 settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
             }
             settings.TestHooks.OnError += (message) =>
             {
-                System.Diagnostics.Trace.WriteLine($"TESTHOOKS: {message}");
+                Trace.WriteLine($"TESTHOOKS: {message}");
                 this.TestHooksError ??= message;
             };
+            // start the host
             this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
         }
 
-        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useReplayChecker, TimeSpan timeout, Action<string> output)
+        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, TimeSpan timeout, Action<string> output)
         {
-            var fixture = new SingleHostFixture(settings, useReplayChecker, output);
+            var fixture = new SingleHostFixture(settings, useCacheDebugger, useReplayChecker, restrictMemory, output);
             var startupTask = fixture.Host.StartAsync(); 
             timeout = TestOrchestrationClient.AdjustTimeout(timeout);
             var timeoutTask = Task.Delay(timeout);
@@ -65,6 +76,14 @@ namespace DurableTask.Netherite.Tests
             return fixture;
         }
 
+        public void DumpCacheDebugger()
+        {
+            foreach (var line in this.cacheDebugger.Dump())
+            {
+                Trace.WriteLine(line);
+            }
+        }
+
         public void Dispose()
         {
             this.Host.StopAsync(false).Wait();
@@ -72,6 +91,13 @@ namespace DurableTask.Netherite.Tests
             Trace.Listeners.Remove(this.traceListener);
         }
 
+        public bool HasError(out string error)
+        {
+            error = this.TestHooksError;
+            return error != null;
+        }
+
+        // called before a new test, to route output to the test output
         public void SetOutput(Action<string> output)
         {
             this.traceListener.Output = output;
@@ -82,7 +108,16 @@ namespace DurableTask.Netherite.Tests
         {
             public Action<string> Output { get; set; }
             public override void Write(string message) {  }
-            public override void WriteLine(string message) { this.Output?.Invoke($"{DateTime.Now:o} {message}"); }
+            public override void WriteLine(string message) {
+                try
+                {
+                    this.Output?.Invoke($"{DateTime.Now:o} {message}");
+                }
+                catch(System.InvalidOperationException e) when (e.Message.Contains("There is no currently active test"))
+                {
+                    // This exception is sometimes thrown by xunit when reusing the same fixture for multiple tests.
+                }
+            }
         }
     }
 }

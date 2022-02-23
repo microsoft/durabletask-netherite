@@ -32,6 +32,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public int Episode { get; set; }
 
+        [DataMember]
+        public long HistorySize;
+
         /// <summary>
         /// We cache this so we can resume the execution at the execution cursor.
         /// </summary>
@@ -43,8 +46,12 @@ namespace DurableTask.Netherite
 
         public override string ToString()
         {
-            return $"History InstanceId={this.InstanceId} ExecutionId={this.ExecutionId} Events={this.History.Count}";
+            return $"History InstanceId={this.InstanceId} ExecutionId={this.ExecutionId} Events={this.History.Count} Size={this.HistorySize}";
         }
+
+        public override long EstimatedSize => 60 
+            + 2 * ((this.InstanceId?.Length ?? 0) + (this.ExecutionId?.Length ?? 0) + (this.CustomStatus?.Length ?? 0)) 
+            + this.HistorySize;
 
         public override void Process(BatchProcessed evt, EffectTracker effects)
         {
@@ -57,6 +64,7 @@ namespace DurableTask.Netherite
                 this.CustomStatus = null;
                 this.Episode = 0;
                 this.ExecutionId = evt.ExecutionId;
+                this.HistorySize = 0;
             }
 
             this.Partition.Assert(!string.IsNullOrEmpty(this.InstanceId) || string.IsNullOrEmpty(this.ExecutionId), "null ids in HistoryState.Process(BatchProcessed)");
@@ -71,7 +79,8 @@ namespace DurableTask.Netherite
                     {
                         this.Episode++;
                     }
-                    this.History.Add(evt.NewEvents[i]);
+                    this.History.Add(historyEvent);
+                    this.HistorySize += 8 + SizeUtils.GetEstimatedSize(historyEvent);
                 }
             }
 
@@ -89,6 +98,7 @@ namespace DurableTask.Netherite
                     evt.OrchestrationStatus,
                     this.History.Count,
                     evt.NewEvents, 
+                    this.HistorySize,
                     this.Episode);
 
                 // if present, we keep the work item so we can reuse the execution cursor

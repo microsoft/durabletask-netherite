@@ -30,6 +30,25 @@ namespace DurableTask.Netherite
         /// <param name="partition">The partition</param>
         public abstract void OnReadComplete(TrackedObject target, Partition partition);
 
+        protected override void ExtraTraceInformation(StringBuilder s)
+        {
+            int completed, total;
+            if (this.Prefetch.HasValue)
+            {
+                completed = (this.prefetchLoaded ? 1 : 0) + (this.targetLoaded ? 1 : 0);
+                total = 2;
+            }
+            else
+            {
+                completed = this.targetLoaded ? 1 : 0;
+                total = 1;
+            }
+            s.Append(' ');
+            s.Append(completed);
+            s.Append('/');
+            s.Append(total);
+        }
+
         #region prefetch state machine
 
         [IgnoreDataMember]

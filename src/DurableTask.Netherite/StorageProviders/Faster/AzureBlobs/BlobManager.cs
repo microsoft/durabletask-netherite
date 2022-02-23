@@ -70,8 +70,8 @@ namespace DurableTask.Netherite.Faster
 
         volatile System.Diagnostics.Stopwatch leaseTimer;
 
-        internal const long HashTableSize = 1L << 14; // 16 k buckets, 1 GB
-        //internal const long HashTableSize = 1L << 14; // 8 M buckets, 512 GB
+        internal const long HashTableSize = 1L << 14; // 16 k buckets, 1 MB
+        internal const long HashTableSizeBytes = HashTableSize * 64;
 
         public class FasterTuningParameters
         {
@@ -82,13 +82,14 @@ namespace DurableTask.Netherite.Faster
             public int? StoreLogSegmentSizeBits;
             public int? StoreLogMemorySizeBits;
             public double? StoreLogMutableFraction;
+            public int? ExpectedObjectSize;
         }
 
         public FasterLogSettings GetDefaultEventLogSettings(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters) => new FasterLogSettings
         {
             LogDevice = this.EventLogDevice,
             LogCommitManager = this.UseLocalFiles
-                ? new LocalLogCommitManager($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{CommitBlobName}")
+                ? null // TODO: fix this: new LocalLogCommitManager($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{CommitBlobName}")
                 : (ILogCommitManager)this,
             PageSizeBits = tuningParameters?.EventLogPageSizeBits ?? 21, // 2MB
             SegmentSizeBits = tuningParameters?.EventLogSegmentSizeBits ??
@@ -97,30 +98,53 @@ namespace DurableTask.Netherite.Faster
             MemorySizeBits = tuningParameters?.EventLogMemorySizeBits ?? 22, // 2MB
         };
 
-        public LogSettings GetDefaultStoreLogSettings(bool useSeparatePageBlobStorage, uint numPartitions, FasterTuningParameters tuningParameters) => new LogSettings
+        public LogSettings GetDefaultStoreLogSettings(
+            bool useSeparatePageBlobStorage, 
+            long upperBoundOnAvailable, 
+            FasterTuningParameters tuningParameters)
         {
-            LogDevice = this.HybridLogDevice,
-            ObjectLogDevice = this.ObjectLogDevice,
-            PageSizeBits = tuningParameters?.StoreLogPageSizeBits ?? 17, // 128kB
-            MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
-            SegmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ??
-                (useSeparatePageBlobStorage ? 35   // 32 GB
-                                            : 32), // 4 GB
-            CopyReadsToTail = CopyReadsToTail.FromReadOnly,
-            MemorySizeBits = tuningParameters?.StoreLogMemorySizeBits ?? 
-               ((numPartitions <= 1) ? 25 : // 32MB
-                (numPartitions <= 2) ? 24 : // 16MB
-                (numPartitions <= 4) ? 23 : // 8MB
-                (numPartitions <= 8) ? 22 : // 4MB
-                (numPartitions <= 16) ? 21 : // 2MB
-                                        20), // 1MB         
-        };
+
+            var settings = new LogSettings
+            {
+                LogDevice = this.HybridLogDevice,
+                ObjectLogDevice = this.ObjectLogDevice,
+                PageSizeBits = tuningParameters?.StoreLogPageSizeBits ?? 10, // 1kB
+                MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
+                SegmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ??
+                    (useSeparatePageBlobStorage ? 35   // 32 GB
+                                                : 32), // 4 GB
+                CopyReadsToTail = CopyReadsToTail.FromReadOnly,
+            };
+
+            // compute a reasonable memory size for the log considering maximally availablee memory, and expansion factor
+            if (tuningParameters?.StoreLogMemorySizeBits != null)
+            {
+                settings.MemorySizeBits = tuningParameters.StoreLogMemorySizeBits.Value;
+            }
+            else
+            {
+                double expansionFactor = (24 + ((double)(tuningParameters?.ExpectedObjectSize ?? 216))) / 24;
+                long estimate = (long)(upperBoundOnAvailable / expansionFactor);
+                int memorybits = 0;
+                while (estimate > 0)
+                {
+                    memorybits++;
+                    estimate >>= 1;
+                }
+                memorybits = Math.Max(settings.PageSizeBits + 2, memorybits); // do not use less than 4 pages
+                settings.MemorySizeBits = memorybits;
+            }
+
+            return settings;
+        }
+
 
         static readonly int[] StorageFormatVersion = new int[] {
             1, //initial version
             2, //0.7.0-beta changed singleton storage, and adds dequeue count
             3, //changed organization of files
-        };
+            4, //use Faster v2, reduced page size
+        }; 
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
         {
@@ -198,7 +222,6 @@ namespace DurableTask.Netherite.Faster
         public CheckpointSettings StoreCheckpointSettings => new CheckpointSettings
         {
             CheckpointManager = this.UseLocalFiles ? (ICheckpointManager)this.LocalCheckpointManager : (ICheckpointManager)this,
-            CheckPointType = CheckpointType.FoldOver
         };
 
         public const int MaxRetries = 10;
@@ -871,7 +894,7 @@ namespace DurableTask.Netherite.Faster
 
         #region ILogCommitManager
 
-        void ILogCommitManager.Commit(long beginAddress, long untilAddress, byte[] commitMetadata)
+        void ILogCommitManager.Commit(long beginAddress, long untilAddress, byte[] commitMetadata, long commitNum)
         {
             this.StorageTracer?.FasterStorageProgress($"ILogCommitManager.Commit Called beginAddress={beginAddress} untilAddress={untilAddress}");
 
@@ -919,6 +942,21 @@ namespace DurableTask.Netherite.Faster
         {
             // we only use a single commit file in this implementation
             yield return 0;
+        }
+
+        void ILogCommitManager.OnRecovery(long commitNum) 
+        { 
+            // TODO: make sure our use of single commmit is safe
+        }
+
+        void ILogCommitManager.RemoveAllCommits()
+        {
+            // TODO: make sure our use of single commmit is safe
+        }
+
+        void ILogCommitManager.RemoveCommit(long commitNum) 
+        {
+            // TODO: make sure our use of single commmit is safe
         }
 
         byte[] ILogCommitManager.GetCommitMetadata(long commitNum)
@@ -993,7 +1031,7 @@ namespace DurableTask.Netherite.Faster
         void ICheckpointManager.CommitLogCheckpoint(Guid logToken, byte[] commitMetadata)
             => this.CommitLogCheckpoint(logToken, commitMetadata, InvalidPsfGroupOrdinal);
 
-        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog)
+        void ICheckpointManager.CommitLogIncrementalCheckpoint(Guid logToken, long version, byte[] commitMetadata, DeltaLog deltaLog)
             => this.CommitLogIncrementalCheckpoint(logToken, version, commitMetadata, deltaLog, InvalidPsfGroupOrdinal);
 
         byte[] ICheckpointManager.GetIndexCheckpointMetadata(Guid indexToken)
@@ -1140,7 +1178,7 @@ namespace DurableTask.Netherite.Faster
             this.StorageTracer?.FasterStorageProgress($"ICheckpointManager.CommitLogCheckpoint Returned from {tag}, target={metaFileBlob.Name}");
         }
 
-        internal void CommitLogIncrementalCheckpoint(Guid logToken, int version, byte[] commitMetadata, DeltaLog deltaLog, int indexOrdinal)
+        internal void CommitLogIncrementalCheckpoint(Guid logToken, long version, byte[] commitMetadata, DeltaLog deltaLog, int indexOrdinal)
         {
             throw new NotImplementedException("incremental checkpointing is not implemented");
         }

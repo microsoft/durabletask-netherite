@@ -88,7 +88,13 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterAlt");
         }
 
+        public override (double totalSizeMB, int fillPercentage) CacheSizeInfo => (0.0,0);
+
         public override void InitMainSession()
+        {
+        }
+
+        public override void AdjustCacheSize()
         {
         }
 
@@ -122,7 +128,7 @@ namespace DurableTask.Netherite.Faster
             return Task.FromResult(dedupState.Positions);
         }
 
-        public override void CompletePending()
+        public override bool CompletePending()
         {
             var completed = this.pendingLoads.Where(p => p.Value.LoadTask.IsCompleted).ToList();
 
@@ -130,6 +136,8 @@ namespace DurableTask.Netherite.Faster
             {
                 this.ProcessCompletedLoad(kvp.Key, kvp.Value);
             }
+
+            return this.pendingLoads.Count == 0;
         }
 
         public override ValueTask ReadyToCompletePendingAsync()
@@ -227,6 +235,11 @@ namespace DurableTask.Netherite.Faster
             return this.RemoveCheckpointIntention(guid);
         }
 
+        public override void CheckInvariants()
+        {
+        }
+
+
         // perform a query
         public override Task QueryAsync(PartitionQueryEvent queryEvent, EffectTracker effectTracker)
         {
@@ -235,7 +248,7 @@ namespace DurableTask.Netherite.Faster
         }
 
         // kick off a read of a tracked object, completing asynchronously if necessary
-        public override void ReadAsync(PartitionReadEvent readEvent, EffectTracker effectTracker)
+        public override void Read(PartitionReadEvent readEvent, EffectTracker effectTracker)
         {
             if (readEvent.Prefetch.HasValue)
             {

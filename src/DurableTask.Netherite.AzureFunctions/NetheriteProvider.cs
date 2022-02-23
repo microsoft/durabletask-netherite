@@ -117,7 +117,7 @@ namespace DurableTask.Netherite.AzureFunctions
             if (this.Service.TryGetScalingMonitor(out var monitor))
             {
                 scaleMonitor = new ScaleMonitor(monitor);
-                monitor.InformationTracer($"ScaleMonitor Constructed Microsoft.Azure.WebJobs.Host.Scale.IScaleMonitor {scaleMonitor.Descriptor}");
+                monitor.InformationTracer($"ScaleMonitor Constructed, Descriptor.Id={scaleMonitor.Descriptor.Id}");
                 return true;
             }
             else

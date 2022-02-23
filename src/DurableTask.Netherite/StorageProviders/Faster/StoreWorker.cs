@@ -170,6 +170,7 @@ namespace DurableTask.Netherite.Faster
             }
 
             this.loadInfo.MissRate = this.store.StoreStats.GetMissRate();
+            (this.loadInfo.CacheMB, this.loadInfo.CachePct) = this.store.CacheSizeInfo;
 
             if (this.loadInfo.IsBusy() != null)
             {
@@ -314,7 +315,7 @@ namespace DurableTask.Netherite.Faster
 
                         case PartitionReadEvent readEvent:
                             // async reads may either complete immediately (on cache hit) or later (on cache miss) when CompletePending() is called
-                            this.store.ReadAsync(readEvent, this.effectTracker);
+                            this.store.Read(readEvent, this.effectTracker);
                             break;
 
                         default:
@@ -338,6 +339,8 @@ namespace DurableTask.Netherite.Faster
                 {
                     return;
                 }
+
+                this.store.AdjustCacheSize();
 
                 // handle progression of checkpointing state machine:  none -> pendingCompaction -> pendingIndexCheckpoint ->  { pendingStoreCheckpoint (shiftpending.HasValue) -> } pendingStoreCheckpoint (shiftpending == null)  -> none)
                 if (this.pendingStoreCheckpoint != null)
@@ -427,16 +430,16 @@ namespace DurableTask.Netherite.Faster
                     this.ScheduleNextIdleCheckpointTime();
                 }
 
-                // make sure to complete ready read requests, or notify this worker
-                // if any read requests become ready to process at some point
-                var t = this.store.ReadyToCompletePendingAsync();
-                if (!t.IsCompleted)
+                // we always call this at the end of the loop. 
+                bool allRequestsCompleted = this.store.CompletePending();
+
+                if (!allRequestsCompleted)
                 {
-                    var ignoredTask = t.AsTask().ContinueWith(x => this.Notify());
+                    var _ = this.store.ReadyToCompletePendingAsync().AsTask().ContinueWith(x => this.Notify());
                 }
 
-                // we always call this at the end of the loop. 
-                this.store.CompletePending();
+                // during testing, this is a good time to check invariants in the store
+                this.store.CheckInvariants();
             }
             catch (OperationCanceledException) when (this.cancellationToken.IsCancellationRequested)
             {

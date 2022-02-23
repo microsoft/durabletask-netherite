@@ -20,6 +20,7 @@ namespace DurableTask.Netherite.Faster
         readonly string taskHubName;
         readonly string pathPrefix;
         readonly ILogger logger;
+        readonly MemoryTracker memoryTracker;
 
         Partition partition;
         BlobManager blobManager;
@@ -33,11 +34,16 @@ namespace DurableTask.Netherite.Faster
 
         internal FasterTraceHelper TraceHelper { get; private set; }
 
-        public FasterStorage(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, string pathPrefix, ILoggerFactory loggerFactory)
+        public long TargetMemorySize { get; set; }
+
+        public FasterStorage(NetheriteOrchestrationServiceSettings settings, string pathPrefix, MemoryTracker memoryTracker, ILoggerFactory loggerFactory)
         {
-            if (!string.IsNullOrEmpty(localFileDirectory))
+            string connectionString = settings.ResolvedStorageConnectionString;
+            string pageBlobConnectionString = settings.ResolvedPageBlobStorageConnectionString;
+
+            if (!string.IsNullOrEmpty(settings.UseLocalDirectoryForPartitionStorage))
             {
-                this.localFileDirectory = localFileDirectory;
+                this.localFileDirectory = settings.UseLocalDirectoryForPartitionStorage;
             }
             else
             { 
@@ -51,9 +57,15 @@ namespace DurableTask.Netherite.Faster
             {
                 this.pageBlobStorageAccount = this.storageAccount;
             }
-            this.taskHubName = taskHubName;
+            this.taskHubName = settings.HubName;
             this.pathPrefix = pathPrefix;
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
+            this.memoryTracker = memoryTracker;
+
+            if (settings.TestHooks?.CacheDebugger != null)
+            {
+                settings.TestHooks.CacheDebugger.MemoryTracker = this.memoryTracker;
+            }
         }
 
         public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, string pathPrefix)
@@ -121,7 +133,7 @@ namespace DurableTask.Netherite.Faster
             else
             {
                 this.TraceHelper.FasterProgress("Creating FasterKV");
-                this.store = new FasterKV(this.partition, this.blobManager);
+                this.store = new FasterKV(this.partition, this.blobManager, this.memoryTracker);
             }
 
             this.TraceHelper.FasterProgress("Creating StoreWorker");

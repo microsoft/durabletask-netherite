@@ -44,7 +44,7 @@ namespace DurableTask.Netherite
         protected override void ExtraTraceInformation(StringBuilder s)
         {
            base.ExtraTraceInformation(s);
-
+           s.Append(' ');
            s.Append(this.NumActivitiesToSend);
            s.Append("->Part");
            s.Append(this.TransferDestination.ToString("D2"));     

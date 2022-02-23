@@ -28,19 +28,30 @@ namespace DurableTask.Netherite.Tests
     {
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
+        readonly Action<string> output;
         ITestOutputHelper outputHelper;
 
         public ScenarioTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
             this.outputHelper = outputHelper;
+            this.output = (string message) => this.outputHelper?.WriteLine(message);
+
+            this.output($"Running pre-test operations on {fixture.GetType().Name}.");
+
             this.fixture = fixture;
             this.host = fixture.Host;
+            fixture.SetOutput(this.output);
+            Assert.False(fixture.HasError(out var error), $"could not start test because of preceding test failure: {error}");
 
-            fixture.SetOutput((string message) => this.outputHelper?.WriteLine(message));
+            this.output($"Completed pre-test operations on {fixture.GetType().Name}.");
         }
 
         public void Dispose()
         {
+            this.output($"Running post-test operations on {this.fixture.GetType().Name}.");
+
+            Assert.False(this.fixture.HasError(out var error), $"detected test failure: {error}");
+
             // purge all instances after each test
             // this helps to catch "bad states" (e.g. hung workers) caused by the tests
             if (!this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
@@ -49,6 +60,9 @@ namespace DurableTask.Netherite.Tests
             }
 
             Assert.Null(this.fixture.TestHooksError);
+            this.fixture.DumpCacheDebugger();
+
+            this.output($"Completed post-test operations on {this.fixture.GetType().Name}.");
             this.outputHelper = null;
         }
 
