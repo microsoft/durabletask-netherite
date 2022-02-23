@@ -85,7 +85,7 @@ namespace DurableTask.Netherite
             if (this.ForceNewExecution || historyState == null)
             {
                 // we either have no previous instance, or want to replace the previous instance
-                this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: null);
+                this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: null, customStatus: null);
                 this.workItem.Type = OrchestrationWorkItem.ExecutionType.Fresh;
                 this.workItem.HistorySize = 0;
             }
@@ -105,7 +105,7 @@ namespace DurableTask.Netherite
                     partition.EventTraceHelper.TraceEventProcessingWarning($"Fixing bad workitem cache instance={this.InstanceId} batch={this.WorkItemId} expected_size={historyState.History?.Count} actual_size={this.workItem.OrchestrationRuntimeState?.Events?.Count} expected_executionid={historyState.ExecutionId} actual_executionid={this.workItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId}");
 
                     // we create a new work item and rehydrate the instance from its history
-                    this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History);
+                    this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History, historyState.CustomStatus);
                     this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
                     this.workItem.HistorySize = historyState.History?.Count ?? 0;
                 }
@@ -113,7 +113,7 @@ namespace DurableTask.Netherite
             else
             {
                 // we have to rehydrate the instance from its history
-                this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History);
+                this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History, historyState.CustomStatus);
                 this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
                 this.workItem.HistorySize = historyState.History?.Count ?? 0;
             }

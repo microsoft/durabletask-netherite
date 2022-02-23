@@ -27,6 +27,9 @@ namespace DurableTask.Netherite
         public List<HistoryEvent> History { get; set; }
 
         [DataMember]
+        public string CustomStatus { get; set; }
+
+        [DataMember]
         public int Episode { get; set; }
 
         /// <summary>
@@ -51,6 +54,7 @@ namespace DurableTask.Netherite
             if (this.History == null || evt.ExecutionId != this.ExecutionId)
             {
                 this.History = new List<HistoryEvent>();
+                this.CustomStatus = null;
                 this.Episode = 0;
                 this.ExecutionId = evt.ExecutionId;
             }
@@ -69,6 +73,11 @@ namespace DurableTask.Netherite
                     }
                     this.History.Add(evt.NewEvents[i]);
                 }
+            }
+
+            if (evt.CustomStatusUpdated)
+            {
+                this.CustomStatus = evt.CustomStatus;
             }
 
             if (!effects.IsReplaying)
