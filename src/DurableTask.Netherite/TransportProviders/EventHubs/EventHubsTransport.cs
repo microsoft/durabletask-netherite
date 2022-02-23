@@ -300,10 +300,12 @@ namespace DurableTask.Netherite.EventHubs
                             var pos = this.parameters.StartPositions[int.Parse(s)];
                             if (pos > 0)
                             {
+                                this.traceHelper.LogDebug("InitialOffsetProvider: partitions/{partitionId} EventPosition.FromSequenceNumber({offset}, inclusive:false)", s, pos - 1);
                                 return EventPosition.FromSequenceNumber(pos - 1, inclusive: false);
                             }
                             else
                             {
+                                this.traceHelper.LogDebug("InitialOffsetProvider: partitions/{partitionId} EventPosition.FromStart()", s);
                                 return EventPosition.FromStart();
                             }
                         },
