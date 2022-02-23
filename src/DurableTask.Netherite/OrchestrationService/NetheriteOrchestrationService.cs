@@ -721,6 +721,7 @@ namespace DurableTask.Netherite
 
             if (state.Status != orchestrationWorkItem.CustomStatus)
             {
+                orchestrationWorkItem.CustomStatus = state.Status;
                 batchProcessedEvent.CustomStatusUpdated = true;
                 batchProcessedEvent.CustomStatus = state.Status;
             }
