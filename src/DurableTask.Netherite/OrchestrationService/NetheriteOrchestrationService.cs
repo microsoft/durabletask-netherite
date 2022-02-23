@@ -719,7 +719,7 @@ namespace DurableTask.Netherite
                 Timestamp = state.LastUpdatedTime,
             };
 
-            if (state.Status != orchestrationWorkItem.PreStatus)
+            if (state.Status != orchestrationWorkItem.CustomStatus)
             {
                 batchProcessedEvent.CustomStatusUpdated = true;
                 batchProcessedEvent.CustomStatus = state.Status;
@@ -753,8 +753,9 @@ namespace DurableTask.Netherite
             // In order to guarantee the work is done, we must enqueue a new work item.
             var orchestrationWorkItem = (OrchestrationWorkItem)workItem;
             var originalHistorySize = orchestrationWorkItem.OrchestrationRuntimeState.Events.Count - orchestrationWorkItem.OrchestrationRuntimeState.NewEvents.Count;
+            var originalCustomStatus = orchestrationWorkItem.OrchestrationRuntimeState.Status;
             var originalHistory = orchestrationWorkItem.OrchestrationRuntimeState.Events.Take(originalHistorySize).ToList();
-            var newWorkItem = new OrchestrationWorkItem(orchestrationWorkItem.Partition, orchestrationWorkItem.MessageBatch, originalHistory);
+            var newWorkItem = new OrchestrationWorkItem(orchestrationWorkItem.Partition, orchestrationWorkItem.MessageBatch, originalHistory, originalCustomStatus);
             newWorkItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
             newWorkItem.HistorySize = originalHistory.Count;
 

@@ -28,16 +28,17 @@ namespace DurableTask.Netherite
 
         public double StartedAt { get; set; }
 
-        public string PreStatus { get; set; } // we store this prior to executing the work item so we can diff the status afterwards to detect changes
+        public string CustomStatus { get; set; }
 
-        public OrchestrationWorkItem(Partition partition, OrchestrationMessageBatch messageBatch, List<HistoryEvent> previousHistory = null)
+        public OrchestrationWorkItem(Partition partition, OrchestrationMessageBatch messageBatch, List<HistoryEvent> previousHistory = null, string customStatus = null)
         {
             this.Partition = partition;
             this.MessageBatch = messageBatch;
             this.InstanceId = messageBatch.InstanceId;
             this.NewMessages = messageBatch.MessagesToProcess;
             this.NewMessagesOrigin = messageBatch.MessagesToProcessOrigin;
-            this.OrchestrationRuntimeState = new OrchestrationRuntimeState(previousHistory);
+            this.OrchestrationRuntimeState = new OrchestrationRuntimeState(previousHistory) { Status = customStatus };
+            this.CustomStatus = customStatus;
             this.LockedUntilUtc = DateTime.MaxValue; // this backend does not require workitem lock renewals
             this.Session = null; // we don't use the extended session API because we are caching cursors in the work item
         }
