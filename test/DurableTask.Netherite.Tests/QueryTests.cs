@@ -137,7 +137,7 @@ namespace DurableTask.Netherite.Tests
             }
 
             // Make sure the client and instance are still running and didn't complete early (or fail).
-            var status = await client.GetStatusAsync();
+            var status = await client.GetStateAsync();
             Assert.NotNull(status);
             Assert.Contains(status.OrchestrationStatus, inProgressStatus);
             await assertCounts(1, 0);

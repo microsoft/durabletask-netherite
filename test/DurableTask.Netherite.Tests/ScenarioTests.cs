@@ -247,8 +247,8 @@ namespace DurableTask.Netherite.Tests
             var client = await this.host.StartOrchestrationAsync(typeof(Orchestrations.Counter), initialValue);
 
             // Need to wait for the instance to start before sending events to it.
-            // TODO: This requirement may not be ideal and should be revisited.
-            await client.WaitForStartupAsync(TimeSpan.FromSeconds(10));
+            var state = await client.WaitForStartupAsync(TimeSpan.FromSeconds(30));
+            Assert.NotNull(state);
 
             // Perform some operations
             await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpIncrement);
@@ -259,21 +259,22 @@ namespace DurableTask.Netherite.Tests
             await Task.Delay(2000);
 
             // Make sure it's still running and didn't complete early (or fail).
-            var status = await client.GetStatusAsync();
+            state = await client.GetStateAsync();
+            Assert.NotNull(state);
             Assert.True(
-                status?.OrchestrationStatus == OrchestrationStatus.Running ||
-                status?.OrchestrationStatus == OrchestrationStatus.ContinuedAsNew);
+                state.OrchestrationStatus == OrchestrationStatus.Running ||
+                state.OrchestrationStatus == OrchestrationStatus.ContinuedAsNew);
 
             // The end message will cause the actor to complete itself.
             await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpEnd);
 
-            status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(10));
+            state = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(10));
 
-            Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
-            Assert.Equal(3, JToken.Parse(status?.Output));
+            Assert.Equal(OrchestrationStatus.Completed, state?.OrchestrationStatus);
+            Assert.Equal(3, JToken.Parse(state?.Output));
 
             // When using ContinueAsNew, the original input is discarded and replaced with the most recent state.
-            Assert.NotEqual(initialValue, JToken.Parse(status?.Input));
+            Assert.NotEqual(initialValue, JToken.Parse(state?.Input));
         }
 
         /// <summary>
@@ -884,11 +885,11 @@ namespace DurableTask.Netherite.Tests
             var clientStartingIn10Seconds = await this.host.StartOrchestrationAsync(typeof(Orchestrations.DelayedCurrentTimeActivity), "Delayed Current Time!", startAt: expectedStartTime);
             var clientStartingNow = await this.host.StartOrchestrationAsync(typeof(Orchestrations.DelayedCurrentTimeActivity), "Delayed Current Time!");
 
-            var statusStartingIn10Seconds = await clientStartingIn10Seconds.GetStatusAsync();
+            var statusStartingIn10Seconds = await clientStartingIn10Seconds.GetStateAsync();
             Assert.NotNull(statusStartingIn10Seconds.ScheduledStartTime);
             Assert.Equal(expectedStartTime, statusStartingIn10Seconds.ScheduledStartTime);
 
-            var statusStartingNow = await clientStartingNow.GetStatusAsync();
+            var statusStartingNow = await clientStartingNow.GetStateAsync();
             Assert.Null(statusStartingNow.ScheduledStartTime);
 
             await Task.WhenAll(
