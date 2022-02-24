@@ -1407,7 +1407,7 @@ namespace DurableTask.Netherite.Faster
                     if (status.IsCompletedSuccessfully)
                     {
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, partitionReadEvent.EventIdString, recordMetadata.Address);
-                        tracker.ProcessReadResult(partitionReadEvent, key, status.Found ? output.Read(this.store, partitionReadEvent.EventIdString) : null);
+                        tracker.ProcessReadResult(partitionReadEvent, key, output.Read(this.store, partitionReadEvent.EventIdString));
                     }
                     else if (status.IsPending)
                     {
