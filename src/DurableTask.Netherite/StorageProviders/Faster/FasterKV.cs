@@ -1406,6 +1406,9 @@ namespace DurableTask.Netherite.Faster
 
                     if (status.IsCompletedSuccessfully)
                     {
+                        // TODO this is a FASTER bug
+                        // if (!status.Found && output.Val != null) this.cacheDebugger?.Fail("status is incorrect");
+
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, partitionReadEvent.EventIdString, recordMetadata.Address);
                         tracker.ProcessReadResult(partitionReadEvent, key, output.Read(this.store, partitionReadEvent.EventIdString));
                     }
