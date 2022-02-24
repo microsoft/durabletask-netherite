@@ -160,7 +160,7 @@ namespace DurableTask.Netherite.AzureFunctions
                 }
                 if (attachCacheDebugger)
                 {
-                    netheriteSettings.TestHooks.CacheDebugger = new Faster.CacheDebugger(eventSourcedSettings.TestHooks);
+                    netheriteSettings.TestHooks.CacheDebugger = new Faster.CacheDebugger(netheriteSettings.TestHooks);
                 }
             }
 
