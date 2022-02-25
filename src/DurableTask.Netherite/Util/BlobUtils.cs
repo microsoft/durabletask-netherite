@@ -78,6 +78,12 @@ namespace DurableTask.Netherite
                 return true;
             }
 
+            // Empirically observed timeouts on synchronous calls
+            if (e.InnerException is TimeoutException)
+            {
+                return true;
+            }
+
             // Empirically observed transient exception 
             // ('An existing connection was forcibly closed by the remote host')
             if (e.InnerException is System.Net.Http.HttpRequestException 
