@@ -131,7 +131,7 @@ namespace DurableTask.Netherite.Faster
 
                 // recover Faster
                 this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
-                await this.fht.RecoverAsync();
+                await this.fht.RecoverAsync(1);
                 this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
                 this.cacheTracker.MeasureCacheSize();
                 this.CheckInvariants();
