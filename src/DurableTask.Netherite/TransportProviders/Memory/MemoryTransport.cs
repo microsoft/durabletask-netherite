@@ -290,6 +290,11 @@ namespace DurableTask.Netherite.Emulated
                     {
                         queue.Send(clientEvent);
                     }
+                    else
+                    {
+                        // client does not exist, can happen after recovery
+                        DurabilityListeners.ConfirmDurable(clientEvent);
+                    }
                 }
                 else if (evt is PartitionEvent partitionEvent)
                 {

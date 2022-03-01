@@ -537,7 +537,7 @@ namespace DurableTask.Netherite.EventHubs
                                 if (clientEvent != null && clientEvent.ClientId == this.ClientId)
                                 {
                                     this.traceHelper.LogTrace("Client{clientId}.ch{index} receiving event {evt} id={eventId}]", Client.GetShortId(this.ClientId), index, clientEvent, clientEvent.EventIdString);
-                                    await channelWriter.WriteAsync(clientEvent);
+                                    await channelWriter.WriteAsync(clientEvent, this.shutdownSource.Token);
                                 }
                             }
                             catch (Exception)

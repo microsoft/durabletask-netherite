@@ -100,7 +100,7 @@ namespace DurableTask.Netherite
 
                 if (!this.ErrorHandler.NormalTermination && this.Settings.TestHooks != null && this.Settings.TestHooks.FaultInjector == null)
                 {
-                    this.Settings.TestHooks.Error("Partition", "Unexpected partition termination during test");
+                    this.Settings.TestHooks.Error("Partition", $"Unexpected termination of partition {this.PartitionId} during test");
                 }
             });
 
