@@ -29,6 +29,7 @@ namespace DurableTask.Netherite.Faster
         readonly CacheDebugger cacheDebugger;
         readonly MemoryTracker.CacheTracker cacheTracker;
         readonly LogSettings storelogsettings;
+        readonly Stopwatch compactionStopwatch;
 
         TrackedObject[] singletons;
         Task persistSingletonsTask;
@@ -39,6 +40,7 @@ namespace DurableTask.Netherite.Faster
 
         public int PageSizeBits => this.storelogsettings.PageSizeBits;
 
+ 
         public FasterKV(Partition partition, BlobManager blobManager, MemoryTracker memoryTracker)
         {
             this.partition = partition;
@@ -70,8 +72,10 @@ namespace DurableTask.Netherite.Faster
             partition.Assert(this.fht.ReadCache == null, "Unexpected read cache");
 
             this.terminationToken = partition.ErrorHandler.Token;
-
             var _ = this.terminationToken.Register(() => Task.Run(this.Dispose));
+
+            this.compactionStopwatch = new Stopwatch();
+            this.compactionStopwatch.Start();
 
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
         }
@@ -92,6 +96,13 @@ namespace DurableTask.Netherite.Faster
             {
                 this.blobManager.TraceHelper.FasterStorageError("Disposing FasterKV", e);
             }
+        }
+
+        long GetElapsedCompactionMilliseconds()
+        {
+            long elapsed = this.compactionStopwatch.ElapsedMilliseconds;
+            this.compactionStopwatch.Restart();
+            return elapsed;
         }
 
         ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> CreateASession(string id, bool isScan)
@@ -131,7 +142,7 @@ namespace DurableTask.Netherite.Faster
 
                 // recover Faster
                 this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
-                await this.fht.RecoverAsync(1);
+                await this.fht.RecoverAsync();
                 this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
                 this.cacheTracker.MeasureCacheSize();
                 this.CheckInvariants();
@@ -279,28 +290,44 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        long MinimalLogSize
+        {
+            get
+            {
+                var stats = (StatsState)this.singletons[(int)TrackedObjectKey.Stats.ObjectType];
+                return this.fht.Log.FixedRecordSize * stats.InstanceCount * 2;
+            }
+        }
+
         public override long? GetCompactionTarget()
         {
             // TODO empiric validation of the heuristics
 
             var stats = (StatsState) this.singletons[(int)TrackedObjectKey.Stats.ObjectType];
-            long minimalLogSize = this.fht.Log.FixedRecordSize * stats.InstanceCount * 2;
             long actualLogSize = this.fht.Log.TailAddress - this.fht.Log.BeginAddress;
-
-            if (actualLogSize < 4 * minimalLogSize)
-            {
-                return null; // we are not compacting until there is significant bloat
-            }
-
-            long compactionAreaSize = (long)(0.2 * (this.fht.Log.SafeReadOnlyAddress - this.fht.Log.BeginAddress));
+            long minimalLogSize = this.MinimalLogSize;
+            long compactionAreaSize = (long)(0.5 * (this.fht.Log.SafeReadOnlyAddress - this.fht.Log.BeginAddress));
             long mutableSectionSize = (this.fht.Log.TailAddress - this.fht.Log.SafeReadOnlyAddress);
 
-            if (mutableSectionSize > compactionAreaSize)
+            if (actualLogSize > 2 * minimalLogSize            // there must be significant bloat
+               && mutableSectionSize < compactionAreaSize)   // the potential size reduction must outweigh the cost of a foldover
             {
-                return null; // the potential size reduction does not outweigh the cost of a foldover
+                return this.fht.Log.BeginAddress + compactionAreaSize;
             }
+            else
+            { 
+                this.TraceHelper.FasterCompactionProgress(
+                    FasterTraceHelper.CompactionProgress.Skipped,
+                    "", 
+                    this.Log.BeginAddress,
+                    this.Log.SafeReadOnlyAddress,
+                    this.Log.TailAddress, 
+                    minimalLogSize,
+                    compactionAreaSize,
+                    this.GetElapsedCompactionMilliseconds());
 
-            return this.fht.Log.BeginAddress + compactionAreaSize;
+                return null; 
+            }
         }
 
         readonly static SemaphoreSlim maxCompactionThreads = new SemaphoreSlim((Environment.ProcessorCount + 1) / 2);
@@ -308,7 +335,16 @@ namespace DurableTask.Netherite.Faster
         public override async Task<long> RunCompactionAsync(long target)
         {
             string id = this.RandomSuffix(); // for tracing purposes
-            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} pending");
+
+            this.TraceHelper.FasterCompactionProgress(
+                FasterTraceHelper.CompactionProgress.Started, 
+                id, 
+                this.Log.BeginAddress, 
+                this.Log.SafeReadOnlyAddress, 
+                this.Log.TailAddress, 
+                this.MinimalLogSize, 
+                target - this.Log.BeginAddress, 
+                this.GetElapsedCompactionMilliseconds());
 
             await maxCompactionThreads.WaitAsync();
             try
@@ -326,7 +362,17 @@ namespace DurableTask.Netherite.Faster
                     try
                     {
                         using var session = this.CreateASession($"compaction-{id}", false);
-                        long compactedUntil = session.Compact(target, CompactionType.Lookup);
+
+                        long compactedUntil = session.Compact(target, CompactionType.Scan);
+
+                        this.TraceHelper.FasterCompactionProgress(
+                            FasterTraceHelper.CompactionProgress.Completed, 
+                            id, compactedUntil, this.Log.SafeReadOnlyAddress, 
+                            this.Log.TailAddress, 
+                            this.MinimalLogSize, 
+                            compactedUntil - this.Log.BeginAddress, 
+                            this.GetElapsedCompactionMilliseconds());
+
                         tcs.SetResult(compactedUntil);
                     }
                     catch (Exception exception)

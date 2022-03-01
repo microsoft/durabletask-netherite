@@ -378,6 +378,13 @@ namespace DurableTask.Netherite
             this.WriteEvent(267, Account, TaskHub, PartitionId, Details, AppName, ExtensionVersion);
         }
 
+        [Event(268, Level = EventLevel.Informational, Version = 1)]
+        public void FasterCompactionProgress(string Account, string TaskHub, int PartitionId, string Details, string Operation, long Begin, long SafeReadOnly, long Tail, long MinimalSize, long CompactionAreaSize, long ElapsedMs, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(266, Account, TaskHub, PartitionId, Details, Operation, Begin, SafeReadOnly, Tail, MinimalSize, CompactionAreaSize, ElapsedMs, AppName, ExtensionVersion);
+        }
+
         // ----- EventHubs Transport
 
         [Event(270, Level = EventLevel.Informational, Version = 1)]

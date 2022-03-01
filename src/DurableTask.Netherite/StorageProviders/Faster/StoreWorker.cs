@@ -34,7 +34,7 @@ namespace DurableTask.Netherite.Faster
         long lastCheckpointedInputQueuePosition;
         long lastCheckpointedCommitLogPosition;
         long numberEventsSinceLastCheckpoint;
-        long timeOfNextIdleCheckpoint;
+        DateTime timeOfNextIdleCheckpoint;
 
         // periodic compaction
         Task<long?> pendingCompaction;
@@ -223,7 +223,6 @@ namespace DurableTask.Netherite.Faster
 
         bool CheckpointDue(out CheckpointTrigger trigger, out long? compactUntil)
         {
-
             // in a test setting, let the test decide when to checkpoint or compact
             if (this.partition.Settings.TestHooks?.CheckpointInjector != null)
             {
@@ -245,9 +244,10 @@ namespace DurableTask.Netherite.Faster
             {
                 trigger = CheckpointTrigger.EventCount;
             }
-            else if (this.loadInfo.IsBusy() == null && DateTime.UtcNow.Ticks > this.timeOfNextIdleCheckpoint)
+            else if (this.loadInfo.IsBusy() == null && DateTime.UtcNow > this.timeOfNextIdleCheckpoint)
             {
                 // we have reached an idle point.
+                this.ScheduleNextIdleCheckpointTime();
 
                 compactUntil = this.store.GetCompactionTarget();
                 if (compactUntil.HasValue)
@@ -282,11 +282,12 @@ namespace DurableTask.Netherite.Faster
 
         void ScheduleNextIdleCheckpointTime()
         {
+           // to avoid all partitions taking snapshots at the same time, align to a partition-based spot between 0.5 and 1.5 of the period
             var period = this.partition.Settings.IdleCheckpointFrequencyMs * TimeSpan.TicksPerMillisecond;
-            // to avoid all partitions taking snapshots at the same time, align to a partition-based spot between 0.5 and 1.5 of the period
-            var earliest = DateTime.UtcNow.Ticks + period/2;
-            var offset = (this.partition.PartitionId * period / this.partition.NumberPartitions());
-            this.timeOfNextIdleCheckpoint = earliest + offset;
+            var offset = this.partition.PartitionId * period / this.partition.NumberPartitions();
+            var earliest = DateTime.UtcNow.Ticks + period / 2;
+            var actual = (((earliest - offset - 1) / period) + 1) * period + offset;
+            this.timeOfNextIdleCheckpoint = new DateTime(actual, DateTimeKind.Utc);
         }
         
         protected override async Task Process(IList<PartitionEvent> batch)
@@ -421,12 +422,10 @@ namespace DurableTask.Netherite.Faster
                     var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker).ConfigureAwait(false)) as ActivitiesState;
                     activitiesState.CollectLoadMonitorInformation();
                 }
-                if (this.loadInfo.IsBusy() != null
-                     || (this.lastCheckpointedCommitLogPosition == this.CommitLogPosition 
-                         && this.lastCheckpointedInputQueuePosition == this.InputQueuePosition
-                         && this.LogWorker.LastCommittedInputQueuePosition <= this.InputQueuePosition))
+
+                if (this.loadInfo.IsBusy() != null)
                 {
-                    // the partition is not idle, or nothing has changed, so we do delay the time for the nex idle checkpoint
+                    // the partition is not idle, so we do delay the time for the next idle checkpoint
                     this.ScheduleNextIdleCheckpointTime();
                 }
 
