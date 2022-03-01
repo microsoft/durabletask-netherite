@@ -484,7 +484,7 @@ namespace DurableTask.Netherite.Tests
             {
                 (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
                 Assert.InRange(numPages, 1, pageCount);
-                Assert.InRange(memorySize, 0, historyAndStatusSize);
+                Assert.InRange(memorySize, 0, historyAndStatusSize * 1.1);
             }
 
             int emptyPageCount = 0;
@@ -497,7 +497,7 @@ namespace DurableTask.Netherite.Tests
                 await Task.Delay(TimeSpan.FromSeconds(20));
                 (int numPages, long memorySize) = this.cacheDebugger.MemoryTracker.GetMemorySize();
                 Assert.InRange(numPages, 1, pageCount - emptyPageCount + tolerance);
-                Assert.InRange(memorySize, 0, historyAndStatusSize);
+                Assert.InRange(memorySize, 0, historyAndStatusSize * 1.1);
             }
 
             await service.StopAsync();
