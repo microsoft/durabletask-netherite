@@ -300,8 +300,9 @@ namespace DurableTask.Netherite.EventHubs
                             var pos = this.parameters.StartPositions[int.Parse(s)];
                             if (pos > 0)
                             {
-                                this.traceHelper.LogDebug("InitialOffsetProvider: partitions/{partitionId} EventPosition.FromSequenceNumber({offset}, inclusive:false)", s, pos - 1);
-                                return EventPosition.FromSequenceNumber(pos - 1, inclusive: false);
+                                // to work around bug in EH, ask for the most recently received packet to be delivered again
+                                this.traceHelper.LogDebug("InitialOffsetProvider: partitions/{partitionId} EventPosition.FromSequenceNumber({offset}, inclusive:true)", s, pos - 1);
+                                return EventPosition.FromSequenceNumber(pos - 1, inclusive: true);
                             }
                             else
                             {
