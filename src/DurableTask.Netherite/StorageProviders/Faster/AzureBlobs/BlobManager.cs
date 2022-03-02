@@ -83,6 +83,7 @@ namespace DurableTask.Netherite.Faster
             public int? StoreLogMemorySizeBits;
             public double? StoreLogMutableFraction;
             public int? ExpectedObjectSize;
+            public int? NumPagesToPreload;
         }
 
         public FasterLogSettings GetDefaultEventLogSettings(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters) => new FasterLogSettings
