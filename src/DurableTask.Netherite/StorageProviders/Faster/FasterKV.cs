@@ -886,7 +886,8 @@ namespace DurableTask.Netherite.Faster
                 totalSize += delta;
             }
 
-            
+            long trackedSizeBefore = this.cacheTracker.TrackedObjectSize;
+
             while (inMemoryIterator.GetNext(out RecordInfo recordInfo, out Key key, out Value value))
             {
                 long delta = key.Val.EstimatedSize;
@@ -897,7 +898,7 @@ namespace DurableTask.Netherite.Faster
                 Add(key, delta, inMemoryIterator.CurrentAddress, $"{(recordInfo.Invalid ? "I" : "")}{(recordInfo.Tombstone ? "T" : "")}{delta}@{inMemoryIterator.CurrentAddress.ToString("x")}");
             }
 
-            long trackedSize = this.cacheTracker.TrackedObjectSize;
+            long trackedSizeAfter = this.cacheTracker.TrackedObjectSize;
 
             bool sizeMatches = true;
             foreach (var kvp in perKey)
@@ -905,7 +906,7 @@ namespace DurableTask.Netherite.Faster
                 sizeMatches = sizeMatches && this.cacheDebugger.CheckSize(kvp.Key, kvp.Value, this.Log.HeadAddress);
             }
 
-            if (trackedSize != totalSize && sizeMatches)
+            if (sizeMatches && trackedSizeBefore == trackedSizeAfter && trackedSizeBefore != totalSize)
             {
                 this.cacheDebugger.Fail("total size of tracked objects does not match");
             }
