@@ -124,9 +124,16 @@ namespace DurableTask.Netherite
                 {
                     this.tracer?.Invoke($"starting {this.name} batch size={batch.Count} first=({firstInBatch.due:o},{firstInBatch.id}) next=({nextAfterBatch.due:o},{nextAfterBatch.id})");
 
-                    // it is expected that the handler catches 
-                    // all exceptions, since it has more meaningful ways to report errors
-                    this.handler(batch);
+                    try
+                    {
+                        this.handler(batch);
+                    }
+                    catch
+                    {
+                        // it is expected that the handler catches 
+                        // all exceptions, since it has more meaningful ways to report errors
+                    }
+
                     batch.Clear();
 
                     this.tracer?.Invoke($"completed {this.name} batch size={batch.Count} first=({firstInBatch.due:o},{firstInBatch.id}) next=({nextAfterBatch.due:o},{nextAfterBatch.id})");

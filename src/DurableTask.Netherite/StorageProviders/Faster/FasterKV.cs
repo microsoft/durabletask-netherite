@@ -223,7 +223,16 @@ namespace DurableTask.Netherite.Faster
         public async static Task RunOnDedicatedThreadAsync(Func<Task> asyncAction)
         {
             Task<Task> tasktask = new Task<Task>(() => asyncAction());
-            var thread = new Thread(() => tasktask.RunSynchronously());
+            var thread = new Thread(() => 
+            {
+                try 
+                {  
+                    tasktask.RunSynchronously(); 
+                } 
+                catch
+                {
+                }
+            });
             thread.Start();
             await await tasktask;
         }
