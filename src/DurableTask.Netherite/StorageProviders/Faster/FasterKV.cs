@@ -359,27 +359,26 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 var tcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
-                var thread = new Thread(Run);
-                thread.Name = $"Compaction.{id}";
+                var thread = new Thread(RunCompaction) { Name = $"Compaction.{id}" };
                 thread.Start();
                 return await tcs.Task;
 
-                void Run()
+                void RunCompaction()
                 {
-                    this.blobManager.TraceHelper.FasterProgress($"Compaction {id} started");
-
                     try
                     {
-                        using var session = this.CreateASession($"compaction-{id}", false);
+                        this.blobManager.TraceHelper.FasterProgress($"Compaction {id} started");
+
+                        using var session = this.CreateASession($"compaction-{id}", true);
 
                         long compactedUntil = session.Compact(target, CompactionType.Scan);
 
                         this.TraceHelper.FasterCompactionProgress(
-                            FasterTraceHelper.CompactionProgress.Completed, 
-                            id, compactedUntil, this.Log.SafeReadOnlyAddress, 
-                            this.Log.TailAddress, 
-                            this.MinimalLogSize, 
-                            compactedUntil - this.Log.BeginAddress, 
+                            FasterTraceHelper.CompactionProgress.Completed,
+                            id, compactedUntil, this.Log.SafeReadOnlyAddress,
+                            this.Log.TailAddress,
+                            this.MinimalLogSize,
+                            compactedUntil - this.Log.BeginAddress,
                             this.GetElapsedCompactionMilliseconds());
 
                         tcs.SetResult(compactedUntil);
