@@ -17,7 +17,8 @@ namespace DurableTask.Netherite
         /// The continuation for the query operation.
         /// </summary>
         /// <param name="result">The tracked objects returned by this query</param>
+        /// <param name="exceptionTask">A task that throws an exception if the enumeration fails</param>
         /// <param name="partition">The partition</param>
-        public abstract Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition);
+        public abstract Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Task exceptionTask, Partition partition);
     }
 }

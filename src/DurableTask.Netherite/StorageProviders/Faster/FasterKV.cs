@@ -398,8 +398,8 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                var orchestrationStates = this.ScanOrchestrationStates(effectTracker, queryEvent);
-                await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates);
+                var orchestrationStates = this.ScanOrchestrationStates(effectTracker, queryEvent, out var exceptionTask);
+                await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates, exceptionTask);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -672,7 +672,8 @@ namespace DurableTask.Netherite.Faster
 
         IAsyncEnumerable<OrchestrationState> ScanOrchestrationStates(
             EffectTracker effectTracker,
-            PartitionQueryEvent queryEvent)
+            PartitionQueryEvent queryEvent,
+            out Task exceptionTask)
         {
             var instanceQuery = queryEvent.InstanceQuery;
             string queryId = queryEvent.EventIdString;
@@ -681,91 +682,104 @@ namespace DurableTask.Netherite.Faster
             // we use a separate thread to iterate, since Faster can iterate synchronously only at the moment
             // and we don't want it to block thread pool worker threads
             var channel = Channel.CreateBounded<OrchestrationState>(500);
+            var exceptionSource = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
+            exceptionTask = exceptionSource.Task;
             var scanThread = new Thread(RunScan) { Name = $"QueryScan-{queryId}" };
             scanThread.Start();
             return channel.Reader.ReadAllAsync();
 
             void RunScan()
             {
-                using var _ = EventTraceContext.MakeContext(0, queryId);
-                using var session = this.CreateASession($"scan-{queryId}-{this.RandomSuffix()}", true);
-
-                // get the unique set of keys appearing in the log and emit them
-                using var iter1 = session.Iterate();
-
-                Stopwatch stopwatch = new Stopwatch();
-                stopwatch.Start();
-                long scanned = 0;
-                long deserialized = 0;
-                long matched = 0;
-                long lastReport;
-                void ReportProgress()
+                try
                 {
-                    this.partition.EventDetailTracer?.TraceEventProcessingDetail(
-                        $"query {queryId} scan position={iter1.CurrentAddress} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} deserialized={deserialized} matched={matched}");
-                    lastReport = stopwatch.ElapsedMilliseconds;
-                }
+                    using var _ = EventTraceContext.MakeContext(0, queryId);
+                    using var session = this.CreateASession($"scan-{queryId}-{this.RandomSuffix()}", true);
 
-                ReportProgress();
+                    // get the unique set of keys appearing in the log and emit them
+                    using var iter1 = session.Iterate();
 
-                while (iter1.GetNext(out RecordInfo recordInfo, out Key key, out Value val) && !recordInfo.Tombstone)
-                {
-                    if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
+                    Stopwatch stopwatch = new Stopwatch();
+                    stopwatch.Start();
+                    long scanned = 0;
+                    long deserialized = 0;
+                    long matched = 0;
+                    long lastReport;
+                    void ReportProgress()
                     {
-                        ReportProgress();
+                        this.partition.EventDetailTracer?.TraceEventProcessingDetail(
+                            $"query {queryId} scan position={iter1.CurrentAddress} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} deserialized={deserialized} matched={matched}");
+                        lastReport = stopwatch.ElapsedMilliseconds;
                     }
 
-                    if (key.Val.ObjectType == TrackedObjectKey.TrackedObjectType.Instance)
+                    ReportProgress();
+
+                    while (iter1.GetNext(out RecordInfo recordInfo, out Key key, out Value val) && !recordInfo.Tombstone)
                     {
-                        scanned++;
-                        //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {key.InstanceId}");
-
-                        if (string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
-                            || key.Val.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
+                        if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
                         {
-                            //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"reading instance {key.InstanceId}");
+                            ReportProgress();
+                        }
 
-                            //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"read instance {key.InstanceId}, is {(val == null ? "null" : val.GetType().Name)}");
+                        if (key.Val.ObjectType == TrackedObjectKey.TrackedObjectType.Instance)
+                        {
+                            scanned++;
+                            //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {key.InstanceId}");
 
-                            InstanceState instanceState;
-
-                            if (val.Val is byte[] bytes)
+                            if (string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
+                                || key.Val.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
                             {
-                                instanceState = (InstanceState)Serializer.DeserializeTrackedObject(bytes);
-                                deserialized++;
-                            }
-                            else
-                            {
-                                instanceState = (InstanceState)val.Val;
-                            }
+                                //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"reading instance {key.InstanceId}");
 
-                            // reading the orchestrationState may race with updating the orchestration state
-                            // but it is benign because the OrchestrationState object is immutable
-                            var orchestrationState = instanceState?.OrchestrationState;
+                                //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"read instance {key.InstanceId}, is {(val == null ? "null" : val.GetType().Name)}");
 
-                            if (orchestrationState != null
-                                && instanceQuery.Matches(orchestrationState))
-                            {
-                                matched++;
+                                InstanceState instanceState;
 
-                                this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.Val.InstanceId}");
-
-                                var task = channel.Writer.WriteAsync(orchestrationState);
-
-                                if (!task.IsCompleted)
+                                if (val.Val is byte[] bytes)
                                 {
-                                    task.AsTask().Wait();
+                                    instanceState = (InstanceState)Serializer.DeserializeTrackedObject(bytes);
+                                    deserialized++;
+                                }
+                                else
+                                {
+                                    instanceState = (InstanceState)val.Val;
+                                }
+
+                                // reading the orchestrationState may race with updating the orchestration state
+                                // but it is benign because the OrchestrationState object is immutable
+                                var orchestrationState = instanceState?.OrchestrationState;
+
+                                if (orchestrationState != null
+                                    && instanceQuery.Matches(orchestrationState))
+                                {
+                                    matched++;
+
+                                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.Val.InstanceId}");
+
+                                    var task = channel.Writer.WriteAsync(orchestrationState);
+
+                                    if (!task.IsCompleted)
+                                    {
+                                        task.AsTask().Wait();
+                                    }
                                 }
                             }
                         }
                     }
+
+                    ReportProgress();
+
+                    channel.Writer.Complete();
+                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"finished query {queryId}");
                 }
-
-                ReportProgress();
-
-                channel.Writer.Complete();
-
-                this.partition.EventDetailTracer?.TraceEventProcessingDetail($"finished query {queryId}");
+                catch (Exception exception)
+                    when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
+                {
+                    exceptionSource.SetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
+                }
+                catch (Exception e)
+                {
+                    exceptionSource.SetException(e);
+                }
             }
         }
 
