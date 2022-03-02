@@ -30,16 +30,21 @@ namespace DurableTask.Netherite.Faster
         readonly MemoryTracker.CacheTracker cacheTracker;
         readonly LogSettings storelogsettings;
         readonly Stopwatch compactionStopwatch;
+        readonly Dictionary<(PartitionReadEvent,Key), double> pendingReads;
 
         TrackedObject[] singletons;
         Task persistSingletonsTask;
 
         ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> mainSession;
 
+        double nextHangCheck;
+        const int HangCheckPeriod = 30000;
+        const int ReadRetryAfter = 20000;
+        EffectTracker effectTracker;
+
         public FasterTraceHelper TraceHelper => this.blobManager.TraceHelper;
 
         public int PageSizeBits => this.storelogsettings.PageSizeBits;
-
  
         public FasterKV(Partition partition, BlobManager blobManager, MemoryTracker memoryTracker)
         {
@@ -66,6 +71,8 @@ namespace DurableTask.Netherite.Faster
 
             this.cacheTracker = memoryTracker.NewCacheTracker(this, (int) partition.PartitionId, this.cacheDebugger);
 
+            this.pendingReads = new Dictionary<(PartitionReadEvent, Key), double>();
+
             this.fht.Log.SubscribeEvictions(new EvictionObserver(this));
             this.fht.Log.Subscribe(new ReadonlyObserver(this));
 
@@ -76,6 +83,8 @@ namespace DurableTask.Netherite.Faster
 
             this.compactionStopwatch = new Stopwatch();
             this.compactionStopwatch.Start();
+
+            this.nextHangCheck = partition.CurrentTimeMs + HangCheckPeriod;
 
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
         }
@@ -160,7 +169,15 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                return this.mainSession.CompletePending(false, false);
+                var result = this.mainSession.CompletePending(false, false);
+
+                if (this.nextHangCheck <= this.partition.CurrentTimeMs)
+                {
+                    this.RetrySlowReads();
+                    this.nextHangCheck = this.partition.CurrentTimeMs + HangCheckPeriod;
+                }
+
+                return result;
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -517,43 +534,59 @@ namespace DurableTask.Netherite.Faster
             {
                 if (readEvent.Prefetch.HasValue)
                 {
-                    TryRead(readEvent.Prefetch.Value);
+                    this.TryRead(readEvent, effectTracker, readEvent.Prefetch.Value);
                 }
 
-                TryRead(readEvent.ReadTarget);
-
-                void TryRead(Key key)
-                {
-                    this.partition.Assert(!key.Val.IsSingleton, "singletons are not read asynchronously");
-                    Output output = default;
-                    this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.StartingRead, null, readEvent.EventIdString, 0);
-                    var status = this.mainSession.Read(ref key, ref effectTracker, ref output, readEvent, 0);
-
-                    if (status.IsCompletedSuccessfully)
-                    {
-                        // fast path: we hit in the cache and complete the read
-                        this.StoreStats.HitCount++;
-                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, readEvent.EventIdString, 0);
-                        var target = status.Found ? output.Read(this, readEvent.EventIdString) : null;
-                        this.cacheDebugger?.CheckVersionConsistency(key.Val, target, null);
-                        effectTracker.ProcessReadResult(readEvent, key, target);
-                    }
-                    else if (status.IsPending)
-                    {
-                        // slow path: read continuation will be called when complete
-                        this.StoreStats.MissCount++;
-                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PendingRead, null, readEvent.EventIdString, 0);
-                    }
-                    else
-                    { 
-                        this.partition.ErrorHandler.HandleError(nameof(ReadAsync), $"FASTER reported ERROR status 0x{status.Value:X2}", null, true, this.partition.ErrorHandler.IsTerminated);
-                    }
-                }
+                this.TryRead(readEvent, effectTracker, readEvent.ReadTarget);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
             {
                 throw new OperationCanceledException("Partition was terminated.", exception, this.terminationToken);
+            }
+        }
+
+        void TryRead(PartitionReadEvent readEvent, EffectTracker effectTracker, Key key)
+        {
+            this.partition.Assert(!key.Val.IsSingleton, "singletons are not read asynchronously");
+            Output output = default;
+            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.StartingRead, null, readEvent.EventIdString, 0);
+            var status = this.mainSession.Read(ref key, ref effectTracker, ref output, readEvent, 0);
+
+            if (status.IsCompletedSuccessfully)
+            {
+                // fast path: we hit in the cache and complete the read
+                this.StoreStats.HitCount++;
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, readEvent.EventIdString, 0);
+                var target = status.Found ? output.Read(this, readEvent.EventIdString) : null;
+                this.cacheDebugger?.CheckVersionConsistency(key.Val, target, null);
+                effectTracker.ProcessReadResult(readEvent, key, target);
+            }
+            else if (status.IsPending)
+            {
+                // slow path: read continuation will be called when complete
+                this.StoreStats.MissCount++;
+                this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PendingRead, null, readEvent.EventIdString, 0);
+                this.effectTracker ??= effectTracker;
+                this.partition.Assert(this.effectTracker == effectTracker, "Only one EffectTracker per FasterKV");
+                this.pendingReads.Add((readEvent, key), this.partition.CurrentTimeMs);
+            }
+            else
+            {
+                this.partition.ErrorHandler.HandleError(nameof(ReadAsync), $"FASTER reported ERROR status 0x{status.Value:X2}", null, true, this.partition.ErrorHandler.IsTerminated);
+            }
+        }
+
+        void RetrySlowReads()
+        {
+            double threshold = this.partition.CurrentTimeMs - ReadRetryAfter;
+            var toRetry = this.pendingReads.Where(kvp => kvp.Value < threshold).ToList();
+            foreach(var kvp in toRetry)
+            {
+                if (this.pendingReads.Remove(kvp.Key))
+                {
+                    this.TryRead(kvp.Key.Item1, this.effectTracker, kvp.Key.Item2);
+                }
             }
         }
 
@@ -1475,11 +1508,12 @@ namespace DurableTask.Netherite.Faster
 
                     if (status.IsCompletedSuccessfully)
                     {
-                        // TODO this is a FASTER bug
-                        // if (!status.Found && output.Val != null) this.cacheDebugger?.Fail("status is incorrect");
-
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CompletedRead, null, partitionReadEvent.EventIdString, recordMetadata.Address);
-                        tracker.ProcessReadResult(partitionReadEvent, key, output.Read(this.store, partitionReadEvent.EventIdString));
+
+                        if (this.store.pendingReads.Remove((partitionReadEvent, key)))
+                        {
+                            tracker.ProcessReadResult(partitionReadEvent, key, output.Read(this.store, partitionReadEvent.EventIdString));
+                        }
                     }
                     else if (status.IsPending)
                     {
