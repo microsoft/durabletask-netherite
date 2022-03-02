@@ -95,15 +95,18 @@ namespace DurableTask.Netherite
 
             this.TraceHelper.TracePartitionProgress("Starting", ref this.LastTransition, this.CurrentTimeMs, "");
 
-            errorHandler.Token.Register(() => Task.Run(() =>
-                {
-                    this.TraceHelper.TracePartitionProgress("Terminated", ref this.LastTransition, this.CurrentTimeMs, "");
+            errorHandler.Token.Register(() => this.TraceHelper.TracePartitionProgress("Terminated", ref this.LastTransition, this.CurrentTimeMs, ""), useSynchronizationContext: false);
 
-                    if (!this.ErrorHandler.NormalTermination && this.Settings.TestHooks != null && this.Settings.TestHooks.FaultInjector == null)
+            if (this.Settings.TestHooks != null && this.Settings.TestHooks.FaultInjector == null)
+            {
+                errorHandler.Token.Register(() =>
+                {
+                    if (!this.ErrorHandler.NormalTermination)
                     {
                         this.Settings.TestHooks.Error("Partition", $"Unexpected termination of partition {this.PartitionId} during test");
                     }
-                }), useSynchronizationContext: false);
+                }, useSynchronizationContext: false);
+            }
 
             await MaxConcurrentStarts.WaitAsync();
 
