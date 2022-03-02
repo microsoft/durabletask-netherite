@@ -358,7 +358,7 @@ namespace DurableTask.Netherite.EventHubs
 
                                     if (partitionEvent != null)
                                     {
-                                        this.host.logger.LogTrace("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) received packet #{seqno} ({size} bytes) {event}", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno, eventDatum.Body.Count, partitionEvent);
+                                        this.host.logger.LogTrace("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) received packet #{seqno} ({size} bytes) {event} id={eventId}", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno, eventDatum.Body.Count, partitionEvent, partitionEvent.EventIdString);
                                     }
                                     else
                                     {
