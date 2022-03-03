@@ -79,7 +79,7 @@ namespace DurableTask.Netherite.Faster
             partition.Assert(this.fht.ReadCache == null, "Unexpected read cache");
 
             this.terminationToken = partition.ErrorHandler.Token;
-            var _ = this.terminationToken.Register(() => Task.Run(this.Dispose));
+            partition.ErrorHandler.OnShutdown += this.Dispose;
 
             this.compactionStopwatch = new Stopwatch();
             this.compactionStopwatch.Start();
@@ -89,17 +89,27 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
         }
 
-        public void Dispose()
+        void Dispose()
         {
             try
             {
+                this.TraceHelper.FasterStorageProgress("Disposing CacheTracker");
                 this.cacheTracker?.Dispose();
+
+                this.TraceHelper.FasterStorageProgress("Disposing Main Session");
                 this.mainSession?.Dispose();
+
+                this.TraceHelper.FasterStorageProgress("Disposing FasterKV");
                 this.fht.Dispose();
-                this.blobManager.HybridLogDevice.Dispose();
-                this.blobManager.ObjectLogDevice.Dispose();
-                this.blobManager.ClosePSFDevices();
-                this.blobManager.FaultInjector?.Disposed(this.blobManager);
+
+                this.TraceHelper.FasterStorageProgress($"Disposing Devices");
+                this.blobManager.DisposeDevices();
+
+                if (this.blobManager.FaultInjector != null)
+                {
+                    this.TraceHelper.FasterStorageProgress($"Unregistering from FaultInjector");
+                    this.blobManager.FaultInjector.Disposed(this.blobManager);
+                }
             }
             catch (Exception e)
             {

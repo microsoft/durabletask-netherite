@@ -191,7 +191,7 @@ namespace DurableTask.Netherite.Emulated
                 var errorHandler = this.host.CreateErrorHandler((uint)i);
                 if (this.faultInjector != null)
                 {
-                    errorHandler.Token.Register(() => Task.Run(() => this.RecoveryHandler(epoch)));
+                    errorHandler.OnShutdown += () => this.RecoveryHandler(epoch);
                 }
                 var nextInputQueuePosition = await partitions[i].CreateOrRestoreAsync(errorHandler, 0);
 

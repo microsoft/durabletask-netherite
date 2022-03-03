@@ -166,8 +166,8 @@ namespace DurableTask.Netherite.EventHubs
                 return null;
             }
 
-            // start the next incarnation, will be on standby until after the current one is terminated
-            c.Next = Task.Run(() => this.StartPartitionAsync(c));
+            // start the next incarnation task, will be on standby until after the current one is terminated
+            c.Next = this.StartPartitionAsync(c);
 
             try
             {

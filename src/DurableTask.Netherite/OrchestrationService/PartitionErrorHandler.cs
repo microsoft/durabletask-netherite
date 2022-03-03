@@ -18,7 +18,10 @@ namespace DurableTask.Netherite
         readonly string account;
         readonly string taskHub;
 
+        public event Action OnShutdown;
+
         public CancellationToken Token => this.cts.Token;
+
         public bool IsTerminated => this.cts.Token.IsCancellationRequested;
 
         public bool NormalTermination { get; private set; }
@@ -31,6 +34,22 @@ namespace DurableTask.Netherite
             this.logLevelLimit = logLevelLimit;
             this.account = storageAccountName;
             this.taskHub = taskHubName;
+            this.cts.Token.Register(this.RunDisposerThread);
+        }
+
+        void RunDisposerThread()
+        {
+            Thread disposerThread = new Thread(Dispose);
+            disposerThread.Name = "DisposePartition";
+            disposerThread.Start();
+
+            void Dispose()
+            {
+                if (this.OnShutdown != null)
+                {
+                    this.OnShutdown();
+                }
+            }
         }
 
         public void HandleError(string context, string message, Exception exception, bool terminatePartition, bool isWarning)

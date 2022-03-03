@@ -19,6 +19,11 @@ namespace DurableTask.Netherite
         CancellationToken Token { get; }
 
         /// <summary>
+        /// A place to subscribe (potentially non-instantaneous) cleanup actions that execute on a dedicated thread.
+        /// </summary>
+        event Action OnShutdown;
+
+        /// <summary>
         /// A boolean indicating whether the partition is terminated.
         /// </summary>
         bool IsTerminated { get; }
