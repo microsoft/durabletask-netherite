@@ -581,6 +581,7 @@ namespace DurableTask.Netherite.Faster
         {
             double threshold = this.partition.CurrentTimeMs - ReadRetryAfter;
             var toRetry = this.pendingReads.Where(kvp => kvp.Value < threshold).ToList();
+            this.TraceHelper.FasterStorageProgress($"HangDetection limit={ReadRetryAfter/1000:f0}s pending={this.pendingReads.Count} retry={toRetry.Count}");
             foreach(var kvp in toRetry)
             {
                 if (this.pendingReads.Remove(kvp.Key))
