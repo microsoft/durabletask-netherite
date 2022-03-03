@@ -105,7 +105,7 @@ namespace DurableTask.Netherite.Tests
         [InlineData(true, true, 20)]
         public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
-            var orchestrationTimeout = TimeSpan.FromMinutes((restrictMemory ? 8 : 2) + multiplicity * (restrictMemory ? 0.5 : 0.1));
+            var orchestrationTimeout = TimeSpan.FromMinutes((restrictMemory ? 10 : 5) + multiplicity * (restrictMemory ? 0.5 : 0.1));
             var startupTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsEmulatorSpecification(this.settings.ResolvedTransportConnectionString) ? 1 : 3.5);
             var testTimeout = orchestrationTimeout + TimeSpan.FromMinutes(multiplicity * 0.2);
             var shutDownTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsEmulatorSpecification(this.settings.ResolvedTransportConnectionString) ? 0.1 : 3);
@@ -175,7 +175,7 @@ namespace DurableTask.Netherite.Tests
             this.settings.PartitionCount = 4;
 
 
-            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(2));
+            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(3));
             using var fixture = await SingleHostFixture.StartNew(this.settings, true, false, 0, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
 
             this.settings.TestHooks.CacheDebugger.EnableSizeChecking = false;
