@@ -108,7 +108,7 @@ namespace DurableTask.Netherite
 
         public override string ToString()
         {
-            return $"Sessions ({this.Sessions.Count} pending) next={this.SequenceNumber:D6}";
+            return $"Sessions Count={this.Sessions.Count} next={this.SequenceNumber:D6}";
         }
 
         string GetSessionId(Session session) => $"{this.Partition.PartitionId:D2}S{session.SessionId}";
@@ -324,6 +324,8 @@ namespace DurableTask.Netherite
             // a different session id
             if (!this.Sessions.TryGetValue(evt.InstanceId, out var session) || session.SessionId != evt.SessionId)
             {
+                this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"discarded evtsession={evt.SessionId} actualsession={(session != null ? this.GetSessionPosition(session).ToString() : "none")}");
+
                 if (!effects.IsReplaying)
                 {
                     this.Partition.WorkItemTraceHelper.TraceWorkItemDiscarded(

@@ -142,6 +142,8 @@ namespace DurableTask.Netherite.EventHubs
             {
                 try
                 {
+                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is readying next startup (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, c.Incarnation);
+
                     await Task.Delay(-1, prior.ErrorHandler.Token);
                 }
                 catch (OperationCanceledException)

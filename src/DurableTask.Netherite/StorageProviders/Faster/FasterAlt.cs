@@ -416,7 +416,7 @@ namespace DurableTask.Netherite.Faster
 
         async Task<ToRead> LoadAsync(TrackedObjectKey key)
         {
-            this.detailTracer?.FasterStorageProgress($"FasterAlt.LoadAsync Called key={key}");
+            this.detailTracer?.FasterStorageProgress($"StorageOpCalled FasterAlt.LoadAsync key={key}");
 
             try
             {
@@ -447,7 +447,7 @@ namespace DurableTask.Netherite.Faster
                         toRead.NewValue = newLength > 0 ? reader.ReadBytes(newLength) : null;
                         toRead.Guid = new Guid(reader.ReadBytes(16));
 
-                        this.detailTracer?.FasterStorageProgress($"FasterAlt.LoadAsync Returned key={key}");
+                        this.detailTracer?.FasterStorageProgress($"StorageOpReturned FasterAlt.LoadAsync key={key}");
                         return toRead;
                     }
                     catch (StorageException) when (this.terminationToken.IsCancellationRequested)
@@ -456,7 +456,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     catch (StorageException ex) when (BlobUtils.BlobDoesNotExist(ex))
                     {
-                        this.detailTracer?.FasterStorageProgress($"FasterAlt.LoadAsync Returned 404 key={key}");
+                        this.detailTracer?.FasterStorageProgress($"StorageOpReturned FasterAlt.LoadAsync got 404 key={key}");
                         return default;
                     }
                     catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.terminationToken) && numAttempts < BlobManager.MaxRetries)
@@ -481,7 +481,7 @@ namespace DurableTask.Netherite.Faster
 
         async Task StoreAsync(byte[] guid, ToWrite entry)
         {
-            this.detailTracer?.FasterStorageProgress($"FasterAlt.LoadAsync Called {entry.Key}");
+            this.detailTracer?.FasterStorageProgress($"StorageOpCalled FasterAlt.LoadAsync {entry.Key}");
 
             // assemble the bytes to write
             using var stream = new MemoryStream();

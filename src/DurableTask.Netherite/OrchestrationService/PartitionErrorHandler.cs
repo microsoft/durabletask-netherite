@@ -75,7 +75,9 @@ namespace DurableTask.Netherite
         {
             try
             {
+                this.logger?.LogDebug("Part{partition:D2} Started cancellation");
                 this.cts.Cancel();
+                this.logger?.LogDebug("Part{partition:D2} Completed cancellation");
             }
             catch (AggregateException aggregate)
             {

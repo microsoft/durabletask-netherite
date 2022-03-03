@@ -152,19 +152,19 @@ namespace DurableTask.Netherite.Faster
 
                     if (excess > 0 && currentTarget < tighten)
                     {
-                        this.store.TraceHelper.FasterStorageProgress($"engage memory control: tighten={tighten} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
+                        this.store.TraceHelper.FasterStorageProgress($"MemoryControl Engage tighten={tighten} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
                         log.SetEmptyPageCount(tighten, true);
                         this.Notify();
                     }
                     else if (excess < 0 && log.EmptyPageCount > loosen)
                     {
-                        this.store.TraceHelper.FasterStorageProgress($"release memory control: loosen={loosen} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
+                        this.store.TraceHelper.FasterStorageProgress($"MemoryControl Disengage loosen={loosen} EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB actuallyEmptyPages={actuallyEmptyPages}");
                         log.SetEmptyPageCount(loosen, true);
                         this.Notify();
                     }
                     else
                     {
-                        this.store.TraceHelper.FasterStorageProgress($"keep memory control: EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB tighten={tighten} loosen={loosen} actuallyEmptyPages={actuallyEmptyPages}");
+                        this.store.TraceHelper.FasterStorageProgress($"MemoryControl Steady EmptyPageCount={log.EmptyPageCount} excess={excess / 1024}kB tighten={tighten} loosen={loosen} actuallyEmptyPages={actuallyEmptyPages}");
                     }
                 }
 
