@@ -31,6 +31,7 @@ namespace DurableTask.Netherite.Faster
         readonly LogSettings storelogsettings;
         readonly Stopwatch compactionStopwatch;
         readonly Dictionary<(PartitionReadEvent,Key), double> pendingReads;
+        readonly List<IDisposable> sessionsToDisposeOnShutdown;
 
         TrackedObject[] singletons;
         Task persistSingletonsTask;
@@ -72,6 +73,7 @@ namespace DurableTask.Netherite.Faster
             this.cacheTracker = memoryTracker.NewCacheTracker(this, (int) partition.PartitionId, this.cacheDebugger);
 
             this.pendingReads = new Dictionary<(PartitionReadEvent, Key), double>();
+            this.sessionsToDisposeOnShutdown = new List<IDisposable>();
 
             this.fht.Log.SubscribeEvictions(new EvictionObserver(this));
             this.fht.Log.Subscribe(new ReadonlyObserver(this));
@@ -79,7 +81,7 @@ namespace DurableTask.Netherite.Faster
             partition.Assert(this.fht.ReadCache == null, "Unexpected read cache");
 
             this.terminationToken = partition.ErrorHandler.Token;
-            partition.ErrorHandler.OnShutdown += this.Dispose;
+            partition.ErrorHandler.OnShutdown += this.Shutdown;
 
             this.compactionStopwatch = new Stopwatch();
             this.compactionStopwatch.Start();
@@ -89,25 +91,31 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
         }
 
-        void Dispose()
+        void Shutdown()
         {
             try
             {
-                this.TraceHelper.FasterStorageProgress("Disposing CacheTracker");
+                this.TraceHelper.FasterProgress("Disposing CacheTracker");
                 this.cacheTracker?.Dispose();
 
-                this.TraceHelper.FasterStorageProgress("Disposing Main Session");
+                foreach (var s in this.sessionsToDisposeOnShutdown)
+                {
+                    this.TraceHelper.FasterStorageProgress($"Disposing Temporary Session");
+                    s.Dispose();
+                }
+
+                this.TraceHelper.FasterProgress("Disposing Main Session");
                 this.mainSession?.Dispose();
 
-                this.TraceHelper.FasterStorageProgress("Disposing FasterKV");
+                this.TraceHelper.FasterProgress("Disposing FasterKV");
                 this.fht.Dispose();
 
-                this.TraceHelper.FasterStorageProgress($"Disposing Devices");
+                this.TraceHelper.FasterProgress($"Disposing Devices");
                 this.blobManager.DisposeDevices();
 
                 if (this.blobManager.FaultInjector != null)
                 {
-                    this.TraceHelper.FasterStorageProgress($"Unregistering from FaultInjector");
+                    this.TraceHelper.FasterProgress($"Unregistering from FaultInjector");
                     this.blobManager.FaultInjector.Disposed(this.blobManager);
                 }
             }
@@ -128,6 +136,29 @@ namespace DurableTask.Netherite.Faster
         {
             var functions = new Functions(this.partition, this, this.cacheTracker, isScan);
             return this.fht.NewSession(functions, id);
+        }
+
+        public IDisposable TrackTemporarySession(ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> session)
+        {
+            return new SessionTracker() { Store = this, Session = session };
+        }
+
+        class SessionTracker : IDisposable
+        {
+            public FasterKV Store;
+            public ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> Session;
+
+            public void Dispose()
+            {
+                if (this.Store.terminationToken.IsCancellationRequested)
+                {
+                    this.Store.sessionsToDisposeOnShutdown.Add(this.Session);
+                }
+                else
+                {
+                    this.Session.Dispose();
+                }
+            }
         }
 
         string RandomSuffix() => Guid.NewGuid().ToString().Substring(0, 5);
@@ -396,19 +427,21 @@ namespace DurableTask.Netherite.Faster
                     {
                         this.blobManager.TraceHelper.FasterProgress($"Compaction {id} started");
 
-                        using var session = this.CreateASession($"compaction-{id}", true);
+                        var session = this.CreateASession($"compaction-{id}", true);
+                        using (this.TrackTemporarySession(session))
+                        {
+                            long compactedUntil = session.Compact(target, CompactionType.Scan);
 
-                        long compactedUntil = session.Compact(target, CompactionType.Scan);
+                            this.TraceHelper.FasterCompactionProgress(
+                                FasterTraceHelper.CompactionProgress.Completed,
+                                id, compactedUntil, this.Log.SafeReadOnlyAddress,
+                                this.Log.TailAddress,
+                                this.MinimalLogSize,
+                                compactedUntil - this.Log.BeginAddress,
+                                this.GetElapsedCompactionMilliseconds());
 
-                        this.TraceHelper.FasterCompactionProgress(
-                            FasterTraceHelper.CompactionProgress.Completed,
-                            id, compactedUntil, this.Log.SafeReadOnlyAddress,
-                            this.Log.TailAddress,
-                            this.MinimalLogSize,
-                            compactedUntil - this.Log.BeginAddress,
-                            this.GetElapsedCompactionMilliseconds());
-
-                        tcs.SetResult(compactedUntil);
+                            tcs.SetResult(compactedUntil);
+                        }
                     }
                     catch (Exception exception)
                         when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -471,59 +504,63 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 // these are disposed after the prefetch thread is done
-                using var prefetchSession = this.CreateASession($"prefetch-{this.RandomSuffix()}", false);
+                var prefetchSession = this.CreateASession($"prefetch-{this.RandomSuffix()}", false);
 
-                // for each key, issue a prefetch
-                await foreach (TrackedObjectKey key in keys)
+                using (this.TrackTemporarySession(prefetchSession))
                 {
-                    // wait for an available prefetch semaphore token
-                    while (!await prefetchSemaphore.WaitAsync(50, this.terminationToken))
+                    // for each key, issue a prefetch
+                    await foreach (TrackedObjectKey key in keys)
                     {
+                        // wait for an available prefetch semaphore token
+                        while (!await prefetchSemaphore.WaitAsync(50, this.terminationToken))
+                        {
+                            prefetchSession.CompletePending();
+                            ReportProgress(1000);
+                        }
+
+                        FasterKV.Key k = key;
+                        EffectTracker noInput = null;
+                        Output ignoredOutput = default;
+                        var status = prefetchSession.Read(ref k, ref noInput, ref ignoredOutput, userContext: prefetchSemaphore, 0);
+                        numberIssued++;
+
+                        if (status.IsCompletedSuccessfully)
+                        {
+                            numberHits++;
+                            prefetchSemaphore.Release();
+                        }
+                        else if (status.IsPending)
+                        {
+                            // slow path: upon completion
+                            numberMisses++;
+                        }
+                        else
+                        {
+                            this.partition.ErrorHandler.HandleError(nameof(RunPrefetchSession), $"FASTER reported ERROR status 0x{status.Value:X2}", null, true, this.partition.ErrorHandler.IsTerminated);
+                        }
+
+                        this.terminationToken.ThrowIfCancellationRequested();
                         prefetchSession.CompletePending();
                         ReportProgress(1000);
                     }
 
-                    FasterKV.Key k = key;
-                    EffectTracker noInput = null;
-                    Output ignoredOutput = default;
-                    var status = prefetchSession.Read(ref k, ref noInput, ref ignoredOutput, userContext: prefetchSemaphore, 0);
-                    numberIssued++;
+                    ReportProgress(0);
+                    this.blobManager.TraceHelper.FasterProgress($"PrefetchSession {sessionId} is waiting for completion");
 
-                    if (status.IsCompletedSuccessfully)
+                    // all prefetches were issued; now we wait for them all to complete
+                    // by acquiring ALL the semaphore tokens
+                    for (int i = 0; i < maxConcurrency; i++)
                     {
-                        numberHits++;
-                        prefetchSemaphore.Release();
-                    }
-                    else if (status.IsPending)
-                    {
-                        // slow path: upon completion
-                        numberMisses++;
-                    }
-                    else
-                    {
-                        this.partition.ErrorHandler.HandleError(nameof(RunPrefetchSession), $"FASTER reported ERROR status 0x{status.Value:X2}", null, true, this.partition.ErrorHandler.IsTerminated);
+                        while (!await prefetchSemaphore.WaitAsync(50, this.terminationToken))
+                        {
+                            prefetchSession.CompletePending();
+                            ReportProgress(1000);
+                        }
                     }
 
-                    this.terminationToken.ThrowIfCancellationRequested();
-                    prefetchSession.CompletePending();
-                    ReportProgress(1000);
+                    ReportProgress(0);
                 }
 
-                ReportProgress(0);
-                this.blobManager.TraceHelper.FasterProgress($"PrefetchSession {sessionId} is waiting for completion");
-
-                // all prefetches were issued; now we wait for them all to complete
-                // by acquiring ALL the semaphore tokens
-                for (int i = 0; i < maxConcurrency; i++)
-                {
-                    while (!await prefetchSemaphore.WaitAsync(50, this.terminationToken))
-                    {
-                        prefetchSession.CompletePending();
-                        ReportProgress(1000);
-                    }
-                }
-
-                ReportProgress(0);
                 this.blobManager.TraceHelper.FasterProgress($"PrefetchSession {sessionId} completed");
             }
             catch (OperationCanceledException) when (this.terminationToken.IsCancellationRequested)
@@ -745,82 +782,84 @@ namespace DurableTask.Netherite.Faster
                 try
                 {
                     using var _ = EventTraceContext.MakeContext(0, queryId);
-                    using var session = this.CreateASession($"scan-{queryId}-{this.RandomSuffix()}", true);
-
-                    // get the unique set of keys appearing in the log and emit them
-                    using var iter1 = session.Iterate();
-
-                    Stopwatch stopwatch = new Stopwatch();
-                    stopwatch.Start();
-                    long scanned = 0;
-                    long deserialized = 0;
-                    long matched = 0;
-                    long lastReport;
-                    void ReportProgress()
+                    var session = this.CreateASession($"scan-{queryId}-{this.RandomSuffix()}", true);
+                    using (this.TrackTemporarySession(session))
                     {
-                        this.partition.EventDetailTracer?.TraceEventProcessingDetail(
-                            $"query {queryId} scan position={iter1.CurrentAddress} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} deserialized={deserialized} matched={matched}");
-                        lastReport = stopwatch.ElapsedMilliseconds;
-                    }
+                        // get the unique set of keys appearing in the log and emit them
+                        using var iter1 = session.Iterate();
 
-                    ReportProgress();
-
-                    while (iter1.GetNext(out RecordInfo recordInfo, out Key key, out Value val) && !recordInfo.Tombstone)
-                    {
-                        if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
+                        Stopwatch stopwatch = new Stopwatch();
+                        stopwatch.Start();
+                        long scanned = 0;
+                        long deserialized = 0;
+                        long matched = 0;
+                        long lastReport;
+                        void ReportProgress()
                         {
-                            ReportProgress();
+                            this.partition.EventDetailTracer?.TraceEventProcessingDetail(
+                                $"query {queryId} scan position={iter1.CurrentAddress} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} deserialized={deserialized} matched={matched}");
+                            lastReport = stopwatch.ElapsedMilliseconds;
                         }
 
-                        if (key.Val.ObjectType == TrackedObjectKey.TrackedObjectType.Instance)
+                        ReportProgress();
+
+                        while (iter1.GetNext(out RecordInfo recordInfo, out Key key, out Value val) && !recordInfo.Tombstone)
                         {
-                            scanned++;
-                            //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {key.InstanceId}");
-
-                            if (string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
-                                || key.Val.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
+                            if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
                             {
-                                //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"reading instance {key.InstanceId}");
+                                ReportProgress();
+                            }
 
-                                //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"read instance {key.InstanceId}, is {(val == null ? "null" : val.GetType().Name)}");
+                            if (key.Val.ObjectType == TrackedObjectKey.TrackedObjectType.Instance)
+                            {
+                                scanned++;
+                                //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {key.InstanceId}");
 
-                                InstanceState instanceState;
-
-                                if (val.Val is byte[] bytes)
+                                if (string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
+                                    || key.Val.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
                                 {
-                                    instanceState = (InstanceState)Serializer.DeserializeTrackedObject(bytes);
-                                    deserialized++;
-                                }
-                                else
-                                {
-                                    instanceState = (InstanceState)val.Val;
-                                }
+                                    //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"reading instance {key.InstanceId}");
 
-                                // reading the orchestrationState may race with updating the orchestration state
-                                // but it is benign because the OrchestrationState object is immutable
-                                var orchestrationState = instanceState?.OrchestrationState;
+                                    //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"read instance {key.InstanceId}, is {(val == null ? "null" : val.GetType().Name)}");
 
-                                if (orchestrationState != null
-                                    && instanceQuery.Matches(orchestrationState))
-                                {
-                                    matched++;
+                                    InstanceState instanceState;
 
-                                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.Val.InstanceId}");
-
-                                    var task = channel.Writer.WriteAsync(orchestrationState);
-
-                                    if (!task.IsCompleted)
+                                    if (val.Val is byte[] bytes)
                                     {
-                                        task.AsTask().Wait();
+                                        instanceState = (InstanceState)Serializer.DeserializeTrackedObject(bytes);
+                                        deserialized++;
+                                    }
+                                    else
+                                    {
+                                        instanceState = (InstanceState)val.Val;
+                                    }
+
+                                    // reading the orchestrationState may race with updating the orchestration state
+                                    // but it is benign because the OrchestrationState object is immutable
+                                    var orchestrationState = instanceState?.OrchestrationState;
+
+                                    if (orchestrationState != null
+                                        && instanceQuery.Matches(orchestrationState))
+                                    {
+                                        matched++;
+
+                                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.Val.InstanceId}");
+
+                                        var task = channel.Writer.WriteAsync(orchestrationState);
+
+                                        if (!task.IsCompleted)
+                                        {
+                                            task.AsTask().Wait();
+                                        }
                                     }
                                 }
                             }
                         }
+
+                        ReportProgress();
+                        channel.Writer.Complete();
                     }
 
-                    ReportProgress();
-
-                    channel.Writer.Complete();
                     this.partition.EventDetailTracer?.TraceEventProcessingDetail($"finished query {queryId}");
                 }
                 catch (Exception exception)
@@ -848,33 +887,35 @@ namespace DurableTask.Netherite.Faster
                     emitItem(key, singleton);
                 }
 
-                using var session = this.CreateASession($"emitCurrentState-{this.RandomSuffix()}", true);
-
-                // iterate histories
-                using (var iter1 = session.Iterate())
+                var session = this.CreateASession($"emitCurrentState-{this.RandomSuffix()}", true);
+                using (this.TrackTemporarySession(session))
                 {
-                    while (iter1.GetNext(out RecordInfo recordInfo, out var key, out var value) && !recordInfo.Tombstone)
+                    // iterate histories
+                    using (var iter1 = session.Iterate())
                     {
-                        TrackedObject trackedObject;
-                        if (value.Val == null)
+                        while (iter1.GetNext(out RecordInfo recordInfo, out var key, out var value) && !recordInfo.Tombstone)
                         {
-                            trackedObject = null;
-                        }
-                        else if (value.Val is TrackedObject t)
-                        {
-                            trackedObject = t;
-                        }
-                        else if (value.Val is byte[] bytes)
-                        {
-                            trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
-                        }
-                        else
-                        {
-                            throw new InvalidCastException("cannot cast value to TrackedObject");
-                        }
+                            TrackedObject trackedObject;
+                            if (value.Val == null)
+                            {
+                                trackedObject = null;
+                            }
+                            else if (value.Val is TrackedObject t)
+                            {
+                                trackedObject = t;
+                            }
+                            else if (value.Val is byte[] bytes)
+                            {
+                                trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                            }
+                            else
+                            {
+                                throw new InvalidCastException("cannot cast value to TrackedObject");
+                            }
 
-                        this.cacheDebugger?.CheckVersionConsistency(key, trackedObject, value.Version);
-                        emitItem(key, trackedObject);
+                            this.cacheDebugger?.CheckVersionConsistency(key, trackedObject, value.Version);
+                            emitItem(key, trackedObject);
+                        }
                     }
                 }
             }

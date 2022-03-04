@@ -408,8 +408,8 @@ namespace DurableTask.Netherite.Faster
 
         internal void DisposeDevices()
         {
-            this.HybridLogDevice.Dispose();
-            this.ObjectLogDevice.Dispose();
+            Dispose(this.HybridLogDevice);
+            Dispose(this.ObjectLogDevice);
             Array.ForEach(this.PsfLogDevices, logDevice => Dispose(logDevice));
 
             void Dispose(IDevice device)

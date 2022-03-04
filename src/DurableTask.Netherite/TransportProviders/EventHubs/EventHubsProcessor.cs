@@ -155,7 +155,20 @@ namespace DurableTask.Netherite.EventHubs
                     // we are now becoming the current incarnation
                     this.currentIncarnation = prior.Next;
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is restarting partition (incarnation {incarnation}) soon", this.eventHubName, this.eventHubPartition, c.Incarnation);
-                    await Task.Delay(TimeSpan.FromSeconds(12), this.eventProcessorShutdown.Token);
+
+                    // we wait at most 20 seconds for the previous partition to terminate cleanly
+                    int tries = 4;
+                    var timeout = TimeSpan.FromSeconds(5);
+
+                    while (!await prior.ErrorHandler.WaitForTermination(timeout))
+                    {
+                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} partition (incarnation {incarnation}) is still waiting for PartitionShutdown of previous incarnation", this.eventHubName, this.eventHubPartition, c.Incarnation);
+
+                        if (--tries == 0)
+                        {
+                            break;
+                        }
+                    }
                 }
             }
 

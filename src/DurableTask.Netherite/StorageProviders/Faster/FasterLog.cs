@@ -20,18 +20,18 @@ namespace DurableTask.Netherite.Faster
             this.blobManager = blobManager;
             var eventlogsettings = blobManager.GetDefaultEventLogSettings(settings.UseSeparatePageBlobStorage, settings.FasterTuningParameters);
             this.log = new FASTER.core.FasterLog(eventlogsettings);
-            blobManager.PartitionErrorHandler.OnShutdown += this.Dispose;
+            blobManager.PartitionErrorHandler.OnShutdown += this.Shutdown;
             this.terminationToken = blobManager.PartitionErrorHandler.Token;
         }
-
-        void Dispose()
+        
+        void Shutdown()
         {
             try
             {
-                this.blobManager.TraceHelper.FasterStorageProgress("Disposing FasterLog");
+                this.blobManager.TraceHelper.FasterProgress("Disposing FasterLog");
                 this.log.Dispose();
 
-                this.blobManager.TraceHelper.FasterStorageProgress("Disposing FasterLog Device");
+                this.blobManager.TraceHelper.FasterProgress("Disposing FasterLog Device");
                 this.blobManager.EventLogDevice.Dispose();
             }
             catch (Exception e)

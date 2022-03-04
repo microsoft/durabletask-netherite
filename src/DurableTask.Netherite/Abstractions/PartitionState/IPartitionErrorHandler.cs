@@ -7,6 +7,7 @@ namespace DurableTask.Netherite
     using System.Collections.Generic;
     using System.Text;
     using System.Threading;
+    using System.Threading.Tasks;
 
     /// <summary>
     /// A handler for fatal or non-fatal errors encountered in a partition.
@@ -32,6 +33,11 @@ namespace DurableTask.Netherite
         /// A boolean indicating that normal termination has been initiated as part of a shutdown.
         /// </summary>
         bool NormalTermination { get; }
+
+        /// <summary>
+        /// Wait for all termination operations to finish
+        /// </summary>
+        Task<bool> WaitForTermination(TimeSpan timeout);
 
         /// <summary>
         /// Error handling for the partition.
