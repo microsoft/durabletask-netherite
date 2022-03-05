@@ -25,6 +25,8 @@ namespace DurableTask.Netherite.Faster
         CheckpointDueAsync handler;
         TaskCompletionSource<LogAccessor<FasterKV.Key, FasterKV.Value>> continuation;
 
+        public bool InjectFaultAfterCompaction { get; private set; }
+
         public CheckpointInjector(TestHooks testHooks)
         {
             this.testHooks = testHooks;
@@ -62,14 +64,26 @@ namespace DurableTask.Netherite.Faster
 
         internal void SequenceComplete(LogAccessor<FasterKV.Key, FasterKV.Value> log)
         {
-            this.continuation.SetResult(log);
+            this.continuation?.SetResult(log);
             this.continuation = null;
         }
 
-        internal Task<LogAccessor<FasterKV.Key, FasterKV.Value>> InjectAsync(CheckpointDueAsync handler)
+        internal void CompactionComplete(IPartitionErrorHandler errorHandler)
+        {
+            if (this.InjectFaultAfterCompaction)
+            {
+                errorHandler.HandleError("CheckpointInjector", "inject failure after compaction", null, true, false);
+                this.InjectFaultAfterCompaction = false;
+                this.continuation?.SetResult(null);
+                this.continuation = null;
+            }
+        }
+
+        internal Task<LogAccessor<FasterKV.Key, FasterKV.Value>> InjectAsync(CheckpointDueAsync handler, bool injectFailureAfterCompaction = false)
         {
             this.continuation = new TaskCompletionSource<LogAccessor<FasterKV.Key, FasterKV.Value>>(TaskCreationOptions.RunContinuationsAsynchronously);
             this.handler = handler;
+            this.InjectFaultAfterCompaction = injectFailureAfterCompaction;
             return this.continuation.Task;
         }
     }

@@ -21,6 +21,8 @@ namespace DurableTask.Netherite
         internal event Action<string> OnError;
         bool launchDebugger = false; // may set this to true when hunting down bugs locally
 
+        public bool FaultInjectionActive => this.FaultInjector != null || (this.CheckpointInjector?.InjectFaultAfterCompaction == true);
+
         internal void Error(string source, string message)
         {
             if (System.Diagnostics.Debugger.IsAttached)

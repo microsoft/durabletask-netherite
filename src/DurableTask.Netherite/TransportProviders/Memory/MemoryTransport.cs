@@ -132,7 +132,7 @@ namespace DurableTask.Netherite.Emulated
 
             if (epoch > 0)
             {
-                if (this.settings.TestHooks != null && this.settings.TestHooks.FaultInjector == null)
+                if (this.settings.TestHooks?.FaultInjectionActive != true)
                 {
                     this.settings.TestHooks.Error("MemoryTransport", "Unexpected partition termination");
                 }

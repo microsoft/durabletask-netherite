@@ -106,7 +106,6 @@ namespace DurableTask.Netherite.Tests
             var orchestrationServiceClient = (IOrchestrationServiceClient)service;
             await orchestrationService.CreateAsync();
             await orchestrationService.StartAsync();
-            var host = (TransportAbstraction.IHost)service;
             Assert.Equal(this.settings.PartitionCount, (int)service.NumberPartitions);
             var worker = new TaskHubWorker(service);
             var client = new TaskHubClient(service);
@@ -782,6 +781,98 @@ namespace DurableTask.Netherite.Tests
               
                 // stop the service
                 await orchestrationService.StopAsync();
+            }
+        }
+
+        /// <summary>
+        /// Test log compaction that fails right after compaction
+        /// </summary>
+        [Fact]
+        public async Task CompactThenFail()
+        {
+            this.settings.PartitionCount = 1;
+            this.SetCheckpointFrequency(CheckpointFrequency.None);
+
+            var checkpointInjector = this.settings.TestHooks.CheckpointInjector = new Faster.CheckpointInjector(this.settings.TestHooks);
+
+            var orchestrationType = typeof(ScenarioTests.Orchestrations.SayHelloFanOutFanIn);
+            var orchestrationType2 = typeof(ScenarioTests.Orchestrations.SayHelloInline);
+
+            long currentTail = 0;
+            long currentBegin = 0;
+
+            long compactUntil = 0;
+            {
+                // start the service 
+                var service = new NetheriteOrchestrationService(this.settings, this.loggerFactory);
+                var orchestrationService = (IOrchestrationService)service;
+                var orchestrationServiceClient = (IOrchestrationServiceClient)service;
+                var orchestrationServiceQueryClient = (IOrchestrationServiceQueryClient)service;
+                await orchestrationService.CreateAsync();
+                await orchestrationService.StartAsync();
+                var host = (TransportAbstraction.IHost)service;
+                Assert.Equal(1u, service.NumberPartitions);
+                var worker = new TaskHubWorker(service);
+                var client = new TaskHubClient(service);
+                worker.AddTaskOrchestrations(orchestrationType);
+                worker.AddTaskOrchestrations(orchestrationType2);
+                await worker.StartAsync();
+
+                // create 100 instances
+                var instance = await client.CreateOrchestrationInstanceAsync(orchestrationType, "parent", 99);
+                await client.WaitForOrchestrationAsync(instance, TimeSpan.FromSeconds(40));
+                var instances = await orchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken.None);
+                Assert.Equal(100, instances.Count);
+
+                int numExtraEntries = 1;
+
+
+                // repeat foldover and copy to tail to inflate the log
+                for (int i = 0; i < 4; i++)
+                {
+                    // take a foldover checkpoint
+                    var log2 = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.Idle, null));
+                    numExtraEntries += 1;
+                    Assert.Equal((200 + (100 * i)) * log2.FixedRecordSize + numExtraEntries * extraLogEntrySize, log2.TailAddress - log2.BeginAddress);
+                    Assert.Equal(log2.ReadOnlyAddress, log2.TailAddress);
+
+                    currentTail = log2.TailAddress;
+                    currentBegin = log2.BeginAddress;
+
+                    // read all instances using point queries to force copy to tail
+                    var tasks = instances.Select(instance => orchestrationServiceClient.GetOrchestrationStateAsync(instance.OrchestrationInstance.InstanceId, false));
+                    await Task.WhenAll(tasks);
+                }
+
+                // do log compaction
+                var log = await checkpointInjector.InjectAsync(log =>
+                {
+                    compactUntil = 500 * log.FixedRecordSize + log.BeginAddress + numExtraEntries * extraLogEntrySize;
+                    Assert.Equal(compactUntil, log.SafeReadOnlyAddress);
+                    return (Faster.StoreWorker.CheckpointTrigger.Compaction, compactUntil);
+                },
+                injectFailureAfterCompaction:true);
+
+                await orchestrationService.StopAsync();
+            }
+
+            {
+                // recover the service 
+                var service = new NetheriteOrchestrationService(this.settings, this.loggerFactory);
+                var orchestrationService = (IOrchestrationService)service;
+                var orchestrationServiceClient = (IOrchestrationServiceClient)service;
+                await orchestrationService.CreateAsync();
+                await orchestrationService.StartAsync();
+                Assert.Equal(this.settings.PartitionCount, (int)service.NumberPartitions);
+                var worker = new TaskHubWorker(service);
+                var client = new TaskHubClient(service);
+                await worker.StartAsync();
+
+                // check that begin and tail are the same
+                var log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.None, null));
+
+                Debug.Assert(log.BeginAddress == currentBegin);
+                Debug.Assert(log.TailAddress == currentTail);
             }
         }
     }

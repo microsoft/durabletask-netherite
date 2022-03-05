@@ -490,6 +490,8 @@ namespace DurableTask.Netherite.Faster
             if (target.HasValue)
             {
                 target = await this.store.RunCompactionAsync(target.Value);
+
+                this.partition.Settings.TestHooks?.CheckpointInjector?.CompactionComplete(this.partition.ErrorHandler);
             }
 
             this.Notify();
