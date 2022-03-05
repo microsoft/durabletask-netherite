@@ -38,7 +38,6 @@ namespace DurableTask.Netherite.Faster
 
         // periodic compaction
         Task<long?> pendingCompaction;
-        long? shiftPending;
 
         // periodic load publishing
         PartitionLoadInfo loadInfo;
@@ -343,7 +342,7 @@ namespace DurableTask.Netherite.Faster
 
                 this.store.AdjustCacheSize();
 
-                // handle progression of checkpointing state machine:  none -> pendingCompaction -> pendingIndexCheckpoint ->  { pendingStoreCheckpoint (shiftpending.HasValue) -> } pendingStoreCheckpoint (shiftpending == null)  -> none)
+                // handle progression of checkpointing state machine:  none -> pendingCompaction -> pendingIndexCheckpoint ->  pendingStoreCheckpoint -> none)
                 if (this.pendingStoreCheckpoint != null)
                 {
                     if (this.pendingStoreCheckpoint.IsCompleted == true)
@@ -351,25 +350,11 @@ namespace DurableTask.Netherite.Faster
                         (this.lastCheckpointedCommitLogPosition, this.lastCheckpointedInputQueuePosition)
                            = await this.pendingStoreCheckpoint; // observe exceptions here
 
-                        if (this.shiftPending.HasValue)
-                        {
-                            // shifting, and then a second store checkpoint, are next
-                            var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, this.shiftPending);
-                            if (token.HasValue)
-                            {
-                                this.shiftPending = null;
-                                this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value, true);
-                                this.numberEventsSinceLastCheckpoint = 0;
-                            }
-                        }
-                        else
-                        {
-                            // we have reached the end of the state machine transitions
-                            this.pendingStoreCheckpoint = null;
-                            this.pendingCheckpointTrigger = CheckpointTrigger.None;
-                            this.ScheduleNextIdleCheckpointTime();
-                            this.partition.Settings.TestHooks?.CheckpointInjector?.SequenceComplete((this.store as FasterKV).Log);
-                        }
+                        // we have reached the end of the state machine transitions
+                        this.pendingStoreCheckpoint = null;
+                        this.pendingCheckpointTrigger = CheckpointTrigger.None;
+                        this.ScheduleNextIdleCheckpointTime();
+                        this.partition.Settings.TestHooks?.CheckpointInjector?.SequenceComplete((this.store as FasterKV).Log);
                     }
                 }
                 else if (this.pendingIndexCheckpoint != null)
@@ -378,12 +363,12 @@ namespace DurableTask.Netherite.Faster
                     {
                         await this.pendingIndexCheckpoint; // observe exceptions here
 
-                        // the (first) store checkpoint is next
+                        // the store checkpoint is next
                         var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, null);
                         if (token.HasValue)
                         {
                             this.pendingIndexCheckpoint = null;
-                            this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value, !this.shiftPending.HasValue);
+                            this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value, true);
                             this.numberEventsSinceLastCheckpoint = 0;
                         }
                     }
@@ -392,8 +377,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     if (this.pendingCompaction.IsCompleted == true)
                     {
-                        // take not of the shifted begin address, we will use it when it comes time for the store checkpoint 
-                        this.shiftPending = await this.pendingCompaction; 
+                        await this.pendingCompaction; // observe exceptions here
 
                         // the index checkpoint is next
                         var token = this.store.StartIndexCheckpoint();
