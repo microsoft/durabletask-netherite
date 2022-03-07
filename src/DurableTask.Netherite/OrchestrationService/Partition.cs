@@ -99,7 +99,7 @@ namespace DurableTask.Netherite
             {
                 this.TraceHelper.TracePartitionProgress("Terminated", ref this.LastTransition, this.CurrentTimeMs, "");
 
-                if (!this.ErrorHandler.IsTerminated
+                if (!this.ErrorHandler.NormalTermination
                     && this.Settings.TestHooks != null
                     && this.Settings.TestHooks.FaultInjectionActive != true)
                 {

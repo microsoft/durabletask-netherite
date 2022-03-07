@@ -27,9 +27,9 @@ namespace DurableTask.Netherite
 
         public bool IsTerminated => this.terminationStatus != NotTerminated;
 
-        public bool NormalTermination => this.terminationStatus == NotTerminated;
+        public bool NormalTermination =>  this.terminationStatus == TerminatedNormally;
 
-        int terminationStatus = NotTerminated;
+        volatile int terminationStatus = NotTerminated;
         const int NotTerminated = 0;
         const int TerminatedWithError = 1;
         const int TerminatedNormally = 2;
