@@ -40,7 +40,7 @@ namespace DurableTask.Netherite.Faster
 
         double nextHangCheck;
         const int HangCheckPeriod = 30000;
-        const int ReadRetryAfter = 20000;
+        const int ReadRetryAfter = 90000;
         EffectTracker effectTracker;
 
         public FasterTraceHelper TraceHelper => this.blobManager.TraceHelper;
@@ -628,8 +628,14 @@ namespace DurableTask.Netherite.Faster
         {
             double threshold = this.partition.CurrentTimeMs - ReadRetryAfter;
             var toRetry = this.pendingReads.Where(kvp => kvp.Value < threshold).ToList();
-            this.TraceHelper.FasterStorageProgress($"HangDetection limit={ReadRetryAfter/1000:f0}s pending={this.pendingReads.Count} retry={toRetry.Count}");
-            foreach(var kvp in toRetry)
+            this.TraceHelper.FasterStorageProgress($"HangDetection limit={ReadRetryAfter / 1000:f0}s pending={this.pendingReads.Count} retry={toRetry.Count}");
+
+            if (toRetry.Count > 0)
+            { 
+                this.partition.Assert(toRetry.Count == 0, $"found a hanging read for {toRetry[0].Key.Item2}");
+            }
+
+            foreach (var kvp in toRetry)
             {
                 if (this.pendingReads.Remove(kvp.Key))
                 {

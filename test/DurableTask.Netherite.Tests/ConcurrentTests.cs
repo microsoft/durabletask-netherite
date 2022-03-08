@@ -102,7 +102,6 @@ namespace DurableTask.Netherite.Tests
         [InlineData(false, false, 20)]
         [InlineData(false, true, 20)]
         [InlineData(true, false, 20)]
-        [InlineData(true, true, 20)]
         public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
             var orchestrationTimeout = TimeSpan.FromMinutes((restrictMemory ? 10 : 5) + multiplicity * (restrictMemory ? 0.5 : 0.1));
