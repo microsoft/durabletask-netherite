@@ -148,7 +148,6 @@ namespace DurableTask.Netherite
             }
         }
 
-        [Conditional("DEBUG")]
         public void Assert(bool condition, string message)
         {
             if (!condition)

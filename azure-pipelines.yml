@@ -12,7 +12,6 @@ pool:
 variables:
   solution: 'DurableTask.Netherite.sln'
   buildPlatform: 'Any CPU'
-  buildConfiguration: 'Debug'
 
 steps:
 - task: NuGetToolInstaller@1
@@ -25,7 +24,6 @@ steps:
   inputs:
     solution: '$(solution)'
     platform: '$(buildPlatform)'
-    configuration: '$(buildConfiguration)'
 
 - task: CmdLine@2
   displayName: 'Start Azure Storage Emulator'
@@ -41,7 +39,7 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite*Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal'
+    arguments: '--configuration Debug --verbosity normal'
     testRunTitle: 'Netherite Unit Tests on DevStorage/Memory'
 
 - task: DotNetCoreCLI@2
@@ -51,6 +49,6 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite*Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true"'
+    arguments: '--configuration Release --verbosity normal --filter "AnyTransport=true"'
     testRunTitle: 'Netherite Unit Tests on storageAccount/EventHubs'
 
