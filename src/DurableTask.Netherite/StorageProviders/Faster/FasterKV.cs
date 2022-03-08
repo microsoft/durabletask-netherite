@@ -40,7 +40,7 @@ namespace DurableTask.Netherite.Faster
 
         double nextHangCheck;
         const int HangCheckPeriod = 30000;
-        const int ReadRetryAfter = 90000;
+        const int ReadRetryAfter = 20000;
         EffectTracker effectTracker;
 
         public FasterTraceHelper TraceHelper => this.blobManager.TraceHelper;
@@ -402,20 +402,21 @@ namespace DurableTask.Netherite.Faster
         public override async Task<long> RunCompactionAsync(long target)
         {
             string id = this.RandomSuffix(); // for tracing purposes
-
-            this.TraceHelper.FasterCompactionProgress(
-                FasterTraceHelper.CompactionProgress.Started, 
-                id, 
-                this.Log.BeginAddress, 
-                this.Log.SafeReadOnlyAddress, 
-                this.Log.TailAddress, 
-                this.MinimalLogSize, 
-                target - this.Log.BeginAddress, 
-                this.GetElapsedCompactionMilliseconds());
-
             await maxCompactionThreads.WaitAsync();
             try
             {
+                long beginAddressBeforeCompaction = this.Log.BeginAddress;
+
+                this.TraceHelper.FasterCompactionProgress(
+                    FasterTraceHelper.CompactionProgress.Started,
+                    id,
+                    beginAddressBeforeCompaction,
+                    this.Log.SafeReadOnlyAddress,
+                    this.Log.TailAddress,
+                    this.MinimalLogSize,
+                    target - this.Log.BeginAddress,
+                    this.GetElapsedCompactionMilliseconds());
+
                 var tcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var thread = new Thread(RunCompaction) { Name = $"Compaction.{id}" };
                 thread.Start();
@@ -437,7 +438,7 @@ namespace DurableTask.Netherite.Faster
                                 id, compactedUntil, this.Log.SafeReadOnlyAddress,
                                 this.Log.TailAddress,
                                 this.MinimalLogSize,
-                                compactedUntil - this.Log.BeginAddress,
+                                this.Log.BeginAddress - beginAddressBeforeCompaction,
                                 this.GetElapsedCompactionMilliseconds());
 
                             tcs.SetResult(compactedUntil);
@@ -630,10 +631,10 @@ namespace DurableTask.Netherite.Faster
             var toRetry = this.pendingReads.Where(kvp => kvp.Value < threshold).ToList();
             this.TraceHelper.FasterStorageProgress($"HangDetection limit={ReadRetryAfter / 1000:f0}s pending={this.pendingReads.Count} retry={toRetry.Count}");
 
-            if (toRetry.Count > 0)
-            { 
-                this.partition.Assert(toRetry.Count == 0, $"found a hanging read for {toRetry[0].Key.Item2}");
-            }
+            //if (toRetry.Count > 0)
+            //{ 
+            //    this.partition.Assert(toRetry.Count == 0, $"found a hanging read for {toRetry[0].Key.Item2}");
+            //}
 
             foreach (var kvp in toRetry)
             {
