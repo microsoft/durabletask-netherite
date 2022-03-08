@@ -67,7 +67,7 @@ namespace DurableTask.Netherite.Faster
 
                         return;
                     }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
+                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
                     {
                         stopwatch.Stop();
                         if (BlobUtils.IsTimeout(e))
@@ -147,7 +147,7 @@ namespace DurableTask.Netherite.Faster
 
                     return;
                 }
-                catch (StorageException e) when (numAttempts < BlobManager.MaxRetries
+                catch (Exception e) when (numAttempts < BlobManager.MaxRetries
                     && BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token))
                 {
                     stopwatch.Stop();

@@ -459,7 +459,7 @@ namespace DurableTask.Netherite.Faster
                         this.detailTracer?.FasterStorageProgress($"StorageOpReturned FasterAlt.LoadAsync got 404 key={key}");
                         return default;
                     }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.terminationToken) && numAttempts < BlobManager.MaxRetries)
+                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e, this.terminationToken) && numAttempts < BlobManager.MaxRetries)
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
                         this.blobManager?.HandleStorageError(nameof(LoadAsync), $"Could not read object from storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
@@ -534,7 +534,7 @@ namespace DurableTask.Netherite.Faster
                     {
                         throw new OperationCanceledException("Partition was terminated.", this.terminationToken);
                     }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.blobManager.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
+                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e, this.blobManager.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
                         this.blobManager?.HandleStorageError(nameof(StoreAsync), $"could not write object to storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
