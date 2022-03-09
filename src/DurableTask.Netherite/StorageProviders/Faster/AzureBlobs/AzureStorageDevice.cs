@@ -26,18 +26,26 @@ namespace DurableTask.Netherite.Faster
         readonly CloudBlobDirectory pageBlobDirectory;
         readonly string blobName;
         readonly bool underLease;
-        readonly ConcurrentDictionary<long, RequestInfo> pendingDeviceOperations;
+        readonly ConcurrentDictionary<long, ReadWriteRequestInfo> pendingReadWriteOperations;
+        readonly ConcurrentDictionary<long, RemoveRequestInfo> pendingRemoveOperations;
         readonly Timer hangCheckTimer;
         readonly TimeSpan limit;
 
         static long sequenceNumber;
 
-        struct RequestInfo
+        struct ReadWriteRequestInfo
         {
             public bool IsRead;
             public DeviceIOCompletionCallback Callback;
             public uint NumBytes;
             public object Context;
+            public DateTime TimeStamp;
+        }
+
+        struct RemoveRequestInfo
+        {
+            public AsyncCallback Callback;
+            public IAsyncResult Result;
             public DateTime TimeStamp;
         }
 
@@ -65,7 +73,8 @@ namespace DurableTask.Netherite.Faster
             : base($"{blockBlobDirectory}\\{blobName}", PAGE_BLOB_SECTOR_SIZE, Devices.CAPACITY_UNSPECIFIED)
         {
             this.blobs = new ConcurrentDictionary<int, BlobEntry>();
-            this.pendingDeviceOperations = new ConcurrentDictionary<long, RequestInfo>();
+            this.pendingReadWriteOperations = new ConcurrentDictionary<long, ReadWriteRequestInfo>();
+            this.pendingRemoveOperations = new ConcurrentDictionary<long, RemoveRequestInfo>();
             this.blockBlobDirectory = blockBlobDirectory;
             this.pageBlobDirectory = pageBlobDirectory;
             this.blobName = blobName;
@@ -189,7 +198,15 @@ namespace DurableTask.Netherite.Faster
         {
             DateTime threshold = DateTime.UtcNow - this.limit;
 
-            foreach(var kvp in this.pendingDeviceOperations)
+            foreach(var kvp in this.pendingReadWriteOperations)
+            {
+                if (kvp.Value.TimeStamp < threshold)
+                {
+                    this.BlobManager.PartitionErrorHandler.HandleError("DetectHangs", $"storage operation id={kvp.Key} has exceeded the time limit {this.limit}", null, true, false);
+                    return;
+                }
+            }
+            foreach (var kvp in this.pendingRemoveOperations)
             {
                 if (kvp.Value.TimeStamp < threshold)
                 {
@@ -201,9 +218,9 @@ namespace DurableTask.Netherite.Faster
 
         void CancelAllRequests()
         {
-            foreach (var id in this.pendingDeviceOperations.Keys.ToList())
+            foreach (var id in this.pendingReadWriteOperations.Keys.ToList())
             {
-                if (this.pendingDeviceOperations.TryRemove(id, out var request))
+                if (this.pendingReadWriteOperations.TryRemove(id, out var request))
                 {
                     if (request.IsRead)
                     {
@@ -214,6 +231,14 @@ namespace DurableTask.Netherite.Faster
                         this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.WriteAsync id={id} (Canceled)");
                     }
                     request.Callback(uint.MaxValue, request.NumBytes, request.Context);
+                }
+            }
+            foreach (var id in this.pendingRemoveOperations.Keys.ToList())
+            {
+                if (this.pendingRemoveOperations.TryRemove(id, out var request))
+                {
+                    this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.RemoveSegmentAsync id={id} (Canceled)");
+                    request.Callback(request.Result);
                 }
             }
         }
@@ -236,10 +261,23 @@ namespace DurableTask.Netherite.Faster
         /// <param name="result"></param>
         public override void RemoveSegmentAsync(int segment, AsyncCallback callback, IAsyncResult result)
         {
+            long id = Interlocked.Increment(ref AzureStorageDevice.sequenceNumber);
+
+            this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpCalled AzureStorageDevice.RemoveSegmentAsync id={id} segment={segment}");
+
+            this.pendingRemoveOperations.TryAdd(id, new RemoveRequestInfo()
+            {
+                Callback = callback,
+                Result = result,
+                TimeStamp = DateTime.UtcNow
+            });
+
+            Task deletionTask = Task.CompletedTask;
+
             if (this.blobs.TryRemove(segment, out BlobEntry entry))
             {
                 CloudPageBlob pageBlob = entry.PageBlob;
-                Task deletionTask = this.BlobManager.PerformWithRetriesAsync(
+                deletionTask = this.BlobManager.PerformWithRetriesAsync(
                     null,
                     this.underLease,
                     "CloudPageBlob.DeleteAsync",
@@ -253,9 +291,16 @@ namespace DurableTask.Netherite.Faster
                         await pageBlob.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
                         return 1;
                     });
-
-                deletionTask.ContinueWith((Task t) => callback(result));
             }
+                
+            deletionTask.ContinueWith((Task t) =>
+            {
+                if (this.pendingRemoveOperations.TryRemove(id, out var request))
+                {
+                    this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.RemoveSegmentAsync id={id}");
+                    request.Callback(request.Result);
+                }
+            });
         }
 
         /// <summary>
@@ -278,7 +323,7 @@ namespace DurableTask.Netherite.Faster
                     false,
                     async (numAttempts) =>
                     { 
-                        await pageBlob.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
+                        await pageBlob.DeleteIfExistsAsync(cancellationToken: this.PartitionErrorHandler.Token);
                         return 1;
                     });
             }
@@ -295,7 +340,7 @@ namespace DurableTask.Netherite.Faster
 
             this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpCalled AzureStorageDevice.ReadAsync id={id} segmentId={segmentId} sourceAddress={sourceAddress} readLength={readLength}");
 
-            this.pendingDeviceOperations.TryAdd(id, new RequestInfo()
+            this.pendingReadWriteOperations.TryAdd(id, new ReadWriteRequestInfo()
             {
                 IsRead = true,
                 Callback = callback,
@@ -316,7 +361,7 @@ namespace DurableTask.Netherite.Faster
             this.ReadFromBlobUnsafeAsync(blobEntry.PageBlob, (long)sourceAddress, (long)destinationAddress, readLength, id)
                   .ContinueWith((Task t) =>
                   {
-                      if (this.pendingDeviceOperations.TryRemove(id, out RequestInfo request))
+                      if (this.pendingReadWriteOperations.TryRemove(id, out ReadWriteRequestInfo request))
                       {
                           if (t.IsFaulted)
                           {
@@ -341,7 +386,7 @@ namespace DurableTask.Netherite.Faster
 
             this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpCalled AzureStorageDevice.WriteAsync id={id} segmentId={segmentId} destinationAddress={destinationAddress} numBytesToWrite={numBytesToWrite}");
 
-            this.pendingDeviceOperations.TryAdd(id, new RequestInfo()
+            this.pendingReadWriteOperations.TryAdd(id, new ReadWriteRequestInfo()
             {
                 IsRead = false,
                 Callback = callback,
@@ -483,7 +528,7 @@ namespace DurableTask.Netherite.Faster
             this.WriteToBlobAsync(blob, sourceAddress, (long)destinationAddress, numBytesToWrite, id)
                 .ContinueWith((Task t) =>
                     {
-                        if (this.pendingDeviceOperations.TryRemove(id, out RequestInfo request))
+                        if (this.pendingReadWriteOperations.TryRemove(id, out ReadWriteRequestInfo request))
                         {
                             if (t.IsFaulted)
                             {

@@ -95,7 +95,7 @@ namespace DurableTask.Netherite.Faster
             PageSizeBits = tuningParameters?.EventLogPageSizeBits ?? 21, // 2MB
             SegmentSizeBits = tuningParameters?.EventLogSegmentSizeBits ??
                 (useSeparatePageBlobStorage ? 35  // 32 GB
-                                            : 30), // 1 GB
+                                            : 26), // 64 MB
             MemorySizeBits = tuningParameters?.EventLogMemorySizeBits ?? 22, // 2MB
         };
 
