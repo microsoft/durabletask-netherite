@@ -23,7 +23,7 @@ steps:
 - task: VSBuild@1
   inputs:
     solution: '$(solution)'
-    platform: '$(buildPlatform)'
+    platform: 'Release'
 
 - task: CmdLine@2
   displayName: 'Start Azure Storage Emulator'
@@ -39,7 +39,7 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite*Tests.csproj'
-    arguments: '--configuration Debug --verbosity normal'
+    arguments: '--configuration Release --verbosity normal'
     testRunTitle: 'Netherite Unit Tests on DevStorage/Memory'
 
 - task: DotNetCoreCLI@2
