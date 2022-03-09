@@ -44,6 +44,7 @@ namespace DurableTask.Netherite
 
         CancellationTokenSource serviceShutdownSource;
         Exception startupException;
+        Timer threadWatcher;
 
         internal async ValueTask<Client> GetClientAsync()
         {
@@ -202,6 +203,16 @@ namespace DurableTask.Netherite
             return false;
         }
 
+
+        public void WatchThreads(object _)
+        {
+            if (TrackedThreads.NumberThreads > 100)
+            {
+                this.TraceHelper.TraceError("Too many threads, shutting down", TrackedThreads.GetThreadNames());
+                Thread.Sleep(TimeSpan.FromSeconds(60));
+                System.Environment.Exit(333);
+            }
+        }
        
 
         /******************************/
@@ -426,6 +437,11 @@ namespace DurableTask.Netherite
                     this.TraceHelper.TraceWarning($"Ignoring configuration setting partitionCount={this.Settings.PartitionCount} because existing TaskHub has {this.NumberPartitions} partitions");
                 }
 
+                if (this.threadWatcher == null)
+                {
+                    this.threadWatcher = new Timer(this.WatchThreads, null, 0, 120000);
+                }
+
                 this.TraceHelper.TraceProgress($"Started partitionCount={this.NumberPartitions}");
 
                 return ServiceState.Full;
@@ -474,6 +490,9 @@ namespace DurableTask.Netherite
                     this.ActivityWorkItemQueue.Dispose();
                     this.OrchestrationWorkItemQueue.Dispose();
                 }
+
+                this.threadWatcher.Dispose();
+                this.threadWatcher = null;
 
                 this.TraceHelper.TraceProgress("Stopped cleanly");
 

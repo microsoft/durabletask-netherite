@@ -236,8 +236,7 @@ namespace DurableTask.Netherite.Tests
 
                     this.cts.Cancel();
                 }
-                var thread = new Thread(ProgressReportThread);
-                thread.Name = "ProgressReportThread";
+                var thread = TrackedThreads.MakeTrackedThread(ProgressReportThread, "ProgressReportThread");
                 thread.Start();
 
                 var terminationTask = Task.Delay(timeout, this.cts.Token);

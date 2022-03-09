@@ -23,7 +23,20 @@ namespace DurableTask.Netherite
 
         public event Action OnShutdown;
 
-        public CancellationToken Token => this.cts.Token;
+        public CancellationToken Token
+        {
+            get
+            {
+                try
+                {
+                    return this.cts.Token;
+                }
+                catch (ObjectDisposedException)
+                {
+                    return new CancellationToken(true);
+                }
+            }
+        }
 
         public bool IsTerminated => this.terminationStatus != NotTerminated;
 
@@ -92,8 +105,7 @@ namespace DurableTask.Netherite
         void Terminate()
         {
             // we use a dedicated shutdown thread to help debugging and to contain damage if there are hangs
-            Thread shutdownThread = new Thread(Shutdown);
-            shutdownThread.Name = "PartitionShutdown";
+            Thread shutdownThread = TrackedThreads.MakeTrackedThread(Shutdown, "PartitionShutdown");
 
             try
             {

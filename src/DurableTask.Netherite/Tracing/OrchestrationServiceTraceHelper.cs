@@ -91,15 +91,20 @@ namespace DurableTask.Netherite
 
         public void TraceError(string message, Exception exception)
         {
+            this.TraceError(message, exception.ToString());
+        }
+
+        public void TraceError(string message, string details)
+        {
             if (this.logLevelLimit <= LogLevel.Error)
             {
                 if (this.Logger.IsEnabled(LogLevel.Error))
                 {
-                    this.Logger.LogError("NetheriteOrchestrationService !!! {message}: {exception}", message, exception);
+                    this.Logger.LogError("NetheriteOrchestrationService !!! {message}: {details}", message, details);
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.OrchestrationServiceError(this.StorageAccountName, message, exception.ToString(), this.taskHub, this.workerName, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.OrchestrationServiceError(this.StorageAccountName, message, details, this.taskHub, this.workerName, TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }

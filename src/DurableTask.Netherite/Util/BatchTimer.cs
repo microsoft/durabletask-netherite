@@ -34,8 +34,7 @@ namespace DurableTask.Netherite
 
         public void Start(string name)
         {
-            var thread = new Thread(this.ExpirationCheckLoop);
-            thread.Name = name;
+            var thread = TrackedThreads.MakeTrackedThread(this.ExpirationCheckLoop, name);
             this.name = name;
             thread.Start();
         }

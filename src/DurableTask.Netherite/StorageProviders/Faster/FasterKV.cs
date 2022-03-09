@@ -261,7 +261,7 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 // workaround for hanging in CompleteCheckpointAsync: use custom thread.
-                await RunOnDedicatedThreadAsync(() => this.fht.CompleteCheckpointAsync(this.terminationToken).AsTask());
+                await RunOnDedicatedThreadAsync("CompleteCheckpointAsync", () => this.fht.CompleteCheckpointAsync(this.terminationToken).AsTask());
                 //await this.fht.CompleteCheckpointAsync(this.terminationToken);
 
                 await this.persistSingletonsTask;
@@ -278,19 +278,21 @@ namespace DurableTask.Netherite.Faster
             await this.blobManager.RemoveObsoleteCheckpoints();
         }
 
-        public async static Task RunOnDedicatedThreadAsync(Func<Task> asyncAction)
+        public async static Task RunOnDedicatedThreadAsync(string name, Func<Task> asyncAction)
         {
             Task<Task> tasktask = new Task<Task>(() => asyncAction());
-            var thread = new Thread(() => 
-            {
-                try 
-                {  
-                    tasktask.RunSynchronously(); 
-                } 
+            var thread = TrackedThreads.MakeTrackedThread(RunTask, name);
+                       
+            void RunTask() {
+                try
+                {
+                    tasktask.RunSynchronously();
+                }
                 catch
                 {
                 }
-            });
+            }
+
             thread.Start();
             await await tasktask;
         }
@@ -418,7 +420,7 @@ namespace DurableTask.Netherite.Faster
                     this.GetElapsedCompactionMilliseconds());
 
                 var tcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
-                var thread = new Thread(RunCompaction) { Name = $"Compaction.{id}" };
+                var thread = TrackedThreads.MakeTrackedThread(RunCompaction, $"Compaction.{id}"); 
                 thread.Start();
                 return await tcs.Task;
 
@@ -780,7 +782,7 @@ namespace DurableTask.Netherite.Faster
             var channel = Channel.CreateBounded<OrchestrationState>(500);
             var exceptionSource = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
             exceptionTask = exceptionSource.Task;
-            var scanThread = new Thread(RunScan) { Name = $"QueryScan-{queryId}" };
+            var scanThread = TrackedThreads.MakeTrackedThread(RunScan, $"QueryScan-{queryId}");
             scanThread.Start();
             return channel.Reader.ReadAllAsync();
 

@@ -337,8 +337,7 @@ namespace DurableTask.Netherite.EventHubs
                             this.traceHelper,
                             this.settings.WorkerId);
 
-                    var thread = new Thread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript));
-                    thread.Name = "ScriptedEventProcessorHost";
+                    var thread = TrackedThreads.MakeTrackedThread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript), "ScriptedEventProcessorHost");
                     thread.Start();
                 }
             }
