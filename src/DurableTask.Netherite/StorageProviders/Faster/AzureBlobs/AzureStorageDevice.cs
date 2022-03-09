@@ -106,7 +106,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     if (this.underLease)
                     {
-                        await this.BlobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
+                        await this.BlobManager.ConfirmLeaseIsGoodForAWhileAsync();
                     }
 
                     BlobResultSegment response = null;
@@ -448,8 +448,7 @@ namespace DurableTask.Netherite.Faster
                             var blobRequestOptions = numAttempts > 2 ? BlobManager.BlobRequestOptionsDefault : BlobManager.BlobRequestOptionsAggressiveTimeout;
 
                             await blob.WritePagesAsync(stream, destinationAddress + offset,
-                                contentChecksum: null, accessCondition: null, options: blobRequestOptions, operationContext: null, cancellationToken: this.PartitionErrorHandler.Token)
-                                .ConfigureAwait(false);
+                                contentChecksum: null, accessCondition: null, options: blobRequestOptions, operationContext: null, cancellationToken: this.PartitionErrorHandler.Token);
                         }
 
                         return (long)length;
@@ -493,8 +492,7 @@ namespace DurableTask.Netherite.Faster
                                     ? BlobManager.BlobRequestOptionsDefault : BlobManager.BlobRequestOptionsAggressiveTimeout;
 
                                 await blob
-                                    .DownloadRangeToStreamAsync(stream, sourceAddress + offset, length, accessCondition: null, options: blobRequestOptions, operationContext: null, cancellationToken: this.PartitionErrorHandler.Token)
-                                    .ConfigureAwait(false);
+                                    .DownloadRangeToStreamAsync(stream, sourceAddress + offset, length, accessCondition: null, options: blobRequestOptions, operationContext: null, cancellationToken: this.PartitionErrorHandler.Token);
                             }
 
                             if (stream.Position != offset + length)
@@ -550,7 +548,7 @@ namespace DurableTask.Netherite.Faster
             while (numBytesToWrite > 0)
             {
                 var length = Math.Min(numBytesToWrite, MAX_UPLOAD_SIZE);
-                await this.WritePortionToBlobUnsafeAsync(blob, sourceAddress, destinationAddress, offset, length, id).ConfigureAwait(false);
+                await this.WritePortionToBlobUnsafeAsync(blob, sourceAddress, destinationAddress, offset, length, id);
                 numBytesToWrite -= length;
                 offset += length;
             }

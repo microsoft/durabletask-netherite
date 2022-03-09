@@ -78,7 +78,7 @@ namespace DurableTask.Netherite.Faster
 
             foreach (var key in TrackedObjectKey.GetSingletons())
             {
-                var target = await this.store.CreateAsync(key).ConfigureAwait(false);
+                var target = await this.store.CreateAsync(key);
                 target.OnFirstInitialization();
             }
 
@@ -116,8 +116,8 @@ namespace DurableTask.Netherite.Faster
                 this.traceHelper.FasterCheckpointStarted(checkpointGuid, reason, this.store.StoreStats.Get(), this.CommitLogPosition, this.InputQueuePosition);
 
                 // do the faster full checkpoint and then finalize it
-                await this.store.CompleteCheckpointAsync().ConfigureAwait(false);
-                await this.store.FinalizeCheckpointCompletedAsync(checkpointGuid).ConfigureAwait(false);
+                await this.store.CompleteCheckpointAsync();
+                await this.store.FinalizeCheckpointCompletedAsync(checkpointGuid);
 
                 this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
                 this.lastCheckpointedInputQueuePosition = this.InputQueuePosition;
@@ -139,16 +139,16 @@ namespace DurableTask.Netherite.Faster
 
             this.isShuttingDown = true;
 
-            await this.WaitForCompletionAsync().ConfigureAwait(false);
+            await this.WaitForCompletionAsync();
 
             // wait for any in-flight checkpoints. It is unlikely but not impossible.
             if (this.pendingIndexCheckpoint != null)
             {
-                await this.pendingIndexCheckpoint.ConfigureAwait(false);
+                await this.pendingIndexCheckpoint;
             }
             if (this.pendingStoreCheckpoint != null)
             {
-                await this.pendingStoreCheckpoint.ConfigureAwait(false);
+                await this.pendingStoreCheckpoint;
             }
 
             this.replayChecker?.PartitionStopped(this.partition);
@@ -165,7 +165,7 @@ namespace DurableTask.Netherite.Faster
         {
             foreach (var k in TrackedObjectKey.GetSingletons())
             {
-                (await this.store.ReadAsync(k, this.effectTracker).ConfigureAwait(false)).UpdateLoadInfo(this.loadInfo);
+                (await this.store.ReadAsync(k, this.effectTracker)).UpdateLoadInfo(this.loadInfo);
             }
 
             this.loadInfo.MissRate = this.store.StoreStats.GetMissRate();
@@ -310,7 +310,7 @@ namespace DurableTask.Netherite.Faster
                     switch (partitionEvent)
                     {
                         case PartitionUpdateEvent updateEvent:
-                            await this.ProcessUpdate(updateEvent).ConfigureAwait(false);
+                            await this.ProcessUpdate(updateEvent);
                             break;
 
                         case PartitionReadEvent readEvent:
@@ -398,12 +398,12 @@ namespace DurableTask.Netherite.Faster
                 // periodically publish the partition load information
                 if (this.lastPublished + PublishInterval < DateTime.UtcNow)
                 {
-                    await this.PublishPartitionLoad().ConfigureAwait(false);
+                    await this.PublishPartitionLoad();
                 }
 
                 if (ActivityScheduling.RequiresLoadMonitor(this.partition.Settings.ActivityScheduler))
                 {
-                    var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker).ConfigureAwait(false)) as ActivitiesState;
+                    var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker)) as ActivitiesState;
                     activitiesState.CollectLoadMonitorInformation();
                 }
 
@@ -444,15 +444,15 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper.FasterCheckpointStarted(checkpointToken, description, this.store.StoreStats.Get(), commitLogPosition, inputQueuePosition);
 
             // first do the faster checkpoint
-            await this.store.CompleteCheckpointAsync().ConfigureAwait(false);
+            await this.store.CompleteCheckpointAsync();
 
             if (!isIndexCheckpoint)
             {
                 // wait for the commit log so it is never behind the checkpoint
-                await this.LogWorker.WaitForCompletionAsync().ConfigureAwait(false);
+                await this.LogWorker.WaitForCompletionAsync();
 
                 // finally we write the checkpoint info file
-                await this.store.FinalizeCheckpointCompletedAsync(checkpointToken).ConfigureAwait(false);
+                await this.store.FinalizeCheckpointCompletedAsync(checkpointToken);
 
                 // notify the log worker that the log can be truncated up to the commit log position
                 this.LogWorker.SetLastCheckpointPosition(commitLogPosition);
@@ -491,7 +491,7 @@ namespace DurableTask.Netherite.Faster
             stopwatch.Start();
 
             this.effectTracker.IsReplaying = true;
-            await logWorker.ReplayCommitLog(startPosition, this).ConfigureAwait(false);
+            await logWorker.ReplayCommitLog(startPosition, this);
             stopwatch.Stop();
             this.effectTracker.IsReplaying = false;
 
@@ -518,7 +518,7 @@ namespace DurableTask.Netherite.Faster
             {
                 foreach (var key in TrackedObjectKey.GetSingletons())
                 {
-                    var target = (TrackedObject)await this.store.ReadAsync(key, this.effectTracker).ConfigureAwait(false);
+                    var target = (TrackedObject)await this.store.ReadAsync(key, this.effectTracker);
                     target.OnRecoveryCompleted(this.effectTracker, recoveryCompletedEvent);
                 }
             }
@@ -531,7 +531,7 @@ namespace DurableTask.Netherite.Faster
 
         public async ValueTask ReplayUpdate(PartitionUpdateEvent partitionUpdateEvent)
         {
-            await this.effectTracker.ProcessUpdate(partitionUpdateEvent).ConfigureAwait(false);
+            await this.effectTracker.ProcessUpdate(partitionUpdateEvent);
 
             // update the input queue position if larger 
             // it can be smaller since the checkpoint can store positions advanced by non-update events
@@ -560,7 +560,7 @@ namespace DurableTask.Netherite.Faster
                 return;
             }
 
-            await this.effectTracker.ProcessUpdate(partitionUpdateEvent).ConfigureAwait(false);
+            await this.effectTracker.ProcessUpdate(partitionUpdateEvent);
 
             if (this.replayChecker != null)
             {
@@ -581,7 +581,7 @@ namespace DurableTask.Netherite.Faster
         {
             while (true)
             {
-                await Task.Delay(StoreWorker.PokePeriod, this.cancellationToken).ConfigureAwait(false);
+                await Task.Delay(StoreWorker.PokePeriod, this.cancellationToken);
 
                 if (this.cancellationToken.IsCancellationRequested || this.isShuttingDown)
                 {

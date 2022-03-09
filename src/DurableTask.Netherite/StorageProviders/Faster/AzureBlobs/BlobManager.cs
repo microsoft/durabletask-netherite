@@ -541,7 +541,7 @@ namespace DurableTask.Netherite.Faster
                             accessCondition: null,
                             options: BlobManager.BlobRequestOptionsDefault,
                             operationContext: null,
-                            cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
+                            cancellationToken: this.PartitionErrorHandler.Token);
                         this.TraceHelper.LeaseAcquired();
                     }
 
@@ -558,7 +558,7 @@ namespace DurableTask.Netherite.Faster
                     // the previous owner has not released the lease yet, 
                     // try again until it becomes available, should be relatively soon
                     // as the transport layer is supposed to shut down the previous owner when starting this
-                    await Task.Delay(TimeSpan.FromSeconds(1), this.PartitionErrorHandler.Token).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromSeconds(1), this.PartitionErrorHandler.Token);
 
                     continue;
                 }
@@ -640,8 +640,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     this.TraceHelper.LeaseProgress($"Renewing lease at {this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds}s");
                     this.FaultInjector?.StorageAccess(this, "RenewLeaseAsync", "RenewLease", this.eventLogCommitBlob.Name);
-                    await this.eventLogCommitBlob.RenewLeaseAsync(acc, this.PartitionErrorHandler.Token)
-                        .ConfigureAwait(false);
+                    await this.eventLogCommitBlob.RenewLeaseAsync(acc, this.PartitionErrorHandler.Token);
                     this.TraceHelper.LeaseRenewed(this.leaseTimer.Elapsed.TotalSeconds, this.leaseTimer.Elapsed.TotalSeconds - this.LeaseDuration.TotalSeconds);
 
                     if (nextLeaseTimer.ElapsedMilliseconds > 2000)
@@ -682,7 +681,7 @@ namespace DurableTask.Netherite.Faster
                     }
 
                     // wait for successful renewal, or exit the loop as this throws
-                    await this.NextLeaseRenewalTask.ConfigureAwait(false);
+                    await this.NextLeaseRenewalTask;
                 }
             }
             catch (OperationCanceledException)
@@ -727,7 +726,7 @@ namespace DurableTask.Netherite.Faster
                             accessCondition: acc,
                             options: BlobManager.BlobRequestOptionsDefault,
                             operationContext: null,
-                            cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
+                            cancellationToken: this.PartitionErrorHandler.Token);
 
                         this.TraceHelper.LeaseReleased(this.leaseTimer.Elapsed.TotalSeconds);
                     }
@@ -1462,7 +1461,7 @@ namespace DurableTask.Netherite.Faster
             async Task writeBlob(CloudBlobDirectory partDir, string text)
             {
                 var checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
-                await this.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false); // the lease protects the checkpoint completed file
+                await this.ConfirmLeaseIsGoodForAWhileAsync(); // the lease protects the checkpoint completed file
                 await this.PerformWithRetriesAsync(
                     BlobManager.AsynchronousStorageWriteMaxConcurrency,
                     true,
