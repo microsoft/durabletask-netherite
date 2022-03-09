@@ -491,7 +491,7 @@ namespace DurableTask.Netherite
                     this.OrchestrationWorkItemQueue.Dispose();
                 }
 
-                this.threadWatcher.Dispose();
+                this.threadWatcher?.Dispose();
                 this.threadWatcher = null;
 
                 this.TraceHelper.TraceProgress("Stopped cleanly");
