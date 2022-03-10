@@ -8,6 +8,7 @@ namespace DurableTask.Netherite
     using System.Runtime.CompilerServices;
     using System.Runtime.Serialization;
     using System.Text;
+    using System.Threading;
     using DurableTask.Core;
 
     [DataContract]
@@ -33,6 +34,9 @@ namespace DurableTask.Netherite
 
         [DataMember]
         public int MaxSessionDequeueCount { get; set; }
+
+        [DataMember]
+        public bool ResendConfirmedMessages { get; set; }
 
         [IgnoreDataMember]
         public bool RequiresStateUpdate => (this.NumSessions + this.NumActivities) > 0; // orchestrations and activities must increment the dequeue count
