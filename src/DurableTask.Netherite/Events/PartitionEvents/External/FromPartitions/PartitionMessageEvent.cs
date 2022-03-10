@@ -26,5 +26,11 @@ namespace DurableTask.Netherite
         {
             effects.Add(TrackedObjectKey.Dedup);
         }
+
+        public bool ConfirmedBy(AcksReceived evt)
+        {
+            (long, int)? reported = evt.ReceivePositions[(int)this.PartitionId];
+            return reported.HasValue && reported.Value.CompareTo(this.DedupPosition) >= 0;
+        }
     }
 }

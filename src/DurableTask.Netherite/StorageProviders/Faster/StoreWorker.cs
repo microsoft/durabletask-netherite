@@ -41,9 +41,11 @@ namespace DurableTask.Netherite.Faster
 
         // periodic load publishing
         PartitionLoadInfo loadInfo;
-        DateTime lastPublished;
+        DateTime lastLoadPublished;
+        DateTime lastPositionsPublished;
         string lastPublishedLatencyTrend;
-        public static TimeSpan PublishInterval = TimeSpan.FromSeconds(8);
+        public static TimeSpan LoadPublishInterval = TimeSpan.FromSeconds(8);
+        public static TimeSpan PositionsPublishInterval = TimeSpan.FromSeconds(8);
         public static TimeSpan PokePeriod = TimeSpan.FromSeconds(3); // allows storeworker to checkpoint and publish load even while idle
 
 
@@ -60,7 +62,8 @@ namespace DurableTask.Netherite.Faster
             this.replayChecker = this.partition.Settings.TestHooks?.ReplayChecker;
 
             this.loadInfo = PartitionLoadInfo.FirstFrame(this.partition.Settings.WorkerId);
-            this.lastPublished = DateTime.MinValue;
+            this.lastLoadPublished = DateTime.MinValue;
+            this.lastPositionsPublished = DateTime.MinValue;
             this.lastPublishedLatencyTrend = "";
 
             // construct an effect tracker that we use to apply effects to the store
@@ -199,7 +202,7 @@ namespace DurableTask.Netherite.Faster
                 // take the current load info and put the next frame in its place
                 var loadInfoToPublish = this.loadInfo;
                 this.loadInfo = loadInfoToPublish.NextFrame();
-                this.lastPublished = DateTime.UtcNow;
+                this.lastLoadPublished = DateTime.UtcNow;
                 this.lastPublishedLatencyTrend = loadInfoToPublish.LatencyTrend;
 
                 this.partition.TraceHelper.TracePartitionLoad(loadInfoToPublish);
@@ -208,6 +211,26 @@ namespace DurableTask.Netherite.Faster
                 // only after the current log is persisted.
                 var task = this.LogWorker.WaitForCompletionAsync()
                     .ContinueWith((t) => this.partition.LoadPublisher?.Submit((this.partition.PartitionId, loadInfoToPublish)));
+            }
+        }
+
+        async Task PublishSendAndReceivePositions()
+        {
+            int numberPartitions = (int)this.partition.NumberPartitions();
+            if (numberPartitions > 1)
+            {
+                var positionsReceived = new PositionsReceived()
+                {
+                    RequestId = Guid.NewGuid(),
+                    ReceivePositions = new (long, int)?[numberPartitions],
+                    NextNeededAck = new (long, int)?[numberPartitions],
+                };
+                ((DedupState)await this.store.ReadAsync(TrackedObjectKey.Dedup, this.effectTracker)).RecordPositions(positionsReceived);
+                ((OutboxState)await this.store.ReadAsync(TrackedObjectKey.Outbox, this.effectTracker)).RecordPositions(positionsReceived);
+
+                this.partition.Send(positionsReceived);
+
+                this.lastPositionsPublished = DateTime.UtcNow;
             }
         }
 
@@ -396,12 +419,18 @@ namespace DurableTask.Netherite.Faster
        
                 
                 // periodically publish the partition load information
-                if (this.lastPublished + PublishInterval < DateTime.UtcNow)
+                if (this.lastLoadPublished + LoadPublishInterval < DateTime.UtcNow)
                 {
                     await this.PublishPartitionLoad();
                 }
 
-                if (ActivityScheduling.RequiresLoadMonitor(this.partition.Settings.ActivityScheduler))
+                // periodically publish the send and receive positions
+                if (this.lastPositionsPublished + PositionsPublishInterval < DateTime.UtcNow)
+                {
+                    await this.PublishSendAndReceivePositions();
+                }
+
+                if (this.partition.NumberPartitions() > 1)
                 {
                     var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker)) as ActivitiesState;
                     activitiesState.CollectLoadMonitorInformation();

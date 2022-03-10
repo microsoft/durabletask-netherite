@@ -349,14 +349,10 @@ namespace DurableTask.Netherite.EventHubs
 
         async Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
         {
-            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is receiving events starting with #{seqno}", this.eventHubName, this.eventHubPartition, packets.First().SystemProperties.SequenceNumber);
-
-            if (!this.lastCheckpointedOffset.HasValue)
-            {
-                // the first packet we receive indicates what our last checkpoint was
-                var first = packets.FirstOrDefault();
-                this.lastCheckpointedOffset = first == null ? null : long.Parse(first.SystemProperties.Offset);
-            }
+            var first = packets.FirstOrDefault();
+            long sequenceNumber = first?.SystemProperties.SequenceNumber ?? 0;
+            
+            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is receiving events starting with #{seqno}", this.eventHubName, this.eventHubPartition, sequenceNumber);
 
             PartitionIncarnation current = await this.currentIncarnation;
 
@@ -364,7 +360,6 @@ namespace DurableTask.Netherite.EventHubs
             {
                 current = await current.Next;
             }
-
 
             if (current == null)
             {
@@ -374,6 +369,19 @@ namespace DurableTask.Netherite.EventHubs
             else
             {
                 this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} is delivering to incarnation {seqno}", this.eventHubName, this.eventHubPartition, current.Incarnation);
+            }
+
+            if (!this.lastCheckpointedOffset.HasValue)
+            {
+                // the first packet we receive indicates what our last checkpoint was
+                this.lastCheckpointedOffset = first == null ? null : long.Parse(first.SystemProperties.Offset);
+
+                // we may be missing packets if the service was down for longer than EH retention
+                if (sequenceNumber > current.NextPacketToReceive)
+                {
+                    this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} missing packets in sequence, #{seqno} instead of #{expected}", this.eventHubName, this.eventHubPartition, sequenceNumber, current.NextPacketToReceive);
+                    throw new InvalidOperationException("EH corrupted");
+                }
             }
 
             try

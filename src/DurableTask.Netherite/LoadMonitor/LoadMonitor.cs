@@ -29,6 +29,8 @@ namespace DurableTask.Netherite
         // the list of transfer commands that are not yet acknowledged by the destination partition
         List<TransferCommandReceived> PendingOnDestination { get; set; }
 
+        PositionsReceived[] PositionsReceived  { get; }
+
         DateTime LastSolicitation { get; set; }
 
         // estimated round-trip duration for transfer commands
@@ -75,6 +77,7 @@ namespace DurableTask.Netherite
             this.PendingOnSource = new List<TransferCommandReceived>();
             this.PendingOnDestination = new List<TransferCommandReceived>();
             this.LastSolicitation = DateTime.MinValue;
+            this.PositionsReceived = new PositionsReceived[this.host.NumberPartitions]; 
             this.traceHelper.TraceProgress("Started");
         }
 
@@ -96,9 +99,49 @@ namespace DurableTask.Netherite
         {
             switch (loadMonitorEvent)
             {
+                case PositionsReceived positionsReceived:
+                    this.Process(positionsReceived);
+                    break;
                 case LoadInformationReceived loadInformationReceived:
                     this.Process(loadInformationReceived);
                     break;
+            }
+        }
+
+        void Process(PositionsReceived evt)
+        {
+            this.PositionsReceived[evt.PartitionId] = evt;
+            bool sendAck = false;
+
+            // check if we have any of the needed acks
+            for (uint i = 0; i < evt.NextNeededAck.Length; i++)
+            {
+                (long,int)? needed = evt.NextNeededAck[i];
+                if (needed.HasValue)
+                {
+                    var info = this.PositionsReceived[i];
+                    (long, int)? reported = info?.ReceivePositions[evt.PartitionId];
+                    if (reported.HasValue  && reported.Value.CompareTo(needed.Value) >= 0)
+                    {
+                        sendAck = true;
+                        break;
+                    }
+                }
+            }
+
+            if (sendAck)
+            {
+                var receivePositions = new (long, int)?[evt.ReceivePositions.Length];
+                for (int i = 0; i < receivePositions.Length; i++)
+                {
+                    receivePositions[i] = this.PositionsReceived[i]?.ReceivePositions[evt.PartitionId];
+                }
+                this.BatchSender.Submit(new AcksReceived()
+                {
+                    PartitionId = evt.PartitionId,
+                    RequestId = evt.RequestId,
+                    ReceivePositions = receivePositions,
+                });
             }
         }
 

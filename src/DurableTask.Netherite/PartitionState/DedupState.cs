@@ -39,6 +39,16 @@ namespace DurableTask.Netherite
                 return false;
             }
         }
+        public void RecordPositions(PositionsReceived evt)
+        {
+            for (uint i = 0; i < evt.ReceivePositions.Length; i++)
+            {
+                if (this.LastProcessed.TryGetValue(i, out var pos))
+                {
+                    evt.ReceivePositions[i] = pos;
+                }
+            }
+        }
 
         public override void Process(ActivityTransferReceived evt, EffectTracker effects)
         {

@@ -99,6 +99,7 @@ namespace DurableTask.Netherite
         public virtual void Process(WaitRequestReceived evt, EffectTracker tracker) { }
         public virtual void Process(PurgeBatchIssued evt, EffectTracker tracker) { }
         public virtual void Process(ClientTaskMessagesReceived evt, EffectTracker tracker) { }
+        public virtual void Process(AcksReceived evt, EffectTracker tracker) { }
         public virtual void Process(SolicitationReceived evt, EffectTracker tracker) { }
         public virtual void Process(TransferCommandReceived evt, EffectTracker tracker) { }
         public virtual void Process(ActivityTransferReceived evt, EffectTracker tracker) { }

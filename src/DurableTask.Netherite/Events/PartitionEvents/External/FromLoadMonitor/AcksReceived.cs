@@ -10,22 +10,13 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
 
     [DataContract]
-    class TransferCommandReceived : PartitionMessageEvent
+    class AcksReceived : PartitionMessageEvent
     {
         [DataMember]
         public Guid RequestId { get; set; }
 
         [DataMember]
-        public int NumActivitiesToSend { get; set; }
-
-        [DataMember]
-        public uint TransferDestination { get; set; }
-
-        [DataMember]
-        public DateTime Timestamp { get; set; }
-
-        [IgnoreDataMember]
-        public List<(TaskMessage, string)> TransferredActivities { get; set; }
+        public (long, int)?[] ReceivePositions { get; set; } // for each partition
 
         public override EventId EventId => EventId.MakeLoadMonitorToPartitionEventId(this.RequestId, this.PartitionId);
 
@@ -33,21 +24,12 @@ namespace DurableTask.Netherite
 
         public override void DetermineEffects(EffectTracker effects)
         {
-            effects.Add(TrackedObjectKey.Activities);
+            effects.Add(TrackedObjectKey.Outbox);
         }
 
         public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
         {
             trackedObject.Process(this, effects);
-        }
-
-        protected override void ExtraTraceInformation(StringBuilder s)
-        {
-           base.ExtraTraceInformation(s);
-           s.Append(' ');
-           s.Append(this.NumActivitiesToSend);
-           s.Append("->Part");
-           s.Append(this.TransferDestination.ToString("D2"));     
         }
     }
 }
