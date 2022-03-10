@@ -84,6 +84,8 @@ namespace DurableTask.Netherite.Scaling
                 var batch = await this.table.ExecuteQuerySegmentedAsync<PartitionInfoEntity>(query, continuationToken, null, null, cancellationToken).ConfigureAwait(false);
                 foreach (var e in batch)
                 {
+                    int.TryParse(e.CachePct, out int cachePct);
+                    double.TryParse(e.MissRate, out double missRatePct);
                     result.Add(e.PartitionId, new PartitionLoadInfo()
                     {
                         WorkItems = e.WorkItems,
@@ -97,7 +99,9 @@ namespace DurableTask.Netherite.Scaling
                         CommitLogPosition = e.CommitLogPosition,
                         WorkerId = e.WorkerId,
                         LatencyTrend = e.LatencyTrend,
-                        MissRate = e.MissRate,
+                        MissRate = missRatePct / 100,
+                        CachePct = cachePct,
+                        CacheMB = e.CacheMB,
                     });
                 }
             }
@@ -118,7 +122,9 @@ namespace DurableTask.Netherite.Scaling
             public long CommitLogPosition { get; set; }
             public string WorkerId { get; set; }
             public string LatencyTrend { get; set; }
-            public double MissRate { get; set; }
+            public string MissRate { get; set; }
+            public string CachePct { get; set; }
+            public double CacheMB { get; set; }
 
             public PartitionInfoEntity()
             {
@@ -146,7 +152,9 @@ namespace DurableTask.Netherite.Scaling
                 this.CommitLogPosition = info.CommitLogPosition;
                 this.WorkerId = info.WorkerId;
                 this.LatencyTrend = info.LatencyTrend;
-                this.MissRate = info.MissRate;
+                this.MissRate = $"{info.MissRate*100:f2}%";
+                this.CachePct = $"{info.CachePct}%";
+                this.CacheMB = info.CacheMB;
 
                 this.ETag = "*"; // no conditions when inserting, replace existing
             }

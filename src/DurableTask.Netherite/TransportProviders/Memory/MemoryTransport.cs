@@ -132,7 +132,7 @@ namespace DurableTask.Netherite.Emulated
 
             if (epoch > 0)
             {
-                if (this.settings.TestHooks != null && this.settings.TestHooks.FaultInjector == null)
+                if (this.settings.TestHooks?.FaultInjectionActive != true)
                 {
                     this.settings.TestHooks.Error("MemoryTransport", "Unexpected partition termination");
                 }
@@ -191,7 +191,7 @@ namespace DurableTask.Netherite.Emulated
                 var errorHandler = this.host.CreateErrorHandler((uint)i);
                 if (this.faultInjector != null)
                 {
-                    errorHandler.Token.Register(() => this.RecoveryHandler(epoch));
+                    errorHandler.OnShutdown += () => this.RecoveryHandler(epoch);
                 }
                 var nextInputQueuePosition = await partitions[i].CreateOrRestoreAsync(errorHandler, 0);
 
@@ -289,6 +289,11 @@ namespace DurableTask.Netherite.Emulated
                     if (this.clientQueues.TryGetValue(clientEvent.ClientId, out var queue))
                     {
                         queue.Send(clientEvent);
+                    }
+                    else
+                    {
+                        // client does not exist, can happen after recovery
+                        DurabilityListeners.ConfirmDurable(clientEvent);
                     }
                 }
                 else if (evt is PartitionEvent partitionEvent)

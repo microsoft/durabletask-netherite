@@ -300,8 +300,9 @@ namespace DurableTask.Netherite.EventHubs
                             var pos = this.parameters.StartPositions[int.Parse(s)];
                             if (pos > 0)
                             {
-                                this.traceHelper.LogDebug("InitialOffsetProvider: partitions/{partitionId} EventPosition.FromSequenceNumber({offset}, inclusive:false)", s, pos - 1);
-                                return EventPosition.FromSequenceNumber(pos - 1, inclusive: false);
+                                // to work around bug in EH, ask for the most recently received packet to be delivered again
+                                this.traceHelper.LogDebug("InitialOffsetProvider: partitions/{partitionId} EventPosition.FromSequenceNumber({offset}, inclusive:true)", s, pos - 1);
+                                return EventPosition.FromSequenceNumber(pos - 1, inclusive: true);
                             }
                             else
                             {
@@ -336,8 +337,7 @@ namespace DurableTask.Netherite.EventHubs
                             this.traceHelper,
                             this.settings.WorkerId);
 
-                    var thread = new Thread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript));
-                    thread.Name = "ScriptedEventProcessorHost";
+                    var thread = TrackedThreads.MakeTrackedThread(() => this.scriptedEventProcessorHost.StartEventProcessing(this.settings, this.partitionScript), "ScriptedEventProcessorHost");
                     thread.Start();
                 }
             }
@@ -537,7 +537,7 @@ namespace DurableTask.Netherite.EventHubs
                                 if (clientEvent != null && clientEvent.ClientId == this.ClientId)
                                 {
                                     this.traceHelper.LogTrace("Client{clientId}.ch{index} receiving event {evt} id={eventId}]", Client.GetShortId(this.ClientId), index, clientEvent, clientEvent.EventIdString);
-                                    await channelWriter.WriteAsync(clientEvent);
+                                    await channelWriter.WriteAsync(clientEvent, this.shutdownSource.Token);
                                 }
                             }
                             catch (Exception)

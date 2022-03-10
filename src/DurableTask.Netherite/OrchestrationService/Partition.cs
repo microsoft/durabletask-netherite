@@ -31,7 +31,8 @@ namespace DurableTask.Netherite
         public IPartitionErrorHandler ErrorHandler { get; private set; }
         public PartitionTraceHelper TraceHelper { get; private set; }
         public WorkItemTraceHelper WorkItemTraceHelper { get; private set; }
-        public Faster.CacheDebugger CacheDebugger { get; private set; }
+
+        public Faster.MemoryTracker CacheTracker { get; private set; }
 
         public double CurrentTimeMs => this.stopwatch.Elapsed.TotalMilliseconds;
 
@@ -66,6 +67,7 @@ namespace DurableTask.Netherite
             WorkItemQueue<ActivityWorkItem> activityWorkItemQueue,
             WorkItemQueue<OrchestrationWorkItem> orchestrationWorkItemQueue,
             LoadPublisher loadPublisher,
+
             WorkItemTraceHelper workItemTraceHelper)
         {
             this.host = host;
@@ -83,7 +85,6 @@ namespace DurableTask.Netherite
             this.WorkItemTraceHelper = workItemTraceHelper;
             this.stopwatch.Start();
             this.LastTransition = this.CurrentTimeMs;
-            this.CacheDebugger = this.Settings.TestHooks?.CacheDebugger;
         }
 
         public async Task<long> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, long firstInputQueuePosition)
@@ -94,14 +95,19 @@ namespace DurableTask.Netherite
 
             this.TraceHelper.TracePartitionProgress("Starting", ref this.LastTransition, this.CurrentTimeMs, "");
 
-            errorHandler.Token.Register(() => {
+            errorHandler.Token.Register(() =>
+            {
                 this.TraceHelper.TracePartitionProgress("Terminated", ref this.LastTransition, this.CurrentTimeMs, "");
 
-                if (!this.ErrorHandler.NormalTermination && this.Settings.TestHooks != null && this.Settings.TestHooks.FaultInjector == null)
+                if (!this.ErrorHandler.NormalTermination
+                    && this.Settings.TestHooks != null
+                    && this.Settings.TestHooks.FaultInjectionActive != true)
                 {
-                    this.Settings.TestHooks.Error("Partition", "Unexpected partition termination during test");
+                    this.Settings.TestHooks.Error("Partition", $"Unexpected termination of partition {this.PartitionId} during test");
                 }
-            });
+
+            }, useSynchronizationContext: false);
+          
 
             await MaxConcurrentStarts.WaitAsync();
 
@@ -142,7 +148,6 @@ namespace DurableTask.Netherite
             }
         }
 
-        [Conditional("DEBUG")]
         public void Assert(bool condition, string message)
         {
             if (!condition)

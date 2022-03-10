@@ -17,9 +17,11 @@ namespace DurableTask.Netherite.Faster
 
         public abstract Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync();
 
-        public abstract void CompletePending();
+        public abstract bool CompletePending();
 
         public abstract ValueTask ReadyToCompletePendingAsync();
+
+        public abstract void AdjustCacheSize();
 
         public abstract bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, out Guid checkpointGuid);
 
@@ -37,6 +39,8 @@ namespace DurableTask.Netherite.Faster
 
         public abstract Task<long> RunCompactionAsync(long target);
 
+        public abstract void CheckInvariants();
+
         // perform a query
         public abstract Task QueryAsync(PartitionQueryEvent queryEvent, EffectTracker effectTracker);
 
@@ -44,7 +48,7 @@ namespace DurableTask.Netherite.Faster
         public abstract Task RunPrefetchSession(IAsyncEnumerable<TrackedObjectKey> keys);
 
         // kick off a read of a tracked object, completing asynchronously if necessary
-        public abstract void ReadAsync(PartitionReadEvent readEvent, EffectTracker effectTracker);
+        public abstract void Read(PartitionReadEvent readEvent, EffectTracker effectTracker);
 
         // read a singleton tracked object on the main session and wait for the response (only one of these is executing at a time)
         public abstract ValueTask<TrackedObject> ReadAsync(FasterKV.Key key, EffectTracker effectTracker);
@@ -59,6 +63,8 @@ namespace DurableTask.Netherite.Faster
         public abstract void EmitCurrentState(Action<TrackedObjectKey, TrackedObject> emitItem);     
 
         public StoreStatistics StoreStats { get; } = new StoreStatistics();
+
+        public abstract (double totalSizeMB, int fillPercentage) CacheSizeInfo { get; }
 
         public class StoreStatistics
         {

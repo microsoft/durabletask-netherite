@@ -75,7 +75,7 @@ namespace DurableTask.Netherite
 
         public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            effects.Partition.Assert(this.Pending.Count == evt.NumActivities, "count does not match in ActivitiesState.Process(RecoveryCompleted)");
+            effects.Partition.Assert(this.Pending.Count == evt.NumActivities, "count does not match in ActivitiesState.Process(RecoveryCompleted), actual={this.Pending.Count}");
 
             foreach (var kvp in this.Pending)
             {
@@ -137,7 +137,7 @@ namespace DurableTask.Netherite
 
         public override string ToString()
         {
-            return $"Activities ({this.Pending.Count} pending) next={this.SequenceNumber:D6}";
+            return $"Activities Pending.Count={this.Pending.Count} next={this.SequenceNumber:D6}";
         }
 
         void ScheduleNextOffloadDecision(TimeSpan delay)

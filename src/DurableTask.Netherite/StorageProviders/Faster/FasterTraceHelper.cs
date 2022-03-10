@@ -142,6 +142,16 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        public enum CompactionProgress { Skipped, Started, Completed };
+
+        public void FasterCompactionProgress(CompactionProgress progress, string operation, long begin, long safeReadOnly, long tail, long minimalSize, long compactionAreaSize, long elapsedMs)
+        {
+            if (this.logLevelLimit <= LogLevel.Information)
+            {
+                this.logger.LogInformation("Part{partition:D2} Compaction {progress} operation={operation} begin={begin} safeReadOnly={safeReadOnly} tail={tail} minimalSize={minimalSize} compactionAreaSize={compactionAreaSize} elapsedMs={elapsedMs}", this.partitionId, progress, operation, begin, safeReadOnly, tail, minimalSize, compactionAreaSize, elapsedMs);
+                this.etwLogInformation?.FasterCompactionProgress(this.account, this.taskHub, this.partitionId, progress.ToString(), operation, begin, safeReadOnly, tail, minimalSize, compactionAreaSize, elapsedMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+            } 
+        }
 
         // ----- lease management events
 

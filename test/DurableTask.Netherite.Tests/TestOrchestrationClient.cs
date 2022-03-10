@@ -117,7 +117,7 @@ namespace DurableTask.Netherite.Tests
             Stopwatch sw = Stopwatch.StartNew();
             do
             {
-                OrchestrationState state = await this.GetStatusAsync();
+                OrchestrationState state = await this.GetStateAsync();
                 if (state != null && state.OrchestrationStatus != OrchestrationStatus.Pending)
                 {
                     Trace.TraceInformation($"TestProgress: Started {state.Name} id={state.OrchestrationInstance.InstanceId} after ~{sw.ElapsedMilliseconds}ms. Status = {state.OrchestrationStatus}.");
@@ -142,7 +142,7 @@ namespace DurableTask.Netherite.Tests
             return null;
         }
 
-        public async Task<OrchestrationState> GetStatusAsync()
+        public async Task<OrchestrationState> GetStateAsync()
         {
             OrchestrationState state = await this.client.GetOrchestrationStateAsync(this.instanceId);
 

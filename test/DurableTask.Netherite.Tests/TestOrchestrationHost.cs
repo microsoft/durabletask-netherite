@@ -27,11 +27,6 @@ namespace DurableTask.Netherite.Tests
             this.orchestrationService = new Netherite.NetheriteOrchestrationService(settings, loggerFactory);
             var orchestrationService = (IOrchestrationService)this.orchestrationService;
 
-            if (TestConstants.DeleteStorageBeforeRunningTests)
-            {
-                orchestrationService.DeleteAsync().GetAwaiter().GetResult();
-            }
-
             orchestrationService.CreateAsync(false).GetAwaiter().GetResult();
 
             this.settings = settings;

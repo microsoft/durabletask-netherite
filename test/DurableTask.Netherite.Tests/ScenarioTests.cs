@@ -28,19 +28,30 @@ namespace DurableTask.Netherite.Tests
     {
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
+        readonly Action<string> output;
         ITestOutputHelper outputHelper;
 
         public ScenarioTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
         {
             this.outputHelper = outputHelper;
+            this.output = (string message) => this.outputHelper?.WriteLine(message);
+
+            this.output($"Running pre-test operations on {fixture.GetType().Name}.");
+
             this.fixture = fixture;
             this.host = fixture.Host;
+            fixture.SetOutput(this.output);
+            Assert.False(fixture.HasError(out var error), $"could not start test because of preceding test failure: {error}");
 
-            fixture.SetOutput((string message) => this.outputHelper?.WriteLine(message));
+            this.output($"Completed pre-test operations on {fixture.GetType().Name}.");
         }
 
         public void Dispose()
         {
+            this.output($"Running post-test operations on {this.fixture.GetType().Name}.");
+
+            Assert.False(this.fixture.HasError(out var error), $"detected test failure: {error}");
+
             // purge all instances after each test
             // this helps to catch "bad states" (e.g. hung workers) caused by the tests
             if (!this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
@@ -49,6 +60,9 @@ namespace DurableTask.Netherite.Tests
             }
 
             Assert.Null(this.fixture.TestHooksError);
+            this.fixture.DumpCacheDebugger();
+
+            this.output($"Completed post-test operations on {this.fixture.GetType().Name}.");
             this.outputHelper = null;
         }
 
@@ -233,8 +247,8 @@ namespace DurableTask.Netherite.Tests
             var client = await this.host.StartOrchestrationAsync(typeof(Orchestrations.Counter), initialValue);
 
             // Need to wait for the instance to start before sending events to it.
-            // TODO: This requirement may not be ideal and should be revisited.
-            await client.WaitForStartupAsync(TimeSpan.FromSeconds(10));
+            var state = await client.WaitForStartupAsync(TimeSpan.FromSeconds(30));
+            Assert.NotNull(state);
 
             // Perform some operations
             await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpIncrement);
@@ -245,21 +259,22 @@ namespace DurableTask.Netherite.Tests
             await Task.Delay(2000);
 
             // Make sure it's still running and didn't complete early (or fail).
-            var status = await client.GetStatusAsync();
+            state = await client.GetStateAsync();
+            Assert.NotNull(state);
             Assert.True(
-                status?.OrchestrationStatus == OrchestrationStatus.Running ||
-                status?.OrchestrationStatus == OrchestrationStatus.ContinuedAsNew);
+                state.OrchestrationStatus == OrchestrationStatus.Running ||
+                state.OrchestrationStatus == OrchestrationStatus.ContinuedAsNew);
 
             // The end message will cause the actor to complete itself.
             await client.RaiseEventAsync(Orchestrations.Counter.OpEventName, Orchestrations.Counter.OpEnd);
 
-            status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(10));
+            state = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(10));
 
-            Assert.Equal(OrchestrationStatus.Completed, status?.OrchestrationStatus);
-            Assert.Equal(3, JToken.Parse(status?.Output));
+            Assert.Equal(OrchestrationStatus.Completed, state?.OrchestrationStatus);
+            Assert.Equal(3, JToken.Parse(state?.Output));
 
             // When using ContinueAsNew, the original input is discarded and replaced with the most recent state.
-            Assert.NotEqual(initialValue, JToken.Parse(status?.Input));
+            Assert.NotEqual(initialValue, JToken.Parse(state?.Input));
         }
 
         /// <summary>
@@ -870,11 +885,11 @@ namespace DurableTask.Netherite.Tests
             var clientStartingIn10Seconds = await this.host.StartOrchestrationAsync(typeof(Orchestrations.DelayedCurrentTimeActivity), "Delayed Current Time!", startAt: expectedStartTime);
             var clientStartingNow = await this.host.StartOrchestrationAsync(typeof(Orchestrations.DelayedCurrentTimeActivity), "Delayed Current Time!");
 
-            var statusStartingIn10Seconds = await clientStartingIn10Seconds.GetStatusAsync();
+            var statusStartingIn10Seconds = await clientStartingIn10Seconds.GetStateAsync();
             Assert.NotNull(statusStartingIn10Seconds.ScheduledStartTime);
             Assert.Equal(expectedStartTime, statusStartingIn10Seconds.ScheduledStartTime);
 
-            var statusStartingNow = await clientStartingNow.GetStatusAsync();
+            var statusStartingNow = await clientStartingNow.GetStateAsync();
             Assert.Null(statusStartingNow.ScheduledStartTime);
 
             await Task.WhenAll(

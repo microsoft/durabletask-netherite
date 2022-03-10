@@ -122,6 +122,18 @@ namespace DurableTask.Netherite.Scaling
         public double MissRate { get; set; }
 
         /// <summary>
+        /// The current size of the cache, as a percentage.
+        /// </summary>
+        [DataMember]
+        public int CachePct { get; set; }
+
+        /// <summary>
+        /// The current size of the cache in MB
+        /// </summary>
+        [DataMember]
+        public double CacheMB { get; set; }
+
+        /// <summary>
         /// The character representing idle load.
         /// </summary>
         public const char Idle = 'I';

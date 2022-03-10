@@ -25,6 +25,7 @@ namespace DurableTask.Netherite.Tests
     {
         readonly SingleHostFixture fixture;
         readonly TestOrchestrationHost host;
+        readonly Action<string> output;
         ITestOutputHelper outputHelper;
 
         public QueryTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
@@ -32,18 +33,28 @@ namespace DurableTask.Netherite.Tests
             this.fixture = fixture;
             this.host = fixture.Host;
             this.outputHelper = outputHelper;
+            this.output = (string message) => this.outputHelper?.WriteLine(message);
+            this.output($"Running pre-test operations on {fixture.GetType().Name}.");
 
-            this.fixture.SetOutput((message) => this.outputHelper?.WriteLine(message));
+            this.fixture.SetOutput(this.output); 
+
+            Assert.False(fixture.HasError(out var error), $"could not start test because of preceding test failure: {error}");
 
             // purge all instances prior to each test
             if (! this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
             {
                 throw new TimeoutException("timed out while purging instances before starting test");
             }
+            this.output($"Completed pre-test operations on {fixture.GetType().Name}.");
         }
 
         public void Dispose() 
         {
+            this.output($"Running post-test operations on {this.fixture.GetType().Name}.");
+
+            Assert.False(this.fixture.HasError(out var error), $"detected test failure: {error}");
+
+
             // purge all instances after each test
             // this helps to catch "bad states" (e.g. hung workers) caused by the tests
             if (!this.host.PurgeAllAsync().Wait(TimeSpan.FromMinutes(3)))
@@ -53,6 +64,9 @@ namespace DurableTask.Netherite.Tests
 
             Assert.Null(this.fixture.TestHooksError);
 
+            this.fixture.DumpCacheDebugger();
+
+            this.output($"Completed post-test operations on {this.fixture.GetType().Name}.");
             this.outputHelper = null;
         }
 
@@ -123,7 +137,7 @@ namespace DurableTask.Netherite.Tests
             }
 
             // Make sure the client and instance are still running and didn't complete early (or fail).
-            var status = await client.GetStatusAsync();
+            var status = await client.GetStateAsync();
             Assert.NotNull(status);
             Assert.Contains(status.OrchestrationStatus, inProgressStatus);
             await assertCounts(1, 0);

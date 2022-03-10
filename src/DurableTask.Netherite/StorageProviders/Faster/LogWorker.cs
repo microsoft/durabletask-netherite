@@ -35,7 +35,7 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper = traceHelper;
             this.intakeWorker = new IntakeWorker(cancellationToken, this, partition.TraceHelper);
 
-            this.maxFragmentSize = (1 << this.blobManager.GetDefaultEventLogSettings(partition.Settings.UseSeparatePageBlobStorage, partition.Settings.FasterTuningParameters).PageSizeBits) - 64; // faster needs some room for header, 64 bytes is conservative
+            this.maxFragmentSize = (int) this.blobManager.GetDefaultEventLogSettings(partition.Settings.UseSeparatePageBlobStorage, partition.Settings.FasterTuningParameters).PageSize - 64; // faster needs some room for header, 64 bytes is conservative
         }
 
         public const byte first = 0x1;
@@ -133,9 +133,9 @@ namespace DurableTask.Netherite.Faster
 
             this.isShuttingDown = true;
 
-            await this.intakeWorker.WaitForCompletionAsync().ConfigureAwait(false);
+            await this.intakeWorker.WaitForCompletionAsync();
 
-            await this.WaitForCompletionAsync().ConfigureAwait(false);
+            await this.WaitForCompletionAsync();
 
             this.traceHelper.FasterProgress($"Stopped LogWorker");
         }
@@ -151,7 +151,7 @@ namespace DurableTask.Netherite.Faster
                     stopwatch.Start();
                     long previous = this.log.CommittedUntilAddress;
 
-                    await this.log.CommitAsync().ConfigureAwait(false); // may commit more events than just the ones in the batch, but that is o.k.
+                    await this.log.CommitAsync(); // may commit more events than just the ones in the batch, but that is o.k.
 
                     this.traceHelper.FasterLogPersisted(this.log.CommittedUntilAddress, batch.Count, (this.log.CommittedUntilAddress - previous), stopwatch.ElapsedMilliseconds);
 
@@ -259,7 +259,7 @@ namespace DurableTask.Netherite.Faster
                         {
                             yield break;
                         }
-                        await iter.WaitAsync(this.cancellationToken).ConfigureAwait(false);
+                        await iter.WaitAsync(this.cancellationToken);
                     }
 
                     if ((result[0] & first) != none)

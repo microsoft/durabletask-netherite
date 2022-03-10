@@ -32,6 +32,8 @@ namespace DurableTask.Netherite.Faster
         public int RandomProbability { get; set; }
         readonly Random random = new Random();
 
+        int failedRestarts = 1;
+
         public void StartNewTest()
         {
             System.Diagnostics.Trace.TraceInformation($"FaultInjector: StartNewTest");
@@ -143,12 +145,20 @@ namespace DurableTask.Netherite.Faster
 
             if (this.RandomProbability > 0)
             {
-                var dieRoll = this.random.Next(this.RandomProbability);
-                //Console.WriteLine(dieRoll);
-
-                if (dieRoll == 0)
+                if (this.failedRestarts > 0 && this.startedPartitions.Contains(blobManager))
                 {
-                    pass = false;
+                    this.failedRestarts = 0;
+                }
+
+                if (this.failedRestarts < 2)
+                {
+                    var dieRoll = this.random.Next(this.RandomProbability * (1 + this.failedRestarts));
+
+                    if (dieRoll == 0)
+                    {
+                        pass = false;
+                        this.failedRestarts++;
+                    }
                 }
             }
 

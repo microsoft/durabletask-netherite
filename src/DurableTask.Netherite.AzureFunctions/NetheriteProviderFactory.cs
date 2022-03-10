@@ -88,6 +88,9 @@ namespace DurableTask.Netherite.AzureFunctions
             JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options), netheriteSettings);
             JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options.StorageProvider), netheriteSettings);
  
+            // configure the cache size if not already configured
+            netheriteSettings.InstanceCacheSizeMB ??= (this.inConsumption ? 100 : 200 * Environment.ProcessorCount);
+
             // if worker id is specified in environment, it overrides the configured setting
             string workerId = Environment.GetEnvironmentVariable("WorkerId");
             if (!string.IsNullOrEmpty(workerId))
@@ -137,7 +140,13 @@ namespace DurableTask.Netherite.AzureFunctions
                 && bool.TryParse(s, out bool x)
                 && x);
                     
-            if (attachFaultInjector || attachReplayChecker)
+            bool attachCacheDebugger = 
+                (this.options.StorageProvider.TryGetValue("AttachCacheDebugger", out object val2)
+                && val2 is string s2
+                && bool.TryParse(s2, out bool x2)
+                && x2);
+                    
+            if (attachFaultInjector || attachReplayChecker || attachCacheDebugger)
             {
                 netheriteSettings.TestHooks = new TestHooks();
 
@@ -148,6 +157,10 @@ namespace DurableTask.Netherite.AzureFunctions
                 if (attachReplayChecker)
                 {
                     netheriteSettings.TestHooks.ReplayChecker = new Faster.ReplayChecker(netheriteSettings.TestHooks);
+                }
+                if (attachCacheDebugger)
+                {
+                    netheriteSettings.TestHooks.CacheDebugger = new Faster.CacheDebugger(netheriteSettings.TestHooks);
                 }
             }
 

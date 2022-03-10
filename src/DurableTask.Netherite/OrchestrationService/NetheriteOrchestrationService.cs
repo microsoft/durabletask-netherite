@@ -31,6 +31,7 @@ namespace DurableTask.Netherite
         readonly ITaskHub taskHub;
         readonly TransportConnectionString.StorageChoices configuredStorage;
         readonly TransportConnectionString.TransportChoices configuredTransport;
+        readonly MemoryTracker memoryTracker;
 
         readonly WorkItemTraceHelper workItemTraceHelper;
 
@@ -43,6 +44,7 @@ namespace DurableTask.Netherite
 
         CancellationTokenSource serviceShutdownSource;
         Exception startupException;
+        Timer threadWatcher;
 
         internal async ValueTask<Client> GetClientAsync()
         {
@@ -123,6 +125,8 @@ namespace DurableTask.Netherite
                     {
                         throw new NotSupportedException("Netherite backend requires 64bit, but current process is 32bit.");
                     }
+
+                    this.memoryTracker = new MemoryTracker((long) (settings.InstanceCacheSizeMB ?? 400) * 1024 * 1024);
                 }
 
                 switch (this.configuredTransport)
@@ -199,6 +203,16 @@ namespace DurableTask.Netherite
             return false;
         }
 
+
+        public void WatchThreads(object _)
+        {
+            if (TrackedThreads.NumberThreads > 100)
+            {
+                this.TraceHelper.TraceError("Too many threads, shutting down", TrackedThreads.GetThreadNames());
+                Thread.Sleep(TimeSpan.FromSeconds(60));
+                System.Environment.Exit(333);
+            }
+        }
        
 
         /******************************/
@@ -213,13 +227,7 @@ namespace DurableTask.Netherite
                     return new MemoryStorage(this.TraceHelper.Logger);
 
                 case TransportConnectionString.StorageChoices.Faster:
-                    return new Faster.FasterStorage(
-                        this.Settings.ResolvedStorageConnectionString, 
-                        this.Settings.ResolvedPageBlobStorageConnectionString, 
-                        this.Settings.UseLocalDirectoryForPartitionStorage, 
-                        this.Settings.HubName, 
-                        this.PathPrefix,
-                        this.LoggerFactory);
+                    return new Faster.FasterStorage(this.Settings, this.PathPrefix, this.memoryTracker, this.LoggerFactory);
 
                 default:
                     throw new NotImplementedException("no such storage choice");
@@ -361,6 +369,11 @@ namespace DurableTask.Netherite
             {
                this.TraceHelper.TraceProgress("Starting Client");
 
+                if (this.Settings.TestHooks != null)
+                {
+                    this.TraceHelper.TraceProgress(this.Settings.TestHooks.ToString());
+                }
+
                 this.serviceShutdownSource = new CancellationTokenSource();
 
                 await this.taskHub.StartClientAsync();
@@ -424,6 +437,11 @@ namespace DurableTask.Netherite
                     this.TraceHelper.TraceWarning($"Ignoring configuration setting partitionCount={this.Settings.PartitionCount} because existing TaskHub has {this.NumberPartitions} partitions");
                 }
 
+                if (this.threadWatcher == null)
+                {
+                    this.threadWatcher = new Timer(this.WatchThreads, null, 0, 120000);
+                }
+
                 this.TraceHelper.TraceProgress($"Started partitionCount={this.NumberPartitions}");
 
                 return ServiceState.Full;
@@ -472,6 +490,9 @@ namespace DurableTask.Netherite
                     this.ActivityWorkItemQueue.Dispose();
                     this.OrchestrationWorkItemQueue.Dispose();
                 }
+
+                this.threadWatcher?.Dispose();
+                this.threadWatcher = null;
 
                 this.TraceHelper.TraceProgress("Stopped cleanly");
 

@@ -205,7 +205,7 @@ namespace DurableTask.Netherite
                 this.partitionEventId = partitionEventId;
                 this.client = client;
                 this.timeoutKey = (due, timeoutId);
-                this.continuation = new TaskCompletionSource<ClientEvent>();
+                this.continuation = new TaskCompletionSource<ClientEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
                 this.startTime = this.client.workItemStopwatch.Elapsed.TotalMilliseconds;
             }
 

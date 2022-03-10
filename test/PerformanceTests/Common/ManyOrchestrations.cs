@@ -21,26 +21,23 @@ namespace PerformanceTests
     using DurableTask.Core.Stats;
 
     /// <summary>
-    /// Http triggers for starting, awaiting, counting, or purging large numbers of orchestration instances
+    /// operations for starting, awaiting, counting, or purging large numbers of orchestration instances
     /// 
-    /// Example invocations:
-    ///     curl https://.../start -d HelloSequence.1000        launch 1000 HelloSequence instances, from the http trigger
-    ///     curl https://.../start -d HelloSequence.10000.200   launch 10000 HelloSequence instances, in portions of 200, from launcher entities
-    ///     curl https://.../start -d XYZ.10000.200/abc         launch 10000 XYZ instances, in portions of 200, with inputs abc
-    ///     curl https://.../await -d 1000                      waits for the 1000 instances to complete
-    ///     curl https://.../count -d 1000                      check the status of the 1000 instances and reports the (last completed - first started) time range
-    ///     curl https://.../purge -d 1000                      purges the 1000 instances
-    ///     curl https://.../query                              issues a query to check the status of all orchestrations
+    /// Example curl invocations:
+    ///     .../start -d HelloSequence.1000        launch 1000 HelloSequence instances, from the http trigger
+    ///     .../start -d HelloSequence.10000.200   launch 10000 HelloSequence instances, in portions of 200, from launcher entities
+    ///     .../start -d XYZ.10000.200/abc         launch 10000 XYZ instances, in portions of 200, with inputs abc
+    ///     .../await -d 1000                      waits for the 1000 instances to complete
+    ///     .../count -d 1000                      check the status of the 1000 instances and reports the (last completed - first started) time range
+    ///     .../purge -d 1000                      purges the 1000 instances
+    ///     .../query                              issues a query to check the status of all orchestrations
     ///     
     /// </summary>
     public static class ManyOrchestrations
     {
-        [FunctionName(nameof(Start))]
-        public static async Task<IActionResult> Start(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest req,
-            [DurableClient] IDurableClient client,
-            ILogger log)
-        {
+        
+        public static async Task<IActionResult> Start(HttpRequest req, IDurableClient client, ILogger log, string prefix)
+        { 
             try
             {
                 string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
@@ -88,7 +85,7 @@ namespace PerformanceTests
                     // start all the orchestrations
                     await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, (iteration) =>
                     {
-                        var orchestrationInstanceId = InstanceId(iteration);
+                        var orchestrationInstanceId = InstanceId(prefix, iteration);
                         log.LogInformation($"starting {orchestrationInstanceId}");
                         return client.StartNewAsync(orchestrationName, orchestrationInstanceId, input ?? iteration.ToString());
                     });
@@ -111,7 +108,7 @@ namespace PerformanceTests
                     {
                         int portion = Math.Min(portionSize.Value, (numberOrchestrations - pos));
                         var entityId = new EntityId(nameof(LauncherEntity), $"launcher{launcher / 100:D6}!{launcher % 100:D2}");
-                        tasks.Add(client.SignalEntityAsync(entityId, nameof(LauncherEntity.Launch), (orchestrationName, portion, pos, input)));
+                        tasks.Add(client.SignalEntityAsync(entityId, nameof(LauncherEntity.Launch), (orchestrationName, prefix, portion, pos, input)));
                         pos += portion;
                         launcher++;
                     }
@@ -126,11 +123,7 @@ namespace PerformanceTests
             }
         }
 
-        [FunctionName(nameof(Await))]
-        public static async Task<IActionResult> Await(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest req,
-            [DurableClient] IDurableClient client,
-            ILogger log)
+        public static async Task<IActionResult> Await(HttpRequest req, IDurableClient client, ILogger log, string prefix)
         {
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             int numberOrchestrations = int.Parse(requestBody);
@@ -151,7 +144,7 @@ namespace PerformanceTests
                 // wait for all the orchestrations
                 await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
                 {
-                    var orchestrationInstanceId = InstanceId(iteration);
+                    var orchestrationInstanceId = InstanceId(prefix, iteration);
                     IActionResult response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, deadline - DateTime.UtcNow);
 
                     if (response is ObjectResult objectResult
@@ -175,11 +168,7 @@ namespace PerformanceTests
             }
         }
 
-        [FunctionName(nameof(Count))]
-        public static async Task<IActionResult> Count(
-          [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "count")] HttpRequest req,
-          [DurableClient] IDurableClient client,
-          ILogger log)
+        public static async Task<IActionResult> Count(HttpRequest req, IDurableClient client, ILogger log, string prefix)
         {
             try
             {
@@ -189,7 +178,7 @@ namespace PerformanceTests
 
                 var queryCondition = new OrchestrationStatusQueryCondition()
                 {
-                    InstanceIdPrefix = "Orch",
+                    InstanceIdPrefix = prefix,
                 };
 
                 int completed = 0;
@@ -211,7 +200,7 @@ namespace PerformanceTests
                 log.LogWarning($"Checking the status of {numberOrchestrations} orchestration instances...");
                 await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
                 {
-                    var orchestrationInstanceId = InstanceId(iteration);
+                    var orchestrationInstanceId = InstanceId(prefix, iteration);
                     var status = await client.GetStatusAsync(orchestrationInstanceId);
 
                     lock (lockForUpdate)
@@ -270,17 +259,13 @@ namespace PerformanceTests
             }
         }
        
-        [FunctionName(nameof(Query))]
-        public static async Task<IActionResult> Query(
-          [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequest req,
-          [DurableClient] IDurableClient client,
-          ILogger log)
+        public static async Task<IActionResult> Query(HttpRequest req, IDurableClient client, ILogger log, string prefix)
         {
             try
             {
                 var queryCondition = new OrchestrationStatusQueryCondition()
                 {
-                    InstanceIdPrefix = "Orch",
+                    InstanceIdPrefix = prefix,
                 };
 
                 int completed = 0;
@@ -345,11 +330,7 @@ namespace PerformanceTests
             }
         }
 
-        [FunctionName(nameof(Purge))]
-        public static async Task<IActionResult> Purge(
-           [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest req,
-           [DurableClient] IDurableClient client,
-           ILogger log)
+        public static async Task<IActionResult> Purge(HttpRequest req, IDurableClient client, ILogger log, string prefix)
         {
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             int numberOrchestrations = int.Parse(requestBody);
@@ -370,7 +351,7 @@ namespace PerformanceTests
                 // start all the orchestrations
                 await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
                 {
-                    var orchestrationInstanceId = InstanceId(iteration);
+                    var orchestrationInstanceId = InstanceId(prefix, iteration);
                     var response = await client.PurgeInstanceHistoryAsync(orchestrationInstanceId);
                     
                     Interlocked.Add(ref deleted, response.InstancesDeleted);
@@ -390,15 +371,15 @@ namespace PerformanceTests
         // we can use this to run on a subset of the available partitions
         static readonly int? restrictedPlacement = null;
 
-        public static string InstanceId(int index)
+        public static string InstanceId(string prefix, int index)
         {
             if (restrictedPlacement == null)
             {
-                return $"Orch{index:X5}";
+                return $"{prefix}{index:X5}";
             }
             else
             {
-                return $"Orch{index:X5}!{(index % restrictedPlacement):D2}";
+                return $"{prefix}{index:X5}!{(index % restrictedPlacement):D2}";
             }
         }
     }

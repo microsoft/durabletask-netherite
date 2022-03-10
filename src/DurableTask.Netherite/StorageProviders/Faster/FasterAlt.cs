@@ -88,7 +88,13 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterAlt");
         }
 
+        public override (double totalSizeMB, int fillPercentage) CacheSizeInfo => (0.0,0);
+
         public override void InitMainSession()
+        {
+        }
+
+        public override void AdjustCacheSize()
         {
         }
 
@@ -122,7 +128,7 @@ namespace DurableTask.Netherite.Faster
             return Task.FromResult(dedupState.Positions);
         }
 
-        public override void CompletePending()
+        public override bool CompletePending()
         {
             var completed = this.pendingLoads.Where(p => p.Value.LoadTask.IsCompleted).ToList();
 
@@ -130,6 +136,8 @@ namespace DurableTask.Netherite.Faster
             {
                 this.ProcessCompletedLoad(kvp.Key, kvp.Value);
             }
+
+            return this.pendingLoads.Count == 0;
         }
 
         public override ValueTask ReadyToCompletePendingAsync()
@@ -227,6 +235,11 @@ namespace DurableTask.Netherite.Faster
             return this.RemoveCheckpointIntention(guid);
         }
 
+        public override void CheckInvariants()
+        {
+        }
+
+
         // perform a query
         public override Task QueryAsync(PartitionQueryEvent queryEvent, EffectTracker effectTracker)
         {
@@ -235,7 +248,7 @@ namespace DurableTask.Netherite.Faster
         }
 
         // kick off a read of a tracked object, completing asynchronously if necessary
-        public override void ReadAsync(PartitionReadEvent readEvent, EffectTracker effectTracker)
+        public override void Read(PartitionReadEvent readEvent, EffectTracker effectTracker)
         {
             if (readEvent.Prefetch.HasValue)
             {
@@ -403,7 +416,7 @@ namespace DurableTask.Netherite.Faster
 
         async Task<ToRead> LoadAsync(TrackedObjectKey key)
         {
-            this.detailTracer?.FasterStorageProgress($"FasterAlt.LoadAsync Called key={key}");
+            this.detailTracer?.FasterStorageProgress($"StorageOpCalled FasterAlt.LoadAsync key={key}");
 
             try
             {
@@ -434,7 +447,7 @@ namespace DurableTask.Netherite.Faster
                         toRead.NewValue = newLength > 0 ? reader.ReadBytes(newLength) : null;
                         toRead.Guid = new Guid(reader.ReadBytes(16));
 
-                        this.detailTracer?.FasterStorageProgress($"FasterAlt.LoadAsync Returned key={key}");
+                        this.detailTracer?.FasterStorageProgress($"StorageOpReturned FasterAlt.LoadAsync key={key}");
                         return toRead;
                     }
                     catch (StorageException) when (this.terminationToken.IsCancellationRequested)
@@ -443,10 +456,10 @@ namespace DurableTask.Netherite.Faster
                     }
                     catch (StorageException ex) when (BlobUtils.BlobDoesNotExist(ex))
                     {
-                        this.detailTracer?.FasterStorageProgress($"FasterAlt.LoadAsync Returned 404 key={key}");
+                        this.detailTracer?.FasterStorageProgress($"StorageOpReturned FasterAlt.LoadAsync got 404 key={key}");
                         return default;
                     }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.terminationToken) && numAttempts < BlobManager.MaxRetries)
+                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e, this.terminationToken) && numAttempts < BlobManager.MaxRetries)
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
                         this.blobManager?.HandleStorageError(nameof(LoadAsync), $"Could not read object from storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
@@ -468,7 +481,7 @@ namespace DurableTask.Netherite.Faster
 
         async Task StoreAsync(byte[] guid, ToWrite entry)
         {
-            this.detailTracer?.FasterStorageProgress($"FasterAlt.LoadAsync Called {entry.Key}");
+            this.detailTracer?.FasterStorageProgress($"StorageOpCalled FasterAlt.LoadAsync {entry.Key}");
 
             // assemble the bytes to write
             using var stream = new MemoryStream();
@@ -521,7 +534,7 @@ namespace DurableTask.Netherite.Faster
                     {
                         throw new OperationCanceledException("Partition was terminated.", this.terminationToken);
                     }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.blobManager.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
+                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e, this.blobManager.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
                         this.blobManager?.HandleStorageError(nameof(StoreAsync), $"could not write object to storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);

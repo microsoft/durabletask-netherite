@@ -64,6 +64,9 @@
         // set this to false to force replay on each orchestration step
         "CacheOrchestrationCursors": true,
 
+        // set this to control the max size of the orchestration instance cache
+        // "InstanceCacheSizeMB": "2",
+
         // set this to true to use the PSF support in Faster. Will soon be obsolete.
         "UsePSFQueries": "false",
 
@@ -77,6 +80,8 @@
         //"FaultInjectionProbability": 250,
         // set this to true to attach replay checker
         //"AttachReplayChecker": true,
+        // set this to true to attach replay checker
+        //"AttachCacheDebugger": true,
 
         // set this to "Scripted" to control the scenario with a partition script
         // or to "ClientOnly" to run only the client

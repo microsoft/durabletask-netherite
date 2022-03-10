@@ -14,7 +14,7 @@ namespace DurableTask.Netherite
     {
         const int batchsize = 11;
 
-        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition)
+        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Task exceptionTask, Partition partition)
         {
             int totalcount = 0;
 

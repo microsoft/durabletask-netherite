@@ -24,7 +24,7 @@ namespace DurableTask.Netherite
             trackedObject.Process(this, effects);
         }
 
-        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition)
+        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Task exceptionTask, Partition partition)
         {
             int batchCount = 0;
 

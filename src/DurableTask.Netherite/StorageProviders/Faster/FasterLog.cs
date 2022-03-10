@@ -11,29 +11,33 @@ namespace DurableTask.Netherite.Faster
 
     class FasterLog
     {
+        readonly BlobManager blobManager;
         readonly FASTER.core.FasterLog log;
         readonly CancellationToken terminationToken;
 
         public FasterLog(BlobManager blobManager, NetheriteOrchestrationServiceSettings settings)
         {
+            this.blobManager = blobManager;
             var eventlogsettings = blobManager.GetDefaultEventLogSettings(settings.UseSeparatePageBlobStorage, settings.FasterTuningParameters);
-
             this.log = new FASTER.core.FasterLog(eventlogsettings);
+            blobManager.PartitionErrorHandler.OnShutdown += this.Shutdown;
             this.terminationToken = blobManager.PartitionErrorHandler.Token;
+        }
+        
+        void Shutdown()
+        {
+            try
+            {
+                this.blobManager.TraceHelper.FasterProgress("Disposing FasterLog");
+                this.log.Dispose();
 
-            var _ = this.terminationToken.Register(
-              () => {
-                  try
-                  {
-                      this.log.Dispose();
-                      blobManager.EventLogDevice.Dispose();
-                  }
-                  catch (Exception e)
-                  {
-                      blobManager.TraceHelper.FasterStorageError("Disposing FasterLog", e);
-                  }
-              },
-              useSynchronizationContext: false);
+                this.blobManager.TraceHelper.FasterProgress("Disposing FasterLog Device");
+                this.blobManager.EventLogDevice.Dispose();
+            }
+            catch (Exception e)
+            {
+                this.blobManager.TraceHelper.FasterStorageError("Disposing FasterLog", e);
+            }
         }
 
         public long BeginAddress => this.log.BeginAddress;

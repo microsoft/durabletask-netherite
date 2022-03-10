@@ -78,6 +78,7 @@ namespace DurableTask.Netherite
             try
             {
                 this.currentUpdate.ApplyTo(trackedObject, this);
+                trackedObject.Version++;
             }
             catch (Exception exception) when (!Utils.IsFatal(exception))
             {
@@ -196,9 +197,10 @@ namespace DurableTask.Netherite
                             break;
                     }
 
+                    this.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, false);
+                    
                     if (isReady)
                     {
-                        this.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, readEvent, EventTraceHelper.EventCategory.ReadEvent, false);
                         readEvent.Fire(this.Partition);
                     }
                 }
@@ -220,7 +222,7 @@ namespace DurableTask.Netherite
             }
         }
         
-        public async Task ProcessQueryResultAsync(PartitionQueryEvent queryEvent, IAsyncEnumerable<OrchestrationState> instances)
+        public async Task ProcessQueryResultAsync(PartitionQueryEvent queryEvent, IAsyncEnumerable<OrchestrationState> instances, Task exceptionTask = null)
         {
             (long commitLogPosition, long inputQueuePosition) = this.GetPositions();
             this.Assert(!this.IsReplaying, "query events are never part of the replay");
@@ -231,7 +233,7 @@ namespace DurableTask.Netherite
                 try
                 {
                     this.EventDetailTracer?.TraceEventProcessingStarted(commitLogPosition, queryEvent, EventTraceHelper.EventCategory.QueryEvent, false);
-                    await queryEvent.OnQueryCompleteAsync(instances, this.Partition);
+                    await queryEvent.OnQueryCompleteAsync(instances, exceptionTask, this.Partition);
                 }
                 catch (OperationCanceledException)
                 {

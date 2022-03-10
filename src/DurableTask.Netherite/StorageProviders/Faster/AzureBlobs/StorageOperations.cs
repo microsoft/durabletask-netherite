@@ -47,6 +47,8 @@ namespace DurableTask.Netherite.Faster
                             await this.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
                         }
 
+                        this.PartitionErrorHandler.Token.ThrowIfCancellationRequested();
+
                         this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) started attempt {numAttempts}; target={target} {data}");
 
                         stopwatch.Restart();
@@ -67,9 +69,10 @@ namespace DurableTask.Netherite.Faster
 
                         return;
                     }
-                    catch (StorageException e) when (BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
+                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
                     {
                         stopwatch.Stop();
+
                         if (BlobUtils.IsTimeout(e))
                         {
                             this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) timed out on attempt {numAttempts} after {stopwatch.Elapsed.TotalSeconds:F1}s, retrying now; target={target} {data}");
@@ -147,7 +150,7 @@ namespace DurableTask.Netherite.Faster
 
                     return;
                 }
-                catch (StorageException e) when (numAttempts < BlobManager.MaxRetries
+                catch (Exception e) when (numAttempts < BlobManager.MaxRetries
                     && BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token))
                 {
                     stopwatch.Stop();

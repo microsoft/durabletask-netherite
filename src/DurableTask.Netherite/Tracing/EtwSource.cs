@@ -185,11 +185,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(226, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, Details, ReplacedBy, AppName, ExtensionVersion);
         }
 
-        [Event(227, Level = EventLevel.Verbose, Version = 2)]
-        public void InstanceUpdated(string Account, string TaskHub, int PartitionId, string InstanceId, string ExecutionId, string PartitionEventId, string RuntimeStatus, int NewEventCount, int EventCount, string NewEvents, string EventType, int Episode, string AppName, string ExtensionVersion)
+        [Event(227, Level = EventLevel.Verbose, Version = 3)]
+        public void InstanceUpdated(string Account, string TaskHub, int PartitionId, string InstanceId, string ExecutionId, string PartitionEventId, string RuntimeStatus, int NewEventCount, int EventCount, long HistorySize, string NewEvents, string EventType, int Episode, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(227, Account, TaskHub, PartitionId, InstanceId, ExecutionId, PartitionEventId, RuntimeStatus, NewEventCount, EventCount, NewEvents, EventType, Episode, AppName, ExtensionVersion);
+            this.WriteEvent(227, Account, TaskHub, PartitionId, InstanceId, ExecutionId, PartitionEventId, RuntimeStatus, NewEventCount, EventCount, HistorySize, NewEvents, EventType, Episode, AppName, ExtensionVersion);
         }
 
         [Event(228, Level = EventLevel.Verbose, Version = 2)]
@@ -250,11 +250,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(245, Account, TaskHub, PartitionId, PartitionEventId, ReportedLocalLoad, Pending, Backlog, Remotes, Distribution, AppName, ExtensionVersion);
         }
 
-        [Event(246, Level = EventLevel.Informational, Version = 2)]
-        public void PartitionLoadPublished(string Account, string TaskHub, int PartitionId, int WorkItems, int Activities, int Timers, int Requests, int Outbox, long Instances, string NextTimer, string WorkerId, string LatencyTrend, double MissRate, long InputQueuePosition, long CommitLogPosition, string AppName, string ExtensionVersion)
+        [Event(246, Level = EventLevel.Informational, Version = 3)]
+        public void PartitionLoadPublished(string Account, string TaskHub, int PartitionId, int WorkItems, int Activities, int Timers, int Requests, int Outbox, long Instances, string NextTimer, string WorkerId, string LatencyTrend, int CachePct, double CacheMB, double MissRate, long InputQueuePosition, long CommitLogPosition, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(246, Account, TaskHub, PartitionId, WorkItems, Activities, Timers, Requests, Outbox, Instances, NextTimer, WorkerId, LatencyTrend, MissRate, InputQueuePosition, CommitLogPosition, AppName, ExtensionVersion);
+            this.WriteEvent(246, Account, TaskHub, PartitionId, WorkItems, Activities, Timers, Requests, Outbox, Instances, NextTimer, WorkerId, LatencyTrend, CachePct, CacheMB, MissRate, InputQueuePosition, CommitLogPosition, AppName, ExtensionVersion);
         }
 
         [Event(247, Level = EventLevel.Verbose, Version = 2)]
@@ -376,6 +376,13 @@ namespace DurableTask.Netherite
         {
             SetCurrentThreadActivityId(serviceInstanceId);
             this.WriteEvent(267, Account, TaskHub, PartitionId, Details, AppName, ExtensionVersion);
+        }
+
+        [Event(268, Level = EventLevel.Informational, Version = 1)]
+        public void FasterCompactionProgress(string Account, string TaskHub, int PartitionId, string Details, string Operation, long Begin, long SafeReadOnly, long Tail, long MinimalSize, long CompactionAreaSize, long ElapsedMs, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(266, Account, TaskHub, PartitionId, Details, Operation, Begin, SafeReadOnly, Tail, MinimalSize, CompactionAreaSize, ElapsedMs, AppName, ExtensionVersion);
         }
 
         // ----- EventHubs Transport

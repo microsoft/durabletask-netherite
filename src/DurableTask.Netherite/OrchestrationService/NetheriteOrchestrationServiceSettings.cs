@@ -91,6 +91,11 @@ namespace DurableTask.Netherite
         public int ActivityDispatcherCount { get; set; } = 1;
 
         /// <summary>
+        /// Limit for how much memory on each node should be used for caching instance states and histories
+        /// </summary>
+        public int? InstanceCacheSizeMB { get; set; } = null;
+
+        /// <summary>
         /// Gets or sets the partition management option
         /// </summary>
         [JsonConverter(typeof(StringEnumConverter))]

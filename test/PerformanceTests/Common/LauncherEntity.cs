@@ -12,13 +12,13 @@ namespace PerformanceTests
 
     public class LauncherEntity
     {
-        public void Launch((string orchestrationName, int numberOrchestrations, int offset, string input) input)
+        public void Launch((string orchestrationName, string prefix, int numberOrchestrations, int offset, string input) input)
         {
             // start all the orchestrations
             for (int iteration = 0; iteration < input.numberOrchestrations; iteration++)
             {
                 int globalIteration = iteration + input.offset;
-                var orchestrationInstanceId = ManyOrchestrations.InstanceId(globalIteration);
+                var orchestrationInstanceId = ManyOrchestrations.InstanceId(input.prefix, globalIteration);
                 Entity.Current.StartNewOrchestration(input.orchestrationName, input.input ?? globalIteration.ToString(), orchestrationInstanceId);
             };
         }

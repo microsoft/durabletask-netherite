@@ -22,6 +22,9 @@ namespace DurableTask.Netherite
         public OrchestrationState OrchestrationState { get; set; }
 
         [DataMember]
+        public long OrchestrationStateSize { get; set; }
+
+        [DataMember]
         public List<WaitRequestReceived> Waiters { get; set; }
 
         [IgnoreDataMember]
@@ -31,6 +34,8 @@ namespace DurableTask.Netherite
         {
             return $"Instance InstanceId={this.InstanceId} Status={this.OrchestrationState?.OrchestrationStatus}";
         }
+
+        public override long EstimatedSize => 60 + 2 * (this.InstanceId?.Length ?? 0) + this.OrchestrationStateSize;
 
         public override void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
@@ -59,6 +64,7 @@ namespace DurableTask.Netherite
                     CompletedTime = Core.Common.DateTimeUtils.MinDateTime,
                     ScheduledStartTime = ee.ScheduledStartTime
                 };
+                this.OrchestrationStateSize = DurableTask.Netherite.SizeUtils.GetEstimatedSize(this.OrchestrationState);
 
                 // queue the message in the session, or start a timer if delayed
                 if (!ee.ScheduledStartTime.HasValue)
@@ -115,6 +121,7 @@ namespace DurableTask.Netherite
             }
 
             this.OrchestrationState.LastUpdatedTime = evt.Timestamp;
+            this.OrchestrationStateSize = DurableTask.Netherite.SizeUtils.GetEstimatedSize(this.OrchestrationState);
 
             // if the orchestration is complete, notify clients that are waiting for it
             if (this.Waiters != null)
@@ -223,8 +230,11 @@ namespace DurableTask.Netherite
         public override void Process(PurgeBatchIssued purgeBatchIssued, EffectTracker effects)
         {
             OrchestrationState state = this.OrchestrationState;
-            if (this.OrchestrationState != null
-                && purgeBatchIssued.InstanceQuery.Matches(this.OrchestrationState))
+            bool matchesQuery = (state != null) && purgeBatchIssued.InstanceQuery.Matches(state);
+
+            effects.EventDetailTracer?.TraceEventProcessingDetail($"status={state?.OrchestrationStatus} matchesQuery={matchesQuery}");
+
+            if (matchesQuery)
             {
                 purgeBatchIssued.Purged.Add(this.InstanceId);
 
