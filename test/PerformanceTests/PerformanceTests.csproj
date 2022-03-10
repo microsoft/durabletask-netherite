@@ -11,9 +11,7 @@
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.EventHubs" Version="4.2.0" />
     <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="3.0.13" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.Storage" Version="4.0.4" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\DurableTask.Netherite.AzureFunctions\DurableTask.Netherite.AzureFunctions.csproj" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Netherite.AzureFunctions" Version="0.7.0-beta" />
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">
