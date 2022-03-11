@@ -221,6 +221,7 @@ namespace DurableTask.Netherite.Faster
             {
                 var positionsReceived = new PositionsReceived()
                 {
+                    PartitionId = this.partition.PartitionId,
                     RequestId = Guid.NewGuid(),
                     ReceivePositions = new (long, int)?[numberPartitions],
                     NextNeededAck = new (long, int)?[numberPartitions],

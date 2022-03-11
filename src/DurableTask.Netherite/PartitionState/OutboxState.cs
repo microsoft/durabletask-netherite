@@ -193,21 +193,19 @@ namespace DurableTask.Netherite
                         }
                     }
                 }
-                else
+
+                int currentAckCount = Interlocked.Increment(ref this.numAcks);
+
+                if (currentAckCount == this.TotalAcksExpected)
                 {
-                    int currentAckCount = Interlocked.Increment(ref this.numAcks);
+                    this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Outbox has finished sending messages and responses for event id={this.SendingEventId}");
 
-                    if (currentAckCount == this.TotalAcksExpected)
+                    this.Partition.SubmitEvent(new SendConfirmed()
                     {
-                        this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Outbox has finished sending messages and responses for event id={this.SendingEventId}");
-
-                        this.Partition.SubmitEvent(new SendConfirmed()
-                        {
-                            PartitionId = this.Partition.PartitionId,
-                            Position = Position,
-                            SendingEventId = this.SendingEventId,
-                        });
-                    }
+                        PartitionId = this.Partition.PartitionId,
+                        Position = Position,
+                        SendingEventId = this.SendingEventId,
+                    });
                 }
             }
         }

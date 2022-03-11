@@ -110,6 +110,7 @@ namespace DurableTask.Netherite
 
         void Process(PositionsReceived evt)
         {
+            var previousEntry = this.PositionsReceived[evt.PartitionId];
             this.PositionsReceived[evt.PartitionId] = evt;
             bool sendAck = false;
 
@@ -127,6 +128,11 @@ namespace DurableTask.Netherite
                         break;
                     }
                 }
+            }
+
+            if (evt.DifferentFrom(previousEntry))
+            {
+                this.traceHelper.TraceProgress($"PositionsReceived Part{evt.PartitionId:D2} needs=[{string.Join(",", evt.NextNeededAck.Select(e => e.HasValue ? $"{e.Value.Item1}" : ""))}] received=[{string.Join(",", evt.ReceivePositions.Select(e => e.HasValue ? $"{e.Value.Item1}" : ""))}] sendAck={sendAck}");
             }
 
             if (sendAck)

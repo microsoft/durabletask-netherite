@@ -26,6 +26,32 @@ namespace PerformanceTests
         /// <returns>true if the event hub was created.</returns>
         public static async Task<bool> EnsureEventHubExistsAsync(string connectionString, string eventHubName, int partitionCount)
         {
+            var response = await SendHttpRequest(connectionString, eventHubName, partitionCount);
+            if (response.StatusCode != System.Net.HttpStatusCode.Conflict)
+            {
+                response.EnsureSuccessStatusCode();
+            }
+            return response.StatusCode == System.Net.HttpStatusCode.Created;
+        }
+
+        /// <summary>
+        /// Deletes a particular event hub if it exists.
+        /// </summary>
+        /// <param name="connectionString">The SAS connection string for the namespace.</param>
+        /// <param name="eventHubName">The name of the event hub.</param>
+        /// <returns>true if the event hub was deleted.</returns>
+        public static async Task<bool> DeleteEventHubIfExistsAsync(string connectionString, string eventHubName)
+        {
+            var response = await SendHttpRequest(connectionString, eventHubName, null);
+            if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+            {
+                response.EnsureSuccessStatusCode();
+            }
+            return response.StatusCode == System.Net.HttpStatusCode.OK;
+        }
+
+        static Task<HttpResponseMessage> SendHttpRequest(string connectionString, string eventHubName, int? partitionCount)
+        {
             // parse the eventhubs connection string to extract various parameters
             var properties = Azure.Messaging.EventHubs.EventHubsConnectionStringProperties.Parse(connectionString);
             string resource = properties.FullyQualifiedNamespace;
@@ -49,33 +75,29 @@ namespace PerformanceTests
                 return sasToken;
             }
 
-            // send an http request to create the eventhub
+            // send an http request to create or delete the eventhub
             HttpClient client = new HttpClient();
             var request = new HttpRequestMessage();
             request.RequestUri = new Uri($"https://{resource}/{eventHubName}?timeout=60&api-version=2014-01");
-            request.Method = HttpMethod.Put;
-            request.Content = new StringContent(@" 
+            request.Method = partitionCount.HasValue ? HttpMethod.Put : HttpMethod.Delete;
+            if (partitionCount.HasValue)
+            {
+                request.Content = new StringContent(@" 
                             <entry xmlns='http://www.w3.org/2005/Atom'>  
                               <content type='application/xml'>  
                                 <EventHubDescription xmlns:i='http://www.w3.org/2001/XMLSchema-instance' xmlns='http://schemas.microsoft.com/netservices/2010/10/servicebus/connect'>  
                                   <MessageRetentionInDays>1</MessageRetentionInDays>  
-                                  <PartitionCount>" + partitionCount + @"</PartitionCount>  
+                                  <PartitionCount>" + partitionCount.Value + @"</PartitionCount>  
                                 </EventHubDescription>  
                               </content>  
                             </entry>",
-                            Encoding.UTF8,
-                            "application/xml");
+                                Encoding.UTF8,
+                                "application/xml");
+            }
             request.Headers.Add("Authorization", sasToken);
             request.Headers.Add("Host", resource);
 
-            var response = await client.SendAsync(request);
-
-            if (response.StatusCode != System.Net.HttpStatusCode.Conflict)
-            {
-                response.EnsureSuccessStatusCode();
-            }
-
-            return response.StatusCode == System.Net.HttpStatusCode.Created;         
+            return client.SendAsync(request);
         }
     }
 }
