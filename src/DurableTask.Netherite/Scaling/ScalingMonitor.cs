@@ -210,6 +210,11 @@ namespace DurableTask.Netherite.Scaling
             }
         }
 
+        /// <summary>
+        /// Determines if a taskhub is busy, based on load information for the partitions and on the eventhubs queue positions
+        /// </summary>
+        /// <param name="loadInformation"></param>
+        /// <returns>null if the hub is idle, or a string describing the current non-idle state</returns>
         public async Task<string> TaskHubIsIdleAsync(Dictionary<uint, PartitionLoadInfo> loadInformation)
         {
             // first, check if any of the partitions have queued work or are scheduled to wake up
@@ -225,21 +230,24 @@ namespace DurableTask.Netherite.Scaling
             // next, check if any of the entries are not current, in the sense that their input queue position
             // does not match the latest queue position
 
-            long[] positions;
-
             if (this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
-                (positions,_,_) = await EventHubs.EventHubsConnections.GetPartitionInfo(this.eventHubsConnectionString, EventHubsTransport.PartitionHubs).ConfigureAwait(false);
+                List<long> positions = await EventHubs.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHub).ConfigureAwait(false);
 
-                for (uint i = 0; i < positions.Length; i++)
+                if (positions == null)
                 {
-                    if (!loadInformation.TryGetValue(i, out var loadInfo))
+                    return "eventhubs is missing";
+                }
+
+                for (int i = 0; i < positions.Count; i++)
+                {
+                    if (!loadInformation.TryGetValue((uint) i, out var loadInfo))
                     {
                         return $"P{i:D2} has no load information published yet";
                     }
                     if (positions[i] > loadInfo.InputQueuePosition)
                     {
-                        return $"P{i:D2} has input queue position {loadInfo.InputQueuePosition} which is {positions[i] - loadInfo.InputQueuePosition} behind latest position {positions[i]}";
+                        return $"P{i:D2} has input queue position {loadInfo.InputQueuePosition} which is {positions[(int)i] - loadInfo.InputQueuePosition} behind latest position {positions[i]}";
                     }
                 }
             }

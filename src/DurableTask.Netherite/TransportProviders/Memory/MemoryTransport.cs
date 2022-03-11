@@ -190,7 +190,7 @@ namespace DurableTask.Netherite.Emulated
                 {
                     errorHandler.OnShutdown += () => this.RecoveryHandler(epoch);
                 }
-                var nextInputQueuePosition = await partitions[i].CreateOrRestoreAsync(errorHandler, 0);
+                var nextInputQueuePosition = await partitions[i].CreateOrRestoreAsync(errorHandler, Guid.NewGuid().ToString());
 
                 // start delivering events to the partition
                 partitionQueues[i].FirstInputQueuePosition = nextInputQueuePosition;

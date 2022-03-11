@@ -91,7 +91,7 @@ namespace DurableTask.Netherite.Faster
             await what;
         }
 
-        public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, long firstInputQueuePosition)
+        public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint)
         {
             this.partition = partition;
             this.terminationToken = errorHandler.Token;
@@ -150,7 +150,7 @@ namespace DurableTask.Netherite.Faster
                     this.TraceHelper.FasterProgress("Creating store");
 
                     // this is a fresh partition
-                    await this.TerminationWrapper(this.storeWorker.Initialize(this.log.BeginAddress, firstInputQueuePosition));
+                    await this.TerminationWrapper(this.storeWorker.Initialize(this.log.BeginAddress, inputQueueFingerprint));
 
                     await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("initial checkpoint").AsTask());
                     this.TraceHelper.FasterStoreCreated(this.storeWorker.InputQueuePosition, stopwatch.ElapsedMilliseconds);
@@ -165,11 +165,13 @@ namespace DurableTask.Netherite.Faster
             {
                 this.TraceHelper.FasterProgress("Loading checkpoint");
 
+                bool resendAll;
+
                 try
                 {
                     // we are recovering the last checkpoint of the store
-                    (long commitLogPosition, long inputQueuePosition) = await this.TerminationWrapper(this.store.RecoverAsync());
-                    this.storeWorker.SetCheckpointPositionsAfterRecovery(commitLogPosition, inputQueuePosition);
+                    (long commitLogPosition, long inputQueuePosition, resendAll) = await this.TerminationWrapper(this.store.RecoverAsync(inputQueueFingerprint));
+                    this.storeWorker.SetCheckpointPositionsAfterRecovery(commitLogPosition, inputQueuePosition, inputQueueFingerprint);
 
                     // truncate the log in case the truncation did not commit after the checkpoint was taken
                     this.logWorker.SetLastCheckpointPosition(commitLogPosition);
@@ -207,7 +209,7 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 // restart pending actitivities, timers, work items etc.
-                await this.TerminationWrapper(this.storeWorker.RestartThingsAtEndOfRecovery());
+                this.storeWorker.RestartThingsAtEndOfRecovery(inputQueueFingerprint, resendAll);
 
                 this.TraceHelper.FasterProgress("Recovery complete");
             }

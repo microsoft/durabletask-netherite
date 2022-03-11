@@ -51,25 +51,8 @@ namespace DurableTask.Netherite
 
         public static string GetWorkItemId(uint partition, long session, long position) => $"{partition:D2}S{session}P{position}";
 
-        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
-        {
-            // handle all steps that were awaiting persistence
-            foreach(var kvp in this.StepsAwaitingPersistence)
-            {
-                this.ConfirmDurable(kvp.Value);
-            }
-
-            if (this.Sessions.Count > 0)
-            {
-                evt.NumSessions = this.Sessions.Count;
-                evt.MaxSessionDequeueCount = this.Sessions.Values.Select(val => val.DequeueCount).Max() + 1;
-            }
-        }
-
         public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            effects.Partition.Assert(evt.NumSessions == this.Sessions.Count, "mismatching count in SessionsState.RecoveryCompleted");
-
             // restart work items for all sessions
             foreach (var kvp in this.Sessions)
             {
@@ -78,6 +61,14 @@ namespace DurableTask.Netherite
                 if (!effects.IsReplaying) // during replay, we don't start work items until end of recovery
                 {
                     new OrchestrationMessageBatch(kvp.Key, kvp.Value, this.Partition, evt);
+                }
+            }
+
+            if (!effects.IsReplaying)
+            {
+                foreach (var kvp in this.StepsAwaitingPersistence)
+                {
+                    this.ConfirmDurable(kvp.Value);
                 }
             }
         }

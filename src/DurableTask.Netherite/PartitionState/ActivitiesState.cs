@@ -59,24 +59,8 @@ namespace DurableTask.Netherite
 
         const double SMOOTHING_FACTOR = 0.1;
 
-        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
-        {
-            if (this.LocalBacklog.Count > 0)
-            {
-                this.ScheduleNextOffloadDecision(TimeSpan.Zero);
-            }
-
-            if (this.Pending.Count > 0)
-            {
-                evt.NumActivities = this.Pending.Count;
-                evt.MaxActivityDequeueCount = this.Pending.Values.Select(val => val.DequeueCount).Max() + 1;
-            }
-        }
-
         public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            effects.Partition.Assert(this.Pending.Count == evt.NumActivities, "count does not match in ActivitiesState.Process(RecoveryCompleted), actual={this.Pending.Count}");
-
             foreach (var kvp in this.Pending)
             {
                 kvp.Value.DequeueCount++;
@@ -84,6 +68,14 @@ namespace DurableTask.Netherite
                 if (!effects.IsReplaying)
                 {
                     this.Partition.EnqueueActivityWorkItem(new ActivityWorkItem(this.Partition, kvp.Key, kvp.Value.Message, kvp.Value.OriginWorkItemId, evt));
+                }
+            }
+
+            if (!effects.IsReplaying)
+            {
+                if (this.LocalBacklog.Count > 0)
+                {
+                    this.ScheduleNextOffloadDecision(TimeSpan.Zero);
                 }
             }
         }

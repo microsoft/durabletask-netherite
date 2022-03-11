@@ -22,12 +22,15 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Queries);
 
-        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
+        public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            // reissue queries that did not complete prior to crash/recovery
-            foreach (var kvp in this.PendingQueries)
+            if (!effects.IsReplaying)
             {
-                this.Partition.SubmitParallelEvent(new InstanceQueryEvent(kvp.Value));
+                // reissue queries that did not complete prior to crash/recovery
+                foreach (var kvp in this.PendingQueries)
+                {
+                    this.Partition.SubmitParallelEvent(new InstanceQueryEvent(kvp.Value));
+                }
             }
         }
 

@@ -145,6 +145,7 @@ namespace DurableTask.Netherite.Faster
             2, //0.7.0-beta changed singleton storage, and adds dequeue count
             3, //changed organization of files
             4, //use Faster v2, reduced page size
+            5, //support EventHub recovery
         }; 
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)

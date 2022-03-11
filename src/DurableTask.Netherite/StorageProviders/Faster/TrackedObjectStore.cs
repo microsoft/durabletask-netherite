@@ -15,7 +15,7 @@ namespace DurableTask.Netherite.Faster
     {
         public abstract void InitMainSession();
 
-        public abstract Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync();
+        public abstract Task<(long commitLogPosition, long inputQueuePosition, bool resendAll)> RecoverAsync(string fingerprint);
 
         public abstract bool CompletePending();
 
@@ -23,13 +23,13 @@ namespace DurableTask.Netherite.Faster
 
         public abstract void AdjustCacheSize();
 
-        public abstract bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, out Guid checkpointGuid);
+        public abstract bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, out Guid checkpointGuid);
 
         public abstract Task RemoveObsoleteCheckpoints();
 
         public abstract Guid? StartIndexCheckpoint();
 
-        public abstract Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, long? shiftBeginAddress);
+        public abstract Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, long? shiftBeginAddress);
 
         public abstract ValueTask CompleteCheckpointAsync();
 

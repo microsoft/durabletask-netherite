@@ -22,6 +22,7 @@ namespace DurableTask.Netherite.Faster
 
         bool isShuttingDown;
 
+        public string InputQueueFingerprint { get; private set; }
         public long InputQueuePosition { get; private set; }
         public long CommitLogPosition { get; private set; }
 
@@ -70,11 +71,12 @@ namespace DurableTask.Netherite.Faster
             this.effectTracker = new TrackedObjectStoreEffectTracker(this.partition, this, store);
         }
 
-        public async Task Initialize(long initialCommitLogPosition, long initialInputQueuePosition)
+        public async Task Initialize(long initialCommitLogPosition, string fingerprint)
         {
             this.partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
-            this.InputQueuePosition = initialInputQueuePosition;
+            this.InputQueueFingerprint = fingerprint;
+            this.InputQueuePosition = 0;
             this.CommitLogPosition = initialCommitLogPosition;
            
             this.store.InitMainSession();
@@ -98,10 +100,11 @@ namespace DurableTask.Netherite.Faster
             var pokeLoop = this.PokeLoop();
         }
 
-        public void SetCheckpointPositionsAfterRecovery(long commitLogPosition, long inputQueuePosition)
+        public void SetCheckpointPositionsAfterRecovery(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)
         {
             this.CommitLogPosition = commitLogPosition;
             this.InputQueuePosition = inputQueuePosition;
+            this.InputQueueFingerprint = inputQueueFingerprint;
 
             this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
             this.lastCheckpointedInputQueuePosition = this.InputQueuePosition;
@@ -114,7 +117,7 @@ namespace DurableTask.Netherite.Faster
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
 
-            if (this.store.TakeFullCheckpoint(this.CommitLogPosition, this.InputQueuePosition, out var checkpointGuid))
+            if (this.store.TakeFullCheckpoint(this.CommitLogPosition, this.InputQueuePosition, this.InputQueueFingerprint, out var checkpointGuid))
             {
                 this.traceHelper.FasterCheckpointStarted(checkpointGuid, reason, this.store.StoreStats.Get(), this.CommitLogPosition, this.InputQueuePosition);
 
@@ -388,7 +391,7 @@ namespace DurableTask.Netherite.Faster
                         await this.pendingIndexCheckpoint; // observe exceptions here
 
                         // the store checkpoint is next
-                        var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, null);
+                        var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, this.InputQueueFingerprint, null);
                         if (token.HasValue)
                         {
                             this.pendingIndexCheckpoint = null;
@@ -528,7 +531,7 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper.FasterLogReplayed(this.CommitLogPosition, this.InputQueuePosition, this.numberEventsSinceLastCheckpoint, this.CommitLogPosition - startPosition, this.store.StoreStats.Get(), stopwatch.ElapsedMilliseconds);
         }
 
-        public async Task RestartThingsAtEndOfRecovery()
+        public void RestartThingsAtEndOfRecovery(string inputQueueFingerprint, bool resendAll)
         {
             this.traceHelper.FasterProgress("Restarting tasks");
 
@@ -541,22 +544,11 @@ namespace DurableTask.Netherite.Faster
                 RecoveredPosition = this.CommitLogPosition,
                 Timestamp = DateTime.UtcNow,
                 WorkerId = this.partition.Settings.WorkerId,
+                InputQueueFingerprint = inputQueueFingerprint,
+                ResendAll = resendAll,
             };
 
-            // restart pending actitivities, timers, work items etc.
-            using (EventTraceContext.MakeContext(this.CommitLogPosition, string.Empty))
-            {
-                foreach (var key in TrackedObjectKey.GetSingletons())
-                {
-                    var target = (TrackedObject)await this.store.ReadAsync(key, this.effectTracker);
-                    target.OnRecoveryCompleted(this.effectTracker, recoveryCompletedEvent);
-                }
-            }
-
-            if (recoveryCompletedEvent.RequiresStateUpdate)
-            {
-                this.partition.SubmitEvent(recoveryCompletedEvent);
-            }
+            this.partition.SubmitEvent(recoveryCompletedEvent);
         }
 
         public async ValueTask ReplayUpdate(PartitionUpdateEvent partitionUpdateEvent)

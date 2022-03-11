@@ -30,12 +30,15 @@ namespace DurableTask.Netherite
             return $"Timers ({this.PendingTimers.Count} pending) next={this.SequenceNumber:D6}";
         }
 
-        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
+        public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            // restore the pending timers
-            foreach (var kvp in this.PendingTimers)
+            if (!effects.IsReplaying)
             {
-                this.Schedule(kvp.Key, kvp.Value.due, kvp.Value.message, kvp.Value.workItemId, effects);
+                // restore the pending timers
+                foreach (var kvp in this.PendingTimers)
+                {
+                    this.Schedule(kvp.Key, kvp.Value.due, kvp.Value.message, kvp.Value.workItemId, effects);
+                }
             }
         }
 

@@ -22,12 +22,15 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Prefetch);
 
-        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
+        public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            // reissue prefetch tasks for what did not complete prior to crash/recovery
-            foreach (var kvp in this.PendingPrefetches)
+            if (!effects.IsReplaying)
             {
-                this.Partition.SubmitParallelEvent(new InstancePrefetch(kvp.Value));
+                // reissue prefetch tasks for what did not complete prior to crash/recovery
+                foreach (var kvp in this.PendingPrefetches)
+                {
+                    this.Partition.SubmitParallelEvent(new InstancePrefetch(kvp.Value));
+                }
             }
         }
 

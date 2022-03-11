@@ -66,6 +66,8 @@ namespace DurableTask.Netherite.EventHubs
             this.workerId = workerId;
         }
 
+        public string Fingerprint => this.connections.Fingerprint;
+
         public void StartEventProcessing(NetheriteOrchestrationServiceSettings settings, CloudBlockBlob partitionScript)
         {
             if (!partitionScript.Exists())
@@ -81,7 +83,7 @@ namespace DurableTask.Netherite.EventHubs
             DateTime scenarioStartTimeUtc = partitionScript.Properties.LastModified.Value.UtcDateTime;
 
             // the number of partitions matters only if the script contains wildcards
-            this.numberOfPartitions = this.parameters.StartPositions.Length;
+            this.numberOfPartitions = this.parameters.PartitionCount;
             for (var partitionIndex = 0; partitionIndex < this.numberOfPartitions; partitionIndex++)
             {
                 this.partitionInstances.Add(null);
@@ -249,7 +251,7 @@ namespace DurableTask.Netherite.EventHubs
 
                     var errorHandler = this.host.host.CreateErrorHandler(this.partitionId);
 
-                    var nextPacketToReceive = await this.partition.CreateOrRestoreAsync(errorHandler, this.host.parameters.StartPositions[Convert.ToInt32(this.partitionId)]).ConfigureAwait(false);
+                    var nextPacketToReceive = await this.partition.CreateOrRestoreAsync(errorHandler, this.host.Fingerprint).ConfigureAwait(false);
                     this.host.logger.LogInformation("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) started partition, next expected packet is #{nextSeqno}", this.host.eventHubPath, this.partitionId, this.Incarnation, nextPacketToReceive);
 
                     this.partitionEventLoop = Task.Run(() => this.PartitionEventLoop(nextPacketToReceive));

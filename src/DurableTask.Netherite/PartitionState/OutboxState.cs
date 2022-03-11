@@ -25,7 +25,7 @@ namespace DurableTask.Netherite
 
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Outbox);
 
-        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
+        public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
             // resend all pending
             foreach (var kvp in this.Outbox)
@@ -34,11 +34,14 @@ namespace DurableTask.Netherite
                 kvp.Value.Position = kvp.Key;
                 kvp.Value.Partition = this.Partition;
 
-                if (!kvp.Value.SendWasConfirmed || evt.ResendConfirmedMessages)
+                if (!kvp.Value.SendWasConfirmed || evt.ResendAll)
                 {
-                    // resend (anything we have recovered is of course persisted)
-                    effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent batch {kvp.Key:D10} ({kvp.Value.OutgoingMessages.Count} messages, {kvp.Value.OutgoingResponses.Count} responses)");
-                    this.Send(kvp.Value);
+                    kvp.Value.SendWasConfirmed = false;
+                    if (!effects.IsReplaying)
+                    {
+                        this.Send(kvp.Value);
+                        effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent batch {kvp.Key:D10} ({kvp.Value.OutgoingMessages.Count} messages, {kvp.Value.OutgoingResponses.Count} responses)");
+                    }
                 }
             }
         }

@@ -66,7 +66,7 @@ namespace DurableTask.Netherite.Scaling
                 var blob = this.blobContainer.GetBlockBlobReference("taskhubparameters.json");
                 var jsonText = await blob.DownloadTextAsync().ConfigureAwait(false);
                 var info = JsonConvert.DeserializeObject<EventHubs.TaskhubParameters>(jsonText);
-                this.numPartitions = info.StartPositions.Length;
+                this.numPartitions = info.PartitionCount;
             }
 
             async Task<(uint,PartitionLoadInfo)> DownloadPartitionInfo(uint partitionId)
