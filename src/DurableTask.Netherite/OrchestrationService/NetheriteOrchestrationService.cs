@@ -161,7 +161,7 @@ namespace DurableTask.Netherite
 
                 this.TraceHelper.TraceProgress(
                     $"Configured trace generation limits: general={settings.LogLevelLimit} , transport={settings.TransportLogLevelLimit}, storage={settings.StorageLogLevelLimit}, "
-                    + $"events={settings.EventLogLevelLimit}; workitems={settings.WorkItemLogLevelLimit}; etwEnabled={EtwSource.Log.IsEnabled()}; "
+                    + $"events={settings.EventLogLevelLimit}; workitems={settings.WorkItemLogLevelLimit};  clients={settings.ClientLogLevelLimit}; loadmonitor={settings.LoadMonitorLogLevelLimit}; etwEnabled={EtwSource.Log.IsEnabled()}; "
                     + $"core.IsTraceEnabled={DurableTask.Core.Tracing.DefaultEventSource.Log.IsTraceEnabled}");
             }
             catch (Exception e) when (!Utils.IsFatal(e))

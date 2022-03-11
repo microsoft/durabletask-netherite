@@ -80,7 +80,7 @@ namespace DurableTask.Netherite
             {
                 if (this.Logger.IsEnabled(LogLevel.Warning))
                 {
-                    this.Logger.LogInformation("NetheriteOrchestrationService {details}", details);
+                    this.Logger.LogWarning("NetheriteOrchestrationService {details}", details);
                 }
                 if (EtwSource.Log.IsEnabled())
                 {

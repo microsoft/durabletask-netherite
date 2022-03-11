@@ -37,6 +37,8 @@ namespace DurableTask.Netherite.Tests
                 LogLevelLimit = LogLevel.Trace,
                 EventLogLevelLimit = LogLevel.Trace,
                 WorkItemLogLevelLimit = LogLevel.Trace,
+                ClientLogLevelLimit = LogLevel.Trace,
+                LoadMonitorLogLevelLimit = LogLevel.Trace,
                 PartitionCount = 12,
                 ThrowExceptionOnInvalidDedupeStatus = true,
                 TakeStateCheckpointWhenStoppingPartition = true,  // set to false for testing recovery from log

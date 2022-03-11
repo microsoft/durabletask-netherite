@@ -17,9 +17,9 @@ namespace DurableTask.Netherite
         readonly LogLevel logLevelLimit;
         readonly string tracePrefix;
 
-        public ClientTraceHelper(ILogger logger, LogLevel logLevelLimit, string storageAccountName, string taskHubName, Guid clientId)
+        public ClientTraceHelper(ILoggerFactory loggerFactory, LogLevel logLevelLimit, string storageAccountName, string taskHubName, Guid clientId)
         {
-            this.logger = logger;
+            this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.Client");
             this.account = storageAccountName;
             this.taskHub = taskHubName;
             this.clientId = clientId;

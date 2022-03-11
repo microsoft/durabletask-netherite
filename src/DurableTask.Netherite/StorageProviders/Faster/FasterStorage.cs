@@ -20,6 +20,7 @@ namespace DurableTask.Netherite.Faster
         readonly string taskHubName;
         readonly string pathPrefix;
         readonly ILogger logger;
+        readonly ILogger performanceLogger;
         readonly MemoryTracker memoryTracker;
 
         Partition partition;
@@ -60,6 +61,7 @@ namespace DurableTask.Netherite.Faster
             this.taskHubName = settings.HubName;
             this.pathPrefix = pathPrefix;
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
+            this.performanceLogger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage.Performance");
             this.memoryTracker = memoryTracker;
 
             if (settings.TestHooks?.CacheDebugger != null)
@@ -107,6 +109,7 @@ namespace DurableTask.Netherite.Faster
                 this.pathPrefix,
                 partition.Settings.TestHooks?.FaultInjector,
                 this.logger,
+                this.performanceLogger,
                 this.partition.Settings.StorageLogLevelLimit,
                 partition.PartitionId,
                 errorHandler,

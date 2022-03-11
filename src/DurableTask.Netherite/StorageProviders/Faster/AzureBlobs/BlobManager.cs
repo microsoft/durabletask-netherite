@@ -275,8 +275,10 @@ namespace DurableTask.Netherite.Faster
             string taskHubPrefix,
             FaultInjector faultInjector,
             ILogger logger,
+            ILogger performanceLogger,
             Microsoft.Extensions.Logging.LogLevel logLevelLimit,
-            uint partitionId, IPartitionErrorHandler errorHandler,
+            uint partitionId, 
+            IPartitionErrorHandler errorHandler,
             int psfGroupCount)
         {
             this.cloudStorageAccount = storageAccount;
@@ -313,7 +315,7 @@ namespace DurableTask.Netherite.Faster
                     this.GetCheckpointCompletedBlobName());
             }
 
-            this.TraceHelper = new FasterTraceHelper(logger, logLevelLimit, this.partitionId, this.UseLocalFiles ? "none" : this.cloudStorageAccount.Credentials.AccountName, taskHubName);
+            this.TraceHelper = new FasterTraceHelper(logger, logLevelLimit, performanceLogger, this.partitionId, this.UseLocalFiles ? "none" : this.cloudStorageAccount.Credentials.AccountName, taskHubName);
             this.PartitionErrorHandler = errorHandler;
             this.shutDownOrTermination = CancellationTokenSource.CreateLinkedTokenSource(errorHandler.Token);
         }

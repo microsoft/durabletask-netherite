@@ -22,9 +22,12 @@
       // --- the levels below are used to control the Netherite tracing.
       "DurableTask.Netherite": "Information",
       "DurableTask.Netherite.FasterStorage": "Warning",
+      "DurableTask.Netherite.FasterStorage.Performance": "Error",
       "DurableTask.Netherite.EventHubsTransport": "Warning",
       "DurableTask.Netherite.Events": "Warning",
       "DurableTask.Netherite.WorkItems": "Warning",
+      "DurableTask.Netherite.Client": "Warning",
+      "DurableTask.Netherite.LoadMonitor": "Warning"
     },
     "applicationInsights": {
       "sampling": {
@@ -100,6 +103,8 @@
         "TransportLogLevelLimit": "Debug",
         "EventLogLevelLimit": "Debug",
         "WorkItemLogLevelLimit": "Debug",
+        "ClientLogLevelLimit": "Debug",
+        "LoadMonitorLogLevelLimit": "Debug",
 
         // the following can be used to collectd and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context

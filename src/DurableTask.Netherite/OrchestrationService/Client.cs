@@ -49,7 +49,7 @@ namespace DurableTask.Netherite
             this.host = host;
             this.ClientId = clientId;
             this.taskHubGuid = taskHubGuid;
-            this.traceHelper = new ClientTraceHelper(host.TraceHelper.Logger, host.Settings.LogLevelLimit, host.StorageAccountName, host.Settings.HubName, this.ClientId);
+            this.traceHelper = new ClientTraceHelper(host.LoggerFactory, host.Settings.ClientLogLevelLimit, host.StorageAccountName, host.Settings.HubName, this.ClientId);
             this.workItemTraceHelper = workItemTraceHelper;
             this.account = host.StorageAccountName;
             this.BatchSender = batchSender;
