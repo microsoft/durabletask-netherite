@@ -248,6 +248,8 @@ namespace DurableTask.Netherite.EventHubs
                 {
                     this.traceHelper.LogInformation($"Registering Partition Host with EventHubs");
 
+                    string formattedCreationDate = this.connections.CreationTimestamp.ToString("o").Replace("/", "-");
+
                     this.eventProcessorHost = new EventProcessorHost(
                         Guid.NewGuid().ToString(),
                         EventHubsTransport.PartitionHub,
@@ -255,7 +257,7 @@ namespace DurableTask.Netherite.EventHubs
                         this.settings.ResolvedTransportConnectionString,
                         this.settings.ResolvedStorageConnectionString,
                         this.cloudBlobContainer.Name,
-                        $"{TaskhubPathPrefix(this.parameters.TaskhubGuid)}eh-checkpoints/{(EventHubsTransport.PartitionHub)}");
+                        $"{TaskhubPathPrefix(this.parameters.TaskhubGuid)}eh-checkpoints/{(EventHubsTransport.PartitionHub)}/{formattedCreationDate}");
 
                     var processorOptions = new EventProcessorOptions()
                     {

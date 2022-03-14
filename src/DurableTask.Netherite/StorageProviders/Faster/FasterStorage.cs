@@ -168,16 +168,14 @@ namespace DurableTask.Netherite.Faster
             {
                 this.TraceHelper.FasterProgress("Loading checkpoint");
 
-                bool resendAll;
-
                 try
                 {
                     // we are recovering the last checkpoint of the store
-                    (long commitLogPosition, long inputQueuePosition, resendAll) = await this.TerminationWrapper(this.store.RecoverAsync(inputQueueFingerprint));
-                    this.storeWorker.SetCheckpointPositionsAfterRecovery(commitLogPosition, inputQueuePosition, inputQueueFingerprint);
+                    var recovered = await this.TerminationWrapper(this.store.RecoverAsync());
+                    this.storeWorker.SetCheckpointPositionsAfterRecovery(recovered.commitLogPosition, recovered.inputQueuePosition, recovered.inputQueueFingerprint);
 
                     // truncate the log in case the truncation did not commit after the checkpoint was taken
-                    this.logWorker.SetLastCheckpointPosition(commitLogPosition);
+                    this.logWorker.SetLastCheckpointPosition(recovered.commitLogPosition);
 
                     this.TraceHelper.FasterCheckpointLoaded(this.storeWorker.CommitLogPosition, this.storeWorker.InputQueuePosition, this.store.StoreStats.Get(), stopwatch.ElapsedMilliseconds);
                 }
@@ -212,7 +210,7 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 // restart pending actitivities, timers, work items etc.
-                this.storeWorker.RestartThingsAtEndOfRecovery(inputQueueFingerprint, resendAll);
+                this.storeWorker.RestartThingsAtEndOfRecovery(inputQueueFingerprint);
 
                 this.TraceHelper.FasterProgress("Recovery complete");
             }

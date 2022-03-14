@@ -34,7 +34,7 @@ namespace DurableTask.Netherite
                 kvp.Value.Position = kvp.Key;
                 kvp.Value.Partition = this.Partition;
 
-                if (!kvp.Value.SendWasConfirmed || evt.ResendAll)
+                if (!kvp.Value.SendWasConfirmed || evt.ResetInputQueue)
                 {
                     kvp.Value.SendWasConfirmed = false;
                     if (!effects.IsReplaying)

@@ -98,7 +98,7 @@ namespace DurableTask.Netherite.Faster
         {
         }
 
-        public override Task<(long commitLogPosition, long inputQueuePosition, bool resendAll)> RecoverAsync(string fingerprint)
+        public override Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
         {
             foreach (var guid in this.ReadCheckpointIntentions())
             {
@@ -125,7 +125,7 @@ namespace DurableTask.Netherite.Faster
             this.CompletePending();
 
             var dedupState = (DedupState)this.cache[TrackedObjectKey.Dedup].TrackedObject;
-            return Task.FromResult((dedupState.Positions.Item1, dedupState.Positions.Item2, true));
+            return Task.FromResult((dedupState.Positions.Item1, dedupState.Positions.Item2, "TODO"));
         }
 
         public override bool CompletePending()

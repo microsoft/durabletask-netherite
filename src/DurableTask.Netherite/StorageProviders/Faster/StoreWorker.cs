@@ -531,22 +531,31 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper.FasterLogReplayed(this.CommitLogPosition, this.InputQueuePosition, this.numberEventsSinceLastCheckpoint, this.CommitLogPosition - startPosition, this.store.StoreStats.Get(), stopwatch.ElapsedMilliseconds);
         }
 
-        public void RestartThingsAtEndOfRecovery(string inputQueueFingerprint, bool resendAll)
+        public void RestartThingsAtEndOfRecovery(string inputQueueFingerprint)
         {
-            this.traceHelper.FasterProgress("Restarting tasks");
 
-            this.replayChecker?.PartitionStarting(this.partition, this.store, this.CommitLogPosition, this.InputQueuePosition);
+            bool queueChange = (this.InputQueueFingerprint != inputQueueFingerprint);
 
-            // we use this event for updating dequeue counts when restarting sessions and/or activities
+            if (queueChange)
+            {
+                this.InputQueuePosition = 0;
+                this.InputQueueFingerprint = inputQueueFingerprint;
+
+                this.traceHelper.FasterProgress($"Resetting input queue position because of new fingerprint {inputQueueFingerprint}");
+            }
+
             var recoveryCompletedEvent = new RecoveryCompleted()
             {
                 PartitionId = this.partition.PartitionId,
                 RecoveredPosition = this.CommitLogPosition,
                 Timestamp = DateTime.UtcNow,
                 WorkerId = this.partition.Settings.WorkerId,
-                InputQueueFingerprint = inputQueueFingerprint,
-                ResendAll = resendAll,
+                ChangedFingerprint = queueChange ? inputQueueFingerprint : null,
             };
+
+            this.traceHelper.FasterProgress("Restarting tasks");
+
+            this.replayChecker?.PartitionStarting(this.partition, this.store, this.CommitLogPosition, this.InputQueuePosition);
 
             this.partition.SubmitEvent(recoveryCompletedEvent);
         }
@@ -560,6 +569,13 @@ namespace DurableTask.Netherite.Faster
             if (partitionUpdateEvent.NextInputQueuePosition > this.InputQueuePosition)
             {
                 this.InputQueuePosition = partitionUpdateEvent.NextInputQueuePosition;
+            }
+
+            // must keep track of queue fingerprint changes detected in previous recoveries
+            else if (partitionUpdateEvent.ResetInputQueue)
+            {
+                this.InputQueuePosition = 0;
+                this.InputQueueFingerprint = ((RecoveryCompleted) partitionUpdateEvent).ChangedFingerprint;
             }
 
             // update the commit log position

@@ -24,10 +24,10 @@ namespace DurableTask.Netherite
         public string WorkerId { get; set; }
 
         [DataMember]
-        public string InputQueueFingerprint { get; set; }
+        public string ChangedFingerprint { get; set; }
 
-        [DataMember]
-        public bool ResendAll { get; set; }
+        [IgnoreDataMember]
+        public override bool ResetInputQueue => !string.IsNullOrEmpty(this.ChangedFingerprint);
 
         public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
         {
@@ -38,8 +38,11 @@ namespace DurableTask.Netherite
         {
             s.Append(" RecoveredPosition=");
             s.Append(this.RecoveredPosition);
-            s.Append(" ResendAll=");
-            s.Append(this.ResendAll);
+            if (this.ChangedFingerprint != null)
+            {
+                s.Append(" ChangedFingerprint=");
+                s.Append(this.ChangedFingerprint);
+            }
         }
 
         public override void OnSubmit(Partition partition)

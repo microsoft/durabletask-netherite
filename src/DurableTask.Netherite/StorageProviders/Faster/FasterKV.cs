@@ -173,7 +173,7 @@ namespace DurableTask.Netherite.Faster
             this.CheckInvariants();
         }
 
-        public override async Task<(long commitLogPosition, long inputQueuePosition, bool resendAll)> RecoverAsync(string inputQueueFingerprint)
+        public override async Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
         {
             try
             {
@@ -197,14 +197,7 @@ namespace DurableTask.Netherite.Faster
                 this.cacheTracker.MeasureCacheSize();
                 this.CheckInvariants();
 
-                if (this.blobManager.CheckpointInfo.InputQueueFingerprint == inputQueueFingerprint)
-                {
-                    return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition, false);
-                }
-                else
-                {
-                    return (this.blobManager.CheckpointInfo.CommitLogPosition, 0, true);
-                }
+                return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition, this.blobManager.CheckpointInfo.InputQueueFingerprint);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))

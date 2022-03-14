@@ -52,7 +52,7 @@ namespace DurableTask.Netherite.EventHubs
             this.loadMonitorHub = loadMonitorHub;
         }
 
-        public string Fingerprint => $"{this.Endpoint}{this.partitionHub}/{this.CreationTimestamp}";
+        public string Fingerprint => $"{this.Endpoint}{this.partitionHub}/{this.CreationTimestamp:o}";
 
         public async Task StartAsync(TaskhubParameters parameters)
         {

@@ -15,7 +15,7 @@ namespace DurableTask.Netherite.Faster
     {
         public abstract void InitMainSession();
 
-        public abstract Task<(long commitLogPosition, long inputQueuePosition, bool resendAll)> RecoverAsync(string fingerprint);
+        public abstract Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync();
 
         public abstract bool CompletePending();
 
