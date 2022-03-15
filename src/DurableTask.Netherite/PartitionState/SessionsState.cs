@@ -176,11 +176,13 @@ namespace DurableTask.Netherite
                     // the new instance replaces whatever state the old instance was in
                     // since our transport is exactly once and in order, we do not save the old messages
                     // but "consider them delivered" to the old instance which is then replaced
-                    foreach (var taskMessage in messages.Take(forceNewExecution.Value))
+                    if (!isReplaying)
                     {
-                        this.Partition.WorkItemTraceHelper.TraceTaskMessageDiscarded(this.Partition.PartitionId, taskMessage, originWorkItemId, "message bound for an instance that was replaced");
+                        foreach (var taskMessage in messages.Take(forceNewExecution.Value))
+                        {
+                            this.Partition.WorkItemTraceHelper.TraceTaskMessageDiscarded(this.Partition.PartitionId, taskMessage, originWorkItemId, "message bound for an instance that was replaced");
+                        }
                     }
-
                     messages = messages.Skip(forceNewExecution.Value);
                 }
           

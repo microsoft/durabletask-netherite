@@ -24,6 +24,18 @@ namespace DurableTask.Netherite
 
         public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
+            var timedOut = this.PendingPrefetches.Where(kvp => kvp.Value.TimeoutUtc < evt.Timestamp).ToList();
+
+            foreach (var kvp in timedOut)
+            {
+                this.PendingPrefetches.Remove(kvp.Key);
+
+                if (!effects.IsReplaying)
+                {
+                    effects.EventTraceHelper.TraceEventProcessingWarning($"Dropped request {kvp.Value.EventIdString} during recovery, because it has timed out");
+                }
+            }
+
             if (!effects.IsReplaying)
             {
                 // reissue prefetch tasks for what did not complete prior to crash/recovery

@@ -876,10 +876,12 @@ namespace DurableTask.Netherite.Faster
                 catch (Exception exception)
                     when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
                 {
+                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"cancelled query {queryId} due to partition termination");
                     exceptionSource.SetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
                 }
                 catch (Exception e)
                 {
+                    this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} failed with exception {e}");
                     exceptionSource.SetException(e);
                 }
             }
