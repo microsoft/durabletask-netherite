@@ -137,6 +137,11 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
+        internal async Task DeletePartitions()
+        {
+            await EventHubsUtil.DeleteEventHubIfExistsAsync(this.connectionString, this.partitionHub);
+        }
+
         async Task EnsureClientsAsync()
         {
             var clientTasks = new List<Task<(EventHubClient, EventHubRuntimeInformation)>>();

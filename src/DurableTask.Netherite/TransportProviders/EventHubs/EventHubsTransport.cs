@@ -319,6 +319,18 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
+        internal async Task ExitProcess(bool deletePartitionsFirst)
+        {
+            if (deletePartitionsFirst)
+            {
+                await this.connections.DeletePartitions();
+            }
+
+            this.traceHelper.LogError("Killing process in 10 seconds");
+            await Task.Delay(TimeSpan.FromSeconds(10));
+            System.Environment.Exit(222);
+        }
+
         class PartitionEventProcessorFactory : IEventProcessorFactory
         {
             readonly EventHubsTransport transport;

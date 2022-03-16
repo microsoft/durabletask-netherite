@@ -340,8 +340,7 @@ namespace DurableTask.Netherite.EventHubs
                     // occurs when partition hubs was deleted either accidentally, or intentionally after messages were lost due to the retention limit
                     logLevel = LogLevel.Warning;
                     this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} EventHub was deleted, initiating recovery via restart", this.eventHubName, this.eventHubPartition);
-                    await Task.Delay(10000);
-                    Environment.Exit(222);
+                    await this.eventHubsTransport.ExitProcess(false);
                     break;
                     
                 default:
@@ -384,10 +383,8 @@ namespace DurableTask.Netherite.EventHubs
                 // we may be missing packets if the service was down for longer than EH retention
                 if (sequenceNumber > current.NextPacketToReceive)
                 {
-                    this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} missing packets in sequence, #{seqno} instead of #{expected}. Initiating recovery via restart in 10s.", this.eventHubName, this.eventHubPartition, sequenceNumber, current.NextPacketToReceive);
-                    await Task.Delay(10000);
-                    Environment.Exit(222);
-                    throw new InvalidOperationException("Recovery via restart");
+                    this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} missing packets in sequence, #{seqno} instead of #{expected}. Initiating recovery via delete and restart.", this.eventHubName, this.eventHubPartition, sequenceNumber, current.NextPacketToReceive);
+                    await this.eventHubsTransport.ExitProcess(true);
                 }
             }
 
