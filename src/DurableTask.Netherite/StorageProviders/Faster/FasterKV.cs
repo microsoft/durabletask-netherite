@@ -772,8 +772,7 @@ namespace DurableTask.Netherite.Faster
 
         IAsyncEnumerable<OrchestrationState> ScanOrchestrationStates(
             EffectTracker effectTracker,
-            PartitionQueryEvent queryEvent,
-            out Task exceptionTask)
+            PartitionQueryEvent queryEvent)
         {
             var instanceQuery = queryEvent.InstanceQuery;
             string queryId = queryEvent.EventIdString;
@@ -782,11 +781,11 @@ namespace DurableTask.Netherite.Faster
             // we use a separate thread to iterate, since Faster can iterate synchronously only at the moment
             // and we don't want it to block thread pool worker threads
             var channel = Channel.CreateBounded<OrchestrationState>(500);
-            var exceptionSource = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
-            exceptionTask = exceptionSource.Task;
             var scanThread = TrackedThreads.MakeTrackedThread(RunScan, $"QueryScan-{queryId}");
             scanThread.Start();
-            return channel.Reader.ReadAllAsync();
+
+            // read from channel until the channel is completed, or an exception is encountered
+            return channel.Reader.ReadAllAsync(this.terminationToken);         
 
             void RunScan()
             {
@@ -810,12 +809,19 @@ namespace DurableTask.Netherite.Faster
                             this.partition.EventDetailTracer?.TraceEventProcessingDetail(
                                 $"query {queryId} scan position={iter1.CurrentAddress} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} deserialized={deserialized} matched={matched}");
                             lastReport = stopwatch.ElapsedMilliseconds;
+
+                            if (queryEvent.TimeoutUtc.HasValue && DateTime.UtcNow > queryEvent.TimeoutUtc.Value)
+                            {
+                                throw new TimeoutException($"Cancelled query {queryId}");
+                            }
                         }
 
                         ReportProgress();
 
                         while (iter1.GetNext(out RecordInfo recordInfo, out Key key, out Value val) && !recordInfo.Tombstone)
                         {
+                            this.AssertNotEpochThisInstanceProtected();
+
                             if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
                             {
                                 ReportProgress();
@@ -877,12 +883,17 @@ namespace DurableTask.Netherite.Faster
                     when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
                 {
                     this.partition.EventDetailTracer?.TraceEventProcessingDetail($"cancelled query {queryId} due to partition termination");
-                    exceptionSource.SetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
+                    channel.Writer.TryComplete(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
+                }
+                catch (TimeoutException e)
+                {
+                    this.AssertNotEpochThisInstanceProtected();
+                    channel.Writer.TryComplete(e);
                 }
                 catch (Exception e)
                 {
                     this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} failed with exception {e}");
-                    exceptionSource.SetException(e);
+                    channel.Writer.TryComplete(e);
                 }
             }
         }
