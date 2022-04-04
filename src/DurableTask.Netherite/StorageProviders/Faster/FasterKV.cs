@@ -471,8 +471,8 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                var orchestrationStates = this.ScanOrchestrationStates(effectTracker, queryEvent, out var exceptionTask);
-                await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates, exceptionTask);
+                var orchestrationStates = this.ScanOrchestrationStates(effectTracker, queryEvent);
+                await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -820,8 +820,6 @@ namespace DurableTask.Netherite.Faster
 
                         while (iter1.GetNext(out RecordInfo recordInfo, out Key key, out Value val) && !recordInfo.Tombstone)
                         {
-                            this.AssertNotEpochThisInstanceProtected();
-
                             if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
                             {
                                 ReportProgress();
@@ -887,7 +885,6 @@ namespace DurableTask.Netherite.Faster
                 }
                 catch (TimeoutException e)
                 {
-                    this.AssertNotEpochThisInstanceProtected();
                     channel.Writer.TryComplete(e);
                 }
                 catch (Exception e)
