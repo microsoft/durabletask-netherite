@@ -22,12 +22,27 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Queries);
 
-        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
+        public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            // reissue queries that did not complete prior to crash/recovery
-            foreach (var kvp in this.PendingQueries)
+            var timedOut = this.PendingQueries.Where(kvp => kvp.Value.TimeoutUtc < evt.Timestamp).ToList();
+
+            foreach (var kvp in timedOut)
             {
-                this.Partition.SubmitParallelEvent(new InstanceQueryEvent(kvp.Value));
+                this.PendingQueries.Remove(kvp.Key);
+
+                if (!effects.IsReplaying)
+                {
+                    effects.EventTraceHelper.TraceEventProcessingWarning($"Dropped query {kvp.Value.EventIdString} because it has timed out");
+                }
+            }
+
+            if (!effects.IsReplaying)
+            {
+                // reissue queries that did not complete prior to crash/recovery
+                foreach (var kvp in this.PendingQueries)
+                {
+                    this.Partition.SubmitParallelEvent(new InstanceQueryEvent(kvp.Value));
+                }
             }
         }
 
@@ -86,6 +101,8 @@ namespace DurableTask.Netherite
         {
             readonly ClientRequestEventWithQuery request;
 
+            public override DateTime? TimeoutUtc => this.request.TimeoutUtc;
+
             public InstanceQueryEvent(ClientRequestEventWithQuery clientRequest)
             {
                 this.request = clientRequest;
@@ -101,11 +118,18 @@ namespace DurableTask.Netherite
 
             public override Netherite.InstanceQuery InstanceQuery => this.request.InstanceQuery;
 
-            public override async Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Task exceptionTask, Partition partition)
+            public override async Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition)
             {
                 partition.Assert(this.request.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query, "wrong phase in QueriesState.OnQueryCompleteAsync");
 
-                await this.request.OnQueryCompleteAsync(result, exceptionTask, partition);
+                try
+                {
+                    await this.request.OnQueryCompleteAsync(result, partition);
+                }
+                catch (TimeoutException)  // we catch them so we can mark the query as completed
+                {
+                    partition.EventTraceHelper.TraceEventProcessingWarning($"query {this.request.EventId} timed out");
+                }
 
                 // we now how to recycle the request event again in order to remove it from the list of pending queries
                 var again = (ClientRequestEventWithQuery)this.request.Clone();

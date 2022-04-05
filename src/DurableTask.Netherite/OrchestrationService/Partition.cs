@@ -87,7 +87,7 @@ namespace DurableTask.Netherite
             this.LastTransition = this.CurrentTimeMs;
         }
 
-        public async Task<long> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, long firstInputQueuePosition)
+        public async Task<long> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, string inputQueueFingerprint)
         {
             EventTraceContext.Clear();
 
@@ -121,7 +121,7 @@ namespace DurableTask.Netherite
                 this.PendingTimers = new BatchTimer<PartitionEvent>(this.ErrorHandler.Token, this.TimersFired);
 
                 // goes to storage to create or restore the partition state
-                var inputQueuePosition = await this.State.CreateOrRestoreAsync(this, this.ErrorHandler, firstInputQueuePosition).ConfigureAwait(false);
+                var inputQueuePosition = await this.State.CreateOrRestoreAsync(this, this.ErrorHandler, inputQueueFingerprint).ConfigureAwait(false);
 
                 // start processing the timers
                 this.PendingTimers.Start($"Timer{this.PartitionId:D2}");

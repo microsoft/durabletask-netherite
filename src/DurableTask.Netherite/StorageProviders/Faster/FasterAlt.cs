@@ -98,7 +98,7 @@ namespace DurableTask.Netherite.Faster
         {
         }
 
-        public override Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync()
+        public override Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
         {
             foreach (var guid in this.ReadCheckpointIntentions())
             {
@@ -125,7 +125,7 @@ namespace DurableTask.Netherite.Faster
             this.CompletePending();
 
             var dedupState = (DedupState)this.cache[TrackedObjectKey.Dedup].TrackedObject;
-            return Task.FromResult(dedupState.Positions);
+            return Task.FromResult((dedupState.Positions.Item1, dedupState.Positions.Item2, "TODO"));
         }
 
         public override bool CompletePending()
@@ -152,7 +152,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, out Guid checkpointGuid)
+        public override bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, out Guid checkpointGuid)
         {
             checkpointGuid = Guid.NewGuid();
             this.StartStoreCheckpoint(commitLogPosition, inputQueuePosition, checkpointGuid);
@@ -176,7 +176,7 @@ namespace DurableTask.Netherite.Faster
             return default;
         }
 
-        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, long? shiftBeginAddress)
+        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, long? shiftBeginAddress)
         {
             var guid = Guid.NewGuid();
             this.StartStoreCheckpoint(commitLogPosition, inputQueuePosition, guid);

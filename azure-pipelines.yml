@@ -27,22 +27,15 @@ steps:
     platform: '$(buildPlatform)'
     configuration: '$(buildConfiguration)'
 
-- task: CmdLine@2
-  displayName: 'Start Azure Storage Emulator'
-  inputs:
-    script: |
-      "%ProgramFiles(x86)%\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" init /server "(localdb)\MsSqlLocalDb"
-      "%ProgramFiles(x86)%\Microsoft SDKs\Azure\Storage Emulator\AzureStorageEmulator.exe" start
-
 - task: DotNetCoreCLI@2
   env:
-    AzureWebJobsStorage: 'UseDevelopmentStorage=true;'
+    AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: 'Memory'
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite*Tests.csproj'
     arguments: '--configuration $(buildConfiguration) --verbosity normal'
-    testRunTitle: 'Netherite Unit Tests on DevStorage/Memory'
+    testRunTitle: 'Netherite Unit Tests on storageAccount/Memory'
 
 - task: DotNetCoreCLI@2
   env:

@@ -22,6 +22,7 @@ namespace DurableTask.Netherite.Faster
 
         bool isShuttingDown;
 
+        public string InputQueueFingerprint { get; private set; }
         public long InputQueuePosition { get; private set; }
         public long CommitLogPosition { get; private set; }
 
@@ -41,9 +42,11 @@ namespace DurableTask.Netherite.Faster
 
         // periodic load publishing
         PartitionLoadInfo loadInfo;
-        DateTime lastPublished;
+        DateTime lastLoadPublished;
+        DateTime lastPositionsPublished;
         string lastPublishedLatencyTrend;
-        public static TimeSpan PublishInterval = TimeSpan.FromSeconds(8);
+        public static TimeSpan LoadPublishInterval = TimeSpan.FromSeconds(8);
+        public static TimeSpan PositionsPublishInterval = TimeSpan.FromSeconds(8);
         public static TimeSpan PokePeriod = TimeSpan.FromSeconds(3); // allows storeworker to checkpoint and publish load even while idle
 
 
@@ -60,18 +63,20 @@ namespace DurableTask.Netherite.Faster
             this.replayChecker = this.partition.Settings.TestHooks?.ReplayChecker;
 
             this.loadInfo = PartitionLoadInfo.FirstFrame(this.partition.Settings.WorkerId);
-            this.lastPublished = DateTime.MinValue;
+            this.lastLoadPublished = DateTime.MinValue;
+            this.lastPositionsPublished = DateTime.MinValue;
             this.lastPublishedLatencyTrend = "";
 
             // construct an effect tracker that we use to apply effects to the store
             this.effectTracker = new TrackedObjectStoreEffectTracker(this.partition, this, store);
         }
 
-        public async Task Initialize(long initialCommitLogPosition, long initialInputQueuePosition)
+        public async Task Initialize(long initialCommitLogPosition, string fingerprint)
         {
             this.partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
-            this.InputQueuePosition = initialInputQueuePosition;
+            this.InputQueueFingerprint = fingerprint;
+            this.InputQueuePosition = 0;
             this.CommitLogPosition = initialCommitLogPosition;
            
             this.store.InitMainSession();
@@ -95,10 +100,11 @@ namespace DurableTask.Netherite.Faster
             var pokeLoop = this.PokeLoop();
         }
 
-        public void SetCheckpointPositionsAfterRecovery(long commitLogPosition, long inputQueuePosition)
+        public void SetCheckpointPositionsAfterRecovery(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)
         {
             this.CommitLogPosition = commitLogPosition;
             this.InputQueuePosition = inputQueuePosition;
+            this.InputQueueFingerprint = inputQueueFingerprint;
 
             this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
             this.lastCheckpointedInputQueuePosition = this.InputQueuePosition;
@@ -111,7 +117,7 @@ namespace DurableTask.Netherite.Faster
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
 
-            if (this.store.TakeFullCheckpoint(this.CommitLogPosition, this.InputQueuePosition, out var checkpointGuid))
+            if (this.store.TakeFullCheckpoint(this.CommitLogPosition, this.InputQueuePosition, this.InputQueueFingerprint, out var checkpointGuid))
             {
                 this.traceHelper.FasterCheckpointStarted(checkpointGuid, reason, this.store.StoreStats.Get(), this.CommitLogPosition, this.InputQueuePosition);
 
@@ -199,7 +205,7 @@ namespace DurableTask.Netherite.Faster
                 // take the current load info and put the next frame in its place
                 var loadInfoToPublish = this.loadInfo;
                 this.loadInfo = loadInfoToPublish.NextFrame();
-                this.lastPublished = DateTime.UtcNow;
+                this.lastLoadPublished = DateTime.UtcNow;
                 this.lastPublishedLatencyTrend = loadInfoToPublish.LatencyTrend;
 
                 this.partition.TraceHelper.TracePartitionLoad(loadInfoToPublish);
@@ -208,6 +214,27 @@ namespace DurableTask.Netherite.Faster
                 // only after the current log is persisted.
                 var task = this.LogWorker.WaitForCompletionAsync()
                     .ContinueWith((t) => this.partition.LoadPublisher?.Submit((this.partition.PartitionId, loadInfoToPublish)));
+            }
+        }
+
+        async Task PublishSendAndReceivePositions()
+        {
+            int numberPartitions = (int)this.partition.NumberPartitions();
+            if (numberPartitions > 1)
+            {
+                var positionsReceived = new PositionsReceived()
+                {
+                    PartitionId = this.partition.PartitionId,
+                    RequestId = Guid.NewGuid(),
+                    ReceivePositions = new (long, int)?[numberPartitions],
+                    NextNeededAck = new (long, int)?[numberPartitions],
+                };
+                ((DedupState)await this.store.ReadAsync(TrackedObjectKey.Dedup, this.effectTracker)).RecordPositions(positionsReceived);
+                ((OutboxState)await this.store.ReadAsync(TrackedObjectKey.Outbox, this.effectTracker)).RecordPositions(positionsReceived);
+
+                this.partition.Send(positionsReceived);
+
+                this.lastPositionsPublished = DateTime.UtcNow;
             }
         }
 
@@ -364,7 +391,7 @@ namespace DurableTask.Netherite.Faster
                         await this.pendingIndexCheckpoint; // observe exceptions here
 
                         // the store checkpoint is next
-                        var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, null);
+                        var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, this.InputQueueFingerprint, null);
                         if (token.HasValue)
                         {
                             this.pendingIndexCheckpoint = null;
@@ -396,12 +423,18 @@ namespace DurableTask.Netherite.Faster
        
                 
                 // periodically publish the partition load information
-                if (this.lastPublished + PublishInterval < DateTime.UtcNow)
+                if (this.lastLoadPublished + LoadPublishInterval < DateTime.UtcNow)
                 {
                     await this.PublishPartitionLoad();
                 }
 
-                if (ActivityScheduling.RequiresLoadMonitor(this.partition.Settings.ActivityScheduler))
+                // periodically publish the send and receive positions
+                if (this.lastPositionsPublished + PositionsPublishInterval < DateTime.UtcNow)
+                {
+                    await this.PublishSendAndReceivePositions();
+                }
+
+                if (this.partition.NumberPartitions() > 1)
                 {
                     var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker)) as ActivitiesState;
                     activitiesState.CollectLoadMonitorInformation();
@@ -498,35 +531,33 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper.FasterLogReplayed(this.CommitLogPosition, this.InputQueuePosition, this.numberEventsSinceLastCheckpoint, this.CommitLogPosition - startPosition, this.store.StoreStats.Get(), stopwatch.ElapsedMilliseconds);
         }
 
-        public async Task RestartThingsAtEndOfRecovery()
+        public void RestartThingsAtEndOfRecovery(string inputQueueFingerprint)
         {
-            this.traceHelper.FasterProgress("Restarting tasks");
 
-            this.replayChecker?.PartitionStarting(this.partition, this.store, this.CommitLogPosition, this.InputQueuePosition);
+            bool queueChange = (this.InputQueueFingerprint != inputQueueFingerprint);
 
-            // we use this event for updating dequeue counts when restarting sessions and/or activities
+            if (queueChange)
+            {
+                this.InputQueuePosition = 0;
+                this.InputQueueFingerprint = inputQueueFingerprint;
+
+                this.traceHelper.FasterProgress($"Resetting input queue position because of new fingerprint {inputQueueFingerprint}");
+            }
+
             var recoveryCompletedEvent = new RecoveryCompleted()
             {
                 PartitionId = this.partition.PartitionId,
                 RecoveredPosition = this.CommitLogPosition,
                 Timestamp = DateTime.UtcNow,
                 WorkerId = this.partition.Settings.WorkerId,
+                ChangedFingerprint = queueChange ? inputQueueFingerprint : null,
             };
 
-            // restart pending actitivities, timers, work items etc.
-            using (EventTraceContext.MakeContext(this.CommitLogPosition, string.Empty))
-            {
-                foreach (var key in TrackedObjectKey.GetSingletons())
-                {
-                    var target = (TrackedObject)await this.store.ReadAsync(key, this.effectTracker);
-                    target.OnRecoveryCompleted(this.effectTracker, recoveryCompletedEvent);
-                }
-            }
+            this.traceHelper.FasterProgress("Restarting tasks");
 
-            if (recoveryCompletedEvent.RequiresStateUpdate)
-            {
-                this.partition.SubmitEvent(recoveryCompletedEvent);
-            }
+            this.replayChecker?.PartitionStarting(this.partition, this.store, this.CommitLogPosition, this.InputQueuePosition);
+
+            this.partition.SubmitEvent(recoveryCompletedEvent);
         }
 
         public async ValueTask ReplayUpdate(PartitionUpdateEvent partitionUpdateEvent)
@@ -538,6 +569,13 @@ namespace DurableTask.Netherite.Faster
             if (partitionUpdateEvent.NextInputQueuePosition > this.InputQueuePosition)
             {
                 this.InputQueuePosition = partitionUpdateEvent.NextInputQueuePosition;
+            }
+
+            // must keep track of queue fingerprint changes detected in previous recoveries
+            else if (partitionUpdateEvent.ResetInputQueue)
+            {
+                this.InputQueuePosition = 0;
+                this.InputQueueFingerprint = ((RecoveryCompleted) partitionUpdateEvent).ChangedFingerprint;
             }
 
             // update the commit log position

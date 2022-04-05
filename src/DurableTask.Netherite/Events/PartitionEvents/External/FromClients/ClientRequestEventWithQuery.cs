@@ -30,7 +30,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public abstract Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Task exceptionTask, Partition partition);
+        public abstract Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition);
 
         public sealed override void DetermineEffects(EffectTracker effects)
         {

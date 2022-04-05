@@ -29,6 +29,8 @@ namespace DurableTask.Netherite
         // the list of transfer commands that are not yet acknowledged by the destination partition
         List<TransferCommandReceived> PendingOnDestination { get; set; }
 
+        PositionsReceived[] PositionsReceived  { get; }
+
         DateTime LastSolicitation { get; set; }
 
         // estimated round-trip duration for transfer commands
@@ -69,12 +71,13 @@ namespace DurableTask.Netherite
             TransportAbstraction.ISender batchSender)
         {
             this.host = host;
-            this.traceHelper = new LoadMonitorTraceHelper(host.TraceHelper.Logger, host.Settings.LogLevelLimit, host.StorageAccountName, host.Settings.HubName);
+            this.traceHelper = new LoadMonitorTraceHelper(host.LoggerFactory, host.Settings.LoadMonitorLogLevelLimit, host.StorageAccountName, host.Settings.HubName);
             this.BatchSender = batchSender;
             this.LoadInfo = new SortedDictionary<uint, Info>();
             this.PendingOnSource = new List<TransferCommandReceived>();
             this.PendingOnDestination = new List<TransferCommandReceived>();
             this.LastSolicitation = DateTime.MinValue;
+            this.PositionsReceived = new PositionsReceived[this.host.NumberPartitions]; 
             this.traceHelper.TraceProgress("Started");
         }
 
@@ -96,9 +99,55 @@ namespace DurableTask.Netherite
         {
             switch (loadMonitorEvent)
             {
+                case PositionsReceived positionsReceived:
+                    this.Process(positionsReceived);
+                    break;
                 case LoadInformationReceived loadInformationReceived:
                     this.Process(loadInformationReceived);
                     break;
+            }
+        }
+
+        void Process(PositionsReceived evt)
+        {
+            var previousEntry = this.PositionsReceived[evt.PartitionId];
+            this.PositionsReceived[evt.PartitionId] = evt;
+            bool sendAck = false;
+
+            // check if we have any of the needed acks
+            for (uint i = 0; i < evt.NextNeededAck.Length; i++)
+            {
+                (long,int)? needed = evt.NextNeededAck[i];
+                if (needed.HasValue)
+                {
+                    var info = this.PositionsReceived[i];
+                    (long, int)? reported = info?.ReceivePositions[evt.PartitionId];
+                    if (reported.HasValue  && reported.Value.CompareTo(needed.Value) >= 0)
+                    {
+                        sendAck = true;
+                        break;
+                    }
+                }
+            }
+
+            if (evt.DifferentFrom(previousEntry))
+            {
+                this.traceHelper.TraceProgress($"PositionsReceived Part{evt.PartitionId:D2} needs=[{string.Join(",", evt.NextNeededAck.Select(e => e.HasValue ? $"{e.Value.Item1}" : ""))}] received=[{string.Join(",", evt.ReceivePositions.Select(e => e.HasValue ? $"{e.Value.Item1}" : ""))}] sendAck={sendAck}");
+            }
+
+            if (sendAck)
+            {
+                var receivePositions = new (long, int)?[evt.ReceivePositions.Length];
+                for (int i = 0; i < receivePositions.Length; i++)
+                {
+                    receivePositions[i] = this.PositionsReceived[i]?.ReceivePositions[evt.PartitionId];
+                }
+                this.BatchSender.Submit(new AcksReceived()
+                {
+                    PartitionId = evt.PartitionId,
+                    RequestId = evt.RequestId,
+                    ReceivePositions = receivePositions,
+                });
             }
         }
 

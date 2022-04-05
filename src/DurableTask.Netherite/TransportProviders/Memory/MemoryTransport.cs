@@ -92,14 +92,11 @@ namespace DurableTask.Netherite.Emulated
         Task ITaskHub.StartWorkersAsync()
         {
             // create a load monitor
-            if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
-            {
-                this.loadMonitorSender = new SendWorker(this.shutdownTokenSource.Token);
-                this.loadMonitor = this.host.AddLoadMonitor(default, this.loadMonitorSender);
-                this.loadMonitorQueue = new MemoryLoadMonitorQueue(this.loadMonitor, this.shutdownTokenSource.Token, this.logger);
-                this.loadMonitorSender.SetHandler(list => this.SendEvents(this.loadMonitor, list));
-                this.loadMonitorSender.Resume();
-            }
+            this.loadMonitorSender = new SendWorker(this.shutdownTokenSource.Token);
+            this.loadMonitor = this.host.AddLoadMonitor(default, this.loadMonitorSender);
+            this.loadMonitorQueue = new MemoryLoadMonitorQueue(this.loadMonitor, this.shutdownTokenSource.Token, this.logger);
+            this.loadMonitorSender.SetHandler(list => this.SendEvents(this.loadMonitor, list));
+            this.loadMonitorSender.Resume();
 
             // we finish the (possibly lengthy) partition loading asynchronously so it is possible to receive 
             // stop signals before partitions are fully recovered
@@ -193,7 +190,7 @@ namespace DurableTask.Netherite.Emulated
                 {
                     errorHandler.OnShutdown += () => this.RecoveryHandler(epoch);
                 }
-                var nextInputQueuePosition = await partitions[i].CreateOrRestoreAsync(errorHandler, 0);
+                var nextInputQueuePosition = await partitions[i].CreateOrRestoreAsync(errorHandler, Guid.NewGuid().ToString());
 
                 // start delivering events to the partition
                 partitionQueues[i].FirstInputQueuePosition = nextInputQueuePosition;

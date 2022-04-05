@@ -24,6 +24,8 @@ namespace ScalingTests
                 StorageLogLevelLimit = LogLevel.Trace,
                 TransportLogLevelLimit = LogLevel.Trace,
                 WorkItemLogLevelLimit = LogLevel.Trace,
+                ClientLogLevelLimit = LogLevel.Trace,
+                LoadMonitorLogLevelLimit = LogLevel.Trace,
             };
             settings.Validate((string connectionName) => Environment.GetEnvironmentVariable(connectionName));
             var loggerFactory = new LoggerFactory();

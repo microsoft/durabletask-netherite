@@ -8,6 +8,7 @@ namespace DurableTask.Netherite
     using System.Runtime.CompilerServices;
     using System.Runtime.Serialization;
     using System.Text;
+    using System.Threading;
     using DurableTask.Core;
 
     [DataContract]
@@ -23,19 +24,10 @@ namespace DurableTask.Netherite
         public string WorkerId { get; set; }
 
         [DataMember]
-        public int NumActivities { get; set; }
-
-        [DataMember]
-        public int MaxActivityDequeueCount { get; set; }
-
-        [DataMember]
-        public int NumSessions { get; set; }
-
-        [DataMember]
-        public int MaxSessionDequeueCount { get; set; }
+        public string ChangedFingerprint { get; set; }
 
         [IgnoreDataMember]
-        public bool RequiresStateUpdate => (this.NumSessions + this.NumActivities) > 0; // orchestrations and activities must increment the dequeue count
+        public override bool ResetInputQueue => !string.IsNullOrEmpty(this.ChangedFingerprint);
 
         public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
         {
@@ -46,14 +38,11 @@ namespace DurableTask.Netherite
         {
             s.Append(" RecoveredPosition=");
             s.Append(this.RecoveredPosition);
-            s.Append(" NumActivities=");
-            s.Append(this.NumActivities);
-            s.Append(" MaxActivityDequeueCount=");
-            s.Append(this.MaxActivityDequeueCount);
-            s.Append(" NumSessions=");
-            s.Append(this.NumSessions);
-            s.Append(" MaxSessionDequeueCount=");
-            s.Append(this.MaxSessionDequeueCount);
+            if (this.ChangedFingerprint != null)
+            {
+                s.Append(" ChangedFingerprint=");
+                s.Append(this.ChangedFingerprint);
+            }
         }
 
         public override void OnSubmit(Partition partition)
@@ -68,6 +57,10 @@ namespace DurableTask.Netherite
         {
             effects.Add(TrackedObjectKey.Activities);
             effects.Add(TrackedObjectKey.Sessions);
+            effects.Add(TrackedObjectKey.Outbox);
+            effects.Add(TrackedObjectKey.Timers);
+            effects.Add(TrackedObjectKey.Prefetch);
+            effects.Add(TrackedObjectKey.Queries);
         }
     }
 }

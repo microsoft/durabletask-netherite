@@ -15,9 +15,9 @@ namespace DurableTask.Netherite
         readonly string taskHub;
         readonly LogLevel logLevelLimit;
 
-        public LoadMonitorTraceHelper(ILogger logger, LogLevel logLevelLimit, string storageAccountName, string taskHubName)
+        public LoadMonitorTraceHelper(ILoggerFactory loggerFactory, LogLevel logLevelLimit, string storageAccountName, string taskHubName)
         {
-            this.logger = logger;
+            this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.LoadMonitor");
             this.account = storageAccountName;
             this.taskHub = taskHubName;
             this.logLevelLimit = logLevelLimit;

@@ -61,7 +61,7 @@ namespace DurableTask.Netherite
             base.SubmitBatch(entries);
         }
 
-        public Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler termination, long initialInputQueuePosition)
+        public Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler termination, string fingerprint)
         {
             this.partition = partition;
             this.effects = new MemoryStorageEffectTracker(partition, this);

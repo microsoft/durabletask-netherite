@@ -197,7 +197,7 @@ namespace DurableTask.Netherite.EventHubs
 
                 // start this partition (which may include waiting for the lease to become available)
                 c.Partition = this.host.AddPartition(this.partitionId, this.sender);
-                c.NextPacketToReceive = await c.Partition.CreateOrRestoreAsync(c.ErrorHandler, this.parameters.StartPositions[this.partitionId]);
+                c.NextPacketToReceive = await c.Partition.CreateOrRestoreAsync(c.ErrorHandler, this.eventHubsTransport.Fingerprint);
 
                 this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} started partition (incarnation {incarnation}), next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, c.Incarnation, c.NextPacketToReceive);
 
@@ -317,7 +317,7 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        Task IEventProcessor.ProcessErrorAsync(PartitionContext context, Exception exception)
+        async Task IEventProcessor.ProcessErrorAsync(PartitionContext context, Exception exception)
         {
 
             LogLevel logLevel;
@@ -332,31 +332,31 @@ namespace DurableTask.Netherite.EventHubs
                     // since this processor is no longer going to receive events, let's shut it down
                     // one would expect that this is redundant with EventProcessHost calling close
                     // but empirically we have observed that the latter does not always happen in this situation
-                    Task.Run(() => this.IdempotentShutdown("Receiver was disconnected", true));
-
+                    var _ = Task.Run(() => this.IdempotentShutdown("Receiver was disconnected", true));
                     break;
 
+                case Microsoft.Azure.EventHubs.MessagingEntityNotFoundException:
+
+                    // occurs when partition hubs was deleted either accidentally, or intentionally after messages were lost due to the retention limit
+                    logLevel = LogLevel.Warning;
+                    this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} EventHub was deleted, initiating recovery via restart", this.eventHubName, this.eventHubPartition);
+                    await this.eventHubsTransport.ExitProcess(false);
+                    break;
+                    
                 default:
                     logLevel = LogLevel.Warning;
                     break;
             }
 
-
             this.traceHelper.Log(logLevel, "EventHubsProcessor {eventHubName}/{eventHubPartition} received internal error indication from EventProcessorHost: {exception}", this.eventHubName, this.eventHubPartition, exception);
-
-            return Task.CompletedTask;
         }
 
         async Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
         {
-            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is receiving events starting with #{seqno}", this.eventHubName, this.eventHubPartition, packets.First().SystemProperties.SequenceNumber);
-
-            if (!this.lastCheckpointedOffset.HasValue)
-            {
-                // the first packet we receive indicates what our last checkpoint was
-                var first = packets.FirstOrDefault();
-                this.lastCheckpointedOffset = first == null ? null : long.Parse(first.SystemProperties.Offset);
-            }
+            var first = packets.FirstOrDefault();
+            long sequenceNumber = first?.SystemProperties.SequenceNumber ?? 0;
+            
+            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is receiving events starting with #{seqno}", this.eventHubName, this.eventHubPartition, sequenceNumber);
 
             PartitionIncarnation current = await this.currentIncarnation;
 
@@ -364,7 +364,6 @@ namespace DurableTask.Netherite.EventHubs
             {
                 current = await current.Next;
             }
-
 
             if (current == null)
             {
@@ -374,6 +373,19 @@ namespace DurableTask.Netherite.EventHubs
             else
             {
                 this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} is delivering to incarnation {seqno}", this.eventHubName, this.eventHubPartition, current.Incarnation);
+            }
+
+            if (!this.lastCheckpointedOffset.HasValue)
+            {
+                // the first packet we receive indicates what our last checkpoint was
+                this.lastCheckpointedOffset = first == null ? null : long.Parse(first.SystemProperties.Offset);
+
+                // we may be missing packets if the service was down for longer than EH retention
+                if (sequenceNumber > current.NextPacketToReceive)
+                {
+                    this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} missing packets in sequence, #{seqno} instead of #{expected}. Initiating recovery via delete and restart.", this.eventHubName, this.eventHubPartition, sequenceNumber, current.NextPacketToReceive);
+                    await this.eventHubsTransport.ExitProcess(true);
+                }
             }
 
             try

@@ -26,24 +26,6 @@ namespace DurableTask.Netherite.EventHubs
         public string StorageFormat { get; set; }
 
         [DataMember]
-        public string[] PartitionHubs { get; set; }
-
-        [DataMember]
-        public string PartitionConsumerGroup { get; set; }
-
-        [DataMember]
-        public string[] ClientHubs { get; set; }
-
-        [DataMember]
-        public string ClientConsumerGroup { get; set; }
-
-        [DataMember(IsRequired = false)]
-        public string EventHubsEndpoint { get; set; }
-
-        [DataMember(IsRequired = false)]
-        public DateTime[] EventHubsCreationTimestamps { get; set; }
-
-        [DataMember]
-        public long[] StartPositions { get; set; }
+        public int PartitionCount { get; set; }
     }
 }

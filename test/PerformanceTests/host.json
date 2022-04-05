@@ -22,9 +22,12 @@
       // --- the levels below are used to control the Netherite tracing.
       "DurableTask.Netherite": "Information",
       "DurableTask.Netherite.FasterStorage": "Warning",
+      "DurableTask.Netherite.FasterStorage.Performance": "Error",
       "DurableTask.Netherite.EventHubsTransport": "Warning",
       "DurableTask.Netherite.Events": "Warning",
-      "DurableTask.Netherite.WorkItems": "Warning"
+      "DurableTask.Netherite.WorkItems": "Warning",
+      "DurableTask.Netherite.Client": "Warning",
+      "DurableTask.Netherite.LoadMonitor": "Warning"
     },
     "applicationInsights": {
       "sampling": {
@@ -57,6 +60,7 @@
         "MaxNumberBytesBetweenCheckpoints": "20000000",
         "MaxNumberEventsBetweenCheckpoints": "10000",
         "IdleCheckpointFrequencyMs": "60000",
+
         "PackPartitionTaskMessages": 100,
 
         "PartitionCount": 12,
@@ -65,7 +69,7 @@
         "CacheOrchestrationCursors": true,
 
         // set this to control the max size of the orchestration instance cache
-        // "InstanceCacheSizeMB": "2",
+        // "InstanceCacheSizeMB": "50",
 
         // set this to true to use the PSF support in Faster. Will soon be obsolete.
         "UsePSFQueries": "false",
@@ -77,7 +81,7 @@
         "PersistStepsFirst": false,
 
         // set this to x to inject faults with probability 1/x
-        //"FaultInjectionProbability": 250,
+        //"FaultInjectionProbability": 2000,
         // set this to true to attach replay checker
         //"AttachReplayChecker": true,
         // set this to true to attach replay checker
@@ -99,6 +103,8 @@
         "TransportLogLevelLimit": "Debug",
         "EventLogLevelLimit": "Debug",
         "WorkItemLogLevelLimit": "Debug",
+        "ClientLogLevelLimit": "Debug",
+        "LoadMonitorLogLevelLimit": "Debug",
 
         // the following can be used to collectd and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context

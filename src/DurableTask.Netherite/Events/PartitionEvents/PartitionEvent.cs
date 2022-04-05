@@ -30,6 +30,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public double IssuedTimestamp { get; set; }
 
+        [IgnoreDataMember]
+        public virtual bool ResetInputQueue => false;
+        
         /// <summary>
         /// For tracing purposes. Subclasses can override this to provide the instance id.
         /// </summary>

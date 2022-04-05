@@ -173,7 +173,7 @@ namespace DurableTask.Netherite.Faster
             this.CheckInvariants();
         }
 
-        public override async Task<(long commitLogPosition, long inputQueuePosition)> RecoverAsync()
+        public override async Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
         {
             try
             {
@@ -197,7 +197,7 @@ namespace DurableTask.Netherite.Faster
                 this.cacheTracker.MeasureCacheSize();
                 this.CheckInvariants();
 
-                return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition);
+                return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition, this.blobManager.CheckpointInfo.InputQueueFingerprint);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -232,12 +232,13 @@ namespace DurableTask.Netherite.Faster
             return this.mainSession.ReadyToCompletePendingAsync(this.terminationToken);
         }
 
-        public override bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, out Guid checkpointGuid)
+        public override bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, out Guid checkpointGuid)
         {
             try
             {
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
+                this.blobManager.CheckpointInfo.InputQueueFingerprint = inputQueueFingerprint;
                 if (this.fht.TryInitiateFullCheckpoint(out checkpointGuid, CheckpointType.FoldOver))
                 {
                     byte[] serializedSingletons = Serializer.SerializeSingletons(this.singletons);
@@ -323,12 +324,13 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, long? shiftBeginAddress)
+        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, long? shiftBeginAddress)
         {
             try
             {
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
                 this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
+                this.blobManager.CheckpointInfo.InputQueueFingerprint = inputQueueFingerprint;
 
                 if (shiftBeginAddress > this.fht.Log.BeginAddress)
                 {
@@ -469,8 +471,8 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                var orchestrationStates = this.ScanOrchestrationStates(effectTracker, queryEvent, out var exceptionTask);
-                await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates, exceptionTask);
+                var orchestrationStates = this.ScanOrchestrationStates(effectTracker, queryEvent);
+                await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -770,8 +772,7 @@ namespace DurableTask.Netherite.Faster
 
         IAsyncEnumerable<OrchestrationState> ScanOrchestrationStates(
             EffectTracker effectTracker,
-            PartitionQueryEvent queryEvent,
-            out Task exceptionTask)
+            PartitionQueryEvent queryEvent)
         {
             var instanceQuery = queryEvent.InstanceQuery;
             string queryId = queryEvent.EventIdString;
@@ -780,11 +781,11 @@ namespace DurableTask.Netherite.Faster
             // we use a separate thread to iterate, since Faster can iterate synchronously only at the moment
             // and we don't want it to block thread pool worker threads
             var channel = Channel.CreateBounded<OrchestrationState>(500);
-            var exceptionSource = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
-            exceptionTask = exceptionSource.Task;
             var scanThread = TrackedThreads.MakeTrackedThread(RunScan, $"QueryScan-{queryId}");
             scanThread.Start();
-            return channel.Reader.ReadAllAsync();
+
+            // read from channel until the channel is completed, or an exception is encountered
+            return channel.Reader.ReadAllAsync(this.terminationToken);         
 
             void RunScan()
             {
@@ -808,6 +809,11 @@ namespace DurableTask.Netherite.Faster
                             this.partition.EventDetailTracer?.TraceEventProcessingDetail(
                                 $"query {queryId} scan position={iter1.CurrentAddress} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} deserialized={deserialized} matched={matched}");
                             lastReport = stopwatch.ElapsedMilliseconds;
+
+                            if (queryEvent.TimeoutUtc.HasValue && DateTime.UtcNow > queryEvent.TimeoutUtc.Value)
+                            {
+                                throw new TimeoutException($"Cancelled query {queryId}");
+                            }
                         }
 
                         ReportProgress();
@@ -874,11 +880,17 @@ namespace DurableTask.Netherite.Faster
                 catch (Exception exception)
                     when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
                 {
-                    exceptionSource.SetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
+                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"cancelled query {queryId} due to partition termination");
+                    channel.Writer.TryComplete(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
+                }
+                catch (TimeoutException e)
+                {
+                    channel.Writer.TryComplete(e);
                 }
                 catch (Exception e)
                 {
-                    exceptionSource.SetException(e);
+                    this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} failed with exception {e}");
+                    channel.Writer.TryComplete(e);
                 }
             }
         }

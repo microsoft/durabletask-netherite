@@ -20,6 +20,7 @@ namespace DurableTask.Netherite.Faster
         readonly string taskHubName;
         readonly string pathPrefix;
         readonly ILogger logger;
+        readonly ILogger performanceLogger;
         readonly MemoryTracker memoryTracker;
 
         Partition partition;
@@ -60,6 +61,7 @@ namespace DurableTask.Netherite.Faster
             this.taskHubName = settings.HubName;
             this.pathPrefix = pathPrefix;
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
+            this.performanceLogger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage.Performance");
             this.memoryTracker = memoryTracker;
 
             if (settings.TestHooks?.CacheDebugger != null)
@@ -91,7 +93,7 @@ namespace DurableTask.Netherite.Faster
             await what;
         }
 
-        public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, long firstInputQueuePosition)
+        public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint)
         {
             this.partition = partition;
             this.terminationToken = errorHandler.Token;
@@ -107,6 +109,7 @@ namespace DurableTask.Netherite.Faster
                 this.pathPrefix,
                 partition.Settings.TestHooks?.FaultInjector,
                 this.logger,
+                this.performanceLogger,
                 this.partition.Settings.StorageLogLevelLimit,
                 partition.PartitionId,
                 errorHandler,
@@ -150,7 +153,7 @@ namespace DurableTask.Netherite.Faster
                     this.TraceHelper.FasterProgress("Creating store");
 
                     // this is a fresh partition
-                    await this.TerminationWrapper(this.storeWorker.Initialize(this.log.BeginAddress, firstInputQueuePosition));
+                    await this.TerminationWrapper(this.storeWorker.Initialize(this.log.BeginAddress, inputQueueFingerprint));
 
                     await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("initial checkpoint").AsTask());
                     this.TraceHelper.FasterStoreCreated(this.storeWorker.InputQueuePosition, stopwatch.ElapsedMilliseconds);
@@ -168,11 +171,11 @@ namespace DurableTask.Netherite.Faster
                 try
                 {
                     // we are recovering the last checkpoint of the store
-                    (long commitLogPosition, long inputQueuePosition) = await this.TerminationWrapper(this.store.RecoverAsync());
-                    this.storeWorker.SetCheckpointPositionsAfterRecovery(commitLogPosition, inputQueuePosition);
+                    var recovered = await this.TerminationWrapper(this.store.RecoverAsync());
+                    this.storeWorker.SetCheckpointPositionsAfterRecovery(recovered.commitLogPosition, recovered.inputQueuePosition, recovered.inputQueueFingerprint);
 
                     // truncate the log in case the truncation did not commit after the checkpoint was taken
-                    this.logWorker.SetLastCheckpointPosition(commitLogPosition);
+                    this.logWorker.SetLastCheckpointPosition(recovered.commitLogPosition);
 
                     this.TraceHelper.FasterCheckpointLoaded(this.storeWorker.CommitLogPosition, this.storeWorker.InputQueuePosition, this.store.StoreStats.Get(), stopwatch.ElapsedMilliseconds);
                 }
@@ -207,7 +210,7 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 // restart pending actitivities, timers, work items etc.
-                await this.TerminationWrapper(this.storeWorker.RestartThingsAtEndOfRecovery());
+                this.storeWorker.RestartThingsAtEndOfRecovery(inputQueueFingerprint);
 
                 this.TraceHelper.FasterProgress("Recovery complete");
             }

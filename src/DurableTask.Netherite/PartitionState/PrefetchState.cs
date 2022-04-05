@@ -22,12 +22,27 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Prefetch);
 
-        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
+        public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            // reissue prefetch tasks for what did not complete prior to crash/recovery
-            foreach (var kvp in this.PendingPrefetches)
+            var timedOut = this.PendingPrefetches.Where(kvp => kvp.Value.TimeoutUtc < evt.Timestamp).ToList();
+
+            foreach (var kvp in timedOut)
             {
-                this.Partition.SubmitParallelEvent(new InstancePrefetch(kvp.Value));
+                this.PendingPrefetches.Remove(kvp.Key);
+
+                if (!effects.IsReplaying)
+                {
+                    effects.EventTraceHelper.TraceEventProcessingWarning($"Dropped request {kvp.Value.EventIdString} during recovery, because it has timed out");
+                }
+            }
+
+            if (!effects.IsReplaying)
+            {
+                // reissue prefetch tasks for what did not complete prior to crash/recovery
+                foreach (var kvp in this.PendingPrefetches)
+                {
+                    this.Partition.SubmitParallelEvent(new InstancePrefetch(kvp.Value));
+                }
             }
         }
 

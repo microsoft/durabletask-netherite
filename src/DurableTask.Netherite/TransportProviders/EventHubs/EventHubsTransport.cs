@@ -51,6 +51,7 @@ namespace DurableTask.Netherite.EventHubs
         ScriptedEventProcessorHost scriptedEventProcessorHost;
 
         public Guid ClientId { get; private set; }
+        public string Fingerprint => this.connections.Fingerprint;
 
         public EventHubsTransport(TransportAbstraction.IHost host, NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory)
         {
@@ -69,7 +70,7 @@ namespace DurableTask.Netherite.EventHubs
         }
 
         // these are hardcoded now but we may turn them into settings
-        public static string[] PartitionHubs = { "partitions" };
+        public static string PartitionHub = "partitions";
         public static string[] ClientHubs = { "clients0", "clients1", "clients2", "clients3" };
         public static string  LoadMonitorHub = "loadmonitor";
         public static string PartitionConsumerGroup = "$Default";
@@ -114,38 +115,13 @@ namespace DurableTask.Netherite.EventHubs
                 this.traceHelper.LogInformation("Using existing blob container at {container}", this.cloudBlobContainer.Uri);
             }
 
-            // ensure the event hubs exist, creating them if necessary
-            var tasks = new List<Task>();
-            tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, PartitionHubs[0], this.settings.PartitionCount));
-            if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
-            {
-                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, LoadMonitorHub, 1));
-            }
-            foreach (string taskhub in ClientHubs)
-            {
-                tasks.Add(EventHubsUtil.EnsureEventHubExistsAsync(this.settings.ResolvedTransportConnectionString, taskhub, 32));
-            }
-            await Task.WhenAll(tasks);
-
-            // determine the start positions and the creation timestamps
-            (long[] startPositions, DateTime[] creationTimestamps, string namespaceEndpoint)
-                = await EventHubsConnections.GetPartitionInfo(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHubs);
-
-            this.traceHelper.LogInformation("Confirmed eventhubs positions=[{positions}] endpoint={endpoint}", string.Join(",", startPositions.Select(x => $"#{x}")), namespaceEndpoint);
-
             var taskHubParameters = new TaskhubParameters()
             {
                 TaskhubName = this.settings.HubName,
                 TaskhubGuid = Guid.NewGuid(),
                 CreationTimestamp = DateTime.UtcNow,
                 StorageFormat = BlobManager.GetStorageFormat(this.settings),
-                PartitionHubs = EventHubsTransport.PartitionHubs,
-                ClientHubs = EventHubsTransport.ClientHubs,
-                PartitionConsumerGroup = EventHubsTransport.PartitionConsumerGroup,
-                ClientConsumerGroup = EventHubsTransport.ClientConsumerGroup,
-                EventHubsEndpoint = namespaceEndpoint,
-                EventHubsCreationTimestamps = creationTimestamps,
-                StartPositions = startPositions
+                PartitionCount = this.settings.PartitionCount,
             };
 
             // try to create the taskhub blob
@@ -159,6 +135,9 @@ namespace DurableTask.Netherite.EventHubs
                 var noOverwrite = AccessCondition.GenerateIfNoneMatchCondition("*");
                 await this.taskhubParameters.UploadTextAsync(jsonText, null, noOverwrite, null, null);
                 this.traceHelper.LogInformation("Created new taskhub");
+
+                // zap the partition hub so we start from zero queue positions
+                await EventHubsUtil.DeleteEventHubIfExistsAsync(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHub);
             }
             catch (StorageException e) when (BlobUtils.BlobAlreadyExists(e))
             {
@@ -212,10 +191,10 @@ namespace DurableTask.Netherite.EventHubs
             // check that the storage format is supported
             BlobManager.CheckStorageFormat(this.parameters.StorageFormat, this.settings);
 
-            this.host.NumberPartitions = (uint)this.parameters.StartPositions.Length;
+            this.host.NumberPartitions = (uint)this.parameters.PartitionCount;
             this.host.PathPrefix = TaskhubPathPrefix(this.parameters.TaskhubGuid);
            
-            this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, this.parameters.PartitionHubs, this.parameters.ClientHubs, LoadMonitorHub)
+            this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub)
             {
                 Host = host,
                 TraceHelper = this.traceHelper,
@@ -252,64 +231,36 @@ namespace DurableTask.Netherite.EventHubs
 
         async Task StartWorkersAsync()
         {
-            if (PartitionHubs.Length > 1)
-            {
-                throw new NotSupportedException("Using multiple eventhubs for partitions is not yet supported.");
-            }
-
             if (this.client == null)
             {
                 throw new InvalidOperationException("client must be started before partition hosting is started.");
             }
-
-            string partitionsHub = PartitionHubs[0];
             
             if (this.settings.PartitionManagement != PartitionManagementOptions.ClientOnly)
             {
                 this.hasWorkers = true;
-
-                if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
-                {
-                    await Task.WhenAll(StartPartitionHost(), StartLoadMonitorHost());
-                }
-                else
-                {
-                    await StartPartitionHost();
-                }
+                await Task.WhenAll(StartPartitionHost(), StartLoadMonitorHost());        
             }
 
             async Task StartPartitionHost()
             {
                 if (this.settings.PartitionManagement != PartitionManagementOptions.Scripted)
                 {
-                    string initialOffsets = string.Join(",", this.parameters.StartPositions.Select(x => $"#{x}"));
-                    this.traceHelper.LogInformation($"Registering Partition Host with EventHubs, initial offsets {initialOffsets}");
+                    this.traceHelper.LogInformation($"Registering Partition Host with EventHubs");
+
+                    string formattedCreationDate = this.connections.CreationTimestamp.ToString("o").Replace("/", "-");
 
                     this.eventProcessorHost = new EventProcessorHost(
                         Guid.NewGuid().ToString(),
-                        partitionsHub,
+                        EventHubsTransport.PartitionHub,
                         EventHubsTransport.PartitionConsumerGroup,
                         this.settings.ResolvedTransportConnectionString,
                         this.settings.ResolvedStorageConnectionString,
                         this.cloudBlobContainer.Name,
-                        $"{TaskhubPathPrefix(this.parameters.TaskhubGuid)}eh-checkpoints/{(PartitionHubs[0])}");
+                        $"{TaskhubPathPrefix(this.parameters.TaskhubGuid)}eh-checkpoints/{(EventHubsTransport.PartitionHub)}/{formattedCreationDate}");
 
                     var processorOptions = new EventProcessorOptions()
                     {
-                        InitialOffsetProvider = (s) => {
-                            var pos = this.parameters.StartPositions[int.Parse(s)];
-                            if (pos > 0)
-                            {
-                                // to work around bug in EH, ask for the most recently received packet to be delivered again
-                                this.traceHelper.LogDebug("InitialOffsetProvider: partitions/{partitionId} EventPosition.FromSequenceNumber({offset}, inclusive:true)", s, pos - 1);
-                                return EventPosition.FromSequenceNumber(pos - 1, inclusive: true);
-                            }
-                            else
-                            {
-                                this.traceHelper.LogDebug("InitialOffsetProvider: partitions/{partitionId} EventPosition.FromStart()", s);
-                                return EventPosition.FromStart();
-                            }
-                        },
                         MaxBatchSize = 300,
                         PrefetchCount = 500,
                     };
@@ -324,7 +275,7 @@ namespace DurableTask.Netherite.EventHubs
                 {
                     this.traceHelper.LogInformation($"Starting scripted partition host");
                     this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
-                            partitionsHub,
+                            EventHubsTransport.PartitionHub,
                             EventHubsTransport.PartitionConsumerGroup,
                             this.settings.ResolvedTransportConnectionString,
                             this.settings.ResolvedStorageConnectionString,
@@ -366,6 +317,18 @@ namespace DurableTask.Netherite.EventHubs
                     new LoadMonitorEventProcessorFactory(this), 
                     processorOptions);
             }
+        }
+
+        internal async Task ExitProcess(bool deletePartitionsFirst)
+        {
+            if (deletePartitionsFirst)
+            {
+                await this.connections.DeletePartitions();
+            }
+
+            this.traceHelper.LogError("Killing process in 10 seconds");
+            await Task.Delay(TimeSpan.FromSeconds(10));
+            System.Environment.Exit(222);
         }
 
         class PartitionEventProcessorFactory : IEventProcessorFactory
@@ -423,18 +386,10 @@ namespace DurableTask.Netherite.EventHubs
 
             if (this.hasWorkers)
             {
-                if (ActivityScheduling.RequiresLoadMonitor(this.settings.ActivityScheduler))
-                {
-                    this.traceHelper.LogDebug("Stopping partition and loadmonitor hosts");
-                    await Task.WhenAll(
-                      this.StopPartitionHost(),
-                      this.loadMonitorHost.UnregisterEventProcessorAsync());
-                }
-                else
-                {
-                    this.traceHelper.LogDebug("Stopping partition host");
-                    await this.eventProcessorHost.UnregisterEventProcessorAsync();
-                }
+                this.traceHelper.LogDebug("Stopping partition and loadmonitor hosts");
+                await Task.WhenAll(
+                  this.StopPartitionHost(),
+                  this.loadMonitorHost.UnregisterEventProcessorAsync());
             }
 
             this.traceHelper.LogDebug("Stopping client process loop");
@@ -446,6 +401,11 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper.LogInformation("EventHubsBackend shutdown completed");
         }
 
+        async Task Restart()
+        {
+            await this.StopAsync();
+
+        }
         Task StopPartitionHost()
         {
             if (this.settings.PartitionManagement != PartitionManagementOptions.Scripted)

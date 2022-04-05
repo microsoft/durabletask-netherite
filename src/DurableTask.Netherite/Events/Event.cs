@@ -57,6 +57,7 @@ namespace DurableTask.Netherite
             yield return typeof(ClientEventFragment);
             yield return typeof(PartitionEventFragment);
             yield return typeof(LoadInformationReceived);
+            yield return typeof(PositionsReceived);
             yield return typeof(ClientTaskMessagesReceived);
             yield return typeof(CreationRequestReceived);
             yield return typeof(DeletionRequestReceived);
@@ -65,8 +66,9 @@ namespace DurableTask.Netherite
             yield return typeof(PurgeRequestReceived);
             yield return typeof(StateRequestReceived);
             yield return typeof(WaitRequestReceived);
-            yield return typeof(TransferCommandReceived);
+            yield return typeof(AcksReceived);
             yield return typeof(SolicitationReceived);
+            yield return typeof(TransferCommandReceived);
             yield return typeof(ActivityTransferReceived);
             yield return typeof(RemoteActivityResultReceived);
             yield return typeof(TaskMessagesReceived);

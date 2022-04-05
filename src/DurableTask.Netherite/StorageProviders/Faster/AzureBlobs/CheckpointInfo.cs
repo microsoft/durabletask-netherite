@@ -23,6 +23,9 @@ namespace DurableTask.Netherite.Faster
         public long InputQueuePosition { get; set; }
 
         [JsonProperty]
+        public string InputQueueFingerprint { get; set; }
+
+        [JsonProperty]
         public long NumberInstances { get; set; }
     }
 }

@@ -25,7 +25,7 @@ namespace DurableTask.Netherite
 
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Outbox);
 
-        public override void OnRecoveryCompleted(EffectTracker effects, RecoveryCompleted evt)
+        public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
             // resend all pending
             foreach (var kvp in this.Outbox)
@@ -34,9 +34,15 @@ namespace DurableTask.Netherite
                 kvp.Value.Position = kvp.Key;
                 kvp.Value.Partition = this.Partition;
 
-                // resend (anything we have recovered is of course persisted)
-                effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent batch {kvp.Key:D10} ({kvp.Value.OutgoingMessages.Count} messages, {kvp.Value.OutgoingResponses.Count} responses)");
-                this.Send(kvp.Value);
+                if (!kvp.Value.SendWasConfirmed || evt.ResetInputQueue)
+                {
+                    kvp.Value.SendWasConfirmed = false;
+                    if (!effects.IsReplaying)
+                    {
+                        this.Send(kvp.Value);
+                        effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent batch {kvp.Key:D10} ({kvp.Value.OutgoingMessages.Count} messages, {kvp.Value.OutgoingResponses.Count} responses)");
+                    }
+                }
             }
         }
 
@@ -94,17 +100,35 @@ namespace DurableTask.Netherite
         {
             batch.ReadyToSendTimestamp = this.Partition.CurrentTimeMs;
             this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Outbox is sending for event id={batch.SendingEventId}");
+            var outMessages = batch.OutgoingMessages.Count < 2 ? batch.OutgoingMessages : batch.OutgoingMessages.ToList();// prevent concurrent mod
+            batch.TotalAcksExpected = batch.OutgoingResponses.Count + outMessages.Count;
 
             // now that we know the sending event is persisted, we can send the messages
-            foreach (var outmessage in batch.OutgoingMessages)
-            {
-                DurabilityListeners.Register(outmessage, batch);
-                this.Partition.Send(outmessage);
-            }
             foreach (var outresponse in batch.OutgoingResponses)
             {
                 DurabilityListeners.Register(outresponse, batch);
                 this.Partition.Send(outresponse);
+            }
+            foreach (var outmessage in outMessages)
+            {
+                DurabilityListeners.Register(outmessage, batch);
+                this.Partition.Send(outmessage);
+            }
+        }
+
+        public void RecordPositions(PositionsReceived evt)
+        {
+            foreach(var kvp in this.Outbox)
+            {
+                foreach (var m in kvp.Value.OutgoingMessages)
+                {
+                    var destination = (int) m.PartitionId;
+                    (long,int)? current = evt.NextNeededAck[destination];
+                    if (!current.HasValue || current.Value.CompareTo(m.DedupPosition) > 0)
+                    {
+                        evt.NextNeededAck[destination] = m.DedupPosition;
+                    }
+                }
             }
         }
 
@@ -120,6 +144,9 @@ namespace DurableTask.Netherite
             [DataMember]
             public string SendingEventId { get; set; } // for tracing
 
+            [DataMember]
+            public bool SendWasConfirmed { get; set; } // whether the send has been confirmed
+
             [IgnoreDataMember]
             public long Position { get; set; }
 
@@ -134,7 +161,25 @@ namespace DurableTask.Netherite
 
             [IgnoreDataMember]
             public double ReadyToSendTimestamp { get; set; }
- 
+
+            [IgnoreDataMember]
+            public int TotalAcksExpected { get; set; }
+
+
+            public bool IsDone(AcksReceived evt)
+            {              
+                this.OutgoingMessages = this.OutgoingMessages.Where(m => !m.ConfirmedBy(evt)).ToList();
+                return this.OutgoingMessages.Count == 0 && this.OutgoingResponses.Count == 0;
+            }
+
+            public void ConfirmSend(SendConfirmed evt, EffectTracker effects, out bool isDone)
+            {
+                effects.Partition.Assert(evt.SendingEventId.Equals(this.SendingEventId), "SendingEventId does not match");
+                this.OutgoingResponses.Clear();
+                this.SendWasConfirmed = true;
+                isDone = this.OutgoingMessages.Count == 0;
+            }
+
             public void ConfirmDurable(Event evt)
             {
                 if (evt is PartitionMessageEvent partitionMessageEvent)
@@ -154,9 +199,9 @@ namespace DurableTask.Netherite
 
                 int currentAckCount = Interlocked.Increment(ref this.numAcks);
 
-                if (currentAckCount == this.OutgoingMessages.Count + this.OutgoingResponses.Count)
+                if (currentAckCount == this.TotalAcksExpected)
                 {
-                    this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Outbox has finished sending for event id={this.SendingEventId}");
+                    this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Outbox has finished sending messages and responses for event id={this.SendingEventId}");
 
                     this.Partition.SubmitEvent(new SendConfirmed()
                     {
@@ -170,9 +215,27 @@ namespace DurableTask.Netherite
 
         public override void Process(SendConfirmed evt, EffectTracker effects)
         {
-            effects.EventDetailTracer?.TraceEventProcessingDetail($"Outbox is done with event id={evt.SendingEventId}");
+            if (this.Outbox.TryGetValue(evt.Position, out Batch batch))
+            {
+                batch.ConfirmSend(evt, effects, out bool isDone);
 
-            this.Outbox.Remove(evt.Position);
+                if (isDone)
+                {
+                    effects.EventDetailTracer?.TraceEventProcessingDetail($"Outbox is done with event id={evt.SendingEventId}");
+                    this.Outbox.Remove(evt.Position);
+                }
+            }
+        }
+
+        public override void Process(AcksReceived evt, EffectTracker effects)
+        {
+            var done = this.Outbox.Where(kvp => kvp.Value.IsDone(evt)).ToList(); 
+
+            foreach(var kvp in done)
+            {
+                this.Outbox.Remove(kvp.Key);
+                effects.EventDetailTracer?.TraceEventProcessingDetail($"Outbox is done with event id={kvp.Value.SendingEventId}");
+            }
         }
 
         public override void Process(ActivityCompleted evt, EffectTracker effects)

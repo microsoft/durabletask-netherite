@@ -15,11 +15,11 @@ namespace DurableTask.Netherite.EventHubs
     class EventHubsConnections
     {
         readonly string connectionString;
-        readonly string[] partitionHubs;
         readonly string[] clientHubs;
+        readonly string partitionHub;
         readonly string loadMonitorHub;
 
-        List<EventHubClient> partitionClients;
+        EventHubClient partitionClient;
         List<EventHubClient> clientClients;
         EventHubClient loadMonitorClient;
 
@@ -29,7 +29,7 @@ namespace DurableTask.Netherite.EventHubs
         public const int NumClientChannels = 2;
 
         public string Endpoint { get; private set; }
-        public DateTime[] CreationTimestamps { get; private set; }
+        public DateTime CreationTimestamp { get; private set; }
 
         public ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>> _partitionSenders = new ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>>();
         public ConcurrentDictionary<Guid, EventHubsClientSender> _clientSenders = new ConcurrentDictionary<Guid, EventHubsClientSender>();
@@ -42,58 +42,33 @@ namespace DurableTask.Netherite.EventHubs
 
         public EventHubsConnections(
             string connectionString, 
-            string[] partitionHubs,
+            string partitionHub,
             string[] clientHubs,
             string loadMonitorHub)
         {
             this.connectionString = connectionString;
-            this.partitionHubs = partitionHubs;
+            this.partitionHub = partitionHub;
             this.clientHubs = clientHubs;
             this.loadMonitorHub = loadMonitorHub;
-       }
+        }
+
+        public string Fingerprint => $"{this.Endpoint}{this.partitionHub}/{this.CreationTimestamp:o}";
 
         public async Task StartAsync(TaskhubParameters parameters)
         {
-            await Task.WhenAll(this.GetPartitionInformationAsync(), this.GetClientInformationAsync(), this.GetLoadMonitorInformationAsync());
-
-            // check that we are the correct namespace
-            if (!string.IsNullOrEmpty(parameters.EventHubsEndpoint)
-                && string.Compare(parameters.EventHubsEndpoint, this.Endpoint, StringComparison.InvariantCultureIgnoreCase) != 0)
-            {
-                throw new InvalidOperationException($"Cannot recover taskhub because the EventHubs namespace does not match."
-                    + " To resolve, either connect to the original namespace, delete the taskhub in storage, or use a fresh taskhub name.");
-            }
-
-            // check that we are dealing with the original event hubs
-            if (parameters.EventHubsCreationTimestamps != null)
-            {
-                for (int i = 0; i < this.CreationTimestamps.Count(); i++)
-                {
-                    if (this.CreationTimestamps[i] != parameters.EventHubsCreationTimestamps[i])
-                    {
-                        throw new InvalidOperationException($"Cannot recover taskhub because the original EventHubs was deleted."
-                             + " To resolve, delete the taskhub in storage, or use a fresh taskhub name.");
-                    }
-                }
-            }
-
-            // check that the number of partitions matches. I don't think it's possible for this to fail without prior checks tripping first.
-            if (parameters.StartPositions.Length != this.partitionPartitions.Count)
-            {
-                throw new InvalidOperationException($"Cannot recover taskhub because the number of partitions does not match.");
-            }
+            await Task.WhenAll(
+                this.EnsurePartitionsAsync(parameters.PartitionCount), 
+                this.EnsureClientsAsync(), 
+                this.EnsureLoadMonitorAsync());
         }
 
         public async Task StopAsync()
         {
             IEnumerable<EventHubClient> Clients()
             {
-                if (this.partitionClients != null)
+                if (this.partitionClient != null)
                 {
-                    foreach (var client in this.partitionClients)
-                    {
-                        yield return client;
-                    }
+                    yield return this.partitionClient;
                 }
 
                 if (this.clientClients != null)
@@ -113,99 +88,144 @@ namespace DurableTask.Netherite.EventHubs
             await Task.WhenAll(Clients().Select(client => client.CloseAsync()).ToList());
         }
 
-        async Task GetPartitionInformationAsync()
+        public async Task EnsurePartitionsAsync(int partitionCount, int retries = 3)
         {
-            // create partition clients
-            this.partitionClients = new List<EventHubClient>();
-            for (int i = 0; i < this.partitionHubs.Length; i++)
+            var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
             {
-                var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
+                EntityPath = this.partitionHub
+            };
+            var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+            try
+            {
+                var runtimeInformation = await client.GetRuntimeInformationAsync();
+
+                if (runtimeInformation.PartitionCount == partitionCount)
                 {
-                    EntityPath = this.partitionHubs[i]
-                };
-                var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
-                this.partitionClients.Add(client);
-                this.Endpoint = connectionStringBuilder.Endpoint.ToString();
+                    // we were successful. Record information and create a flat list of partition partitions
+                    this.partitionClient = client;
+                    this.Endpoint = connectionStringBuilder.Endpoint.ToString();
+                    this.CreationTimestamp = runtimeInformation.CreatedAt;
+                    for (int i = 0; i < partitionCount; i++)
+                    {
+                        this.partitionPartitions.Add((client, i.ToString()));
+                    }
+                    return;
+                }
+                else
+                {
+                    // we have to create a fresh one
+                    this.TraceHelper.LogWarning("Deleting existing partition EventHub because of partition count mismatch.");
+                    await EventHubsUtil.DeleteEventHubIfExistsAsync(this.connectionString, this.partitionHub);
+                    await Task.Delay(TimeSpan.FromSeconds(10));
+                }
+            }
+            catch (Microsoft.Azure.EventHubs.MessagingEntityNotFoundException) when (retries > 0)
+            {
+                this.TraceHelper.LogInformation("Creating EventHub {name}", this.partitionHub);
+                await EventHubsUtil.EnsureEventHubExistsAsync(this.connectionString, this.partitionHub, partitionCount);
             }
 
-            // in parallel, get runtime infos for all the hubs
-            var partitionInfos = this.partitionClients.Select((ehClient) => ehClient.GetRuntimeInformationAsync()).ToList();
-            await Task.WhenAll(partitionInfos);
-
-            this.CreationTimestamps = partitionInfos.Select(t => t.Result.CreatedAt).ToArray();
-
-            // create a flat list of partition partitions
-            for (int i = 0; i < this.partitionHubs.Length; i++)
+            // try again
+            if (retries > 0)
             {
-                foreach (var id in partitionInfos[i].Result.PartitionIds)
-                {
-                    this.partitionPartitions.Add((this.partitionClients[i], id));
-                }
+                await this.EnsurePartitionsAsync(partitionCount, retries - 1);
+            }
+            else // should never happen
+            {
+                this.TraceHelper.LogError("Could not ensure existence of partitions event hub.");
+                throw new InvalidOperationException("could not ensure existence of partitions event hub"); 
             }
         }
 
-        async Task GetClientInformationAsync()
+        internal async Task DeletePartitions()
         {
-            // create client clients
-            this.clientClients = new List<EventHubClient>();
-            for (int i = 0; i < this.clientHubs.Length; i++)
-            {
-                var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
-                {
-                    EntityPath = this.clientHubs[i]
-                };
-                var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
-                this.clientClients.Add(client);
-            }
+            await EventHubsUtil.DeleteEventHubIfExistsAsync(this.connectionString, this.partitionHub);
+        }
 
-            // in parallel, get runtime infos for all the hubs
-            var clientInfos = this.clientClients.Select((ehClient) => ehClient.GetRuntimeInformationAsync()).ToList();
+        async Task EnsureClientsAsync()
+        {
+            var clientTasks = new List<Task<(EventHubClient, EventHubRuntimeInformation)>>();
+            for (int i = 0; i < this.clientHubs.Count(); i++)
+            {
+                clientTasks.Add(this.EnsureClientAsync(i));
+            }
+            await Task.WhenAll(clientTasks);
+
+            this.clientClients = clientTasks.Select(t => t.Result.Item1).ToList();
+            var clientInfos = clientTasks.Select(t => t.Result.Item2).ToList();
 
             // create a flat list of client partitions
-            await Task.WhenAll(clientInfos);
-            for (int i = 0; i < this.clientHubs.Length; i++)
+            for (int i = 0; i < clientTasks.Count(); i++)
             {
-                foreach (var id in clientInfos[i].Result.PartitionIds)
+                foreach (var id in clientTasks[i].Result.Item2.PartitionIds)
                 {
                     this.clientPartitions.Add((this.clientClients[i], id));
                 }
             }
         }
 
-        Task GetLoadMonitorInformationAsync()
+        async Task<(EventHubClient, EventHubRuntimeInformation)> EnsureClientAsync(int i, int retries = 2)
+        {
+            var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
+            {
+                EntityPath = this.clientHubs[i]
+            };
+            try
+            {
+                var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+                var runtimeInformation = await client.GetRuntimeInformationAsync();
+                return (client, runtimeInformation);
+            }
+            catch (Microsoft.Azure.EventHubs.MessagingEntityNotFoundException) when (retries > 0)
+            {
+                this.TraceHelper.LogInformation("Creating EventHub {name}", this.clientHubs[i]);
+                await EventHubsUtil.EnsureEventHubExistsAsync(this.connectionString, this.clientHubs[i], 32);
+            }
+            // try again
+            return await this.EnsureClientAsync(i, retries - 1);
+        }
+
+
+        async Task EnsureLoadMonitorAsync(int retries = 2)
         {
             // create loadmonitor client
             var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
             {
                 EntityPath = loadMonitorHub,
             };
-            this.loadMonitorClient = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
-            return Task.CompletedTask;
+            try
+            {
+                this.loadMonitorClient = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+                var runtimeInformation = await this.loadMonitorClient.GetRuntimeInformationAsync();
+                return;
+            }
+            catch (Microsoft.Azure.EventHubs.MessagingEntityNotFoundException) when (retries > 0)
+            {
+                this.TraceHelper.LogInformation("Creating EventHub {name}", this.loadMonitorHub);
+                await EventHubsUtil.EnsureEventHubExistsAsync(this.connectionString, this.loadMonitorHub, 1);
+            }
+            // try again
+            await this.EnsureLoadMonitorAsync(retries - 1);
         }
 
-        public static async Task<(long[], DateTime[], string)> GetPartitionInfo(string connectionString, string[] partitionHubs)
+        public static async Task<List<long>> GetQueuePositionsAsync(string connectionString, string partitionHub)
         {
-            var connections = new EventHubsConnections(connectionString, partitionHubs, new string[0], null);
-            await connections.GetPartitionInformationAsync();
-
-            var numberPartitions = connections.partitionPartitions.Count;
-
-            var positions = new long[numberPartitions];
-
-            var infoTasks = connections.partitionPartitions
-                .Select(x => x.client.GetPartitionRuntimeInformationAsync(x.id)).ToList();
-
-            await Task.WhenAll(infoTasks);
-
-            for (int i = 0; i < numberPartitions; i++)
+            var connectionStringBuilder = new EventHubsConnectionStringBuilder(connectionString)
             {
-                var queueInfo = await infoTasks[i].ConfigureAwait(false);
-                positions[i] = queueInfo.LastEnqueuedSequenceNumber + 1;
+                EntityPath = partitionHub,
+            };
+            var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+            try
+            {
+                var runtimeInformation = await client.GetRuntimeInformationAsync();
+                var infoTasks = runtimeInformation.PartitionIds.Select(id => client.GetPartitionRuntimeInformationAsync(id)).ToList();
+                await Task.WhenAll(infoTasks);
+                return infoTasks.Select(t => t.Result.LastEnqueuedSequenceNumber + 1).ToList();
             }
-
-            await connections.StopAsync();
-
-            return (positions, connections.CreationTimestamps, connections.Endpoint);
+            catch (Microsoft.Azure.EventHubs.MessagingEntityNotFoundException)
+            {
+                return null;
+            }
         }
 
         // This is to be used when EventProcessorHost is not used.
