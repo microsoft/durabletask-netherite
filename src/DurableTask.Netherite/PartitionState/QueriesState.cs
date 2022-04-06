@@ -4,6 +4,7 @@
 namespace DurableTask.Netherite
 {
     using DurableTask.Core;
+    using DurableTask.Core.Common;
     using DurableTask.Core.History;
     using DurableTask.Netherite.Scaling;
     using System;
@@ -126,12 +127,12 @@ namespace DurableTask.Netherite
                 {
                     await this.request.OnQueryCompleteAsync(result, partition);
                 }
-                catch (TimeoutException)  // we catch them so we can mark the query as completed
+                catch (Exception exception) when (!Utils.IsFatal(exception) && !partition.ErrorHandler.IsTerminated)  
                 {
-                    partition.EventTraceHelper.TraceEventProcessingWarning($"query {this.request.EventId} timed out");
+                    // we catch unhandled exceptions in the query so it is marked as completed, successfully or not
                 }
 
-                // we now how to recycle the request event again in order to remove it from the list of pending queries
+                // recycle the request event again in order to remove it from the list of pending queries
                 var again = (ClientRequestEventWithQuery)this.request.Clone();
                 again.NextInputQueuePosition = 0; // this event is no longer considered an external event        
                 again.Phase = ClientRequestEventWithQuery.ProcessingPhase.Confirm;

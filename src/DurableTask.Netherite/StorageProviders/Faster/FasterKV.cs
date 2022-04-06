@@ -885,6 +885,7 @@ namespace DurableTask.Netherite.Faster
                 }
                 catch (TimeoutException e)
                 {
+                    this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} timed out");
                     channel.Writer.TryComplete(e);
                 }
                 catch (Exception e)
@@ -1572,7 +1573,13 @@ namespace DurableTask.Netherite.Faster
                 else if (tracker == null)
                 {
                     // this is a prefetch
-                    ((SemaphoreSlim)context).Release();
+                    try
+                    {
+                        ((SemaphoreSlim)context).Release();
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                    }
                 }
                 else
                 {
