@@ -19,6 +19,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public InstanceQuery InstanceQuery { get; set; }
 
+        [DataMember]
+        public int PreviousAttempts { get; set; }
+
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakeClientRequestEventId(this.ClientId, this.RequestId);
 
