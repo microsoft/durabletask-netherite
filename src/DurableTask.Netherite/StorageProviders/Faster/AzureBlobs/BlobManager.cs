@@ -82,7 +82,7 @@ namespace DurableTask.Netherite.Faster
             public int? StoreLogSegmentSizeBits;
             public int? StoreLogMemorySizeBits;
             public double? StoreLogMutableFraction;
-            public int? ExpectedObjectSize;
+            public int? EstimatedAverageObjectSize;
             public int? NumPagesToPreload;
         }
 
@@ -104,39 +104,41 @@ namespace DurableTask.Netherite.Faster
             long upperBoundOnAvailable, 
             FasterTuningParameters tuningParameters)
         {
+            int pageSizeBits = tuningParameters?.StoreLogPageSizeBits ?? 10; // default page size is 1k
 
-            var settings = new LogSettings
-            {
-                LogDevice = this.HybridLogDevice,
-                ObjectLogDevice = this.ObjectLogDevice,
-                PageSizeBits = tuningParameters?.StoreLogPageSizeBits ?? 10, // 1kB
-                MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
-                SegmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ??
-                    (useSeparatePageBlobStorage ? 35   // 32 GB
-                                                : 32), // 4 GB
-                CopyReadsToTail = CopyReadsToTail.FromReadOnly,
-            };
-
-            // compute a reasonable memory size for the log considering maximally availablee memory, and expansion factor
+            // compute a reasonable memory size for the log considering maximally available memory, and expansion factor
+            int memorybits = 0;
             if (tuningParameters?.StoreLogMemorySizeBits != null)
             {
-                settings.MemorySizeBits = tuningParameters.StoreLogMemorySizeBits.Value;
+                memorybits = tuningParameters.StoreLogMemorySizeBits.Value;
             }
             else
             {
-                double expansionFactor = (24 + ((double)(tuningParameters?.ExpectedObjectSize ?? 216))) / 24;
+                double expansionFactor = (24 + ((double)(tuningParameters?.EstimatedAverageObjectSize ?? 216))) / 24;
                 long estimate = (long)(upperBoundOnAvailable / expansionFactor);
-                int memorybits = 0;
+                
                 while (estimate > 0)
                 {
                     memorybits++;
                     estimate >>= 1;
                 }
-                memorybits = Math.Max(settings.PageSizeBits + 2, memorybits); // do not use less than 4 pages
-                settings.MemorySizeBits = memorybits;
+                memorybits = Math.Max(pageSizeBits + 2, memorybits); // never use less than 4 pages
             }
 
-            return settings;
+            return new LogSettings
+            {
+                LogDevice = this.HybridLogDevice,
+                ObjectLogDevice = this.ObjectLogDevice,
+                PageSizeBits = pageSizeBits,  
+                MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
+                SegmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ??
+                    (useSeparatePageBlobStorage ? 35   // 32 GB
+                                                : 32), // 4 GB
+                PreallocateLog = false,
+                ReadFlags = ReadFlags.CopyReadsToTail,
+                ReadCacheSettings = null, // no read cache
+                MemorySizeBits = memorybits,
+            };
         }
 
 

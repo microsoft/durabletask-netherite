@@ -1289,7 +1289,7 @@ namespace DurableTask.Netherite.Faster
             bool IFunctions<Key, Value, EffectTracker, Output, object>.NeedInitialUpdate(ref Key key, ref EffectTracker input, ref Output output, ref RMWInfo info)
                 => true;
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RecordInfo recordInfo, ref RMWInfo info)
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.InitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RMWInfo info)
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.InitialUpdate, 0, tracker.CurrentEventId, info.Address);
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
@@ -1305,16 +1305,17 @@ namespace DurableTask.Netherite.Faster
                 this.partition.Assert(value.Val != null, "null value.Val in InitialUpdater");
                 this.partition.Assert(!this.isScan, "InitialUpdater should not be called from scan");
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
+                return true;
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.PostInitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RecordInfo recordInfo, ref RMWInfo info)
+            void IFunctions<Key, Value, EffectTracker, Output, object>.PostInitialUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RMWInfo info)
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostInitialUpdate, value.Version, tracker.CurrentEventId, info.Address);
                 // we have inserted a new entry at the tail
                 this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + value.EstimatedSize, key, info.Address);
             }
 
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RecordInfo recordInfo, ref RMWInfo info)
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.InPlaceUpdater(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RMWInfo info)
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.InPlaceUpdate, value.Version, tracker.CurrentEventId, info.Address);
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
@@ -1345,7 +1346,7 @@ namespace DurableTask.Netherite.Faster
             bool IFunctions<Key, Value, EffectTracker, Output, object>.NeedCopyUpdate(ref Key key, ref EffectTracker tracker, ref Value value, ref Output output, ref RMWInfo info)
                 => true;
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref Output output, ref RecordInfo recordInfo, ref RMWInfo info)
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.CopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref Output output,  ref RMWInfo info)
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.CopyUpdate, oldValue.Version, tracker.CurrentEventId, info.Address);
                 this.cacheDebugger?.ValidateObjectVersion(oldValue, key.Val);
@@ -1383,16 +1384,17 @@ namespace DurableTask.Netherite.Faster
                 this.cacheDebugger?.ValidateObjectVersion(oldValue, key.Val);
                 this.cacheDebugger?.ValidateObjectVersion(newValue, key.Val);
                 this.partition.Assert(!this.isScan, "CopyUpdater should not be called from scan");
+                return true;
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.PostCopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref Output output, ref RecordInfo recordInfo, ref RMWInfo info)
+            void IFunctions<Key, Value, EffectTracker, Output, object>.PostCopyUpdater(ref Key key, ref EffectTracker tracker, ref Value oldValue, ref Value newValue, ref Output output, ref RMWInfo info)
             {
                 // Note: Post operation is called only when cacheDebugger is attached.
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostCopyUpdate, newValue.Version, tracker.CurrentEventId, info.Address);
                 this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + newValue.EstimatedSize, key, info.Address);
             }
 
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.SingleReader(ref Key key, ref EffectTracker tracker, ref Value src, ref Output dst, ref RecordInfo recordInfo, ref ReadInfo readInfo)
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.SingleReader(ref Key key, ref EffectTracker tracker, ref Value src, ref Output dst, ref ReadInfo readInfo)
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleReader, src.Version, default, readInfo.Address);
                 this.cacheDebugger?.ValidateObjectVersion(src, key.Val);
@@ -1429,7 +1431,7 @@ namespace DurableTask.Netherite.Faster
                 return true;
             }
 
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentReader(ref Key key, ref EffectTracker tracker, ref Value value, ref Output dst, ref RecordInfo recordInfo, ref ReadInfo readInfo)
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentReader(ref Key key, ref EffectTracker tracker, ref Value value, ref Output dst, ref ReadInfo readInfo)
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.ConcurrentReader, value.Version, default, readInfo.Address);
                 this.cacheDebugger?.ValidateObjectVersion(value, key.Val);
@@ -1459,7 +1461,7 @@ namespace DurableTask.Netherite.Faster
                 return true;
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.SingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, ref UpsertInfo info, WriteReason reason)
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.SingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref UpsertInfo info, WriteReason reason)
             {
                 switch (reason)
                 {
@@ -1487,9 +1489,10 @@ namespace DurableTask.Netherite.Faster
                 dst.Val = output.Val ?? src.Val;
                 dst.Version = src.Version;
                 this.cacheDebugger?.ValidateObjectVersion(dst, key.Val);
+                return true;
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, ref UpsertInfo info, WriteReason reason)
+            void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref UpsertInfo info, WriteReason reason)
             {
                 switch (reason)
                 {
@@ -1520,12 +1523,13 @@ namespace DurableTask.Netherite.Faster
                 }
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.SingleDeleter(ref Key key, ref Value value, ref RecordInfo recordInfo, ref DeleteInfo info)
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.SingleDeleter(ref Key key, ref Value value, ref DeleteInfo info)
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleDeleter, null, default, info.Address);
+                return true;
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleDeleter(ref Key key, ref RecordInfo recordInfo, ref DeleteInfo info)
+            void IFunctions<Key, Value, EffectTracker, Output, object>.PostSingleDeleter(ref Key key, ref DeleteInfo info)
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleDeleter, null, default, info.Address);
                 if (!this.isScan)
@@ -1534,7 +1538,7 @@ namespace DurableTask.Netherite.Faster
                 }
             }
 
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref RecordInfo recordInfo, ref UpsertInfo info)
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref UpsertInfo info)
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.ConcurrentWriter, src.Version, default, info.Address);
                 if (!this.isScan)
@@ -1546,14 +1550,14 @@ namespace DurableTask.Netherite.Faster
                 return true;
             }
 
-            bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentDeleter(ref Key key, ref Value value, ref RecordInfo recordInfo, ref DeleteInfo info)
+            bool IFunctions<Key, Value, EffectTracker, Output, object>.ConcurrentDeleter(ref Key key, ref Value value, ref DeleteInfo info)
             {
                 this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.ConcurrentDeleter, value.Version, default, info.Address);
                 if (!this.isScan)
                 {
                     long removed = value.EstimatedSize;
                     // If record is marked invalid (failed to insert), dispose key as well
-                    if (recordInfo.Invalid)
+                    if (info.RecordInfo.Invalid)
                         removed += key.Val.EstimatedSize;
                     this.cacheTracker.UpdateTrackedObjectSize(-removed, key, info.Address);
                     this.cacheDebugger?.UpdateReferenceValue(ref key.Val, null, 0);
