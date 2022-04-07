@@ -85,6 +85,20 @@ namespace DurableTask.Netherite.Faster
             Faster,
         };
 
+        bool IsSubscriptionEvent(CacheEvent evt)
+        {
+            switch (evt)
+            {
+                case CacheEvent.Evict:
+                case CacheEvent.EvictTombstone:
+                case CacheEvent.Readonly:
+                case CacheEvent.ReadonlyTombstone:
+                    return true;
+                default: 
+                    return false;
+            }
+        }
+
         public class ObjectInfo
         {
             public int CurrentVersion;
@@ -288,8 +302,8 @@ namespace DurableTask.Netherite.Faster
                 // adjust the actual
                 var firstActual = entries.FirstOrDefault().address;
                 var firstReference = entries.FirstOrDefault().address;
-                var latestReadonly = info.CacheEvents.Where(e => e.CacheEvent == CacheEvent.Readonly).Select(e => e.Address).LastOrDefault();
-                var adjustedHead = Math.Max(Math.Max(firstActual, firstReference), latestReadonly + 1);
+                var latestSubscriptionEvent = info.CacheEvents.Where(e => this.IsSubscriptionEvent(e.CacheEvent)).Select(e => e.Address).LastOrDefault();
+                var adjustedHead = Math.Max(Math.Max(firstActual, firstReference), latestSubscriptionEvent + 1);
 
                 // try to account for concurrent eviction processing by using the latest head address
                 info.GetCacheEvents(out _, out var entrySizes);

@@ -4,6 +4,7 @@
 namespace DurableTask.Netherite
 {
     using DurableTask.Core;
+    using DurableTask.Core.Common;
     using DurableTask.Core.History;
     using DurableTask.Netherite.Scaling;
     using System;
@@ -70,13 +71,12 @@ namespace DurableTask.Netherite
         {
             if (clientRequestEvent.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query)
             {           
-                this.Partition.Assert(!this.PendingQueries.ContainsKey(clientRequestEvent.EventIdString), "key already there in QueriesState");
+                this.Partition.Assert(!this.PendingQueries.ContainsKey(clientRequestEvent.EventIdString) || clientRequestEvent.PreviousAttempts > 0, "key already there in QueriesState");
                 // Buffer this request in the pending list so we can recover it.
-                this.PendingQueries.Add(clientRequestEvent.EventIdString, clientRequestEvent);
+                this.PendingQueries[clientRequestEvent.EventIdString] = clientRequestEvent;
             }
             else 
             {
-                this.Partition.Assert(clientRequestEvent.Phase == ClientRequestEventWithQuery.ProcessingPhase.Confirm, "wrong phase in QueriesState");
                 this.PendingQueries.Remove(clientRequestEvent.EventIdString);
             }
         }
@@ -122,19 +122,37 @@ namespace DurableTask.Netherite
             {
                 partition.Assert(this.request.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query, "wrong phase in QueriesState.OnQueryCompleteAsync");
 
+                bool retry;
+
                 try
                 {
                     await this.request.OnQueryCompleteAsync(result, partition);
+                    retry = false;
                 }
-                catch (TimeoutException)  // we catch them so we can mark the query as completed
+                catch (FASTER.core.FasterException exception) when (this.request.PreviousAttempts < 3 && exception.Message.StartsWith("Iterator address is less than log BeginAddress"))
                 {
-                    partition.EventTraceHelper.TraceEventProcessingWarning($"query {this.request.EventId} timed out");
+                    partition.EventTraceHelper.TraceEventProcessingWarning($"retrying query {this.request.EventId} after internal error, PreviousAttempts={this.request.PreviousAttempts}");
+                    retry = true;
+                }
+                catch (Exception exception) when (!Utils.IsFatal(exception) && !partition.ErrorHandler.IsTerminated)
+                {
+                    // unhandled exceptions terminate the query
+                    partition.EventTraceHelper.TraceEventProcessingWarning($"abandoning query {this.request.EventId} after internal error, PreviousAttempts={this.request.PreviousAttempts}");
+                    retry = false;
                 }
 
-                // we now how to recycle the request event again in order to remove it from the list of pending queries
+                // recycle the request event again in order to retry it, or to remove it from the list of pending queries
                 var again = (ClientRequestEventWithQuery)this.request.Clone();
                 again.NextInputQueuePosition = 0; // this event is no longer considered an external event        
-                again.Phase = ClientRequestEventWithQuery.ProcessingPhase.Confirm;
+                if (retry)
+                {
+                    again.Phase = ClientRequestEventWithQuery.ProcessingPhase.Query;
+                    again.PreviousAttempts = this.request.PreviousAttempts + 1;
+                }
+                else
+                {
+                    again.Phase = ClientRequestEventWithQuery.ProcessingPhase.Confirm;
+                }
                 partition.SubmitEvent(again);
             }
         }
