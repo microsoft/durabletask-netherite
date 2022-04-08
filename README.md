@@ -36,13 +36,10 @@ To achieve better performance, Netherite represents queues and partition states 
 
 For some other considerations about how to choose the engine, see [the documentation](https://microsoft.github.io/durabletask-netherite/#/engine.md).
 
-## Status
+The current version of Netherite is *1.0.0-rc1*. Netherite supports almost all of the DT and DF APIs. However, there are still some limitations:
 
-The current version of Netherite is *0.7.0-beta*.  Netherite already support almost all of the DT and DF APIs. However, there are still some limitations that we plan to address in the near future, before moving to beta status:
-
-- **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled so far. 
-- **Query Performance**. We have not quite completed our implementation of a FASTER index to speed up queries that are enumerating or purging instance states.
-- **Stability**. We do not recommend using Netherite in a production environment yet; although we have found and fixed many bugs already, we need more testing before moving to beta status. Any help from the community is greatly appreciated!
+- **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled. This will be resolved by GA.
+- **Query Performance**. Currently, query performance is suboptimal and does not support paging. We plan to add a range index implementation to fix this soon after GA.
 
 To learn more about the Netherite architecture, you can also check out our [paper on arXiv](https://arxiv.org/abs/2103.00033).
 
