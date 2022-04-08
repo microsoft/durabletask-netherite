@@ -30,7 +30,7 @@ First, make sure you have the following installed on your machine:
 
 To execute the REST calls we recommend to use the [RESTClient for VSCode](https://marketplace.visualstudio.com/items?itemName=humao.rest-client).
 
-📝 **Remark:** You can execute Durable Functions with Netherite local-only without an Azure subscription. In that case you are fine with installing the prerequisites 1. - 4.
+?> **Remark:** You can execute Durable Functions with Netherite local-only without an Azure subscription. In that case you are fine with installing the prerequisites 1. - 4.
 
 ### Language-Specific Prerequisites
 
@@ -58,7 +58,7 @@ The samples are in the directory [/samples/](https://github.com/microsoft/durabl
 
 The language-specific folder in the `samples` folder contain "minimal" Azure Durable Functions projects (much like the [DF Quick Start](https://docs.microsoft.com/azure/azure-functions/durable/durable-functions-create-first-csharp?pivots=code-editor-visualstudio)).
 
-⚠ **CAUTION:** Be aware that all projects have no authentication in place. This makes the calling of the Functions easy, but this is not feasible setup for a production environment.
+!> **CAUTION:** Be aware that all projects have no authentication in place. This makes the calling of the Functions easy, but this is not feasible setup for a production environment.
 
 The build process depends on the language you want to use. The following sections guide you through the specific steps.
 
@@ -182,7 +182,7 @@ Be aware that you must query the `statusUri` for non.NET languages to get the re
 
 To shut down the functions app, hit `Control^C` in the terminal which runs it. You can also stop Azurite.
 
-🚀 **Great** - you have successfully executed Durable Functions with Netherite locally. Let us move on and combine this with the necessary resources on Azure.
+?> 🚀 **Great** - you have successfully executed Durable Functions with Netherite locally. Let us move on and combine this with the necessary resources on Azure.
 
 ## Create Azure Resources
 
@@ -194,7 +194,7 @@ $name="globally-unique-lowercase-alphanumeric-name-with-no-dashes"
 
 and replace the string with a globally unique string (e. g. `sbnethtest391`) for naming the Azure resources.
 
-⚠ **CAUTION:** As this string is used for naming the storage account, it must be between 3 and 24 characters in length and may contain numbers and lowercase letters only.
+!> **CAUTION:** As this string is used for naming the storage account, it must be between 3 and 24 characters in length and may contain numbers and lowercase letters only.
 
 You may inspect and change any other settings in `settings.ps1` also, if desired.
 
@@ -218,7 +218,7 @@ As it runs, this script creates the following resources:
 
 You can inspect these resources in the [Azure Portal](https://portal.azure.com), and change their configuration parameters.
 
-⚠ **CAUTION:** The EventHubs namespace incurs continuous charges even if not used. Make sure to clean up resources by running `delete.ps1` once you are done with this sample.
+!> **CAUTION:** The EventHubs namespace incurs continuous charges even if not used. Make sure to clean up resources by running `delete.ps1` once you are done with this sample.
 
 Both the storage account and the EventHubs namespace have a *connection string* that is needed for the application to use them. Our PowerShell scripts automatically look them up using the CLI. Alternatively, you can manually set the environment variables `AzureWebJobsStorage` and `EventHubsConnection` to contain these connection strings or put them into the `local.settings.json` file.
 
@@ -242,7 +242,7 @@ Trigger the Function via the HTTP request as in the local execution scenario.
 
 To shut down the functions app down, you can hit `Control^C` in the terminal which runs it.
 
-⚠ **CAUTION:** If you leave the app running on your local machine during the next step, it will execute alongside with the cluster of machines you run in the cloud! That is, the Netherite load balancer will distribute the partitions over all machines in the cloud, and your local machine. While this "super-cluster" would function correctly, it is probably not what you want.
+!> **CAUTION:** If you leave the app running on your local machine during the next step, it will execute alongside with the cluster of machines you run in the cloud! That is, the Netherite load balancer will distribute the partitions over all machines in the cloud, and your local machine. While this "super-cluster" would function correctly, it is probably not what you want.
 
 ## Deploy it to Azure
 
@@ -253,7 +253,7 @@ Now it is time to bring the Function App to Azure and run it in the cloud. The d
 
 We will walk through these steps in the next two sections.
 
-📝 **Remark:** We use a *premium functions plan* for now, until we implement support for the consumption plan.
+?> **Remark:** We use a *premium functions plan* for now, until we implement support for the consumption plan.
 
 ### Setup Azure Functions App on Azure
 
@@ -305,7 +305,7 @@ Here is an example output for .NET:
     SayHello - [activityTrigger]
 ```
 
-📝 **Remark** You find the URL also in the Azure portal. For the Python-based deployment this is the preferred way, as the output will not show up.  
+?> **Remark** You find the URL also in the Azure portal. For the Python-based deployment this is the preferred way, as the output will not show up.  
 
 You can now *test the app that is running the cloud* by issuing an HTTP request to the corresponding invocation endpoint. This should produce the same output as in the case of the local or hybrid scenarios executed before.
 
@@ -335,4 +335,4 @@ If you want to follow along migrating a Durable Function from Azure Storage to N
 | 4    | Deployment of Azure Durable Function and execution on Azure                                             | [Link](https://www.youtube.com/watch?v=GRcHeZkmVcM&t=1596s)
 | 5    | Cleanup of Azure resources                                                                              | [Link](https://www.youtube.com/watch?v=GRcHeZkmVcM&t=2266s)
 
->> 🔎  The video uses the Netherite extension in version 0.5.0-alpha. By the time you will watch this video, there might be a newer version available. The migration procedure *per se* should remain the same.
+?> 🔎  The video uses the Netherite extension in version 0.5.0-alpha. By the time you will watch this video, there might be a newer version available. The migration procedure *per se* should remain the same.

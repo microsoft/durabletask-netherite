@@ -3,13 +3,12 @@
 
 * [Introduction](introduction.md)
 
-* Getting Started
-  * ['Hello' Sample](hello-sample.md)
+* ['Hello' Sample](hello-sample.md)
   
 * Concepts
   * [Which engine to choose?](engine.md)
   * [Build](build.md)
-  * [Task hubs](storage.md)
+  * [Storage Resources](storage.md)
   * [Emulation Mode](emulation.md)
   
 * Observability
@@ -18,7 +17,6 @@
 * Performance
   * [Throughput](throughput.md)
 
-* Configuration
-  * [Host.json](settings.md)  
+* [Configuration](settings.md)  
 
 * [General Information](general.md)

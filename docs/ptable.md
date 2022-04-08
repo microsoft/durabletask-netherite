@@ -18,12 +18,17 @@ The meaning of the columns is:
 |WorkerId| The name of the machine that is hosting this partition. |
 |Timestamp| The time at which this row was written.  |
 |LatencyTrend| A sequence of up to five letters, each one indicating load during a publishing interval. Every time the row is written, a new letter is appended on the right, so reading them from left to right indicates the latency trend. I means idle, L means low latency (less than 100ms), H means medium latency (between 100 and 1000ms), and H means high latency (above 1000ms).|
-|CommitLogPosition| The position (in bytes) of the commit log. This is monotonically increasing, and advances every time the partition state changes. |
-|InputQueuePosition| The position of the EventHubs input queue. This is monotonically increasing, and advances every time a message is processed. |
+|Instances| The number of instances (orchestrations and entities) stored in this partition. |
 |WorkItems| The number of currently pending activity and orchestration work items. |
 |Timers| The number of currently pending timers. |
-|Timers| The time at which the next timer will fire. |
+|NextTimer| The time at which the next timer will fire. |
 |Requests|  The number of currently pending client requests. |
+|Outbox| The number of work items that have messages in the outbox.|
+|MissRate| The percentage of requests that missed the cache.|
+|CacheMB| The size of the cached history and instance data. |
+|CachePct| How much of the cache for this partition has been filled.|
+|CommitLogPosition| The position (in bytes) of the commit log. This is initially 64, monotonically increasing, and advances every time the partition state changes. |
+|InputQueuePosition| The position of the EventHubs input queue. This is initially zero, monotonically increasing, and advances every time a message is processed. |
 
 
 ## Changing the table name

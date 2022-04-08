@@ -1,67 +1,52 @@
-# Task hubs and Storage
+# Storage Resources
 
-The state of a Durable Functions application is persisted in a [task hub](https://docs.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-task-hubs?tabs=csharp). Task hubs are logical containers for grouping the required storage resources (such as queues, blobs, or tables). In Netherite, a task hub stores its content in two separate storage resources:
+Netherite automatically manages the state of the application by maintaining various resources in storage, using the connection strings defined in `AzureWebJobsStorage` and `EventHubsConnection`.
 
-1. An Azure Storage Blob Container stores the current state of all orchestrations and entities, as well as metadata about the task hub.
-2. An Event Hubs Namespace stores the persistent queues used by this task hub.
+?> **Concept** The durable application state is organized into a logical unit called a [task hub](https://docs.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-task-hubs?tabs=csharp). 
+A task hub is automatically created the first time the service is started. Once created, a taskhub persists in storage, unless explicitly deleted. This is intentional; it guarantees durability of the state of orchestrations and entities.
 
-To access these resources, the configuration settings `AzureWebJobsStorage` and `EventHubsConnection` must contain suitable connection strings.
+When running Netherite, the following storage resources are used:
 
-## Creating task hubs
+1. An **Azure Storage Account**, which contains
+   1. An **Azure Storage Blob Container** called `XXX-storage` (where XXX is the taskhub name). This container stores the current state of all orchestrations and entities. The state is encoded inside multiple block- and page-blobs and is not human-readable for the most part, as it is optimized for efficient I/O using FasterKV and FasterLog.
+   1. An **Azure Storage Table** called `DurableTaskPartitions`. This table stores metrics in a human-readable format. It is used for diagnostic purposes and autoscaling.
+1. An **Event Hubs Namespace**, which contains several event hubs that serve as channels for transmitting messages between partitions and clients.
+
+!> **Important** Never use the same EventHubs namespace for multiple function apps at the same time.
+
+### Task Hub Restart
+
+If you want to restart the application from a clean, empty state, some common ways to achieve this are:
+
+1. *Change the task hub name*. This leaves the state of the previous task hub untouched, and simply creates a new one.
+1. *Delete the blob container*. Be aware that after deleting a container, Azure Storage may refuse to recreate it for a minute or so, which can be inconvenient if you want to restart the function app right away.
+1. *Delete all the blobs inside the blob container*. Since there is no simple command for this, it requires some tool or script and may take while.
+1. *Delete just the `XXX-storage/taskhubparameters.json` blob*. This prompts the runtime to create a new taskhub. It leaves some garbage behind in storage, but there are no other negative consequences, and this is therefore often convenient for quick iteration during testing.
+
+### Task Hub Deletion
+
+Once you are finished using a task hub, it is advisable to delete the associated resources to avoid billing charges. 
+Note that EventHubs billing accumulates charges for the reserved capacity measured in throughput units, or TU. In particular, the number of partitions, or the amount of data stored in them, does not matter.
+
+### Storage Representation Details
 
 A task hub is automatically created by Netherite when the application is started the first time. Specifically,
-- Five Event Hubs (`clients0`, `clients1`, `clients2`, `clients3`, `partitions`) are created in the Namespace specified by `EventHubsConnection`.
+
 - A blob container named `<taskhubname>-storage` is created in the storage account specified by `AzureWebJobsStorage`.
-- A blob named `taskhubparameters.json` is written to the blob container.
+- A blob named `taskhubparameters.json` is written to the blob container. You can inspect this file to see the properties of the task hub.
+- The following event hubs are created (or recreated) in the namespace specified by `EventHubsConnection`.
+  - An event hub called `partitions` with 1-32 partitions.
+  These are used to deliver messages to the Netherite partitions, reliably and in order. There is a one-to-one correspondence between the partitions of this event hub and the Netherite partitions.
+  The number of Netherite partitions is determined by the setting of the `PartitionCount` property in the [settings](settings.md) at the time the taskh ub is created, which defaults to 12. Once the task hub has been created, the partition count can no longer be changed.
+  - An event hub called `loadmonitor` with 1 partition.
+  This is used to send information to the load balancer.
+  - Four event hubs called `clients0`, `clients1`, `clients2` and `clients3` with 32 partitions each.
+  These are used for sending responses back to clients. By design, we use vastly more partitions (128) than the expected number of clients.
+  The reason is that clients hash to these partitions randomly, and we want reduce the likelihood of hash conflicts.
 - Several partition folders and initial checkpoints are written to the blob container.
-
-## Deleting task hubs
-
-To simply start from a clean state, renaming the task hub instead of deleting it is a useful trick; it forces a fresh task hub to be created when the function app starts.
-
-Alternatively, a task hub can be deleted by deleting the entire content of the blob container, or by deleting the blob container itself. Be aware that after deleting a container, Azure Storage may refuse to recreate it for a minute or so, which can be inconvenient if you want to restart the function app right away. 
-
-It is usually not necessary to delete any of the Event Hubs; when a new task hub is created, it starts consuming and producing messages relative to the latest position. The only exception is when **changing the number of partitions**. In that case, the `partitions` Event Hub must be deleted, so a new one with the right number of partitions can be created. This must be done before creating the task hub; once a task hub has been created, it is not possible to change the number of partitions. 
-
-## Caveats
-
-- Do NOT use the same EventHubs namespace for more than one task hub at the same time. It is o.k. to use it for multiple task hubs over time. 
-
-- Do NOT delete any of the EventHubs or connect to a different EventHubs namespace without also deleting the blob container content. Otherwise, Netherite will fail to recover the existing task hub and generate an error when trying to start the application.
-
-## Storage Organization
-
-We now give a more detailed description of the storage organization for a task hub.
-
-#### Azure Storage
-
-In Azure Storage, a **\<taskhubname>-storage** container is created the first time a taskhub is used.
-It contains the following folders and files:
-
-|Name|Type|Content|
-|-|-|-|
-|$Default|folder|consumption checkpoint positions used by EventHubs|
-|p00|folder|the state of partition 0|
-|p01|folder|the state of partition 1|
-|...|...|...|
-|p11|folder|the state of partition 11|
-|taskhubparameters.json|file|parameters of this taskhub|
 
 Additionally, if the option `TraceToBlob` is set to true in the [settings](settings.md), a **logs** container is automatically created. It contains append blobs that capture traces generated by each node. A new blob is started everytime a node (re)starts. This logging feature is intended for debugging purposes during development and has not been hardened for production deployments.
 
-#### Event Hubs
+Note that deleting the event hubs or the namespace does not delete task hub; rather, the task hub automatically recovers its state if its event hub is lost, or if events have expired and were thrown away.
 
-Inside the event hubs namespace, the following event hubs are automatically created the first time it a taskhub is created:
-
-* **An event hub called `partitions`** with 1-32 partitions.
-
-  These are used to deliver messages to the Netherite partitions, reliably and in order. There is a one-to-one correspondence between the partitions of this event hub and the Netherite partitions. 
-
-  The number of Netherite partitions is determined by the `PartitionCount` property in the [settings](settings.md), which defaults to 12.
-
-* **Four event hubs called `clients0`, `clients1`, `clients2` and `clients3`** with 32 partitions each.
-
-  These are used for sending responses back to clients. By design, we use vastly more partitions (128) than the expected number of clients.
-  The reason is that clients hash to these partitions randomly, and we want reduce the likelihood of hash conflicts.
-
-Note that EventHubs accumulate charges for the reserved capacity measured in throughput units, or TU. In particular, the number of partitions, or the amount of data stored in them, does not matter.
+?> **Tip** You can manually delete the 'partitions' event hub of a running application to immediately force a restart of all partitions. This can be useful at times; One can consider this the equivalent of "fixing" a stuck mechanical machine by giving it a kick.

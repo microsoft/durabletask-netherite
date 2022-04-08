@@ -1,8 +1,59 @@
 
-## Minimal Configuration
+# Configuration
+
+Netherite is configured using settings in two places:
+
+1. Connection strings. These are resolved via connection names, which can be defined either as environment variables or as function app configuration settings.
+1. Additional parameters inside the `host.json` configuration file.
+
+## Connection names
+
+The following two connection names must be defined in app settings or environment variables:
+
+1. `AzureWebJobsStorage` must contain a connection string to an existing Azure Storage account. For most Azure Function applications, this is already the case by default.
+
+?> **Tip** If you want to use a different Azure Storage Account for Netherite task hubs than for the rest of the function app, you can change the `StorageConnectionName` setting in host.json to use a connection name of your choice instead of `AzureWebJobsStorage`.
+
+1. `EventHubsConnection` must contain a SAS connection string to an existing EventHubs namespace.
+
+!> **Important** Never use the same EventHubs namespace for multiple function apps at the same time.
+
+
+### Connection names for DurableClients
+
+It is possible to bind Durable Clients to specific taskhub instances, as documented [here](https://docs.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-bindings?tabs=csharp%2C2x-durable-functions#client-usage).
+Those APIs would usually expect a single connection name to be specified. However, as Netherite needs two connection names, they can both be passed in the same string, separated by a comma:
+
+<!-- tabs:start -->
+
+#### **C# Attribute**
+
+```csharp
+...
+[DurableClient(
+   TaskHub = "TaskHub2",
+   ConnectionName = "Storage2, EventHubs2"
+)] IDurableClient client
+```
+
+#### **function.json**
+
+```json
+{
+    "taskHub": "TaskHub2",
+    "connectionName": "Storage2, EventHubs2",
+}
+```
+
+<!-- tabs:end -->
+
+## host.json Configuration
+
+### Minimal Configuration
 
 To run with Netherite, the host.json file must set the storage provider type to "Netherite".
-```c#
+
+```json
 {
   "version": "2.0",
   "extensions": {
@@ -15,21 +66,19 @@ To run with Netherite, the host.json file must set the storage provider type to 
 }    
 ```
 
-And the configuration settings (app settings or environment variables) must specify two connection strings:
-1. `AzureWebJobsStorage` must contain a connection string to an existing Azure Storage account. For most Azure Function applications, this is already the case by default.
-1. `EventHubsConnection` must contain a SAS connection string to an existing EventHubs namespace. 
 
-## Typical Configuration
 
-A typical host.json configuration file usually contains a few more settings. We recommend something like:
+### Typical Configuration
 
-```c#
+We recommend using a few more settings, something like:
+
+```json
 {
   "version": "2.0",
   "extensions": {
     "durableTask": {
 
-      // The task hub name can be changed to start from a clean state
+      // The task hub name can be set explicitly
       "hubName": "myawesomeapp-11",  
 
       // set this to true to reduce likelihood of duplicated work items   
@@ -76,10 +125,11 @@ There are two different sections that control aspects of the logging.
 #### Parameters in the global `logging` section
 
 The `logging` section of the host.json file controls
+
 1. what is displayed in the console (when running func.exe locally), and
 2. what is stored and billed in Application Insights (when Application Insights is enabled).
 
-```c#
+```json
 "version": "2.0",
   "logging": {
     "logLevel": {
@@ -97,17 +147,20 @@ The `logging` section of the host.json file controls
       "DurableTask.Netherite.FasterStorage": "Warning",
       "DurableTask.Netherite.EventHubsTransport": "Warning",
       "DurableTask.Netherite.Events": "Warning",
-      "DurableTask.Netherite.WorkItems": "Warning"
+      "DurableTask.Netherite.WorkItems": "Warning",
+      "DurableTask.Netherite.Client": "Warning",
+      "DurableTask.Netherite.LoadMonitor": "Warning"
     },
   },
   ...
 }
 ```
+
 #### Logging Parameters for Netherite
 
 The generation of tracing events can be controlled in the `durableTask` section. We recommend leaving these at the "Debug" setting which allows useful telemetry to be collected automatically when running in hosted plans. 
 
-```csharp
+```json
   "extensions": {
     "durableTask": {
         ...
@@ -120,6 +173,8 @@ The generation of tracing events can be controlled in the `durableTask` section.
         "TransportLogLevelLimit": "Debug",
         "EventLogLevelLimit": "Debug",
         "WorkItemLogLevelLimit": "Debug",
+        "ClientLogLevelLimit": "Debug",
+        "LoadMonitorLogLevelLimit": "Debug",
 
         // the following can be used to collectd and direct trace output to additional specific sinks
         // which is useful in a testing and debugging context, but not recommended for production
@@ -130,26 +185,25 @@ The generation of tracing events can be controlled in the `durableTask` section.
   }
 ```
 
-### Advanced Netherite-Specific Configuration Parameters
+### Advanced Configuration Parameters
 
 In addition to the parameters shown earlier, there are many more. Many of them are the same as for other backends.
  We document only the ones that are specific to Netherite here.
 
 #### Orchestration Caching
 
-| name | type | meaning| 
-| - | - | - |
-| CacheOrchestrationCursors | bool | Whether to enable caching of execution cursors to skip orchestrator replay. Defaults to true. |
-
-This setting is the equivalent of `enableExtendedSessions` for the Netherite backend, in the sense that it allows in-progress orchestrations to stay in memory.
-However, unlike `enableExtendedSessions`, it is true by default.
+| name | type | default | meaning| 
+| - | - | - | - |
+| CacheOrchestrationCursors | bool | true | Whether to enable caching of execution cursors to skip orchestrator replay. This setting is similar to `enableExtendedSessions` in the AzureStorage backend. |
+| InstanceCacheSizeMB | int | 200 MB * ProcessorCount, or 100 MB in consumption plan | Upper limit on the total amount of memory used on a host for caching orchestration histories and entity states. |
 
 #### Other Parameters
 
-| name | type | meaning| 
-| - | - | - |
-| PackPartitionTaskMessages | int | Maximum number of task messages to pack into a single Event Hubs event. Defaults to 100. |
-| LoadInformationAzureTableName | string | a name for an Azure Table to use for publishing load information. Defaults to "DurableTaskPartitions". If set to null or empty, then Azure blobs are used instead.|
+| name | type | default | meaning| 
+| - | - | - | - |
+| PackPartitionTaskMessages | int | 100 | Maximum number of task messages to pack into a single Event Hubs event. |
+| LoadInformationAzureTableName | string | DurableTaskPartitions | A name for an Azure Table to use for publishing load information. If set to null or empty, then Azure blobs are used instead.|
+| PersistDequeueCountBeforeStartingWorkItem | bool | false | If true, the start of work items is delayed until the dequeue count is persisted. If false, execution can start before persisting the dequeue count, which improves latency but means the reported dequeue count may be lower than the actual dequeue count in some cases.|
 
 #### Checkpointing
 
@@ -158,23 +212,22 @@ Netherite users need to modify these defaults.
 
 Since progress is already being continously persisted to the commit log, how often to take checkpoints is purely a performance tradeoff (weighing cost of replay versus cost of checkpointing); it does not influence the reliability. 
 
-| name | type | meaning| 
+| name | type | meaning |
 | - | - | - |
-| TakeStateCheckpointWhenStoppingPartition |  bool | Whether to checkpoint the current state of a partition when it is stopped. This improves recovery time but lengthens shutdown time.|
+| TakeStateCheckpointWhenStoppingPartition |  bool | Whether to checkpoint the current state of all partitions when shutting down a node. This improves recovery time but lengthens shutdown time. Defaults to true.|
 | MaxNumberBytesBetweenCheckpoints |  long | A limit on how many bytes to append to the log before initiating a state checkpoint. The default is 20MB.|
 | MaxNumberEventsBetweenCheckpoints |  long |A limit on how many events to append to the log before initiating a state checkpoint. The default is 10000. |
 | IdleCheckpointFrequencyMs |  long | How often to checkpoint when the partition is idle. The default is 60s. |
 
-#### Unsupported Parameters (For Debugging/Experiments Only)
+#### Unsupported Parameters
 
-The following settings were used for testing environments or specific experimental investigations. 
-Use at your own risk, we do not guarantee that they actually work.
+The following settings were used for testing environments or specific experimental investigations.
+Do not modify these unless you know exactly what you are doing.
 
 | name |  meaning | 
 | - | - |
 | PartitionManagementOptions | Selects alternate partition management algorithms.|
 | ActivitySchedulerOptions | Selects alternate activity scheduling algorithms. |
-| KeepServiceRunning |   Keeps the service running during unit tests. |
 | UseLocalDirectoryForPartitionStorage | Save partition states to local files instead of the blob container. |
 | UseAlternateObjectStore | Uses Azure Tables for storing partition states instead of FASTER. |
 | PersistStepsFirst |  Forces steps to pe persisted before applying their effects, disabling all pipelining. |

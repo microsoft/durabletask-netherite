@@ -4,7 +4,7 @@ Netherite is a distributed workflow execution engine for [Durable Functions](htt
 
 It is of potential interest to anyone developing applications on those platforms who has an appetite for performance, scalability, and reliability. 
 
-As Netherite is intended to be a drop-in backend replacement, it does not modify the application API. Existing applications can switch to this backend with little effort.
+?> Netherite is a drop-in replacement for the default backend, it does not modify the application API. Existing DF applications can switch to Netherite with little effort.
 
 ## Getting Started
 
@@ -18,7 +18,9 @@ If you have a .NET Durable Functions application already, and want to configure 
 - Add the NuGet package `Microsoft.Azure.DurableTask.Netherite.AzureFunctions` to your functions project.
 - Create an EventHubs namespace. You can do this in the Azure portal, or using the Azure CLI.
 - Configure `EventHubsConnection` with the connection string for the Event Hubs namespace. You can do this using an environment variable, or with a function app configuration settings.
-- Modify the host.json to select Netherite as your provider. See [recommended host.json settings for Netherite](settings).
+- Add `"type" : "Netherite"` to the `storageProvider` section of your host.json. See [recommended host.json settings](settings).
+
+!> **Important** Never use the same EventHubs namespace for multiple function apps at the same time.
 
 ## Why a new engine?
 
@@ -46,10 +48,9 @@ In the future, we plan to support alternatives for these components. For example
 
 ## Status
 
-The current version of Netherite is *0.7.0-beta*.  Netherite already support almost all of the DT and DF APIs. However, there are still some limitations that we plan to address in the near future, before moving to beta status:
+The current version of Netherite is *1.0.0-rc1*. Netherite supports almost all of the DT and DF APIs. However, there are still some limitations:
 
-- **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled so far. 
-- **Query Performance**. We have not quite completed our implementation of a FASTER index to speed up queries that are enumerating or purging instance states.
-- **Stability**. We do not recommend using Netherite in a production environment yet; although we have found and fixed many bugs already, we need more testing before moving to beta status. Any help from the community is greatly appreciated!
+- **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled. This will be resolved by GA.
+- **Query Performance**. Currently, query performance is suboptimal and does not support paging. We plan to add a range index implementation to fix this soon after GA.
 
 To learn more about the Netherite architecture, you can also check out our [paper on arXiv](https://arxiv.org/abs/2103.00033).
