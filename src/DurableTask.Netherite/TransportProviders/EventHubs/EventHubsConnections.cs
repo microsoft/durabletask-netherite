@@ -88,7 +88,29 @@ namespace DurableTask.Netherite.EventHubs
             await Task.WhenAll(Clients().Select(client => client.CloseAsync()).ToList());
         }
 
-        public async Task EnsurePartitionsAsync(int partitionCount, int retries = 3)
+        const int EventHubCreationRetries = 5;
+
+        async Task EnsureEventHubExistsAsync(string eventHubName, int partitionCount)
+        {
+            this.TraceHelper.LogDebug("Creating EventHub {name}", eventHubName);
+            bool success = await EventHubsUtil.EnsureEventHubExistsAsync(this.connectionString, eventHubName, partitionCount);
+            if (success)
+            {
+                this.TraceHelper.LogInformation("Created EventHub {name}", eventHubName);
+            }
+            else
+            {
+                this.TraceHelper.LogDebug("Conflict on EventHub {name}", eventHubName);
+                await Task.Delay(TimeSpan.FromSeconds(5));
+            }
+        }
+
+        internal async Task DeletePartitions()
+        {
+            await EventHubsUtil.DeleteEventHubIfExistsAsync(this.connectionString, this.partitionHub);
+        }
+
+        public async Task EnsurePartitionsAsync(int partitionCount, int retries = EventHubCreationRetries)
         {
             var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
             {
@@ -121,8 +143,7 @@ namespace DurableTask.Netherite.EventHubs
             }
             catch (Microsoft.Azure.EventHubs.MessagingEntityNotFoundException) when (retries > 0)
             {
-                this.TraceHelper.LogInformation("Creating EventHub {name}", this.partitionHub);
-                await EventHubsUtil.EnsureEventHubExistsAsync(this.connectionString, this.partitionHub, partitionCount);
+                await this.EnsureEventHubExistsAsync(this.partitionHub, partitionCount);
             }
 
             // try again
@@ -135,11 +156,6 @@ namespace DurableTask.Netherite.EventHubs
                 this.TraceHelper.LogError("Could not ensure existence of partitions event hub.");
                 throw new InvalidOperationException("could not ensure existence of partitions event hub"); 
             }
-        }
-
-        internal async Task DeletePartitions()
-        {
-            await EventHubsUtil.DeleteEventHubIfExistsAsync(this.connectionString, this.partitionHub);
         }
 
         async Task EnsureClientsAsync()
@@ -164,7 +180,7 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        async Task<(EventHubClient, EventHubRuntimeInformation)> EnsureClientAsync(int i, int retries = 2)
+        async Task<(EventHubClient, EventHubRuntimeInformation)> EnsureClientAsync(int i, int retries = EventHubCreationRetries)
         {
             var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
             {
@@ -178,15 +194,14 @@ namespace DurableTask.Netherite.EventHubs
             }
             catch (Microsoft.Azure.EventHubs.MessagingEntityNotFoundException) when (retries > 0)
             {
-                this.TraceHelper.LogInformation("Creating EventHub {name}", this.clientHubs[i]);
-                await EventHubsUtil.EnsureEventHubExistsAsync(this.connectionString, this.clientHubs[i], 32);
+                await this.EnsureEventHubExistsAsync(this.clientHubs[i], 32);
             }
             // try again
             return await this.EnsureClientAsync(i, retries - 1);
         }
 
 
-        async Task EnsureLoadMonitorAsync(int retries = 2)
+        async Task EnsureLoadMonitorAsync(int retries = EventHubCreationRetries)
         {
             // create loadmonitor client
             var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
@@ -201,8 +216,7 @@ namespace DurableTask.Netherite.EventHubs
             }
             catch (Microsoft.Azure.EventHubs.MessagingEntityNotFoundException) when (retries > 0)
             {
-                this.TraceHelper.LogInformation("Creating EventHub {name}", this.loadMonitorHub);
-                await EventHubsUtil.EnsureEventHubExistsAsync(this.connectionString, this.loadMonitorHub, 1);
+                await this.EnsureEventHubExistsAsync(this.loadMonitorHub, 1);
             }
             // try again
             await this.EnsureLoadMonitorAsync(retries - 1);
