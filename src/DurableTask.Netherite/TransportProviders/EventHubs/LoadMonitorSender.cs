@@ -51,8 +51,11 @@ namespace DurableTask.Netherite.EventHubs
             try
             {
 
-                bool[] sent = new bool[32];
+                bool[] sentLoadInformationReceived = new bool[32];
+                bool[] sentPositionsReceived = new bool[32];
+
                 this.stopwatch.Restart();
+                int numEvents = 0;
 
                 for (int i = toSend.Count - 1; i >= 0; i--)
                 {
@@ -61,13 +64,24 @@ namespace DurableTask.Netherite.EventHubs
                     // send only the most recent packet from each partition
                     if (evt is LoadInformationReceived loadInformationReceived)
                     {
-                        if (sent[loadInformationReceived.PartitionId])
+                        if (sentLoadInformationReceived[loadInformationReceived.PartitionId])
                         {
                             continue;
                         }
                         else
                         {
-                            sent[loadInformationReceived.PartitionId] = true;
+                            sentLoadInformationReceived[loadInformationReceived.PartitionId] = true;
+                        }
+                    }
+                    else if (evt is PositionsReceived positionsReceived)
+                    {
+                        if (sentPositionsReceived[positionsReceived.PartitionId])
+                        {
+                            continue;
+                        }
+                        else
+                        {
+                            sentPositionsReceived[positionsReceived.PartitionId] = true;
                         }
                     }
 
@@ -76,16 +90,20 @@ namespace DurableTask.Netherite.EventHubs
                     var arraySegment = new ArraySegment<byte>(this.stream.GetBuffer(), 0, length);
                     var eventData = new EventData(arraySegment);
                     await this.sender.SendAsync(eventData);
-                    this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent packet ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, length, evt.EventIdString);
+                    this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} sent packet ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, length, evt.EventIdString);
                     this.stream.Seek(0, SeekOrigin.Begin);
+                    numEvents++;
                 }
 
+                long elapsed = this.stopwatch.ElapsedMilliseconds;
+                this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent info numEvents={numEvents} latencyMs={latencyMs}", this.eventHubName, this.eventHubPartition, numEvents, elapsed);
+                
                 // rate limit this sender by making each iteration last at least 100ms duration
-                long toSpare = 100 - this.stopwatch.ElapsedMilliseconds;
+                long toSpare = 100 - elapsed;
                 if (toSpare > 10)
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(toSpare));
-                    this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} iteration padded to latencyMs={latencyMs}", this.eventHubName, this.eventHubPartition, this.stopwatch.ElapsedMilliseconds);
+                    this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} iteration padded to latencyMs={latencyMs}", this.eventHubName, this.eventHubPartition, this.stopwatch.ElapsedMilliseconds);
                 }
             }
             catch (Exception e)

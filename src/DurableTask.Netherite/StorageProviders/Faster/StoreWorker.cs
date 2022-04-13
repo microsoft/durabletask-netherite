@@ -42,11 +42,9 @@ namespace DurableTask.Netherite.Faster
 
         // periodic load publishing
         PartitionLoadInfo loadInfo;
-        DateTime lastLoadPublished;
-        DateTime lastPositionsPublished;
+        DateTime lastPublished;
         string lastPublishedLatencyTrend;
-        public static TimeSpan LoadPublishInterval = TimeSpan.FromSeconds(8);
-        public static TimeSpan PositionsPublishInterval = TimeSpan.FromSeconds(8);
+        public static TimeSpan PublishInterval = TimeSpan.FromSeconds(8);
         public static TimeSpan PokePeriod = TimeSpan.FromSeconds(3); // allows storeworker to checkpoint and publish load even while idle
 
 
@@ -63,8 +61,7 @@ namespace DurableTask.Netherite.Faster
             this.replayChecker = this.partition.Settings.TestHooks?.ReplayChecker;
 
             this.loadInfo = PartitionLoadInfo.FirstFrame(this.partition.Settings.WorkerId);
-            this.lastLoadPublished = DateTime.MinValue;
-            this.lastPositionsPublished = DateTime.MinValue;
+            this.lastPublished = DateTime.MinValue;
             this.lastPublishedLatencyTrend = "";
 
             // construct an effect tracker that we use to apply effects to the store
@@ -167,7 +164,40 @@ namespace DurableTask.Netherite.Faster
             return this.store.RunPrefetchSession(keys);
         }
 
-        async Task PublishPartitionLoad()
+        async ValueTask PublishLoadAndPositions()
+        {
+            bool publishLoadInfo = await this.UpdateLoadInfo();
+
+            // take the current load info and put the next frame in its place
+            var loadInfoToPublish = this.loadInfo;
+            this.loadInfo = loadInfoToPublish.NextFrame();
+
+            this.lastPublishedLatencyTrend = loadInfoToPublish.LatencyTrend;
+
+            this.partition.TraceHelper.TracePartitionLoad(loadInfoToPublish);
+
+            var positionsReceived = await this.CollectSendAndReceivePositions();
+
+            // to avoid publishing not-yet committed state, publish
+            // only after the current log is persisted.
+            if (publishLoadInfo || positionsReceived != null)
+            {
+                var task = this.LogWorker.WaitForCompletionAsync()
+                    .ContinueWith((t) =>
+                    {
+                        if (publishLoadInfo)
+                        {
+                            this.partition.LoadPublisher?.Submit((this.partition.PartitionId, loadInfoToPublish));
+                        }
+                        if (positionsReceived != null)
+                        {
+                            this.partition.Send(positionsReceived);
+                        }
+                    });
+            }
+        }
+
+        async ValueTask<bool> UpdateLoadInfo()
         {
             foreach (var k in TrackedObjectKey.GetSingletons())
             {
@@ -200,24 +230,10 @@ namespace DurableTask.Netherite.Faster
                 publish = true;
             }
 
-            if (publish)
-            {
-                // take the current load info and put the next frame in its place
-                var loadInfoToPublish = this.loadInfo;
-                this.loadInfo = loadInfoToPublish.NextFrame();
-                this.lastLoadPublished = DateTime.UtcNow;
-                this.lastPublishedLatencyTrend = loadInfoToPublish.LatencyTrend;
-
-                this.partition.TraceHelper.TracePartitionLoad(loadInfoToPublish);
-
-                // to avoid publishing not-yet committed state, publish
-                // only after the current log is persisted.
-                var task = this.LogWorker.WaitForCompletionAsync()
-                    .ContinueWith((t) => this.partition.LoadPublisher?.Submit((this.partition.PartitionId, loadInfoToPublish)));
-            }
+            return publish;
         }
 
-        async Task PublishSendAndReceivePositions()
+        async ValueTask<PositionsReceived> CollectSendAndReceivePositions()
         {
             int numberPartitions = (int)this.partition.NumberPartitions();
             if (numberPartitions > 1)
@@ -232,9 +248,11 @@ namespace DurableTask.Netherite.Faster
                 ((DedupState)await this.store.ReadAsync(TrackedObjectKey.Dedup, this.effectTracker)).RecordPositions(positionsReceived);
                 ((OutboxState)await this.store.ReadAsync(TrackedObjectKey.Outbox, this.effectTracker)).RecordPositions(positionsReceived);
 
-                this.partition.Send(positionsReceived);
-
-                this.lastPositionsPublished = DateTime.UtcNow;
+                return positionsReceived;
+            }
+            else
+            {
+                return null;
             }
         }
 
@@ -420,18 +438,12 @@ namespace DurableTask.Netherite.Faster
                     this.pendingCheckpointTrigger = trigger;
                     this.pendingCompaction = this.RunCompactionAsync(compactUntil);
                 }
-       
-                
-                // periodically publish the partition load information
-                if (this.lastLoadPublished + LoadPublishInterval < DateTime.UtcNow)
+                  
+                // periodically publish the partition load information and the send/receive positions
+                if (this.lastPublished + PublishInterval < DateTime.UtcNow)
                 {
-                    await this.PublishPartitionLoad();
-                }
-
-                // periodically publish the send and receive positions
-                if (this.lastPositionsPublished + PositionsPublishInterval < DateTime.UtcNow)
-                {
-                    await this.PublishSendAndReceivePositions();
+                    this.lastPublished = DateTime.UtcNow;
+                    await this.PublishLoadAndPositions();
                 }
 
                 if (this.partition.NumberPartitions() > 1)
