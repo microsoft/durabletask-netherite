@@ -434,7 +434,7 @@ namespace DurableTask.Netherite.Faster
                     await this.PublishSendAndReceivePositions();
                 }
 
-                if (this.partition.NumberPartitions() > 1)
+                if (this.partition.NumberPartitions() > 1 && this.partition.Settings.ActivityScheduler == ActivitySchedulerOptions.Locavore)
                 {
                     var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker)) as ActivitiesState;
                     activitiesState.CollectLoadMonitorInformation();

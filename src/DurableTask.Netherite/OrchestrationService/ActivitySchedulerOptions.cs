@@ -30,20 +30,6 @@ namespace DurableTask.Netherite
 
     public static class ActivityScheduling
     {
-        public static bool RequiresLoadMonitor(ActivitySchedulerOptions options)
-        {
-            switch (options)
-            {
-                case ActivitySchedulerOptions.Local:
-                case ActivitySchedulerOptions.Static:
-                    return false;
-                case ActivitySchedulerOptions.Locavore:
-                    return true;
-                default:
-                    throw new NotImplementedException("missing switch case");
-            }
-        }
-
         public static bool RequiresPeriodicOffloadDecision(ActivitySchedulerOptions options)
         {
             switch (options)
@@ -56,8 +42,6 @@ namespace DurableTask.Netherite
                 default:
                     throw new NotImplementedException("missing switch case");
             }
-        }
-
-        
+        }   
     }
 }
