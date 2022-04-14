@@ -208,7 +208,20 @@ namespace DurableTask.Netherite.AzureFunctions
         // Called by the Durable client binding infrastructure
         public DurabilityProvider GetDurabilityProvider(DurableClientAttribute attribute)
         {
-            var settings = this.GetNetheriteOrchestrationServiceSettings(attribute?.TaskHub, attribute?.ConnectionName);
+            var connectionName = attribute?.ConnectionName;
+
+            // infer the second part of the connection name if it matches the default provider
+            if (connectionName != null && connectionName.IndexOf(",") == -1)
+            {
+                this.GetDurabilityProvider();
+                if (this.defaultProvider.Settings.StorageConnectionName == attribute.ConnectionName 
+                    && this.defaultProvider.Settings.HubName == attribute.TaskHub)
+                {
+                    connectionName = $"{connectionName},{this.defaultProvider.Settings.EventHubsConnectionName}";
+                }
+            }
+
+            var settings = this.GetNetheriteOrchestrationServiceSettings(attribute?.TaskHub, connectionName);
             return this.GetOrCreateProvider(settings);
         }
     }
