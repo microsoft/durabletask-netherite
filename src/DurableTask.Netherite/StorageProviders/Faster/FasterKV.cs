@@ -1615,12 +1615,23 @@ namespace DurableTask.Netherite.Faster
 
             #endregion
 
- 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.DisposeKey(ref Key key)
+            void IFunctions<Key, Value, EffectTracker, Output, object>.DisposeSingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref UpsertInfo upsertInfo, WriteReason reason)
             {
             }
 
-            void IFunctions<Key, Value, EffectTracker, Output, object>.DisposeValue(ref Value value)
+            void IFunctions<Key, Value, EffectTracker, Output, object>.DisposeCopyUpdater(ref Key key, ref EffectTracker input, ref Value oldValue, ref Value newValue, ref Output output, ref RMWInfo rmwInfo)
+            {
+            }
+
+            void IFunctions<Key, Value, EffectTracker, Output, object>.DisposeInitialUpdater(ref Key key, ref EffectTracker input, ref Value value, ref Output output, ref RMWInfo rmwInfo)
+            {
+            }
+
+            void IFunctions<Key, Value, EffectTracker, Output, object>.DisposeSingleDeleter(ref Key key, ref Value value, ref DeleteInfo deleteInfo)
+            {
+            }
+
+            void IFunctions<Key, Value, EffectTracker, Output, object>.DisposeDeserializedFromDisk(ref Key key, ref Value value)
             {
             }
         }
