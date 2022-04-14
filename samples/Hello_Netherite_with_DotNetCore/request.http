@@ -1,0 +1,2 @@
+### Start Orchestrator Function via HTTP for .NET Core
+POST http://localhost:7071/api/hellocities

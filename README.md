@@ -36,6 +36,8 @@ To achieve better performance, Netherite represents queues and partition states 
 
 For some other considerations about how to choose the engine, see [the documentation](https://microsoft.github.io/durabletask-netherite/#/engine.md).
 
+## Status
+
 The current version of Netherite is *1.0.0*. Netherite supports almost all of the DT and DF APIs. However, there are still some limitations:
 
 - **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled. This will be resolved by GA.
