@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+#if !NETCOREAPP2_2
 namespace DurableTask.Netherite.AzureFunctions
 {
     using System;
@@ -88,7 +89,6 @@ namespace DurableTask.Netherite.AzureFunctions
                 }
             }
         }
-
     }
-
 }
+#endif

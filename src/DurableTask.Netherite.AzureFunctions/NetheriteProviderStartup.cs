@@ -16,7 +16,11 @@ namespace DurableTask.Netherite.AzureFunctions
     {
         public override void Configure(IFunctionsHostBuilder builder)
         {
+#if !NETCOREAPP2_2
             builder.Services.AddSingleton<IDurabilityProviderFactory, NetheriteProviderFactory>();
+#else
+            builder.Services.AddSingleton<IDurabilityProviderFactory, NetheriteProviderPseudoFactory>();
+#endif
         }
     }
 }

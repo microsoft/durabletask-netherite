@@ -117,8 +117,9 @@ namespace DurableTask.Netherite
 
                 if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster)
                 {
-                    // force dll load here so exceptions are observed early
-                    var _ = System.Threading.Channels.Channel.CreateBounded<DateTime>(10);
+                    // force the loading of potentially problematic dll dependencies here so exceptions are observed early
+                    var _a = System.Threading.Channels.Channel.CreateBounded<DateTime>(10);
+                    bool _c = System.Runtime.CompilerServices.Unsafe.AreSame(ref _a, ref _a);
 
                     // throw descriptive exception if run on 32bit platform
                     if (!Environment.Is64BitProcess)
