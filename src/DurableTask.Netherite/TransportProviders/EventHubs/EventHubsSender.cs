@@ -137,7 +137,7 @@ namespace DurableTask.Netherite.EventHubs
             }
             catch (Exception e)
             {
-                this.traceHelper.LogWarning(e, "EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send", this.eventHubName, this.eventHubPartition, this.sender.EventHubClient.EventHubName, this.sender.PartitionId);
+                this.traceHelper.LogWarning(e, "EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send", this.eventHubName, this.eventHubPartition);
                 senderException = e;
             }
             finally
@@ -189,9 +189,9 @@ namespace DurableTask.Netherite.EventHubs
                 }
 
                 if (requeued > 0 || dropped > 0)
-                    this.traceHelper.LogWarning("EventHubsSender {eventHubName}/{eventHubPartitionId} has confirmed {confirmed}, requeued {requeued}, dropped {dropped} outbound events", this.eventHubName, this.eventHubPartition, confirmed, requeued, dropped, this.sender.EventHubClient.EventHubName, this.sender.PartitionId);
+                    this.traceHelper.LogWarning("EventHubsSender {eventHubName}/{eventHubPartitionId} has confirmed {confirmed}, requeued {requeued}, dropped {dropped} outbound events", this.eventHubName, this.eventHubPartition, confirmed, requeued, dropped);
                 else
-                    this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} has confirmed {confirmed}, requeued {requeued}, dropped {dropped} outbound events", this.eventHubName, this.eventHubPartition, confirmed, requeued, dropped, this.sender.EventHubClient.EventHubName, this.sender.PartitionId);
+                    this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} has confirmed {confirmed}, requeued {requeued}, dropped {dropped} outbound events", this.eventHubName, this.eventHubPartition, confirmed, requeued, dropped);
             }
             catch (Exception exception) when (!Utils.IsFatal(exception))
             {
