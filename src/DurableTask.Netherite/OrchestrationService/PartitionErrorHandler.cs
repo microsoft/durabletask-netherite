@@ -109,9 +109,9 @@ namespace DurableTask.Netherite
 
             try
             {
-                this.logger?.LogDebug("Part{partition:D2} Started PartitionCancellation");
+                this.logger?.LogDebug("Part{partition:D2} Started PartitionCancellation", this.partitionId);
                 this.cts.Cancel();
-                this.logger?.LogDebug("Part{partition:D2} Completed PartitionCancellation");
+                this.logger?.LogDebug("Part{partition:D2} Completed PartitionCancellation", this.partitionId);
             }
             catch (AggregateException aggregate)
             {
@@ -131,7 +131,7 @@ namespace DurableTask.Netherite
             {
                 try
                 {
-                    this.logger?.LogDebug("Part{partition:D2} Started PartitionShutdown");
+                    this.logger?.LogDebug("Part{partition:D2} Started PartitionShutdown", this.partitionId);
 
                     if (this.OnShutdown != null)
                     {
@@ -140,7 +140,7 @@ namespace DurableTask.Netherite
 
                     this.cts.Dispose();
 
-                    this.logger?.LogDebug("Part{partition:D2} Completed PartitionShutdown");
+                    this.logger?.LogDebug("Part{partition:D2} Completed PartitionShutdown", this.partitionId);
                 }
                 catch (AggregateException aggregate)
                 {
