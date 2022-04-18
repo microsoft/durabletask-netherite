@@ -1,7 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.1;netstandard2.0</TargetFrameworks>
+	<!--The target netcoreapp2.2 is not functional, but just generates runtime error when used.-->
+    <TargetFrameworks>netstandard2.1;netstandard2.0;netcoreapp2.2;netcoreapp3.1;net5.0;net6.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeSymbols>true</IncludeSymbols>
@@ -43,8 +44,8 @@
     <PackageReference Include="Microsoft.Azure.Functions.Extensions" Version="1.1.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\DurableTask.Netherite\DurableTask.Netherite.csproj" />
+  <ItemGroup Condition=" '$(TargetFramework)' != 'netcoreapp2.2' ">
+	<ProjectReference Include="..\DurableTask.Netherite\DurableTask.Netherite.csproj" />
   </ItemGroup>
-  
+	
 </Project>
