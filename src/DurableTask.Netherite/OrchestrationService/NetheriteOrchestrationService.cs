@@ -883,7 +883,7 @@ namespace DurableTask.Netherite
             var originalHistory = orchestrationWorkItem.OrchestrationRuntimeState.Events.Take(originalHistorySize).ToList();
             var newWorkItem = new OrchestrationWorkItem(orchestrationWorkItem.Partition, orchestrationWorkItem.MessageBatch, originalHistory, originalCustomStatus);
             newWorkItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
-            newWorkItem.HistorySize = originalHistory.Count;
+            newWorkItem.EventCount = originalHistory.Count;
 
             orchestrationWorkItem.Partition.EnqueueOrchestrationWorkItem(newWorkItem);
 

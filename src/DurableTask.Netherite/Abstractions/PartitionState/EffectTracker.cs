@@ -84,7 +84,7 @@ namespace DurableTask.Netherite
             {
                 // for robustness, we swallow exceptions inside event processing.
                 // It does not mean they are not serious. We still report them as errors.
-                this.HandleError(nameof(ProcessUpdate), $"Encountered exception on {trackedObject} when applying update event {this.currentUpdate}, eventId={this.currentUpdate?.EventId}", exception, false, false);
+                this.HandleError(nameof(ProcessUpdate), $"Encountered exception on {trackedObject} when applying update event {this.currentUpdate} eventId={this.currentUpdate?.EventId}", exception, false, false);
             }
         }
 
@@ -153,7 +153,7 @@ namespace DurableTask.Netherite
                 {
                     // for robustness, we swallow exceptions inside event processing.
                     // It does not mean they are not serious. We still report them as errors.
-                    this.HandleError(nameof(ProcessUpdate), $"Encountered exception while processing update event {updateEvent}", exception, false, false);
+                    this.HandleError(nameof(ProcessUpdate), $"Encountered exception while processing update event {updateEvent} eventId={updateEvent?.EventId}", exception, false, false);
                 }
                 finally
                 {
@@ -190,7 +190,7 @@ namespace DurableTask.Netherite
                             string historyExecutionId = historyState?.ExecutionId;
                             int eventCount = historyState?.History?.Count ?? 0;
                             int episode = historyState?.Episode ?? 0;
-                            this.EventTraceHelper?.TraceFetchedInstanceHistory(readEvent, key.InstanceId, historyExecutionId, eventCount, episode, startedTimestamp - readEvent.IssuedTimestamp);
+                            this.EventTraceHelper?.TraceFetchedInstanceHistory(readEvent, key.InstanceId, historyExecutionId, eventCount, episode, historyState?.HistorySize ?? 0, startedTimestamp - readEvent.IssuedTimestamp);
                             break;
 
                         default:
@@ -212,7 +212,7 @@ namespace DurableTask.Netherite
                 {
                     // for robustness, we swallow exceptions inside event processing.
                     // It does not mean they are not serious. We still report them as errors.
-                    this.HandleError(nameof(ProcessReadResult), $"Encountered exception while processing read event {readEvent}", exception, false, false);
+                    this.HandleError(nameof(ProcessReadResult), $"Encountered exception while processing read event {readEvent} eventId={readEvent?.EventId}", exception, false, false);
                 }
                 finally
                 {
@@ -243,7 +243,7 @@ namespace DurableTask.Netherite
                 {
                     // for robustness, we swallow exceptions inside event processing.
                     // It does not mean they are not serious. We still report them as errors.
-                    this.HandleError(nameof(ProcessQueryResultAsync), $"Encountered exception while processing query event {queryEvent}", exception, false, false);
+                    this.HandleError(nameof(ProcessQueryResultAsync), $"Encountered exception while processing query event {queryEvent} eventId={queryEvent?.EventId}", exception, false, false);
                 }
                 finally
                 {

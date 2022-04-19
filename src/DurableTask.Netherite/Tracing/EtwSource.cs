@@ -157,11 +157,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(222, Account, TaskHub, PartitionId, MessageId, Details, EventType, TaskEventId, InstanceId, ExecutionId, AppName, ExtensionVersion);
         }
 
-        [Event(223, Level = EventLevel.Verbose, Version = 2)]
-        public void WorkItemQueued(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string ExecutionType, int historySize, string ConsumedMessageIds, string AppName, string ExtensionVersion)
+        [Event(223, Level = EventLevel.Verbose, Version = 3)]
+        public void WorkItemQueued(string Account, string TaskHub, int PartitionId, string WorkItemType, string WorkItemId, string InstanceId, string ExecutionType, int EventCount, string ConsumedMessageIds, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(223, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, ExecutionType, historySize, ConsumedMessageIds, AppName, ExtensionVersion);
+            this.WriteEvent(223, Account, TaskHub, PartitionId, WorkItemType, WorkItemId, InstanceId, ExecutionType, EventCount, ConsumedMessageIds, AppName, ExtensionVersion);
         }
 
         [Event(224, Level = EventLevel.Informational, Version = 1)]
@@ -199,11 +199,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(228, Account, TaskHub, PartitionId, InstanceId, ExecutionId, RuntimeStatus, PartitionEventId, ElapsedMs, AppName, ExtensionVersion);
         }
 
-        [Event(229, Level = EventLevel.Verbose, Version = 2)]
-        public void InstanceHistoryFetched(string Account, string TaskHub, int PartitionId, string InstanceId, string ExecutionId, int EventCount, int Episode, string PartitionEventId, double ElapsedMs, string AppName, string ExtensionVersion)
+        [Event(229, Level = EventLevel.Verbose, Version = 3)]
+        public void InstanceHistoryFetched(string Account, string TaskHub, int PartitionId, string InstanceId, string ExecutionId, int EventCount, int Episode, long HistorySize, string PartitionEventId, double ElapsedMs, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(229, Account, TaskHub, PartitionId, InstanceId, ExecutionId, EventCount, Episode, PartitionEventId, ElapsedMs, AppName, ExtensionVersion);
+            this.WriteEvent(229, Account, TaskHub, PartitionId, InstanceId, ExecutionId, EventCount, Episode, HistorySize, PartitionEventId, ElapsedMs, AppName, ExtensionVersion);
         }
 
         // ----- general event processing and statistics
