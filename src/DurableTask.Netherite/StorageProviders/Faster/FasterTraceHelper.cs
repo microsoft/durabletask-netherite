@@ -140,7 +140,7 @@ namespace DurableTask.Netherite.Faster
 
         public enum CompactionProgress { Skipped, Started, Completed };
 
-        public void FasterCompactionProgress(CompactionProgress progress, string operation, long begin, long safeReadOnly, long tail, long minimalSize, long compactionAreaSize, long elapsedMs)
+        public void FasterCompactionProgress(CompactionProgress progress, string operation, long begin, long safeReadOnly, long tail, long minimalSize, long compactionAreaSize, double elapsedMs)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
