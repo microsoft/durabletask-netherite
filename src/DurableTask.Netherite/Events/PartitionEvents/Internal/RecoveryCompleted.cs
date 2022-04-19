@@ -45,6 +45,9 @@ namespace DurableTask.Netherite
             }
         }
 
+        [IgnoreDataMember]
+        public override bool CountsAsPartitionActivity => false;
+
         public override void OnSubmit(Partition partition)
         {
             partition.EventTraceHelper.TraceEventProcessingDetail($"Submitted {this}");

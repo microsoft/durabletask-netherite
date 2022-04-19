@@ -28,6 +28,9 @@ namespace DurableTask.Netherite
             effects.Add(TrackedObjectKey.Activities);
         }
 
+        [IgnoreDataMember]
+        public override bool CountsAsPartitionActivity => false;
+
         public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
         {
             trackedObject.Process(this, effects);

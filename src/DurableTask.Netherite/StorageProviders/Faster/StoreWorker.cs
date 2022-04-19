@@ -199,6 +199,8 @@ namespace DurableTask.Netherite.Faster
 
         async ValueTask<bool> UpdateLoadInfo()
         {
+            int previousCachePct = this.loadInfo.CachePct;
+
             foreach (var k in TrackedObjectKey.GetSingletons())
             {
                 (await this.store.ReadAsync(k, this.effectTracker)).UpdateLoadInfo(this.loadInfo);
@@ -225,6 +227,12 @@ namespace DurableTask.Netherite.Faster
                 this.loadInfo.InputQueuePosition = this.InputQueuePosition;
                 publish = true;
             }
+
+            if (this.loadInfo.CachePct != previousCachePct)
+            {
+                publish = true;
+            }
+
             if (!PartitionLoadInfo.IsLongIdle(this.loadInfo.LatencyTrend) || this.loadInfo.LatencyTrend != this.lastPublishedLatencyTrend)
             {
                 publish = true;
@@ -338,6 +346,8 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
+                bool markPartitionAsActive = false;
+
                 foreach (var partitionEvent in batch)
                 {
                     if (this.isShuttingDown || this.cancellationToken.IsCancellationRequested)
@@ -376,7 +386,13 @@ namespace DurableTask.Netherite.Faster
                         this.InputQueuePosition = partitionEvent.NextInputQueuePosition;
                     }
 
-                    // since we are processing actual events, our latency category is at least "low"
+                    // if we are processing events that count as activity, our latency category is at least "low"
+                    markPartitionAsActive = markPartitionAsActive || partitionEvent.CountsAsPartitionActivity;
+                }
+
+                // if we are processing events that count as activity, our latency category is at least "low"
+                if (markPartitionAsActive)
+                {
                     this.loadInfo.MarkActive();
                 }
 
