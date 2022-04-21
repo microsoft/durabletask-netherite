@@ -22,7 +22,7 @@ namespace DurableTask.Netherite
 
         public enum ExecutionType { Fresh, ContinueFromHistory, ContinueFromCursor };
 
-        public int HistorySize;
+        public int EventCount;
 
         public List<string> NewMessagesOrigin { get; set; }
 

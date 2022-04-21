@@ -82,17 +82,17 @@ namespace DurableTask.Netherite
             this.etw = EtwSource.Log.IsEnabled() ? EtwSource.Log : null;
         }
 
-        public void TraceWorkItemQueued(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId, string executionType, int historySize, string consumedMessageIds)
+        public void TraceWorkItemQueued(uint partitionId, WorkItemType workItemType, string workItemId, string instanceId, string executionType, int eventCount, string consumedMessageIds)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
                 if (this.logger.IsEnabled(LogLevel.Debug))
                 {
-                    this.logger.LogDebug("Part{partition:D2} queued {workItemType}WorkItem {workItemId} instanceId={instanceId} executionType={executionType} historySize={historySize} consumedMessageIds={consumedMessageIds}",
-                        partitionId, workItemType, workItemId, instanceId, executionType, historySize, consumedMessageIds);
+                    this.logger.LogDebug("Part{partition:D2} queued {workItemType}WorkItem {workItemId} instanceId={instanceId} executionType={executionType} eventCount={eventCount} consumedMessageIds={consumedMessageIds}",
+                        partitionId, workItemType, workItemId, instanceId, executionType, eventCount, consumedMessageIds);
                 }
 
-                this.etw?.WorkItemQueued(this.StorageAccountName, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, executionType, historySize, consumedMessageIds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.WorkItemQueued(this.StorageAccountName, this.taskHub, (int)partitionId, workItemType.ToString(), workItemId, instanceId, executionType, eventCount, consumedMessageIds, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 

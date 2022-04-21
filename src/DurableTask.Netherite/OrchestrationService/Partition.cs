@@ -317,7 +317,7 @@ namespace DurableTask.Netherite
                 item.MessageBatch.WorkItemId,
                 item.InstanceId,
                 item.Type.ToString(),
-                item.HistorySize,
+                item.EventCount,
                 WorkItemTraceHelper.FormatMessageIdList(item.MessageBatch.TracedMessages));
 
             this.OrchestrationWorkItemQueue.Add(item);
