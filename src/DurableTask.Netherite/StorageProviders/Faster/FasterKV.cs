@@ -125,11 +125,11 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        long GetElapsedCompactionMilliseconds()
+        double GetElapsedCompactionMilliseconds()
         {
-            long elapsed = this.compactionStopwatch.ElapsedMilliseconds;
+            double elapsedMs = this.compactionStopwatch.Elapsed.TotalMilliseconds;
             this.compactionStopwatch.Restart();
-            return elapsed;
+            return elapsedMs;
         }
 
         ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> CreateASession(string id, bool isScan)
@@ -439,7 +439,9 @@ namespace DurableTask.Netherite.Faster
 
                             this.TraceHelper.FasterCompactionProgress(
                                 FasterTraceHelper.CompactionProgress.Completed,
-                                id, compactedUntil, this.Log.SafeReadOnlyAddress,
+                                id, 
+                                compactedUntil, 
+                                this.Log.SafeReadOnlyAddress,
                                 this.Log.TailAddress,
                                 this.MinimalLogSize,
                                 this.Log.BeginAddress - beginAddressBeforeCompaction,

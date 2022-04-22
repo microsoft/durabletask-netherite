@@ -146,7 +146,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TraceFetchedInstanceHistory(PartitionReadEvent evt, string instanceId, string executionId, int eventCount, int episode, double latencyMs)
+        public void TraceFetchedInstanceHistory(PartitionReadEvent evt, string instanceId, string executionId, int eventCount, int episode, long historySize, double latencyMs)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
@@ -155,11 +155,11 @@ namespace DurableTask.Netherite
                     (long commitLogPosition, string eventId) = EventTraceContext.Current;
 
                     string prefix = commitLogPosition > 0 ? $".{commitLogPosition:D10}   " : "";
-                    this.logger.LogDebug("Part{partition:D2}{prefix} Fetched instance history instanceId={instanceId} executionId={executionId} eventCount={eventCount} episode={episode} eventId={eventId} latencyMs={latencyMs:F0}",
-                        this.partitionId, prefix, instanceId, executionId, eventCount, episode, evt.EventIdString, latencyMs);
+                    this.logger.LogDebug("Part{partition:D2}{prefix} Fetched instance history instanceId={instanceId} executionId={executionId} eventCount={eventCount} episode={episode} historySize={historySize} eventId={eventId} latencyMs={latencyMs:F0}",
+                        this.partitionId, prefix, instanceId, executionId, eventCount, episode, historySize, evt.EventIdString, latencyMs);
                 }
 
-                this.etw?.InstanceHistoryFetched(this.account, this.taskHub, this.partitionId, instanceId, executionId ?? string.Empty, eventCount, episode, evt.EventIdString, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.etw?.InstanceHistoryFetched(this.account, this.taskHub, this.partitionId, instanceId, executionId ?? string.Empty, eventCount, episode, historySize, evt.EventIdString, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 

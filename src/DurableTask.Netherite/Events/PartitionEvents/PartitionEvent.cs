@@ -32,7 +32,10 @@ namespace DurableTask.Netherite
 
         [IgnoreDataMember]
         public virtual bool ResetInputQueue => false;
-        
+
+        [IgnoreDataMember]
+        public virtual bool CountsAsPartitionActivity => true;
+
         /// <summary>
         /// For tracing purposes. Subclasses can override this to provide the instance id.
         /// </summary>

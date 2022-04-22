@@ -87,7 +87,7 @@ namespace DurableTask.Netherite
                 // we either have no previous instance, or want to replace the previous instance
                 this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: null, customStatus: null);
                 this.workItem.Type = OrchestrationWorkItem.ExecutionType.Fresh;
-                this.workItem.HistorySize = 0;
+                this.workItem.EventCount = 0;
             }
             else if (historyState.CachedOrchestrationWorkItem != null)
             {
@@ -95,11 +95,11 @@ namespace DurableTask.Netherite
                 this.workItem = historyState.CachedOrchestrationWorkItem;
                 this.workItem.SetNextMessageBatch(this);
                 this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromCursor;
-                this.workItem.HistorySize = this.workItem.OrchestrationRuntimeState?.Events?.Count ?? 0;
+                this.workItem.EventCount = this.workItem.OrchestrationRuntimeState?.Events?.Count ?? 0;
 
                 // sanity check: it appears cursor is sometimes corrupted, in that case, construct fresh
                 // TODO investigate reasons and fix root cause
-                if (this.workItem.HistorySize != historyState.History?.Count
+                if (this.workItem.EventCount != historyState.History?.Count
                     || this.workItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId != historyState.ExecutionId)
                 {
                     partition.EventTraceHelper.TraceEventProcessingWarning($"Fixing bad workitem cache instance={this.InstanceId} batch={this.WorkItemId} expected_size={historyState.History?.Count} actual_size={this.workItem.OrchestrationRuntimeState?.Events?.Count} expected_executionid={historyState.ExecutionId} actual_executionid={this.workItem.OrchestrationRuntimeState?.OrchestrationInstance?.ExecutionId}");
@@ -107,7 +107,7 @@ namespace DurableTask.Netherite
                     // we create a new work item and rehydrate the instance from its history
                     this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History, historyState.CustomStatus);
                     this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
-                    this.workItem.HistorySize = historyState.History?.Count ?? 0;
+                    this.workItem.EventCount = historyState.History?.Count ?? 0;
                 }
             }
             else
@@ -115,7 +115,7 @@ namespace DurableTask.Netherite
                 // we have to rehydrate the instance from its history
                 this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History, historyState.CustomStatus);
                 this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
-                this.workItem.HistorySize = historyState.History?.Count ?? 0;
+                this.workItem.EventCount = historyState.History?.Count ?? 0;
             }
 
             if (!this.IsExecutableInstance(this.workItem, out var reason))
