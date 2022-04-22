@@ -20,7 +20,6 @@
     <PackageId>Microsoft.Azure.DurableTask.Netherite</PackageId>
     <PackageIcon>icon.png</PackageIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <IncludeReferenceProjects>true</IncludeReferenceProjects>
   </PropertyGroup>
 
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
