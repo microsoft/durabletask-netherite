@@ -12,9 +12,7 @@ pool:
     - ImageOverride -equals MMS2022TLS
 
 steps:
-# Start by restoring all the dependencies. This needs to be its own task
-# from what I can tell. We specifically only target DurableTask.AzureStorage
-# and its direct dependencies.
+# Start by restoring all the dependencies.
 - task: DotNetCoreCLI@2
   displayName: 'Restore nuget dependencies'
   inputs:
@@ -23,6 +21,7 @@ steps:
     projects: |
       src/DurableTask.Netherite.AzureFunctions/DurableTask.Netherite.AzureFunctions.csproj
       src/DurableTask.Netherite/DurableTask.Netherite.csproj
+
 # Build the filtered solution in release mode, specifying the continuous integration flag.
 - task: VSBuild@1
   displayName: 'Build (Netherite Azure Functions)'
@@ -80,6 +79,7 @@ steps:
               "ToolVersion": "1.0"
           }
       ]
+
 # Packaging needs to be a separate step from build.
 # This will automatically pick up the signed DLLs.
 
@@ -130,6 +130,7 @@ steps:
             "ToolVersion": "1.0"
         }
      ]
+
 # Make the nuget packages available for download in the ADO portal UI
 - publish: $(build.artifactStagingDirectory)
   displayName: 'Publish nuget packages to Artifacts'
