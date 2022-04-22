@@ -41,6 +41,13 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <NoWarn>NU5125;NU5048</NoWarn>
   </PropertyGroup>
+	
+  <ItemGroup Condition="'$(Configuration)'=='Release'">
+    <Content Include="..\..\_manifest\**">
+      <Pack>true</Pack>
+      <PackagePath>content/SBOM</PackagePath>
+    </Content>
+  </ItemGroup>
   
   <ItemGroup>
     <PackageReference Include="Azure.Messaging.EventHubs" Version="5.5.0" />
