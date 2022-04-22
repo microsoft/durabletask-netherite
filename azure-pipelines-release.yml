@@ -19,8 +19,8 @@ steps:
     command: restore
     verbosityRestore: Minimal
     projects: |
-      src/DurableTask.Netherite.AzureFunctions/DurableTask.Netherite.AzureFunctions.csproj
       src/DurableTask.Netherite/DurableTask.Netherite.csproj
+      src/DurableTask.Netherite.AzureFunctions/DurableTask.Netherite.AzureFunctions.csproj
 
 # Build the filtered solution in release mode, specifying the continuous integration flag.
 - task: VSBuild@1
