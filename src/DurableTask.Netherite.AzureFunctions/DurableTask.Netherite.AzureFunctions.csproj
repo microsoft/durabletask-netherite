@@ -20,6 +20,7 @@
     <PackageTags>Azure Task Durable Orchestration Workflow Activity Reliable EventHubs</PackageTags>
     <PackageId>Microsoft.Azure.DurableTask.Netherite.AzureFunctions</PackageId>
     <PackageIcon>icon.png</PackageIcon>
+    <IncludeReferenceProjects>true</IncludeReferenceProjects>
   </PropertyGroup>
 
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
