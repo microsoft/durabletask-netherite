@@ -46,4 +46,3 @@ steps:
     projects: '**/DurableTask.Netherite*Tests.csproj'
     arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true"'
     testRunTitle: 'Netherite Unit Tests on storageAccount/EventHubs'
-    
