@@ -33,6 +33,11 @@
     <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
     <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
   </PropertyGroup>
+
+  <!-- Our netcoreapp2.2 target is a non-functional dummy target, so we don't need the warning -->
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'netcoreapp2.2' ">
+	<NoWarn>NETSDK1138</NoWarn>
+  </PropertyGroup>
   
   <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="\" />
