@@ -40,7 +40,7 @@ namespace DurableTask.Netherite
                     if (!effects.IsReplaying)
                     {
                         this.Send(kvp.Value);
-                        effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent batch {kvp.Key:D10} ({kvp.Value.OutgoingMessages.Count} messages, {kvp.Value.OutgoingResponses.Count} responses)");
+                        effects.EventDetailTracer?.TraceEventProcessingDetail($"Resent batch {kvp.Value.SendingEventId} ({kvp.Value.OutgoingMessages.Count} messages, {kvp.Value.OutgoingResponses.Count} responses)");
                     }
                 }
             }
@@ -99,9 +99,9 @@ namespace DurableTask.Netherite
         void Send(Batch batch)
         {
             batch.ReadyToSendTimestamp = this.Partition.CurrentTimeMs;
-            this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Outbox is sending for event id={batch.SendingEventId}");
             var outMessages = batch.OutgoingMessages.Count < 2 ? batch.OutgoingMessages : batch.OutgoingMessages.ToList();// prevent concurrent mod
             batch.TotalAcksExpected = batch.OutgoingResponses.Count + outMessages.Count;
+            this.Partition.EventDetailTracer?.TraceEventProcessingDetail($"Outbox is sending {batch.OutgoingResponses.Count} responses, {outMessages.Count} messages for event id={batch.SendingEventId}");
 
             // now that we know the sending event is persisted, we can send the messages
             foreach (var outresponse in batch.OutgoingResponses)
@@ -174,6 +174,7 @@ namespace DurableTask.Netherite
 
             public void ConfirmSend(SendConfirmed evt, EffectTracker effects, out bool isDone)
             {
+                effects.EventDetailTracer?.TraceEventProcessingDetail($"Confirming send for event id={evt.SendingEventId}");
                 effects.Partition.Assert(evt.SendingEventId.Equals(this.SendingEventId), "SendingEventId does not match");
                 this.OutgoingResponses.Clear();
                 this.SendWasConfirmed = true;
@@ -257,7 +258,7 @@ namespace DurableTask.Netherite
             var batch = new Batch();
             int subPosition = 0;
 
-            bool sendResponses = evt.ResponsesToSend != null;
+            bool sendResponses = evt.ResponsesToSend?.Count > 0;
             bool sendMessages = evt.RemoteMessages?.Count > 0;
 
             if (! (sendResponses || sendMessages))
