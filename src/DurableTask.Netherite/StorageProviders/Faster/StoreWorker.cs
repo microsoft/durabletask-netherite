@@ -44,6 +44,7 @@ namespace DurableTask.Netherite.Faster
         PartitionLoadInfo loadInfo;
         DateTime lastPublished;
         string lastPublishedLatencyTrend;
+        int lastPublishedCachePct;
         public static TimeSpan PublishInterval = TimeSpan.FromSeconds(8);
         public static TimeSpan PokePeriod = TimeSpan.FromSeconds(3); // allows storeworker to checkpoint and publish load even while idle
 
@@ -63,6 +64,7 @@ namespace DurableTask.Netherite.Faster
             this.loadInfo = PartitionLoadInfo.FirstFrame(this.partition.Settings.WorkerId);
             this.lastPublished = DateTime.MinValue;
             this.lastPublishedLatencyTrend = "";
+            this.lastPublishedCachePct = 0;
 
             // construct an effect tracker that we use to apply effects to the store
             this.effectTracker = new TrackedObjectStoreEffectTracker(this.partition, this, store);
@@ -173,6 +175,7 @@ namespace DurableTask.Netherite.Faster
             this.loadInfo = loadInfoToPublish.NextFrame();
 
             this.lastPublishedLatencyTrend = loadInfoToPublish.LatencyTrend;
+            this.lastPublishedCachePct = loadInfoToPublish.CachePct;
 
             this.partition.TraceHelper.TracePartitionLoad(loadInfoToPublish);
 
@@ -199,8 +202,6 @@ namespace DurableTask.Netherite.Faster
 
         async ValueTask<bool> UpdateLoadInfo()
         {
-            int previousCachePct = this.loadInfo.CachePct;
-
             foreach (var k in TrackedObjectKey.GetSingletons())
             {
                 (await this.store.ReadAsync(k, this.effectTracker)).UpdateLoadInfo(this.loadInfo);
@@ -228,12 +229,17 @@ namespace DurableTask.Netherite.Faster
                 publish = true;
             }
 
-            if (this.loadInfo.CachePct != previousCachePct)
+            if (this.loadInfo.CachePct != this.lastPublishedCachePct)
             {
                 publish = true;
             }
 
-            if (!PartitionLoadInfo.IsLongIdle(this.loadInfo.LatencyTrend) || this.loadInfo.LatencyTrend != this.lastPublishedLatencyTrend)
+            if (!PartitionLoadInfo.IsLongIdle(this.loadInfo.LatencyTrend))            
+            {
+                publish = true;
+            }
+
+            if (this.loadInfo.LatencyTrend != this.lastPublishedLatencyTrend)
             {
                 publish = true;
             }

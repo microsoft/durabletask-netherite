@@ -105,7 +105,14 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 this.TraceHelper.FasterProgress("Disposing Main Session");
-                this.mainSession?.Dispose();
+                try
+                {
+                    this.mainSession?.Dispose();
+                }
+                catch(OperationCanceledException)
+                {
+                    // can happen during shutdown
+                }
 
                 this.TraceHelper.FasterProgress("Disposing FasterKV");
                 this.fht.Dispose();
