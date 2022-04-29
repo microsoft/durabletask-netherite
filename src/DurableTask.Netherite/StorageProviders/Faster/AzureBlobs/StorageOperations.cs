@@ -70,6 +70,12 @@ namespace DurableTask.Netherite.Faster
 
                         return;
                     }
+                    catch (Exception e) when (this.PartitionErrorHandler.IsTerminated)
+                    {
+                        string message = $"storage operation {name} ({intent}) was canceled";
+                        this.StorageTracer?.FasterStorageProgress(message);
+                        throw new OperationCanceledException(message, e);
+                    }
                     catch (Exception e) when (BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
                     {
                         stopwatch.Stop();
@@ -158,6 +164,12 @@ namespace DurableTask.Netherite.Faster
                     }
 
                     return;
+                }
+                catch(Exception e) when (this.PartitionErrorHandler.IsTerminated)
+                {
+                    string message = $"storage operation {name} ({intent}) was canceled";
+                    this.StorageTracer?.FasterStorageProgress(message);
+                    throw new OperationCanceledException(message, e);  
                 }
                 catch (Exception e) when (numAttempts < BlobManager.MaxRetries
                     && BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token))

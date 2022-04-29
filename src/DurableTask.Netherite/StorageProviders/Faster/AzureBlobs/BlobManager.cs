@@ -625,6 +625,12 @@ namespace DurableTask.Netherite.Faster
                 {
                     throw; // o.k. during termination or shutdown
                 }
+                catch (Exception e) when (this.PartitionErrorHandler.IsTerminated)
+                {
+                    string message = $"Lease acquisition was canceled";
+                    this.TraceHelper.LeaseProgress(message);
+                    throw new OperationCanceledException(message, e);
+                }
                 catch (Exception e) when (!Utils.IsFatal(e))
                 {
                     this.PartitionErrorHandler.HandleError(nameof(AcquireOwnership), "Could not acquire partition lease", e, true, false);
