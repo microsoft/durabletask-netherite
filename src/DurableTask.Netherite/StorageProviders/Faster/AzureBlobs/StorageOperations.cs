@@ -44,7 +44,8 @@ namespace DurableTask.Netherite.Faster
                     {
                         if (requireLease)
                         {
-                            await this.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
+                            Interlocked.Increment(ref this.LeaseUsers);
+                            await this.ConfirmLeaseIsGoodForAWhileAsync();
                         }
 
                         this.PartitionErrorHandler.Token.ThrowIfCancellationRequested();
@@ -90,6 +91,13 @@ namespace DurableTask.Netherite.Faster
                         this.HandleStorageError(name, $"storage operation {name} ({intent}) failed on attempt {numAttempts}", target, exception, isCritical, this.PartitionErrorHandler.IsTerminated);
                         throw;
                     }
+                    finally
+                    {
+                        if (requireLease)
+                        {
+                            Interlocked.Decrement(ref this.LeaseUsers);
+                        }
+                    }
                 }
             }
             finally
@@ -121,6 +129,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     if (requireLease)
                     {
+                        Interlocked.Increment(ref this.LeaseUsers);
                         this.ConfirmLeaseIsGoodForAWhile();
                     }
 
@@ -170,6 +179,13 @@ namespace DurableTask.Netherite.Faster
                 {
                     this.HandleStorageError(name, $"storage operation {name} ({intent}) failed on attempt {numAttempts}", target, exception, isCritical, this.PartitionErrorHandler.IsTerminated);
                     throw;
+                }
+                finally
+                {
+                    if (requireLease)
+                    {
+                        Interlocked.Decrement(ref this.LeaseUsers);
+                    }
                 }
             }
         }
