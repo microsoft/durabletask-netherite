@@ -6,25 +6,33 @@ namespace PerformanceTests.EventHubs
     using System;
     using System.Collections.Generic;
     using System.Text;
-    using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Newtonsoft.Json;
+    using Microsoft.Identity.Client;
 
-    [JsonObject(MemberSerialization.OptOut)]
     public static class Parameters
     {
-        /// <summary>
-        /// The name of the event hubs connection
-        /// </summary>
-        public const string EventHubsConnectionName = "EventHubsConnection";
+        public const string EventHubsEnvVar = "EHNamespace";
 
-        /// <summary>
-        /// The name of the Event Hub that connects the consumer and producer
-        /// </summary>
-        public const string EventHubName = "eventstest";
+        public const int Destinations = 100;
 
-        /// <summary>
-        /// Routing function (determines target entity for an event) 
-        /// </summary>
-        public static EntityId GetDestinationEntity(Event evt, int numberEntities) => ReceiverEntity.GetEntityId(Math.Abs((evt.Partition, evt.SeqNo).GetHashCode()) % numberEntities);
+        public const int MaxEventHubs = 10;
+        public const int MaxPartitionsPerEventHub = 32;
+
+        public const int MaxPartitions = MaxEventHubs * MaxPartitionsPerEventHub;
+
+        public const int MaxProducers = MaxPartitions;
+
+        public const int MaxPushersPerEventHub = 32;
+        public const int MaxPullers = MaxEventHubs * MaxPushersPerEventHub;
+
+        public static string EventHubConnectionString => Environment.GetEnvironmentVariable(EventHubsEnvVar);
+
+        public static string EventHubName(int index) => $"hub{index}";
+
+        public static string EventHubNameForPuller(int number) => EventHubName(number / MaxPartitionsPerEventHub);
+        public static string EventHubPartitionIdForPuller(int number) => (number % MaxPartitionsPerEventHub).ToString();
+
+        public static string EventHubNameForProducer(int number) => EventHubName(number / MaxPushersPerEventHub);
+
+
     }
 }
