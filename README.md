@@ -38,7 +38,7 @@ For some other considerations about how to choose the engine, see [the documenta
 
 ## Status
 
-The current version of Netherite is *1.0.2*. Netherite supports almost all of the DT and DF APIs. However, there are still some limitations:
+The current version of Netherite is *1.0.3*. Netherite supports almost all of the DT and DF APIs. However, there are still some limitations:
 
 - **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled. This will be resolved by GA.
 - **Query Performance**. Currently, query performance is suboptimal and does not support paging. We plan to add a range index implementation to fix this soon after GA.
