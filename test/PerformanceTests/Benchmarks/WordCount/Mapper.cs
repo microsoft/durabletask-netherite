@@ -28,7 +28,7 @@ namespace PerformanceTests.WordCount
 
         public static EntityId GetEntityId(int number)
         {
-            return new EntityId(nameof(Mapper), $"{number}!{number % 100:D2}");
+            return new EntityId(nameof(Mapper), $"!{number}");
         }
 
         [FunctionName(nameof(Mapper))]
