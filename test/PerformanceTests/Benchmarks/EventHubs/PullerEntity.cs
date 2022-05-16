@@ -65,11 +65,20 @@ namespace PerformanceTests.EventHubs
 
         public async Task Stop()
         {
-            int number = int.Parse(Entity.Current.EntityId.EntityKey);
-            if (cache.TryRemove(number, out var partitionReceiver))
+            int number = int.Parse(Entity.Current.EntityId.EntityKey.Substring(1));
+
+            try
             {
-                await partitionReceiver.DisposeAsync();
+                if (cache.TryRemove(number, out var partitionReceiver))
+                {
+                    await partitionReceiver.DisposeAsync();
+                }
             }
+            catch(Exception e)
+            {
+                this.logger.LogWarning($"{Entity.Current.EntityKey} failed to dispose PartitionReceiver: {e}");
+            }
+
             this.IsActive = false;
         }
 
