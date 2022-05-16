@@ -48,9 +48,11 @@ namespace PerformanceTests.EventHubs
                         long pulled = 0;
                         int pending = 0;
                         int active = 0;
+                        DateTime? firstReceived = null;
+                        DateTime? lastUpdated = null;
 
                         log.LogWarning($"Checking the status of {numPullers} puller entities...");                    
-                        await Enumerable.Range(0, numPullers).ParallelForEachAsync(200, true, async (partition) =>
+                        await Enumerable.Range(0, numPullers).ParallelForEachAsync(500, true, async (partition) =>
                         {
                             var entityId = PullerEntity.GetEntityId(partition);
                             var response = await client.ReadEntityStateAsync<PullerEntity>(entityId);
@@ -61,23 +63,35 @@ namespace PerformanceTests.EventHubs
                                     pulled += response.EntityState.TotalEventsPulled;
                                     pending += response.EntityState.NumPending;
                                     active += response.EntityState.IsActive ? 1 : 0;
+
+                                    if (!firstReceived.HasValue || response.EntityState.FirstReceived < firstReceived)
+                                    {
+                                        firstReceived = response.EntityState.FirstReceived;
+                                    }
                                 }
                             }
                         });
 
                         log.LogWarning($"Checking the status of {Parameters.Destinations} destination entities...");                    
-                        await Enumerable.Range(0, Parameters.Destinations).ParallelForEachAsync(200, true, async (destination) =>
+                        await Enumerable.Range(0, Parameters.Destinations).ParallelForEachAsync(500, true, async (destination) =>
                         {
-                            var entityId = DestinationEntity.GetEntityId(destination.ToString());
+                            var entityId = DestinationEntity.GetEntityId(destination);
                             var response = await client.ReadEntityStateAsync<DestinationEntity>(entityId);
                             if (response.EntityExists)
                             {
                                 lock (lockForUpdate)
                                 {
                                     delivered += response.EntityState.EventCount;
+
+                                    if (!lastUpdated.HasValue || response.EntityState.LastUpdated > lastUpdated)
+                                    {
+                                        lastUpdated = response.EntityState.LastUpdated;
+                                    }
                                 }
                             }
                         });
+
+                        TimeSpan? duration = lastUpdated - firstReceived;
 
                         var resultObject = new
                         {
@@ -85,6 +99,9 @@ namespace PerformanceTests.EventHubs
                             active,
                             delivered,
                             pulled,
+                            firstReceived,
+                            lastUpdated,
+                            duration
                         };
 
                         return new OkObjectResult($"{JsonConvert.SerializeObject(resultObject)}\n");
@@ -103,9 +120,9 @@ namespace PerformanceTests.EventHubs
 
                     case "delete":
 
-                        await Enumerable.Range(0, numPullers + Parameters.Destinations).ParallelForEachAsync(200, true, async (i) =>
+                        await Enumerable.Range(0, numPullers + Parameters.Destinations).ParallelForEachAsync(500, true, async (i) =>
                         {
-                            var entityId = i < numPullers ? PullerEntity.GetEntityId(i) : DestinationEntity.GetEntityId((i - numPullers).ToString());
+                            var entityId = i < numPullers ? PullerEntity.GetEntityId(i) : DestinationEntity.GetEntityId(i - numPullers);
                             await client.SignalEntityAsync(entityId, action);
                         });
 

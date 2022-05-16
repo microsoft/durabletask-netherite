@@ -51,7 +51,7 @@ namespace PerformanceTests.EventProducer
                         int active = 0;
                        
                         log.LogWarning($"Checking the status of {numProducers} producer entities...");
-                        await Enumerable.Range(0, numProducers).ParallelForEachAsync(200, true, async (partition) =>
+                        await Enumerable.Range(0, numProducers).ParallelForEachAsync(500, true, async (partition) =>
                         {
                             var entityId = ProducerEntity.GetEntityId(partition);
                             var response = await client.ReadEntityStateAsync<ProducerEntity>(entityId);
@@ -79,7 +79,7 @@ namespace PerformanceTests.EventProducer
                     case "stop":
                     case "delete":
 
-                        await Enumerable.Range(0, numProducers).ParallelForEachAsync(200, true, async (number) =>
+                        await Enumerable.Range(0, numProducers).ParallelForEachAsync(500, true, async (number) =>
                         {
                             var entityId = ProducerEntity.GetEntityId(number);
                             await client.SignalEntityAsync(entityId, action);

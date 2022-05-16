@@ -12,7 +12,7 @@ namespace PerformanceTests.EventHubs
 
     public struct Event
     {
-        public string Destination { get; set; }
+        public int Destination { get; set; }
     
         public string Payload { get; set; }
 
@@ -21,7 +21,7 @@ namespace PerformanceTests.EventHubs
             var r = new BinaryReader(s);
             return new Event
             {
-                Destination = r.ReadString(),
+                Destination = r.ReadInt32(),
                 Payload = r.ReadString(),
             };
         }

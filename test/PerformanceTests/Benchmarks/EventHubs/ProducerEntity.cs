@@ -24,7 +24,7 @@ namespace PerformanceTests.EventHubs
     {
         public static EntityId GetEntityId(int number)
         {
-            return new EntityId(nameof(ProducerEntity), number.ToString());
+            return new EntityId(nameof(ProducerEntity), $"!{number}");
         }
 
         [JsonProperty]
@@ -69,9 +69,9 @@ namespace PerformanceTests.EventHubs
             var sw = new Stopwatch();
             sw.Start();
 
-            int number = int.Parse(Entity.Current.EntityId.EntityKey);
+            int myNumber = int.Parse(Entity.Current.EntityId.EntityKey.Substring(1));
 
-            await using (var producer = new EventHubProducerClient(Parameters.EventHubConnectionString, Parameters.EventHubNameForProducer(number)))
+            await using (var producer = new EventHubProducerClient(Parameters.EventHubConnectionString, Parameters.EventHubNameForProducer(myNumber)))
             {
                 var r = new Random();
 
@@ -79,7 +79,6 @@ namespace PerformanceTests.EventHubs
                 {
                     try
                     {
-
                         using EventDataBatch eventBatch = await producer.CreateBatchAsync();
                         using MemoryStream stream = new MemoryStream();
                         int batchsize = 100;
@@ -87,7 +86,7 @@ namespace PerformanceTests.EventHubs
                         {
                             var evt = new Event()
                             {
-                                Destination = r.Next(Parameters.Destinations).ToString(),
+                                Destination = r.Next(Parameters.Destinations),
                                 Payload = String.Empty,
                             };
                             eventBatch.TryAdd(new EventData(evt.ToBytes()));

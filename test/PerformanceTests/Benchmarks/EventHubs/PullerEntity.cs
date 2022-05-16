@@ -24,7 +24,7 @@ namespace PerformanceTests.EventHubs
     {
         public static EntityId GetEntityId(int number)
         {
-            return new EntityId(nameof(PullerEntity), number.ToString());
+            return new EntityId(nameof(PullerEntity), $"!{number}");
         }
 
         readonly ILogger logger;
@@ -46,6 +46,10 @@ namespace PerformanceTests.EventHubs
 
         [JsonProperty]
         public int NumPending { get; set; }
+
+        [JsonProperty]
+        public DateTime? FirstReceived { get; set; }
+
 
         public const int PendingLimit = 1000;
 
@@ -105,17 +109,17 @@ namespace PerformanceTests.EventHubs
  
             try
             {
-                int number = int.Parse(Entity.Current.EntityId.EntityKey);
+                int myNumber = int.Parse(Entity.Current.EntityId.EntityKey.Substring(1));
 
-                PartitionReceiver receiver = cache.GetOrAdd(number, (partitionId) =>
+                PartitionReceiver receiver = cache.GetOrAdd(myNumber, (partitionId) =>
                 {
                     this.logger.LogDebug($"{Entity.Current.EntityKey} Creating PartitionReceiver");
                     return new PartitionReceiver(
                         EventHubConsumerClient.DefaultConsumerGroupName,
-                        Parameters.EventHubPartitionIdForPuller(number),
+                        Parameters.EventHubPartitionIdForPuller(myNumber),
                         EventPosition.FromSequenceNumber(this.ReceivePosition, false),
                         Parameters.EventHubConnectionString,
-                        Parameters.EventHubNameForPuller(number));
+                        Parameters.EventHubNameForPuller(myNumber));
                 });
 
                 int batchSize = 1000;
@@ -124,6 +128,7 @@ namespace PerformanceTests.EventHubs
                 this.logger.LogDebug($"{Entity.Current.EntityKey} Receiving events at {this.ReceivePosition}...");
                 var eventBatch = await receiver.ReceiveBatchAsync(batchSize, waitTime);
                 this.logger.LogDebug($"{Entity.Current.EntityKey} ...response received.");
+                DateTime timestamp = DateTime.UtcNow;
 
                 foreach (EventData eventData in eventBatch)
                 {
@@ -131,7 +136,7 @@ namespace PerformanceTests.EventHubs
                     {
                         var e = Event.FromStream(eventData.EventBody.ToStream());
                         this.logger.LogDebug($"Sending signal to destination {e.Destination}");
-                        Entity.Current.SignalEntity(DestinationEntity.GetEntityId(e.Destination), nameof(DestinationEntity.Receive), (e, number));
+                        Entity.Current.SignalEntity(DestinationEntity.GetEntityId(e.Destination), nameof(DestinationEntity.Receive), (e, myNumber));
                         this.TotalEventsPulled++;
                         this.NumPending++;
                     }
@@ -140,6 +145,11 @@ namespace PerformanceTests.EventHubs
                         this.logger.LogError($"{Entity.Current.EntityKey} Failed to process event {eventData.SequenceNumber}: {e}");
                     }
                     this.ReceivePosition = eventData.SequenceNumber;
+                }
+
+                if (!this.FirstReceived.HasValue && this.TotalEventsPulled > 0)
+                {
+                    this.FirstReceived = timestamp;
                 }
 
                 // if we have not reached the limit of pending deliveries yet, continue
@@ -152,6 +162,7 @@ namespace PerformanceTests.EventHubs
             catch (Exception e)
             {
                 this.logger.LogError($"{Entity.Current.EntityKey} failed: {e}");
+                this.IsActive = false;
             }
         }
 

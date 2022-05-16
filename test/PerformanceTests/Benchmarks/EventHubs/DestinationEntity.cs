@@ -16,10 +16,14 @@ namespace PerformanceTests.EventHubs
     [JsonObject(MemberSerialization.OptIn)]
     public class DestinationEntity
     {
-        public static EntityId GetEntityId(string destination) => new EntityId(nameof(DestinationEntity), destination);
+        public static EntityId GetEntityId(int number) => new EntityId(nameof(DestinationEntity), $"!{number}");
 
         [JsonProperty]
         public int EventCount { get; set; }
+
+        [JsonProperty]
+        public DateTime? LastUpdated { get; set; }
+
 
         ILogger logger;
 
@@ -43,6 +47,8 @@ namespace PerformanceTests.EventHubs
             {
                 this.logger.LogDebug($"{Entity.Current.EntityId} Received event #{this.EventCount}");
             }
+
+            this.LastUpdated = DateTime.UtcNow;
 
             // send an ack to the receiver entity
             Entity.Current.SignalEntity(PullerEntity.GetEntityId(input.receiverPartition), nameof(PullerEntity.Ack));
