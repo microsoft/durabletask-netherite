@@ -134,7 +134,7 @@ namespace PerformanceTests.EventHubs
                 int batchSize = 1000;
                 TimeSpan waitTime = TimeSpan.FromSeconds(10);
 
-                this.logger.LogDebug($"{Entity.Current.EntityKey} Receiving events at {this.ReceivePosition}...");
+                this.logger.LogDebug($"{Entity.Current.EntityKey} Receiving events from position {this.ReceivePosition}...");
                 var eventBatch = await receiver.ReceiveBatchAsync(batchSize, waitTime);
                 this.logger.LogDebug($"{Entity.Current.EntityKey} ...response received.");
                 DateTime timestamp = DateTime.UtcNow;
@@ -153,7 +153,7 @@ namespace PerformanceTests.EventHubs
                     {
                         this.logger.LogError($"{Entity.Current.EntityKey} Failed to process event {eventData.SequenceNumber}: {e}");
                     }
-                    this.ReceivePosition = eventData.SequenceNumber;
+                    this.ReceivePosition = eventData.SequenceNumber + 1;
                 }
 
                 if (!this.FirstReceived.HasValue && this.TotalEventsPulled > 0)
