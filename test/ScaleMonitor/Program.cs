@@ -4,6 +4,7 @@
 namespace ScalingTests
 {
     using System;
+    using System.Linq;
     using System.Threading.Tasks;
     using DurableTask.Core;
     using DurableTask.Netherite;
@@ -37,7 +38,7 @@ namespace ScalingTests
                 }
                 else if (!int.TryParse($"{keyInfo.KeyChar}", out workerCount))
                 {
-                    workerCount = 1;
+                    workerCount = -1;
                 }
 
                 Console.Out.WriteLine("--------- Collecting Metrics...");
@@ -45,6 +46,11 @@ namespace ScalingTests
                 try
                 {
                     metrics = await scalingMonitor.CollectMetrics();
+
+                    if (workerCount == -1)
+                    {
+                        workerCount = metrics.LoadInformation.Values.Select(li => li.WorkerId).Distinct().Count();
+                    }
                 }
                 catch (Exception e)
                 {
@@ -52,9 +58,13 @@ namespace ScalingTests
                     continue;
                 }
                 Console.Out.WriteLine(JsonConvert.SerializeObject(metrics, Formatting.Indented));
-                Console.Out.WriteLine($"--------- Making scale decision for worker count {workerCount}...");
-                var decision = scalingMonitor.GetScaleRecommendation(workerCount, metrics);
-                Console.Out.WriteLine(JsonConvert.SerializeObject(decision, Formatting.Indented));
+
+                if (workerCount != -1)
+                {
+                    Console.Out.WriteLine($"--------- Making scale decision for worker count {workerCount}...");
+                    var decision = scalingMonitor.GetScaleRecommendation(workerCount, metrics);
+                    Console.Out.WriteLine(JsonConvert.SerializeObject(decision, Formatting.Indented));
+                }
             }
         }
     }

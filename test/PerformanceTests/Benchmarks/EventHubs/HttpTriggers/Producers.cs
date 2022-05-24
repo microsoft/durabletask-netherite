@@ -50,7 +50,7 @@ namespace PerformanceTests.EventProducer
                         long exceptions = 0;
                         int active = 0;
                        
-                        log.LogWarning($"Checking the status of {numProducers} producer entities...");
+                        log.LogWarning("Checking the status of {NumProducers} producer entities...", numProducers);
                         await Enumerable.Range(0, numProducers).ParallelForEachAsync(500, true, async (partition) =>
                         {
                             var entityId = ProducerEntity.GetEntityId(partition);

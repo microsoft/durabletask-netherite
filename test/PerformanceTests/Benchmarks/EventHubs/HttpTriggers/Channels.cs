@@ -41,7 +41,7 @@ namespace PerformanceTests.EventHubs
                 {             
                     case "create":
 
-                        log.LogWarning($"Creating {numEventHubs} EventHubs...");
+                        log.LogWarning("Creating {numEventHubs} EventHubs...", numEventHubs);
                         int numCreated = 0;
                         await Enumerable.Range(0, numEventHubs).ParallelForEachAsync(200, false, async (index) =>
                         {
@@ -54,7 +54,7 @@ namespace PerformanceTests.EventHubs
 
                     case "delete":
 
-                        log.LogWarning($"Deleting {numEventHubs} EventHubs...");
+                        log.LogWarning("Deleting {numEventHubs} EventHubs...", numEventHubs);
                         int numDeleted = 0;
                         await Enumerable.Range(0, numEventHubs).ParallelForEachAsync(200, false, async (index) =>
                         {

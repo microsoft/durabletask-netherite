@@ -9,6 +9,7 @@ namespace PerformanceTests.EventHubs
     using System.Diagnostics;
     using System.IO;
     using System.Linq;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using Azure.Messaging.EventHubs;
@@ -59,6 +60,20 @@ namespace PerformanceTests.EventHubs
             Entity.Current.DeleteState();
         }
 
+        public string CreateRandomPayload(Random random, int length)
+        {
+            if (length == 0)
+            {
+                return string.Empty;
+            }
+            var sb = new StringBuilder();
+            for (int i = 0; i < length; i++)
+            {
+                sb.Append(Convert.ToChar(random.Next(0, 26) + 65));
+            }
+            return sb.ToString();
+        }
+
         async Task ProduceMore()
         {
             if (!this.IsActive)
@@ -70,6 +85,8 @@ namespace PerformanceTests.EventHubs
             sw.Start();
 
             int myNumber = int.Parse(Entity.Current.EntityId.EntityKey.Substring(1));
+
+            Random random = new Random(myNumber);
 
             await using (var producer = new EventHubProducerClient(Parameters.EventHubConnectionString, Parameters.EventHubNameForProducer(myNumber)))
             {
@@ -86,8 +103,8 @@ namespace PerformanceTests.EventHubs
                         {
                             var evt = new Event()
                             {
-                                Destination = r.Next(Parameters.Destinations),
-                                Payload = String.Empty,
+                                Destination = r.Next(Parameters.NumberDestinationEntities),
+                                Payload = this.CreateRandomPayload(random, Parameters.PayloadStringLength),
                             };
                             eventBatch.TryAdd(new EventData(evt.ToBytes()));
                         }
@@ -99,7 +116,7 @@ namespace PerformanceTests.EventHubs
                     catch (Exception e)
                     {
                         this.Exceptions++;
-                        this.logger.LogError($"{Entity.Current.EntityKey} Failed to send events: {e}");
+                        this.logger.LogError("{entityId} Failed to send events: {exception}", Entity.Current.EntityId, e);
                     }
                 }
 

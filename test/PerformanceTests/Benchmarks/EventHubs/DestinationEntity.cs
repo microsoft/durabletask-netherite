@@ -45,7 +45,7 @@ namespace PerformanceTests.EventHubs
 
             if (this.logger.IsEnabled(LogLevel.Debug))
             {
-                this.logger.LogDebug($"{Entity.Current.EntityId} Received event #{this.EventCount}");
+                this.logger.LogInformation("{entityId} Received signal #{eventCount}", Entity.Current.EntityId, this.EventCount);
             }
 
             this.LastUpdated = DateTime.UtcNow;
@@ -61,4 +61,3 @@ namespace PerformanceTests.EventHubs
         }
     }
 }
- 

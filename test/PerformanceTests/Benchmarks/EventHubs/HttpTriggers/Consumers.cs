@@ -50,6 +50,7 @@ namespace PerformanceTests.EventHubs
                         int active = 0;
                         DateTime? firstReceived = null;
                         DateTime? lastUpdated = null;
+                        int errors = 0;
 
                         log.LogWarning($"Checking the status of {numPullers} puller entities...");                    
                         await Enumerable.Range(0, numPullers).ParallelForEachAsync(500, true, async (partition) =>
@@ -63,6 +64,7 @@ namespace PerformanceTests.EventHubs
                                     pulled += response.EntityState.TotalEventsPulled;
                                     pending += response.EntityState.NumPending;
                                     active += response.EntityState.IsActive ? 1 : 0;
+                                    errors += response.EntityState.Errors;
 
                                     if (!firstReceived.HasValue || response.EntityState.FirstReceived < firstReceived)
                                     {
@@ -72,8 +74,8 @@ namespace PerformanceTests.EventHubs
                             }
                         });
 
-                        log.LogWarning($"Checking the status of {Parameters.Destinations} destination entities...");                    
-                        await Enumerable.Range(0, Parameters.Destinations).ParallelForEachAsync(500, true, async (destination) =>
+                        log.LogWarning($"Checking the status of {Parameters.NumberDestinationEntities} destination entities...");                    
+                        await Enumerable.Range(0, Parameters.NumberDestinationEntities).ParallelForEachAsync(500, true, async (destination) =>
                         {
                             var entityId = DestinationEntity.GetEntityId(destination);
                             var response = await client.ReadEntityStateAsync<DestinationEntity>(entityId);
@@ -99,6 +101,7 @@ namespace PerformanceTests.EventHubs
                             active,
                             delivered,
                             pulled,
+                            errors,
                             firstReceived,
                             lastUpdated,
                             duration
@@ -120,13 +123,13 @@ namespace PerformanceTests.EventHubs
 
                     case "delete":
 
-                        await Enumerable.Range(0, numPullers + Parameters.Destinations).ParallelForEachAsync(500, true, async (i) =>
+                        await Enumerable.Range(0, numPullers + Parameters.NumberDestinationEntities).ParallelForEachAsync(500, true, async (i) =>
                         {
                             var entityId = i < numPullers ? PullerEntity.GetEntityId(i) : DestinationEntity.GetEntityId(i - numPullers);
                             await client.SignalEntityAsync(entityId, action);
                         });
 
-                        return new OkObjectResult($"Sent delete signal to {numPullers} puller entities and {Parameters.Destinations} destination entities.\n");
+                        return new OkObjectResult($"Sent delete signal to {numPullers} puller entities and {Parameters.NumberDestinationEntities} destination entities.\n");
 
                     default:
                         return new ObjectResult($"Unknown action: {action}\n")

@@ -50,8 +50,8 @@ namespace PerformanceTests.EventHubs
         [JsonProperty]
         public DateTime? FirstReceived { get; set; }
 
-
-        public const int PendingLimit = 1000;
+        [JsonProperty]
+        public int Errors { get; set; }
 
         [JsonProperty]
         public long TotalEventsPulled { get; set; }
@@ -76,7 +76,7 @@ namespace PerformanceTests.EventHubs
             }
             catch(Exception e)
             {
-                this.logger.LogWarning($"{Entity.Current.EntityKey} failed to dispose PartitionReceiver: {e}");
+                this.logger.LogWarning("{entityId} failed to dispose PartitionReceiver: {exception}", Entity.Current.EntityId, e);
             }
 
             this.IsActive = false;
@@ -91,9 +91,6 @@ namespace PerformanceTests.EventHubs
         public Task Ack()
         {
             this.NumPending--;
-
-             if (this.NumPending == 0)
-                this.logger.LogDebug($"{Entity.Current.EntityKey} All Acks Received");
 
             return this.PullMore();
         }
@@ -110,23 +107,23 @@ namespace PerformanceTests.EventHubs
                 return; // we have more operations in this batch to process, so do those first
             }
 
-            if (this.NumPending >= PendingLimit)
+            if (this.NumPending >= Parameters.PendingLimit)
             {
-                this.logger.LogDebug($"{Entity.Current.EntityKey} Reached Limit");
                 return; // do not continue until we get more acks
             }
  
             try
             {
                 int myNumber = int.Parse(Entity.Current.EntityId.EntityKey.Substring(1));
+                string myEntityId = Entity.Current.EntityId.ToString();
 
                 PartitionReceiver receiver = cache.GetOrAdd(myNumber, (partitionId) =>
                 {
-                    this.logger.LogDebug($"{Entity.Current.EntityKey} Creating PartitionReceiver");
+                    this.logger.LogDebug("{entityId} Creating PartitionReceiver at position {receivePosition}", myEntityId, this.ReceivePosition);
                     return new PartitionReceiver(
                         EventHubConsumerClient.DefaultConsumerGroupName,
                         Parameters.EventHubPartitionIdForPuller(myNumber),
-                        EventPosition.FromSequenceNumber(this.ReceivePosition, false),
+                        EventPosition.FromSequenceNumber(this.ReceivePosition - 1, false),
                         Parameters.EventHubConnectionString,
                         Parameters.EventHubNameForPuller(myNumber));
                 });
@@ -134,27 +131,57 @@ namespace PerformanceTests.EventHubs
                 int batchSize = 1000;
                 TimeSpan waitTime = TimeSpan.FromSeconds(10);
 
-                this.logger.LogDebug($"{Entity.Current.EntityKey} Receiving events from position {this.ReceivePosition}...");
+                this.logger.LogDebug("{entityId} Receiving events from position {receivePosition}", myEntityId, this.ReceivePosition);
                 var eventBatch = await receiver.ReceiveBatchAsync(batchSize, waitTime);
-                this.logger.LogDebug($"{Entity.Current.EntityKey} ...response received.");
                 DateTime timestamp = DateTime.UtcNow;
+                int numEventsInBatch = 0;
 
                 foreach (EventData eventData in eventBatch)
                 {
-                    try
+                    numEventsInBatch++;
+
+                    if (eventData.SequenceNumber != this.ReceivePosition)
                     {
-                        var e = Event.FromStream(eventData.EventBody.ToStream());
-                        this.logger.LogDebug($"Sending signal to destination {e.Destination}");
-                        Entity.Current.SignalEntity(DestinationEntity.GetEntityId(e.Destination), nameof(DestinationEntity.Receive), (e, myNumber));
-                        this.TotalEventsPulled++;
-                        this.NumPending++;
+                        // for sanity, check that we received the next event in the sequence. 
+                        // this can fail if events were discarded internally by the EventHub.
+                        this.logger.LogError("{entityId} Received wrong event, sequence number expected={expected} actual={actual}", myEntityId, this.ReceivePosition, eventData.SequenceNumber);
+                        this.Errors++;
                     }
-                    catch (Exception e)
+                    
+                    if (Parameters.SendEntitySignalForEachEvent || Parameters.StartOrchestrationForEachEvent)
                     {
-                        this.logger.LogError($"{Entity.Current.EntityKey} Failed to process event {eventData.SequenceNumber}: {e}");
+                        try
+                        {
+                            // parse the event data
+                            var e = Event.FromStream(eventData.EventBody.ToStream());
+
+                            if (Parameters.SendEntitySignalForEachEvent)
+                            {
+                                EntityId destinationEntityId = DestinationEntity.GetEntityId(e.Destination);
+                                this.logger.LogDebug("{entityId} Sending signal to {destinationEntityId}", myEntityId, destinationEntityId);
+                                Entity.Current.SignalEntity(destinationEntityId, nameof(DestinationEntity.Receive), (e, myNumber));
+                                this.NumPending++;
+                            }
+
+                            if (Parameters.StartOrchestrationForEachEvent)
+                            {
+                                var instanceId = this.GetRandomOrchestrationInstanceId(myNumber);
+                                this.logger.LogDebug("{entityId} Scheduling orchestration {instanceId}", myEntityId, instanceId);
+                                Entity.Current.StartNewOrchestration(nameof(DestinationOrchestration), (e, myNumber), instanceId);
+                                this.NumPending++;
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            this.logger.LogError("{entityId} Failed to process event {sequenceNumber}: {e}", myEntityId, eventData.SequenceNumber);
+                        }
                     }
+
+                    this.TotalEventsPulled++;
                     this.ReceivePosition = eventData.SequenceNumber + 1;
                 }
+
+                this.logger.LogDebug("{entityId} Processed batch of {numEventsInBatch} events", myEntityId, numEventsInBatch);
 
                 if (!this.FirstReceived.HasValue && this.TotalEventsPulled > 0)
                 {
@@ -162,16 +189,29 @@ namespace PerformanceTests.EventHubs
                 }
 
                 // if we have not reached the limit of pending deliveries yet, continue
-                if (this.NumPending < PendingLimit)
+                if (this.NumPending < Parameters.PendingLimit)
                 {
-                    this.logger.LogDebug($"{Entity.Current.EntityKey} Scheduling continuation");
+                    this.logger.LogDebug("{entityId} Scheduling continuation for position {receivePosition}", myEntityId, this.ReceivePosition);
                     Entity.Current.SignalEntity(Entity.Current.EntityId, nameof(PullMore));
                 }
             }
             catch (Exception e)
             {
-                this.logger.LogError($"{Entity.Current.EntityKey} failed: {e}");
+                this.logger.LogError("{entityId} failed: {exception}", Entity.Current.EntityId, e);
+                this.Errors++;
                 this.IsActive = false;
+            }
+        }
+
+        string GetRandomOrchestrationInstanceId(int myNumber)
+        {
+            if (Parameters.PlaceOrchestrationInstance)
+            {
+                return $"{Guid.NewGuid():n}!{myNumber}";
+            }
+            else
+            {
+                return $"{Guid.NewGuid():n}";
             }
         }
 
