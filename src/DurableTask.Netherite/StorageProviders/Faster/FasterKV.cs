@@ -987,6 +987,8 @@ namespace DurableTask.Netherite.Faster
                 return; // we only do this when the cache debugger is attached
             }
 
+            long trackedSizeBefore = this.cacheTracker.TrackedObjectSize;
+
             var inMemoryIterator = this.fht.Log.Scan(this.fht.Log.HeadAddress, this.fht.Log.TailAddress);
 
             long totalSize = 0;
@@ -1001,8 +1003,6 @@ namespace DurableTask.Netherite.Faster
                 current.Add((delta, address, desc));
                 totalSize += delta;
             }
-
-            long trackedSizeBefore = this.cacheTracker.TrackedObjectSize;
 
             while (inMemoryIterator.GetNext(out RecordInfo recordInfo, out Key key, out Value value))
             {
