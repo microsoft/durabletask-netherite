@@ -546,7 +546,7 @@ namespace DurableTask.Netherite.Tests
                 input = null;
                 portionSize = 300;
                 uppertolerance = 1.1;
-                lowertolerance = 0.9;
+                lowertolerance = 0.8;
             }
 
             // start the service 
