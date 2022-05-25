@@ -36,6 +36,9 @@ namespace DurableTask.Netherite
         const int MAXBATCHSIZE = 500;
         readonly object dummyEntry = new object();
 
+        bool processingBatch;
+        public TimeSpan? ProcessingBatchSince => this.processingBatch ? this.stopwatch.Elapsed : null;
+
         /// <summary>
         /// Constructor including a cancellation token.
         /// </summary>
@@ -192,6 +195,7 @@ namespace DurableTask.Netherite
 
                 this.Tracer?.Invoke("processing batch");
                 this.stopwatch.Restart();
+                this.processingBatch = true;
 
                 try
                 {
@@ -219,6 +223,7 @@ namespace DurableTask.Netherite
 
                 this.Tracer?.Invoke("done processing batch");
                 this.stopwatch.Stop();
+                this.processingBatch = false;
                 previousBatch = this.batch.Count;
             }
         }
