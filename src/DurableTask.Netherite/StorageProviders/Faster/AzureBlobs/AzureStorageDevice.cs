@@ -104,16 +104,11 @@ namespace DurableTask.Netherite.Faster
                 BlobContinuationToken continuationToken = null;
                 do
                 {
-                    if (this.underLease)
-                    {
-                        await this.BlobManager.ConfirmLeaseIsGoodForAWhileAsync();
-                    }
-
                     BlobResultSegment response = null;
 
                     await this.BlobManager.PerformWithRetriesAsync(
                         BlobManager.AsynchronousStorageReadMaxConcurrency,
-                        true,
+                        this.underLease,
                         "PageBlobDirectory.ListBlobsSegmentedAsync",
                         "RecoverDevice",
                         $"continuationToken={continuationToken}",
