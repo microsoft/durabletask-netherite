@@ -517,12 +517,14 @@ namespace DurableTask.Netherite
         /// <returns>The partition id.</returns>
         public uint GetPartitionId(string instanceId)
         {
+            int placementSeparatorPosition = instanceId.LastIndexOf('!');
+
             // if the instance id ends with !nn, where nn is a two-digit number, it indicates explicit partition placement
-            if (instanceId.Length >= 3 
-                && instanceId[instanceId.Length - 3] == '!'
-                && uint.TryParse(instanceId.Substring(instanceId.Length - 2), out uint nn))
+            if (placementSeparatorPosition != -1 
+                && placementSeparatorPosition <= instanceId.Length - 2
+                && uint.TryParse(instanceId.Substring(placementSeparatorPosition + 1), out uint index))
             {
-                var partitionId = nn % this.NumberPartitions;
+                var partitionId = index % this.NumberPartitions;
                 //this.Logger.LogTrace($"Instance: {instanceId} was explicitly placed on partition: {partitionId}");
                 return partitionId;
             }
