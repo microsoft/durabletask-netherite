@@ -145,9 +145,12 @@ namespace DurableTask.Netherite.Faster
 
             this.TraceHelper.FasterProgress("Creating LogWorker");
             this.logWorker = this.storeWorker.LogWorker = new LogWorker(this.blobManager, this.log, this.partition, this.storeWorker, this.TraceHelper, this.terminationToken);
-
-            this.hangCheckTimer = new Timer(this.CheckForStuckWorkers, null, 0, 20000);
-            errorHandler.OnShutdown += () => this.hangCheckTimer.Dispose();
+             
+            if (this.partition.Settings.TestHooks?.ReplayChecker == null) 
+            {
+                this.hangCheckTimer = new Timer(this.CheckForStuckWorkers, null, 0, 20000);
+                errorHandler.OnShutdown += () => this.hangCheckTimer.Dispose();
+            }
 
             if (this.log.TailAddress == this.log.BeginAddress)
             {
