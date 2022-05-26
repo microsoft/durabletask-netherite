@@ -60,7 +60,8 @@ namespace DurableTask.Netherite
 
                 if (!effects.IsReplaying) // during replay, we don't start work items until end of recovery
                 {
-                    new OrchestrationMessageBatch(kvp.Key, kvp.Value, this.Partition, evt);
+                    // submit a message batch for processing
+                    new OrchestrationMessageBatch(kvp.Key, kvp.Value, this.Partition, evt, waitForPersistence: true);
                 }
             }
 
@@ -144,12 +145,13 @@ namespace DurableTask.Netherite
 
                 if (!isReplaying) // during replay, we don't start work items until end of recovery
                 {
-                    new OrchestrationMessageBatch(instanceId, session, this.Partition, filingEvent);
+                    // submit a message batch for processing
+                    new OrchestrationMessageBatch(instanceId, session, this.Partition, filingEvent, waitForPersistence: false);
                 }
             }
         }
 
-        void AddMessagesToSession(string instanceId, string originWorkItemId, IEnumerable<TaskMessage> messages, bool isReplaying, PartitionUpdateEvent filingEvent)
+        Session AddMessagesToSession(string instanceId, string originWorkItemId, IEnumerable<TaskMessage> messages, bool isReplaying, PartitionUpdateEvent filingEvent)
         {
             this.Partition.Assert(!string.IsNullOrEmpty(originWorkItemId), "null originWorkItem");
             int? forceNewExecution = FindLastExecutionStartedEvent(messages);
@@ -159,7 +161,7 @@ namespace DurableTask.Netherite
                 // A session for this instance already exists, so a work item is in progress already.
                 // We don't need to schedule a work item because we'll notice the new messages 
                 // when the previous work item completes.
-                foreach(var message in messages)
+                foreach (var message in messages)
                 {
                     if (!isReplaying)
                     {
@@ -185,12 +187,12 @@ namespace DurableTask.Netherite
                     }
                     messages = messages.Skip(forceNewExecution.Value);
                 }
-          
+
                 // Create a new session
                 this.Sessions[instanceId] = session = new Session()
                 {
                     SessionId = this.SequenceNumber++,
-                    Batch = new List<(TaskMessage,string)>(),
+                    Batch = new List<(TaskMessage, string)>(),
                     BatchStartPosition = 0,
                     DequeueCount = 1,
                     ForceNewExecution = forceNewExecution.HasValue,
@@ -208,9 +210,11 @@ namespace DurableTask.Netherite
 
                 if (!isReplaying) // we don't start work items until end of recovery
                 {
-                    new OrchestrationMessageBatch(instanceId, session, this.Partition, filingEvent);
+                    new OrchestrationMessageBatch(instanceId, session, this.Partition, filingEvent, waitForPersistence: false);
                 }
             }
+
+            return session;
         }
 
         static int? FindLastExecutionStartedEvent(IEnumerable<TaskMessage> messages)
@@ -331,6 +335,9 @@ namespace DurableTask.Netherite
                 return;
             };
 
+            // detect loopback messages, to guarantee that they act as a persistence barrier
+            bool containsLoopbackMessages = false;
+
             if (!evt.NotExecutable)
             {
 
@@ -354,7 +361,12 @@ namespace DurableTask.Netherite
                 {
                     foreach (var group in evt.LocalMessages.GroupBy(tm => tm.OrchestrationInstance.InstanceId))
                     {
-                        this.AddMessagesToSession(group.Key, evt.WorkItemId, group, effects.IsReplaying, evt);
+                        var targetSession = this.AddMessagesToSession(group.Key, evt.WorkItemId, group, effects.IsReplaying, evt);
+
+                        if (targetSession == session)
+                        {
+                            containsLoopbackMessages = true;
+                        }
                     }
                 }
 
@@ -370,22 +382,20 @@ namespace DurableTask.Netherite
             session.BatchStartPosition += evt.BatchLength;
             session.DequeueCount = 1;
 
-            this.StartNewBatchIfNeeded(session, effects, evt.InstanceId, effects.IsReplaying, evt);
-        }
-
-        void StartNewBatchIfNeeded(Session session, EffectTracker effects, string instanceId, bool isReplaying, PartitionUpdateEvent filingEvent)
-        {
+            // start a new batch if needed      
             if (session.Batch.Count == 0)
             {
                 // no more pending messages for this instance, so we delete the session.
-                this.Sessions.Remove(instanceId);
+                this.Sessions.Remove(evt.InstanceId);
             }
             else
             {
-                if (!isReplaying) // we don't start work items until end of recovery
+                // there are more messages to process
+
+                if (!effects.IsReplaying) // we don't start work items until end of recovery
                 {
-                    // there are more messages. Start another work item.
-                    new OrchestrationMessageBatch(instanceId, session, this.Partition, filingEvent);
+                    // submit a message batch for processing
+                    new OrchestrationMessageBatch(evt.InstanceId, session, this.Partition, evt, waitForPersistence: containsLoopbackMessages);
                 }
             }
         }
