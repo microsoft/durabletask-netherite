@@ -51,6 +51,8 @@ namespace DurableTask.Netherite.Faster
 
         public long LastCommittedInputQueuePosition { get; private set; }
 
+        public TimeSpan? IntakeWorkerProcessingBatchSince => this.intakeWorker.ProcessingBatchSince;
+
         class IntakeWorker : BatchWorker<PartitionEvent>
         {
             readonly LogWorker logWorker;
@@ -165,7 +167,7 @@ namespace DurableTask.Netherite.Faster
                             {
                                 DurabilityListeners.ConfirmDurable(evt);
                             }
-                            catch (Exception exception) when (!(exception is OutOfMemoryException))
+                            catch (Exception exception)
                             {
                                 // for robustness, swallow exceptions, but report them
                                 this.partition.ErrorHandler.HandleError("LogWorker.Process", $"Encountered exception while notifying persistence listeners for event {evt} id={evt.EventIdString}", exception, false, false);
@@ -178,7 +180,7 @@ namespace DurableTask.Netherite.Faster
             {
                 // o.k. during shutdown
             }
-            catch (Exception e) when (!(e is OutOfMemoryException))
+            catch (Exception e)
             {
                 this.partition.ErrorHandler.HandleError("LogWorker.Process", "Encountered exception while working on commit log", e, true, false);
             }
