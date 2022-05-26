@@ -752,11 +752,6 @@ namespace DurableTask.Netherite
             List<TaskMessage> localMessages = null;
             List<TaskMessage> remoteMessages = null;
 
-            // DurableTask.Core keeps the original runtime state in the work item until after this call returns
-            // but we want it to contain the latest runtime state now (otherwise IsExecutableInstance returns incorrect results)
-            // so we update it now.
-            workItem.OrchestrationRuntimeState = newOrchestrationRuntimeState;
-
             // all continue as new requests are processed immediately (DurableTask.Core always uses "fast" continue-as-new)
             // so by the time we get here, it is not a continue as new
             partition.Assert(continuedAsNewMessage == null, "unexpected continueAsNew message");
