@@ -1,69 +1,62 @@
-<img align="right" src="src/DurableTask.Netherite/icon.png"/>
+# VLDB 2022 Submission Experiments
 
-# Netherite
+This branch documents our experimental results and the code we used for our article *Netherite: Efficient Execution of Serverless Workflows* in the Proceedings of the VLDB Volume 15 (for VLDB 2022). All results were collected in October 2021.
 
-Netherite is a distributed workflow execution engine for [Durable Functions](https://github.com/Azure/azure-functions-durable-extension) (DF) and the [Durable Task Framework](https://github.com/Azure/durabletask/) (DTFx).
+Note that since these experiments use PaaS services that are constantly evolving and changing. Results may vary and the experimental setup may break over time.
+We are not maintaining this branch (other than one commit in May 2022 to fix an API change incompability in the DF extension).
+*To run experiments with the latest supported version of Netherite, you should use the main branch of this repository.*
 
-It is of potential interest to anyone developing applications on those platforms who has an appetite for performance, scalability, and reliability.
+The results were gathered using two different experimental setups, one for throughput (Fig. 9), and one for latency (Fig.11).
 
-As Netherite is intended to be a drop-in backend replacement, it does not modify the application API. Existing DF and DTFx applications can switch to this backend with little effort.
+## Throughput experiments
 
-## Getting Started
+Running the experiments requires an Azure subscription, and the Azure CLI installed. The following instructions should work on either Linux or Windows.
 
-To get started, you can either try out the sample, or take an existing DF app and switch it to the Netherite backend. You can also read our [documentation](https://microsoft.github.io/durabletask-netherite/#/README).
+### Running the 'hello' benchmark
 
-**The hello sample.**
-For a quick start, take a look at [hello sample](https://microsoft.github.io/durabletask-netherite/#/hello-sample.md). We included scripts that make it easy to build, run, and deploy this application. Also, this sample is a great starting point for creating your own projects.
+1. Enter `az login` to log into your Azure subscription
+1. Enter the `test/PerformanceTests/` directory containing the performance tests.
+1. Edit the `settings.ps1` file to choose a unique name for the function app ($name on line 5). Also, you can modify which data center to use ($location on line 8). Selecting a not-so busy-datacenter can help. It's always 2AM somewhere!
+1. Execute `pwsh series/hello5.ps1` to execute the script that runs all throughput tests for the hello5 benchmark.
+   - As each test runs, its result is appended as a new line to the results.csv file
+   - It can take over 8 hours to run through all tests. To run only some of them, edit the script.
+   - Unfortunately, things don't always go smooth, so it is necessary to inspect the results.
+   Sometimes, deployment steps fail for unknown reasons. Also, datacenter performance can vary a lot at different times of day, and for other unknown reasons.
+   - It is therefore often necessary to retry different parts of the experiment. You can manually edit the `results.csv` file for this purpose. Always run all the closely related numbers (i.e. all the scale configurations for a single benchmark and single plan size) together, so that the relative performance of those is meaningfully interpretable.
+1. Copy the results to the result directory for later processing:
 
-**Configure an existing DF app to use Netherite.**
-If you have a .NET Durable Functions application already, and want to configure it to use Netherite as the backend, do the following:
+    `cp results.csv ../../results/throughput/hello.csv`
 
-- Add the NuGet package `Microsoft.Azure.DurableTask.Netherite.AzureFunctions` to your functions project.
-- Create an EventHubs namespace. You can do this in the Azure portal, or using the Azure CLI.
-- Configure `EventHubsConnection` with the connection string for the Event Hubs namespace. You can do this using an environment variable, or with a function app configuration settings.
-- Optionally, update the host.json to tweak the [settings for Netherite](https://microsoft.github.io/durabletask-netherite/#/settings.md).
+### Running the other benchmarks
 
-## Why a new engine?
+Same, except for the commands in step 4 and 5 where we use
 
-The default Azure Storage engine stores messages in Azure Storage queues and instance states in Azure Storage tables. It executes large numbers of small storage accesses. For example, executing a single orchestration with three activities may require a total of 4 dequeue operations, 3 enqueue operations, 4 table reads, and 4 table writes. Thus, the overall throughput quickly becomes limited by how many I/O operations Azure Storage allows per second.
+`pwsh series/XXX.ps1`
 
-To achieve better performance, Netherite represents queues and partition states differently, to improve batching:
+`cp results.csv ../../results/throughput/XXX.csv`
 
-- Partitions communicate via ordered, persistent event streams, over EventHubs.
-- The state of a partition is stored using a combination of an immutable log and checkpoints, in Azure PageBlobs.
+where `XXX` is one of { `bank`, `collision`, `wordcount` }.
 
-For some other considerations about how to choose the engine, see [the documentation](https://microsoft.github.io/durabletask-netherite/#/engine.md).
+### Generating the graphs
 
-## Status
+The python notebook `results/throughput/Notebook.ipynb` was used to generate Fig. 9 and Fig. 10.
 
-The current version of Netherite is *0.5.0-alpha*.  Netherite already support almost all of the DT and DF APIs. However, there are still some limitations that we plan to address in the near future, before moving to beta status:
+- For Fig. 9, it parses the results from the generated csv files.
+- For Fig. 10, we used manually collected telemetry from the Azure Management Portal.
 
-- **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled so far. 
-- **Query Performance**. We have not quite completed our implementation of a FASTER index to speed up queries that are enumerating or purging instance states.
-- **Activity Load-balancing**. For fan-outs of activities that perform heavy CPU computations, the load balancer does not effectively distribute the load yet. 
-- **Stability**. We do not recommend using Netherite in a production environment yet; although we have found and fixed many bugs already, we need more testing before moving to beta status. Any help from the community is greatly appreciated!
+## Latency experiments
 
-To learn more about the Netherite architecture, you can also check out our [paper on arXiv](https://arxiv.org/abs/2103.00033).
+To collect latency results, the setup is more complicated since we use separate deployments for the function app and the app under test. Also, some of these experiments run code in AWS, which is not included in this repository. Roughly, the steps were as follows:
 
-## Contributing
-
-This project welcomes contributions and suggestions. Most contributions require you to
-agree to a [Contributor License Agreement (CLA)](https://cla.microsoft.com) declaring that you have the right to, and actually do, grant us the rights to use your contribution. 
-
-When you submit a pull request, a CLA-bot will automatically determine whether you need
-to provide a CLA and decorate the PR appropriately (e.g., label, comment). Simply follow the
-instructions provided by the bot. You will only need to do this once across all repositories using our CLA.
-
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
-For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
-or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-
-### Security
-
-Microsoft takes the security of our software products and services seriously, which includes [Microsoft](https://github.com/Microsoft), [Azure](https://github.com/Azure), [DotNet](https://github.com/dotnet), [AspNet](https://github.com/aspnet), [Xamarin](https://github.com/xamarin), and [our GitHub organizations](https://opensource.microsoft.com/).
-
-If you believe you have found a security vulnerability in any Microsoft-owned repository that meets Microsoft's [Microsoft's definition of a security vulnerability](https://docs.microsoft.com/en-us/previous-versions/tn-archive/cc751383(v=technet.10)), please report it to us at the Microsoft Security Response Center (MSRC) at [https://msrc.microsoft.com/create-report](https://msrc.microsoft.com/create-report). **Do not report security vulnerabilities through GitHub issues.**
-
-### Trademarks
-
-This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft trademarks or logos is subject to and must follow Microsoft's Trademark & Brand Guidelines. Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship. Any use of third-party trademarks or logos are subject to those third-party's policies.
+1. Deployed the `PerformanceTest` Azure Function App (same as for Throughput results), but only for single configuration (4 nodes on EP2).
+   Before doing so, modify host.json to choose between three relevant configurations (original AzureStorage implementation, Netherite with pipelining, Netherite without pipelining)
+1. Deployed the `LoadGeneratorApp` Azure Function App to a separate  deployment in the same datacenter, using 10 nodes on EP2.
+1. Run the series\runseries.ps1 script, adjusting the "Target" parameter to one of "aws", "af", "neth-p", or "neth-np", depending on what was selected in step 1.
+   This runs all the benchmarks that are relevant for that target configuration.
+   (Note that step 1 can be entirely skipped for "aws", and "af" does not depend on what configuration was chosen in 1.)
+   The results for each individual benchmark are stored in a json file blob container in the storage account whose connection string is in the `ResultConnection` environment variable.
+1. After running the tests, open a PowerBI doc to import the relevant data directly from the Azure Storage Account. The doc template is /results/latency/ResultsCollector.pbix.
+   Inside this document, access "Transform Data" to adjust parameters like name of the benchmark, time range for data import. Running the query may require entering credentials.
+1. After viewing the CDF and making adjustments (e.g. exclude some results), choose the export data function on the CDF widget, to create a .csv file.
+1. Store these .csv files in /results/latency/data. In fact, this branch contains those files already, in that location.
+1. Run `python3 plot_results.py` to generate pdf plots from the .csv files, ready for including in the paper.
