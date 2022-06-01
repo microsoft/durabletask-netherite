@@ -21,10 +21,11 @@ namespace DurableTask.Netherite
     /// <summary>
     /// Local partition of the distributed orchestration service.
     /// </summary>
-    public class NetheriteOrchestrationService : 
-        IOrchestrationService, 
-        IOrchestrationServiceClient, 
-        IOrchestrationServiceQueryClient,
+    public class NetheriteOrchestrationService :
+        DurableTask.Core.IOrchestrationService, 
+        DurableTask.Core.IOrchestrationServiceClient,
+        DurableTask.Core.IOrchestrationServicePurgeClient,
+        DurableTask.Netherite.IOrchestrationServiceQueryClient,
         TransportAbstraction.IHost,
         IStorageProvider
     {
@@ -706,6 +707,15 @@ namespace DurableTask.Netherite
         /// <inheritdoc />
         async Task<InstanceQueryResult> IOrchestrationServiceQueryClient.QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
             => await (await this.GetClientAsync()).QueryOrchestrationStatesAsync(instanceQuery, pageSize, continuationToken, cancellationToken);
+
+        /// <inheritdoc />
+        async Task<PurgeResult> IOrchestrationServicePurgeClient.PurgeInstanceStateAsync(string instanceId)
+            => new PurgeResult(await (await this.GetClientAsync()).DeleteAllDataForOrchestrationInstance(this.GetPartitionId(instanceId), instanceId));
+
+        /// <inheritdoc />
+        async Task<PurgeResult> IOrchestrationServicePurgeClient.PurgeInstanceStateAsync(PurgeInstanceFilter purgeInstanceFilter)
+            => new PurgeResult(await (await this.GetClientAsync()).PurgeInstanceHistoryAsync(purgeInstanceFilter.CreatedTimeFrom, purgeInstanceFilter.CreatedTimeTo, purgeInstanceFilter.RuntimeStatus));
+
 
         /******************************/
         // Task orchestration methods
