@@ -104,16 +104,11 @@ namespace DurableTask.Netherite.Faster
                 BlobContinuationToken continuationToken = null;
                 do
                 {
-                    if (this.underLease)
-                    {
-                        await this.BlobManager.ConfirmLeaseIsGoodForAWhileAsync();
-                    }
-
                     BlobResultSegment response = null;
 
                     await this.BlobManager.PerformWithRetriesAsync(
                         BlobManager.AsynchronousStorageReadMaxConcurrency,
-                        true,
+                        this.underLease,
                         "PageBlobDirectory.ListBlobsSegmentedAsync",
                         "RecoverDevice",
                         $"continuationToken={continuationToken}",
@@ -164,7 +159,7 @@ namespace DurableTask.Netherite.Faster
                 else
                 {
                     keys.Sort();
-                    this.endSegment = keys.Last();
+                    this.endSegment = this.startSegment = keys[keys.Count - 1];
                     for (int i = keys.Count - 2; i >= 0; i--)
                     {
                         if (keys[i] == keys[i + 1] - 1)

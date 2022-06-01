@@ -29,6 +29,7 @@ namespace DurableTask.Netherite.Faster
         StoreWorker storeWorker;
         FasterLog log;
         TrackedObjectStore store;
+        Timer hangCheckTimer;
 
         CancellationToken terminationToken;
         Task terminationTokenTask;
@@ -144,6 +145,12 @@ namespace DurableTask.Netherite.Faster
 
             this.TraceHelper.FasterProgress("Creating LogWorker");
             this.logWorker = this.storeWorker.LogWorker = new LogWorker(this.blobManager, this.log, this.partition, this.storeWorker, this.TraceHelper, this.terminationToken);
+             
+            if (this.partition.Settings.TestHooks?.ReplayChecker == null) 
+            {
+                this.hangCheckTimer = new Timer(this.CheckForStuckWorkers, null, 0, 20000);
+                errorHandler.OnShutdown += () => this.hangCheckTimer.Dispose();
+            }
 
             if (this.log.TailAddress == this.log.BeginAddress)
             {
@@ -222,6 +229,24 @@ namespace DurableTask.Netherite.Faster
         {
             this.storeWorker.StartProcessing();
             this.logWorker.StartProcessing();
+        }
+
+        internal void CheckForStuckWorkers(object _)
+        {
+            TimeSpan limit = TimeSpan.FromMinutes(1);
+
+            // check if any of the workers got stuck in a processing loop
+            Check("StoreWorker", this.storeWorker.ProcessingBatchSince);
+            Check("LogWorker", this.logWorker.ProcessingBatchSince);
+            Check("IntakeWorker", this.logWorker.IntakeWorkerProcessingBatchSince);
+
+            void Check(string workerName, TimeSpan? busySince)
+            {
+                if (busySince.HasValue && busySince.Value > limit)
+                {
+                    this.blobManager.PartitionErrorHandler.HandleError("CheckForHungWorkers", $"batch worker {workerName} has been processing for {busySince.Value}, which exceeds the limit {limit}", null, true, false);
+                }
+            }
         }
 
         public async Task CleanShutdown(bool takeFinalCheckpoint)

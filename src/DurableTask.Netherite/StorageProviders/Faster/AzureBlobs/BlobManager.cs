@@ -68,6 +68,8 @@ namespace DurableTask.Netherite.Faster
         internal static SemaphoreSlim AsynchronousStorageReadMaxConcurrency = new SemaphoreSlim(Math.Min(100, Environment.ProcessorCount * 10));
         internal static SemaphoreSlim AsynchronousStorageWriteMaxConcurrency = new SemaphoreSlim(Math.Min(50, Environment.ProcessorCount * 7));
 
+        internal volatile int LeaseUsers;
+
         volatile System.Diagnostics.Stopwatch leaseTimer;
 
         internal const long HashTableSize = 1L << 14; // 16 k buckets, 1 MB
@@ -505,7 +507,7 @@ namespace DurableTask.Netherite.Faster
 
         public ValueTask ConfirmLeaseIsGoodForAWhileAsync()
         {
-            if (this.leaseTimer?.Elapsed < this.LeaseDuration - this.LeaseSafetyBuffer)
+            if (this.leaseTimer?.Elapsed < this.LeaseDuration - this.LeaseSafetyBuffer && !this.shutDownOrTermination.IsCancellationRequested)
             {
                 return default;
             }
@@ -515,7 +517,7 @@ namespace DurableTask.Netherite.Faster
 
         public void ConfirmLeaseIsGoodForAWhile()
         {
-            if (this.leaseTimer?.Elapsed < this.LeaseDuration - this.LeaseSafetyBuffer)
+            if (this.leaseTimer?.Elapsed < this.LeaseDuration - this.LeaseSafetyBuffer && !this.shutDownOrTermination.IsCancellationRequested)
             {
                 return;
             }
@@ -623,6 +625,12 @@ namespace DurableTask.Netherite.Faster
                 {
                     throw; // o.k. during termination or shutdown
                 }
+                catch (Exception e) when (this.PartitionErrorHandler.IsTerminated)
+                {
+                    string message = $"Lease acquisition was canceled";
+                    this.TraceHelper.LeaseProgress(message);
+                    throw new OperationCanceledException(message, e);
+                }
                 catch (Exception e) when (!Utils.IsFatal(e))
                 {
                     this.PartitionErrorHandler.HandleError(nameof(AcquireOwnership), "Could not acquire partition lease", e, true, false);
@@ -711,47 +719,49 @@ namespace DurableTask.Netherite.Faster
 
             this.TraceHelper.LeaseProgress("Exited lease maintenance loop");
 
-            if (this.PartitionErrorHandler.IsTerminated)
+            while (this.LeaseUsers > 0
+                && !this.PartitionErrorHandler.IsTerminated 
+                && (this.leaseTimer?.Elapsed < this.LeaseDuration))
             {
-                // this is an unclean shutdown, so we let the lease expire to protect straggling storage accesses
-                this.TraceHelper.LeaseProgress("Leaving lease to expire on its own");
+                await Task.Delay(20); // give storage accesses that are in progress and require the lease a chance to complete
             }
-            else
+
+            this.TraceHelper.LeaseProgress("Waited for lease users to complete");
+
+            // release the lease
+            if (!this.UseLocalFiles)
             {
-                if (!this.UseLocalFiles)
+                try
                 {
-                    try
-                    {
-                        this.TraceHelper.LeaseProgress("Releasing lease");
+                    this.TraceHelper.LeaseProgress("Releasing lease");
 
-                        this.FaultInjector?.StorageAccess(this, "ReleaseLeaseAsync", "ReleaseLease", this.eventLogCommitBlob.Name);
-                        AccessCondition acc = new AccessCondition() { LeaseId = this.leaseId };
+                    this.FaultInjector?.StorageAccess(this, "ReleaseLeaseAsync", "ReleaseLease", this.eventLogCommitBlob.Name);
+                    AccessCondition acc = new AccessCondition() { LeaseId = this.leaseId };
 
-                        await this.eventLogCommitBlob.ReleaseLeaseAsync(
-                            accessCondition: acc,
-                            options: BlobManager.BlobRequestOptionsDefault,
-                            operationContext: null,
-                            cancellationToken: this.PartitionErrorHandler.Token);
+                    await this.eventLogCommitBlob.ReleaseLeaseAsync(
+                        accessCondition: acc,
+                        options: BlobManager.BlobRequestOptionsDefault,
+                        operationContext: null,
+                        cancellationToken: this.PartitionErrorHandler.Token);
 
-                        this.TraceHelper.LeaseReleased(this.leaseTimer.Elapsed.TotalSeconds);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // it's o.k. if termination is triggered while waiting
-                    }
-                    catch (StorageException e) when (e.InnerException != null && e.InnerException is OperationCanceledException)
-                    {
-                        // it's o.k. if termination is triggered while we are releasing the lease
-                    }
-                    catch (Exception e)
-                    {
-                        // we swallow, but still report exceptions when releasing a lease
-                        this.PartitionErrorHandler.HandleError(nameof(MaintenanceLoopAsync), "Could not release partition lease during shutdown", e, false, true);
-                    }
+                    this.TraceHelper.LeaseReleased(this.leaseTimer.Elapsed.TotalSeconds);
                 }
-
-                this.PartitionErrorHandler.TerminateNormally();
+                catch (OperationCanceledException)
+                {
+                    // it's o.k. if termination is triggered while waiting
+                }
+                catch (StorageException e) when (e.InnerException != null && e.InnerException is OperationCanceledException)
+                {
+                    // it's o.k. if termination is triggered while we are releasing the lease
+                }
+                catch (Exception e)
+                {
+                    // we swallow, but still report exceptions when releasing a lease
+                    this.PartitionErrorHandler.HandleError(nameof(MaintenanceLoopAsync), "Could not release partition lease during shutdown", e, false, true);
+                }
             }
+
+            this.PartitionErrorHandler.TerminateNormally();
 
             this.TraceHelper.LeaseProgress("Blob manager stopped");
         }
@@ -1123,8 +1133,16 @@ namespace DurableTask.Netherite.Faster
                     {
                         var partDir = isPsf ? this.blockBlobPartitionDirectory.GetDirectoryReference(this.PsfGroupFolderName(psfGroupOrdinal)) : this.blockBlobPartitionDirectory;
                         checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
-                        await this.ConfirmLeaseIsGoodForAWhileAsync();
-                        jsonString = await checkpointCompletedBlob.DownloadTextAsync();
+                        try
+                        {
+                            Interlocked.Increment(ref this.LeaseUsers);
+                            await this.ConfirmLeaseIsGoodForAWhileAsync();
+                            jsonString = await checkpointCompletedBlob.DownloadTextAsync();
+                        }
+                        finally
+                        {
+                            Interlocked.Decrement(ref this.LeaseUsers);
+                        }
                     }
 
                     // read the fields from the json to update the checkpoint info
@@ -1466,7 +1484,6 @@ namespace DurableTask.Netherite.Faster
             async Task writeBlob(CloudBlobDirectory partDir, string text)
             {
                 var checkpointCompletedBlob = partDir.GetBlockBlobReference(this.GetCheckpointCompletedBlobName());
-                await this.ConfirmLeaseIsGoodForAWhileAsync(); // the lease protects the checkpoint completed file
                 await this.PerformWithRetriesAsync(
                     BlobManager.AsynchronousStorageWriteMaxConcurrency,
                     true,

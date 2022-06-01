@@ -26,7 +26,7 @@
   <PropertyGroup>
     <MajorVersion>1</MajorVersion>
 	<MinorVersion>0</MinorVersion>
-	<PatchVersion>2</PatchVersion>
+	<PatchVersion>3</PatchVersion>
 	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
     <VersionSuffix></VersionSuffix>
     <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
@@ -50,14 +50,13 @@
   </ItemGroup>
   
   <ItemGroup>
-    <PackageReference Include="Azure.Messaging.EventHubs" Version="5.5.0" />
+    <PackageReference Include="Azure.Messaging.EventHubs" Version="5.7.0" />
     <PackageReference Include="Microsoft.Azure.Cosmos.Table" Version="1.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="3.1.5" />
     <PackageReference Include="Microsoft.Azure.EventHubs.Processor" Version="4.3.2" />
     <PackageReference Include="Microsoft.Azure.Storage.Blob" Version="11.2.3" />
-    <PackageReference Include="Microsoft.FASTER.Core" Version="2.0.2" />
-    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.7.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+    <PackageReference Include="Microsoft.FASTER.Core" Version="2.0.3" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.9.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
     <PackageReference Include="System.Threading.Channels" Version="4.7.1" />
   </ItemGroup>

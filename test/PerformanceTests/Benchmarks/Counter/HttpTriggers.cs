@@ -123,7 +123,7 @@ namespace PerformanceTests.Orchestrations.Counter
                 int numberSignals = int.Parse(input.Substring(0, commaPosition));
                 int numberEntities = int.Parse(input.Substring(commaPosition + 1));
                 var entityPrefix = Guid.NewGuid().ToString("N");
-                EntityId MakeEntityId(int i) => new EntityId("Counter", $"{entityPrefix}-{i/100:D6}!{i%100:D2}");
+                EntityId MakeEntityId(int i) => new EntityId("Counter", $"{entityPrefix}-!{i:D6}");
                 DateTime startTime = DateTime.UtcNow;
 
                 if (numberSignals % numberEntities != 0)

@@ -24,12 +24,12 @@ namespace DurableTask.Netherite
         public string WorkItemId;
         public double? WaitingSince; // measures time waiting to execute
 
-        readonly PartitionUpdateEvent waitForDequeueCountPersistence;
+        readonly PartitionUpdateEvent waitForPersistence;  // if nonnull, must wait for this event
         OrchestrationWorkItem workItem;
 
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.WorkItemId);
 
-        public OrchestrationMessageBatch(string instanceId, SessionsState.Session session, Partition partition, PartitionUpdateEvent filingEvent)
+        public OrchestrationMessageBatch(string instanceId, SessionsState.Session session, Partition partition, PartitionUpdateEvent filingEvent, bool waitForPersistence)
         {
             this.InstanceId = instanceId;
             this.SessionId = session.SessionId;
@@ -46,12 +46,12 @@ namespace DurableTask.Netherite
 
             session.CurrentBatch = this;
 
-            if (partition.Settings.PersistDequeueCountBeforeStartingWorkItem || filingEvent is RecoveryCompleted)
+            if (waitForPersistence || partition.Settings.PersistDequeueCountBeforeStartingWorkItem)
             {
-                this.waitForDequeueCountPersistence = filingEvent;
+                this.waitForPersistence = filingEvent;
             }
 
-            partition.EventDetailTracer?.TraceEventProcessingDetail($"OrchestrationMessageBatch is prefetching instance={this.InstanceId} batch={this.WorkItemId}");
+            partition.EventDetailTracer?.TraceEventProcessingDetail($"OrchestrationMessageBatch is prefetching instance={this.InstanceId} batch={this.WorkItemId} waitForPersistence={this.waitForPersistence}");
 
             // continue when we have the history state loaded, which gives us the latest state and/or cursor
             partition.SubmitEvent(this);
@@ -144,10 +144,10 @@ namespace DurableTask.Netherite
             }
             else
             {
-                if (this.waitForDequeueCountPersistence != null)
+                if (this.waitForPersistence != null)
                 {
                     // process the work item once the filing event is persisted
-                    DurabilityListeners.Register(this.waitForDequeueCountPersistence, this);
+                    DurabilityListeners.Register(this.waitForPersistence, this);
                 }
                 else
                 {
