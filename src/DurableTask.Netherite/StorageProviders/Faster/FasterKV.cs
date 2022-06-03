@@ -176,7 +176,7 @@ namespace DurableTask.Netherite.Faster
         {
             this.singletons = new TrackedObject[TrackedObjectKey.NumberSingletonTypes];
             this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
-            this.cacheTracker.MeasureCacheSize();
+            this.cacheTracker.MeasureCacheSize(true);
             this.CheckInvariants();
         }
 
@@ -201,7 +201,7 @@ namespace DurableTask.Netherite.Faster
                 this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
                 await this.fht.RecoverAsync(this.partition.Settings.FasterTuningParameters?.NumPagesToPreload ?? 1, true, -1, this.terminationToken);
                 this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
-                this.cacheTracker.MeasureCacheSize();
+                this.cacheTracker.MeasureCacheSize(true);
                 this.CheckInvariants();
 
                 return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition, this.blobManager.CheckpointInfo.InputQueueFingerprint);
@@ -305,9 +305,22 @@ namespace DurableTask.Netherite.Faster
             await await tasktask;
         }
 
-        public override Task FinalizeCheckpointCompletedAsync(Guid guid)
+        public override async Task FinalizeCheckpointCompletedAsync(Guid guid)
         {
-            return this.blobManager.FinalizeCheckpointCompletedAsync();
+            await this.blobManager.FinalizeCheckpointCompletedAsync();
+
+            if (this.cacheDebugger == null)
+            {
+                // update the cache size tracker after each checkpoint, to compensate for inaccuracies in the tracking
+                try
+                {
+                    this.cacheTracker.MeasureCacheSize(false);
+                }
+                catch (Exception e)
+                {
+                    this.TraceHelper.FasterStorageError("Measuring CacheSize", e);
+                }
+            }
         }
 
         public override Guid? StartIndexCheckpoint()
@@ -987,12 +1000,29 @@ namespace DurableTask.Netherite.Faster
                 return; // we only do this when the cache debugger is attached
             }
 
-            long trackedSizeBefore = this.cacheTracker.TrackedObjectSize;
-
-            var inMemoryIterator = this.fht.Log.Scan(this.fht.Log.HeadAddress, this.fht.Log.TailAddress);
-
+            long trackedSizeBefore = 0;
             long totalSize = 0;
-            Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>> perKey = new Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>>();
+            Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>> perKey = null;
+
+            this.ScanMemorySection(Init, Iteration);
+
+            void Init()
+            {
+                trackedSizeBefore = this.cacheTracker.TrackedObjectSize;
+                totalSize = 0;
+                perKey = new Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>>();
+            }
+
+            void Iteration(RecordInfo recordInfo, Key key, Value value, long currentAddress)
+            {
+                long delta = key.Val.EstimatedSize;
+                if (!recordInfo.Tombstone)
+                {
+                    delta += value.EstimatedSize;
+                }
+                Add(key, delta, currentAddress, $"{(recordInfo.Invalid ? "I" : "")}{(recordInfo.Tombstone ? "T" : "")}{delta}@{currentAddress.ToString("x")}");
+            }
+              
             void Add(TrackedObjectKey key, long delta, long address, string desc)
             {
                 perKey.TryGetValue(key, out var current);
@@ -1004,19 +1034,9 @@ namespace DurableTask.Netherite.Faster
                 totalSize += delta;
             }
 
-            while (inMemoryIterator.GetNext(out RecordInfo recordInfo, out Key key, out Value value))
-            {
-                long delta = key.Val.EstimatedSize;
-                if (!recordInfo.Tombstone)
-                {
-                    delta += value.EstimatedSize;
-                }
-                Add(key, delta, inMemoryIterator.CurrentAddress, $"{(recordInfo.Invalid ? "I" : "")}{(recordInfo.Tombstone ? "T" : "")}{delta}@{inMemoryIterator.CurrentAddress.ToString("x")}");
-            }
-
             long trackedSizeAfter = this.cacheTracker.TrackedObjectSize;
-
             bool sizeMatches = true;
+
             foreach (var kvp in perKey)
             {
                 sizeMatches = sizeMatches && this.cacheDebugger.CheckSize(kvp.Key, kvp.Value, this.Log.HeadAddress);
@@ -1028,25 +1048,61 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        internal (int numPages, long size) ComputeMemorySize(bool resetCacheDebugger)
+        internal void ScanMemorySection(Action init, Action<RecordInfo, Key, Value, long> iteration, int retries = 3)
         {
-            var cacheDebugger = resetCacheDebugger ? this.cacheDebugger : null;
-            cacheDebugger?.Reset((string instanceId) => this.partition.PartitionFunction(instanceId) == this.partition.PartitionId);
-            var inMemoryIterator = this.fht.Log.Scan(this.fht.Log.HeadAddress, this.fht.Log.TailAddress);
+            var headAddress = this.fht.Log.HeadAddress;
+          
+            try
+            {
+                using var inMemoryIterator = this.fht.Log.Scan(headAddress, this.fht.Log.TailAddress);
+                init();
+                while (inMemoryIterator.GetNext(out RecordInfo recordInfo, out Key key, out Value value))
+                {
+                    iteration(recordInfo, key, value, inMemoryIterator.CurrentAddress);
+                }
+            }
+            catch(FASTER.core.FasterException e) when (retries > 0 && e.Message.StartsWith("Iterator address is less than log BeginAddress"))
+            {
+                this.ScanMemorySection(init, iteration, retries - 1);
+            }
+
+            if (this.fht.Log.HeadAddress > headAddress)
+            {
+                this.ScanMemorySection(init, iteration, retries - 1);
+            }
+        }
+
+        internal (int numPages, long size, long numRecords) ComputeMemorySize(bool updateCacheDebugger)
+        {
             long totalSize = 0;
-            long firstPage = this.fht.Log.HeadAddress >> this.storelogsettings.PageSizeBits;
-            while (inMemoryIterator.GetNext(out RecordInfo recordInfo, out Key key, out Value value))
+            long firstPage = 0;
+            long numRecords = 0;
+            var cacheDebugger = updateCacheDebugger ? this.cacheDebugger : null;
+            
+            void Init()
+            {
+                totalSize = 0;
+                numRecords = 0;
+                firstPage = this.fht.Log.HeadAddress >> this.storelogsettings.PageSizeBits;
+                cacheDebugger?.Reset((string instanceId) => this.partition.PartitionFunction(instanceId) == this.partition.PartitionId);
+            }
+
+            void Iteration(RecordInfo recordInfo, Key key, Value value, long currentAddress)
             {
                 long delta = key.Val.EstimatedSize;
                 if (!recordInfo.Tombstone)
                 {
                     delta += value.EstimatedSize;
                 }
+                numRecords++;
                 totalSize += delta;
                 cacheDebugger?.UpdateSize(key, delta);
             }
+
+            this.ScanMemorySection(Init, Iteration);
+  
             long lastPage = this.fht.Log.TailAddress >> this.storelogsettings.PageSizeBits;
-            return ((int) (lastPage-firstPage) + 1, totalSize);
+            return ((int) (lastPage-firstPage) + 1, totalSize, numRecords);
         }
 
         public void SetEmptyPageCount(int emptyPageCount)
@@ -1277,7 +1333,7 @@ namespace DurableTask.Netherite.Faster
                 this.store = store;
                 this.stats = store.StoreStats;
                 this.cacheDebugger = partition.Settings.TestHooks?.CacheDebugger;
-                this.cacheTracker = isScan ? null : cacheTracker;
+                this.cacheTracker = cacheTracker;
                 this.isScan = isScan;
             }
             
@@ -1494,6 +1550,11 @@ namespace DurableTask.Netherite.Faster
 
                     case WriteReason.Compaction:
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCompaction, src.Version, default, info.Address);
+                        this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + src.EstimatedSize, key, info.Address);
+                        break;
+
+                    default:
+                        this.cacheDebugger?.Fail("Invalid WriteReason in SingleWriter", key);
                         break;
                 }
                 dst.Val = output.Val ?? src.Val;
@@ -1521,15 +1582,20 @@ namespace DurableTask.Netherite.Faster
 
                     case WriteReason.CopyToTail:
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriterCopyToTail, src.Version, default, info.Address);
+                        if (!this.isScan)
+                        {
+                            this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, info.Address);
+                        }
                         break;
 
                     case WriteReason.Compaction:
                         this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.PostSingleWriterCompaction, src.Version, default, info.Address);
+                        this.cacheDebugger?.Fail("Do not expect PostSingleWriter-Compaction", key);
                         break;
-                }
-                if (!this.isScan)
-                {
-                    this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize + dst.EstimatedSize, key, info.Address);
+
+                    default:
+                        this.cacheDebugger?.Fail("Invalid WriteReason in PostSingleWriter", key);
+                        break;
                 }
             }
 
@@ -1545,6 +1611,7 @@ namespace DurableTask.Netherite.Faster
                 if (!this.isScan)
                 {
                     this.cacheTracker.UpdateTrackedObjectSize(key.Val.EstimatedSize, key, info.Address);
+                    this.cacheDebugger?.UpdateReferenceValue(ref key.Val, null, 0);
                 }
             }
 
@@ -1566,9 +1633,16 @@ namespace DurableTask.Netherite.Faster
                 if (!this.isScan)
                 {
                     long removed = value.EstimatedSize;
+
+                    // For the time being, we comment out the path below until FASTER passes in the correct info
+                    // see https://github.com/microsoft/FASTER/issues/706
+
                     // If record is marked invalid (failed to insert), dispose key as well
-                    if (info.RecordInfo.Invalid)
-                        removed += key.Val.EstimatedSize;
+                    //if (info.RecordInfo.Invalid)
+                    //{
+                    //    removed += key.Val.EstimatedSize;
+                    //}
+
                     this.cacheTracker.UpdateTrackedObjectSize(-removed, key, info.Address);
                     this.cacheDebugger?.UpdateReferenceValue(ref key.Val, null, 0);
                 }

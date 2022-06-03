@@ -164,6 +164,11 @@ namespace DurableTask.Netherite
                     $"Configured trace generation limits: general={settings.LogLevelLimit} , transport={settings.TransportLogLevelLimit}, storage={settings.StorageLogLevelLimit}, "
                     + $"events={settings.EventLogLevelLimit}; workitems={settings.WorkItemLogLevelLimit};  clients={settings.ClientLogLevelLimit}; loadmonitor={settings.LoadMonitorLogLevelLimit}; etwEnabled={EtwSource.Log.IsEnabled()}; "
                     + $"core.IsTraceEnabled={DurableTask.Core.Tracing.DefaultEventSource.Log.IsTraceEnabled}");
+
+                if (this.Settings.TestHooks != null)
+                {
+                    this.Settings.TestHooks.OnError += (string message) => this.TraceHelper.TraceError("TestHook error", message);
+                }
             }
             catch (Exception e) when (!Utils.IsFatal(e))
             {
