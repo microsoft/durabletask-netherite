@@ -1059,6 +1059,8 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        readonly static List<(long delta, long address, string desc)> emptyList = new List<(long delta, long address, string desc)>();
+
         internal void ScanMemorySection(Action init, Action<RecordInfo, Key, Value, long> iteration, int retries = 3)
         {
             var headAddress = this.fht.Log.HeadAddress;
