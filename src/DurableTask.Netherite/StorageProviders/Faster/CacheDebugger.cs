@@ -301,6 +301,12 @@ namespace DurableTask.Netherite.Faster
             {
                 info.CacheEvents.Enqueue(new Entry { CacheEvent = CacheEvent.SizeCheckFail, Delta = actual, Address = reference });
 
+                if (entries.Count == 0)
+                {
+                    // for now, we just tolerate this since we cannot rely on evictions to reach us in time
+                    return false;
+                }
+
                 // adjust the actual
                 var firstActual = entries.FirstOrDefault().address;
                 var firstReference = entries.FirstOrDefault().address;
