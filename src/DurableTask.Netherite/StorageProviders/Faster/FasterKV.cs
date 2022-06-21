@@ -1242,10 +1242,10 @@ namespace DurableTask.Netherite.Faster
                     else
                     {
                         TrackedObject trackedObject = (TrackedObject) obj.Val;
-                        DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
+                        var bytes = DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
                         this.storeStats.Serialize++;
-                        this.writer.Write(trackedObject.SerializationCache.Length);
-                        this.writer.Write(trackedObject.SerializationCache);
+                        this.writer.Write(bytes.Length);
+                        this.writer.Write(bytes);
                         this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, obj.Version, null, 0);
                     }
                 }
@@ -1356,7 +1356,6 @@ namespace DurableTask.Netherite.Faster
                     value.Val = trackedObject;
                     this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeObject, value.Version, tracker.CurrentEventId, 0);
                 }
-                trackedObject.SerializationCache = null; // cache is invalidated because of update
                 trackedObject.Partition = this.partition;
                 this.cacheDebugger?.CheckVersionConsistency(key.Val, trackedObject, value.Version);
                 tracker.ProcessEffectOn(trackedObject);
@@ -1382,10 +1381,10 @@ namespace DurableTask.Netherite.Faster
                 {
                     // replace old object with its serialized snapshot
                     long oldValueSizeBefore = oldValue.EstimatedSize;
-                    DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
+                    var bytes = DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
                     this.stats.Serialize++;
                     this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, oldValue.Version, null, 0);
-                    oldValue.Val = trackedObject.SerializationCache;
+                    oldValue.Val = bytes;
                     this.cacheTracker.UpdateTrackedObjectSize(oldValue.EstimatedSize - oldValueSizeBefore, key, null); // null indicates we don't know the address
                     this.stats.Copy++;
                 }
@@ -1401,7 +1400,6 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 newValue.Val = trackedObject;
-                trackedObject.SerializationCache = null; // cache is invalidated by the update which is happening below
                 this.cacheDebugger?.CheckVersionConsistency(key.Val, trackedObject, oldValue.Version);
                 tracker.ProcessEffectOn(trackedObject);
                 newValue.Version = oldValue.Version + 1;
@@ -1442,12 +1440,11 @@ namespace DurableTask.Netherite.Faster
                 {
                     if (!this.isScan)
                     {
-                        // replace src with a serialized snapshot of the object, so it does not get mutated
+                        // replace src with a serialized snapshot of the object - it is now read-only since we did a copy-read-to-tail
                         long oldValueSizeBefore = src.EstimatedSize;
-                        DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
+                        src.Val = DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
                         this.stats.Serialize++;
                         this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, src.Version, null, 0);
-                        src.Val = trackedObject.SerializationCache;
                         this.cacheTracker.UpdateTrackedObjectSize(src.EstimatedSize - oldValueSizeBefore, key, readInfo.Address);
                         this.stats.Copy++;
                     }

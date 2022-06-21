@@ -58,21 +58,17 @@ namespace DurableTask.Netherite
             return (Event)eventSerializer.ReadObject(stream);
         }
 
-        public static void SerializeTrackedObject(TrackedObject trackedObject)
+        public static byte[] SerializeTrackedObject(TrackedObject trackedObject)
         {
-            if (trackedObject.SerializationCache == null)
-            {
-                var stream = new MemoryStream();
-                trackedObjectSerializer.WriteObject(stream, trackedObject);
-                trackedObject.SerializationCache = stream.ToArray();
-            }
+            var stream = new MemoryStream();
+            trackedObjectSerializer.WriteObject(stream, trackedObject);
+            return stream.ToArray();
         }
 
         public static TrackedObject DeserializeTrackedObject(byte[] bytes)
         {
             var stream = new MemoryStream(bytes);
             var result = (TrackedObject)trackedObjectSerializer.ReadObject(stream);
-            result.SerializationCache = bytes;
             return result;
         }
 
