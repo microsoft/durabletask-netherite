@@ -1642,14 +1642,11 @@ namespace DurableTask.Netherite.Faster
                 {
                     long removed = value.EstimatedSize;
 
-                    // For the time being, we comment out the path below until FASTER passes in the correct info
-                    // see https://github.com/microsoft/FASTER/issues/706
-
                     // If record is marked invalid (failed to insert), dispose key as well
-                    //if (info.RecordInfo.Invalid)
-                    //{
-                    //    removed += key.Val.EstimatedSize;
-                    //}
+                    if (info.RecordInfo.Invalid)
+                    {
+                        removed += key.Val.EstimatedSize;
+                    }
 
                     this.cacheTracker.UpdateTrackedObjectSize(-removed, key, info.Address);
                     this.cacheDebugger?.UpdateReferenceValue(ref key.Val, null, 0);
