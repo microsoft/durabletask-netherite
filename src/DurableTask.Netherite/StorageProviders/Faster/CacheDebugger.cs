@@ -29,6 +29,8 @@ namespace DurableTask.Netherite.Faster
 
         public bool EnableSizeChecking { get; set; } = true;
 
+        internal IEnumerable<TrackedObjectKey> Keys => this.Objects.Keys;
+
         public enum CacheEvent
         {
             // reads and RMWs on the main session

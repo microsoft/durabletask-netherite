@@ -991,6 +991,8 @@ namespace DurableTask.Netherite.Faster
 
             var inMemoryIterator = this.fht.Log.Scan(this.fht.Log.HeadAddress, this.fht.Log.TailAddress);
 
+            // we now scan the in-memory part of the log and compute the total size, and store, for each key, the list of records found
+
             long totalSize = 0;
             Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>> perKey = new Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>>();
             void Add(TrackedObjectKey key, long delta, long address, string desc)
@@ -1013,20 +1015,35 @@ namespace DurableTask.Netherite.Faster
                 }
                 Add(key, delta, inMemoryIterator.CurrentAddress, $"{(recordInfo.Invalid ? "I" : "")}{(recordInfo.Tombstone ? "T" : "")}{delta}@{inMemoryIterator.CurrentAddress.ToString("x")}");
             }
+ 
+            foreach (var k in this.cacheDebugger.Keys)
+            {
+                if (!perKey.ContainsKey(k))
+                {
+                    perKey.Add(k, emptyList); // for keys that were not found in memory, the list of records is empty
+                }
+            }
 
             long trackedSizeAfter = this.cacheTracker.TrackedObjectSize;
 
             bool sizeMatches = true;
+
+            // now we compare, for each key, the list of entries found in memory with what the cache debugger is tracking
+
             foreach (var kvp in perKey)
             {
                 sizeMatches = sizeMatches && this.cacheDebugger.CheckSize(kvp.Key, kvp.Value, this.Log.HeadAddress);
             }
+
+            // if the records matched for each key, then the total size should also match
 
             if (sizeMatches && trackedSizeBefore == trackedSizeAfter && trackedSizeBefore != totalSize)
             {
                 this.cacheDebugger.Fail("total size of tracked objects does not match");
             }
         }
+
+        readonly static List<(long delta, long address, string desc)> emptyList = new List<(long delta, long address, string desc)>();
 
         internal (int numPages, long size) ComputeMemorySize(bool resetCacheDebugger)
         {
