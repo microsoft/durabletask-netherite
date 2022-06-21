@@ -27,12 +27,6 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public abstract TrackedObjectKey Key { get; }
 
-        /// <summary>
-        /// The current value in serialized form, or null
-        /// </summary>
-        [IgnoreDataMember]
-        internal byte[] SerializationCache { get; set; }
-
         [DataMember]
         public int Version { get; set;  } // we use this validate consistency of read/write updates in FASTER, it is not otherwise needed
 
