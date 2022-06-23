@@ -187,7 +187,6 @@ namespace DurableTask.Netherite.Faster
         {
             // update the positions
             var dedupState = this.cache[TrackedObjectKey.Dedup];
-            dedupState.TrackedObject.SerializationCache = null;
             ((DedupState)dedupState.TrackedObject).Positions = (commitLogPosition, inputQueuePosition);
             if (!dedupState.Modified)
             {
@@ -199,14 +198,14 @@ namespace DurableTask.Netherite.Faster
             var toWrite = new List<ToWrite>();
             foreach (var cacheEntry in this.modified)
             {
-                Serializer.SerializeTrackedObject(cacheEntry.TrackedObject);
+                byte[] bytes = Serializer.SerializeTrackedObject(cacheEntry.TrackedObject);
                 toWrite.Add(new ToWrite()
                 {
                     Key = cacheEntry.TrackedObject.Key,
                     PreviousValue = cacheEntry.LastCheckpointed,
-                    NewValue = cacheEntry.TrackedObject.SerializationCache,
+                    NewValue = bytes,
                 });
-                cacheEntry.LastCheckpointed = cacheEntry.TrackedObject.SerializationCache;
+                cacheEntry.LastCheckpointed = bytes;
                 cacheEntry.Modified = false;
             }
             this.modified.Clear();
@@ -377,7 +376,6 @@ namespace DurableTask.Netherite.Faster
                 this.cache.Add(key, cacheEntry);
             }
             var trackedObject = cacheEntry.TrackedObject;
-            trackedObject.SerializationCache = null;
             effectTracker.ProcessEffectOn(trackedObject);
             if (!cacheEntry.Modified)
             {
