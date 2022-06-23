@@ -48,7 +48,7 @@ namespace DurableTask.Netherite.AzureFunctions
         public NetheriteProviderFactory(
             IOptions<DurableTaskOptions> extensionOptions,
             ILoggerFactory loggerFactory,
-            IConnectionStringResolver connectionStringResolver,
+            IConnectionInfoResolver connectionInfoResolver,
             IHostIdProvider hostIdProvider,
             INameResolver nameResolver,
 #pragma warning disable CS0612 // Type or member is obsolete

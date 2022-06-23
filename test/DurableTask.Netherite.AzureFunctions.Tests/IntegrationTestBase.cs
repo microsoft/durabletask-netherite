@@ -61,7 +61,6 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
                     services =>
                     {
                         services.AddSingleton<INameResolver>(this.settingsResolver);
-                        services.AddSingleton<IConnectionStringResolver>(this.settingsResolver);
                         services.AddSingleton<ITypeLocator>(this.typeLocator);
                         services.AddSingleton<IDurabilityProviderFactory, NetheriteProviderFactory>();
                     })
@@ -177,7 +176,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             IReadOnlyList<Type> ITypeLocator.GetTypes() => this.functionTypes.AsReadOnly();
         }
 
-        class TestSettingsResolver : INameResolver, IConnectionStringResolver
+        class TestSettingsResolver : INameResolver
         {
             readonly Dictionary<string, string> testSettings =
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -185,8 +184,6 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             public void AddSetting(string name, string value) => this.testSettings.Add(name, value);
 
             string INameResolver.Resolve(string name) => this.Resolve(name);
-
-            string IConnectionStringResolver.Resolve(string connectionStringName) => this.Resolve(connectionStringName);
 
             string Resolve(string name)
             {
