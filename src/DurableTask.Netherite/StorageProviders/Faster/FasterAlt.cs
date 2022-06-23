@@ -140,7 +140,7 @@ namespace DurableTask.Netherite.Faster
             return this.pendingLoads.Count == 0;
         }
 
-        public override ValueTask ReadyToCompletePendingAsync()
+        public override ValueTask ReadyToCompletePendingAsync(CancellationToken token)
         {
             if (this.pendingLoads.Count == 0)
             {

@@ -114,6 +114,8 @@ namespace DurableTask.Netherite.Faster
                     numPages, 
                     numRecords,
                     sizeInBytes: size, 
+                    gcMemory: GC.GetTotalMemory(false),
+                    processMemory: System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64,
                     discrepancy: isFirstCall ? 0 : size - this.trackedObjectSize, 
                     stopwatch.Elapsed.TotalMilliseconds);
 
