@@ -427,6 +427,9 @@ namespace DurableTask.Netherite.Faster
                         (this.lastCheckpointedCommitLogPosition, this.lastCheckpointedInputQueuePosition)
                            = await this.pendingStoreCheckpoint; // observe exceptions here
 
+                        // force collection of memory used during checkpointing
+                        GC.Collect();
+
                         // we have reached the end of the state machine transitions
                         this.pendingStoreCheckpoint = null;
                         this.pendingCheckpointTrigger = CheckpointTrigger.None;
@@ -455,6 +458,9 @@ namespace DurableTask.Netherite.Faster
                     if (this.pendingCompaction.IsCompleted == true)
                     {
                         await this.pendingCompaction; // observe exceptions here
+
+                        // force collection of memory used during compaction
+                        GC.Collect();
 
                         // the index checkpoint is next
                         var token = this.store.StartIndexCheckpoint();
