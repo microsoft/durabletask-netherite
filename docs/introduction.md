@@ -51,6 +51,6 @@ In the future, we plan to support alternatives for these components. For example
 The current version of Netherite is *1.0.2*. Netherite supports almost all of the DT and DF APIs. However, there are still some limitations:
 
 - **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled. This will be resolved by GA.
-- **Query Performance**. Currently, query performance is suboptimal and does not support paging. We plan to add a range index implementation to fix this soon after GA.
+- **Query Performance**. Currently, queries do not support paging. We plan to add a range index implementation to fix this soon after GA.
 
-To learn more about the Netherite architecture, you can also check out our [paper on arXiv](https://arxiv.org/abs/2103.00033).
+To learn more about the Netherite architecture, our [VLDB 2022 paper]() is the best reference. There is also an earlier preprint [paper on arXiv](https://arxiv.org/abs/2103.00033).

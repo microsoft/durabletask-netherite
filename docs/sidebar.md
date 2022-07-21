@@ -10,6 +10,7 @@
   * [Build](build.md)
   * [Storage Resources](storage.md)
   * [Emulation Mode](emulation.md)
+  * [Caching](caching.md)
   
 * Observability
   * [Partition Table](ptable.md)
@@ -17,6 +18,8 @@
 * Performance
   * [Throughput](throughput.md)
 
-* [Configuration](settings.md)  
+* Configuration
+  * [Connection Names](connectionnames.md)  
+  * [host.json Configuration](settings.md)  
 
 * [General Information](general.md)

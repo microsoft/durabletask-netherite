@@ -17,7 +17,7 @@ Netherite may provide higher throughput and lower latency, compared to the defau
 - Netherite can handle streams of entity signals more efficiently, because there is no need for explicit message sorting and deduplication
 - EventHubs supports long polling. This improves latency compared to standard polling on message queues, especially in low-scale situations when polling intervals are high.
 - Clients can connect to Netherite via a bidirectional EventHubs connection. This means that a client waiting for an orchestration to complete is notified more quickly.
-- Netherite caches instance and entity states in memory, which improves latency if they are accessed repeatedly.
+- Netherite [caches instance and entity states in memory](caching.md), which improves latency if they are accessed repeatedly.
 - Multiple orchestration steps can be persisted in a single storage write, which reduces latency when issuing a sequence of very short activities. It can improve throughput by up to 10x.
 
 **Operational complexity**.

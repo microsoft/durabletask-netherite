@@ -1,55 +1,7 @@
 
-# Configuration
+# host.json Configuration
 
-Netherite is configured using settings in two places:
-
-1. Connection strings. These are resolved via connection names, which can be defined either as environment variables or as function app configuration settings.
-1. Additional parameters inside the `host.json` configuration file.
-
-## Connection names
-
-The following two connection names must be defined in app settings or environment variables:
-
-1. `AzureWebJobsStorage` must contain a connection string to an existing Azure Storage account. For most Azure Function applications, this is already the case by default.
-
-?> **Tip** If you want to use a different Azure Storage Account for Netherite task hubs than for the rest of the function app, you can change the `StorageConnectionName` setting in host.json to use a connection name of your choice instead of `AzureWebJobsStorage`.
-
-1. `EventHubsConnection` must contain a SAS connection string to an existing EventHubs namespace.
-
-!> **Important** Never use the same EventHubs namespace for multiple function apps at the same time.
-
-
-### Connection names for DurableClients
-
-It is possible to bind Durable Clients to specific taskhub instances, as documented [here](https://docs.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-bindings?tabs=csharp%2C2x-durable-functions#client-usage).
-Those APIs would usually expect a single connection name to be specified. However, as Netherite needs two connection names, they can both be passed in the same string, separated by a comma:
-
-<!-- tabs:start -->
-
-#### **C# Attribute**
-
-```csharp
-...
-[DurableClient(
-   TaskHub = "TaskHub2",
-   ConnectionName = "Storage2, EventHubs2"
-)] IDurableClient client
-```
-
-#### **function.json**
-
-```json
-{
-    "taskHub": "TaskHub2",
-    "connectionName": "Storage2, EventHubs2",
-}
-```
-
-<!-- tabs:end -->
-
-## host.json Configuration
-
-### Minimal Configuration
+## Minimal Configuration
 
 To run with Netherite, the host.json file must set the storage provider type to "Netherite".
 
@@ -66,9 +18,7 @@ To run with Netherite, the host.json file must set the storage provider type to 
 }    
 ```
 
-
-
-### Typical Configuration
+## Typical Configuration
 
 We recommend using a few more settings, something like:
 
@@ -104,7 +54,7 @@ We recommend using a few more settings, something like:
 }    
 ```
 
-### Partition Count considerations
+## Partition Count considerations
 
 In the current implementation, the partition count cannot be changed after a task hub is created. Thus, one may want to think briefly about what to choose:
 
@@ -118,11 +68,11 @@ The partition count is similar to the control queue count in the default engine;
 however, unlike the latter, it also affects the maximum scale out for activities (not just orchestrations).
 For applications that require massive scale for activities, we recommend using a large partition count, and perhaps the use of HttpTriggers in place of activities.
 
-### Tracing and Logging Parameters
+## Tracing and Logging Parameters
 
 There are two different sections that control aspects of the logging.
 
-#### Parameters in the global `logging` section
+### Parameters in the global `logging` section
 
 The `logging` section of the host.json file controls
 
@@ -156,7 +106,7 @@ The `logging` section of the host.json file controls
 }
 ```
 
-#### Logging Parameters for Netherite
+### Logging Parameters for Netherite
 
 The generation of tracing events can be controlled in the `durableTask` section. We recommend leaving these at the "Debug" setting which allows useful telemetry to be collected automatically when running in hosted plans. 
 
@@ -185,19 +135,21 @@ The generation of tracing events can be controlled in the `durableTask` section.
   }
 ```
 
-### Advanced Configuration Parameters
+## Advanced Configuration Parameters
 
 In addition to the parameters shown earlier, there are many more. Many of them are the same as for other backends.
  We document only the ones that are specific to Netherite here.
 
-#### Orchestration Caching
+### Orchestration Caching
+
+The following parameters control the [caching mechanisms](caching.md) used by Netherite:
 
 | name | type | default | meaning| 
 | - | - | - | - |
 | CacheOrchestrationCursors | bool | true | Whether to enable caching of execution cursors to skip orchestrator replay. This setting is similar to `enableExtendedSessions` in the AzureStorage backend. |
 | InstanceCacheSizeMB | int | 200 MB * ProcessorCount, or 100 MB in consumption plan | Upper limit on the total amount of memory used on a host for caching orchestration histories and entity states. |
 
-#### Other Parameters
+### Other Parameters
 
 | name | type | default | meaning| 
 | - | - | - | - |
@@ -205,7 +157,7 @@ In addition to the parameters shown earlier, there are many more. Many of them a
 | LoadInformationAzureTableName | string | DurableTaskPartitions | A name for an Azure Table to use for publishing load information. If set to null or empty, then Azure blobs are used instead.|
 | PersistDequeueCountBeforeStartingWorkItem | bool | false | If true, the start of work items is delayed until the dequeue count is persisted. If false, execution can start before persisting the dequeue count, which improves latency but means the reported dequeue count may be lower than the actual dequeue count in some cases.|
 
-#### Checkpointing
+### Checkpointing
 
 The following settings control the frequency of the asynchronous checkpointing. We do not anticipate that
 Netherite users need to modify these defaults.
@@ -219,7 +171,7 @@ Since progress is already being continously persisted to the commit log, how oft
 | MaxNumberEventsBetweenCheckpoints |  long |A limit on how many events to append to the log before initiating a state checkpoint. The default is 10000. |
 | IdleCheckpointFrequencyMs |  long | How often to checkpoint when the partition is idle. The default is 60s. |
 
-#### Unsupported Parameters
+### Unsupported Parameters
 
 The following settings were used for testing environments or specific experimental investigations.
 Do not modify these unless you know exactly what you are doing.

@@ -12,7 +12,12 @@ When running Netherite, the following storage resources are used:
    1. An **Azure Storage Table** called `DurableTaskPartitions`. This table stores metrics in a human-readable format. It is used for diagnostic purposes and autoscaling.
 1. An **Event Hubs Namespace**, which contains several event hubs that serve as channels for transmitting messages between partitions and clients.
 
-!> **Important** Never use the same EventHubs namespace for multiple function apps at the same time.
+![Netherite Storage Resources](images/netherite-storage.png)
+
+The role of the Event Hubs namespace is to load-balance partitions of a single task hub, and to allow partitions and clients to communicate.
+
+!> **Important** Never use the same Event Hubs namespace for multiple function apps at the same time.
+
 
 ### Task Hub Restart
 
@@ -26,7 +31,13 @@ If you want to restart the application from a clean, empty state, some common wa
 ### Task Hub Deletion
 
 Once you are finished using a task hub, it is advisable to delete the associated resources to avoid billing charges. 
-Note that EventHubs billing accumulates charges for the reserved capacity measured in throughput units, or TU. In particular, the number of partitions, or the amount of data stored in them, does not matter.
+Note that Event Hubs billing accumulates charges for the reserved capacity measured in throughput units, or TU. In particular, the number of partitions, or the amount of data stored in them, does not matter.
+
+### Event Hubs Retention
+
+All instance and activity messages that are part of the task hub contents are reliably stored in the partition storage. In particular,
+* it is not necessary to retain Event Hubs messages past their default expiration time.
+* it is safe to delete all the event hubs in the namespace, or to change the configuration to use a different namespace.
 
 ### Storage Representation Details
 
