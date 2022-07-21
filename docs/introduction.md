@@ -20,8 +20,6 @@ If you have a .NET Durable Functions application already, and want to configure 
 - Configure `EventHubsConnection` with the connection string for the Event Hubs namespace. You can do this using an environment variable, or with a function app configuration settings.
 - Add `"type" : "Netherite"` to the `storageProvider` section of your host.json. See [recommended host.json settings](settings).
 
-!> **Important** Never use the same EventHubs namespace for multiple function apps at the same time.
-
 ## Why a new engine?
 
 The default Azure Storage engine stores messages in Azure Storage queues and instance states in Azure Storage tables. It executes large numbers of small storage accesses. For example, executing a single orchestration with three activities may require a total of 4 dequeue operations, 3 enqueue operations, 4 table reads, and 4 table writes. Thus, the overall throughput quickly becomes limited by how many I/O operations Azure Storage allows per second. 
