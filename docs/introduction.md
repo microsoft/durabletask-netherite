@@ -53,4 +53,4 @@ The current version of Netherite is *1.0.2*. Netherite supports almost all of th
 - **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled. This will be resolved by GA.
 - **Query Performance**. Currently, queries do not support paging. We plan to add a range index implementation to fix this soon after GA.
 
-To learn more about the Netherite architecture, our [VLDB 2022 paper]() is the best reference. There is also an earlier preprint [paper on arXiv](https://arxiv.org/abs/2103.00033).
+To learn more about the Netherite architecture, our [VLDB 2022 paper](https://www.microsoft.com/en-us/research/uploads/prod/2022/07/p1591-burckhardt.pdf) is the best reference. There is also an earlier preprint [paper on arXiv](https://arxiv.org/abs/2103.00033).
