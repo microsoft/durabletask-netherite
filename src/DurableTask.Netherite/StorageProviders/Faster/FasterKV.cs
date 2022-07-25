@@ -234,9 +234,9 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override ValueTask ReadyToCompletePendingAsync()
+        public override ValueTask ReadyToCompletePendingAsync(CancellationToken token)
         {
-            return this.mainSession.ReadyToCompletePendingAsync(this.terminationToken);
+            return this.mainSession.ReadyToCompletePendingAsync(token);
         }
 
         public override bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, out Guid checkpointGuid)

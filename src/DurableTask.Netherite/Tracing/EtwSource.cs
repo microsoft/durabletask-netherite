@@ -315,11 +315,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(256, Account, TaskHub, PartitionId, Context, Details, AppName, ExtensionVersion);
         }
 
-        [Event(257, Level = EventLevel.Informational, Version = 1)]
-        public void FasterCacheSizeMeasured(string Account, string TaskHub, int PartitionId, int NumPages, long NumRecords, long SizeInBytes, long Discrepancy, double ElapsedMs,  string AppName, string ExtensionVersion)
+        [Event(257, Level = EventLevel.Informational, Version = 3)]
+        public void FasterCacheSizeMeasured(string Account, string TaskHub, int PartitionId, int NumPages, long NumRecords, long SizeInBytes, long GcMemory, long ProcessMemory, long Discrepancy, double ElapsedMs,  string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(257, Account, TaskHub, PartitionId, NumPages, NumRecords, SizeInBytes, Discrepancy, ElapsedMs, AppName, ExtensionVersion);
+            this.WriteEvent(257, Account, TaskHub, PartitionId, NumPages, NumRecords, SizeInBytes, GcMemory, ProcessMemory, Discrepancy, ElapsedMs, AppName, ExtensionVersion);
         }
 
         [Event(259, Level = EventLevel.Verbose, Version = 1)]
