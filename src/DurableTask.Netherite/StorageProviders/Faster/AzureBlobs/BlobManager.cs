@@ -5,7 +5,6 @@ namespace DurableTask.Netherite.Faster
 {
     using DurableTask.Core.Common;
     using FASTER.core;
-    using ImpromptuInterface;
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
     using Microsoft.Azure.Storage.RetryPolicies;
