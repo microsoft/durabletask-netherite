@@ -8,7 +8,6 @@ namespace DurableTask.Netherite
     using System.Runtime.Serialization;
     using System.Text;
     using DurableTask.Core;
-    using Dynamitey;
 
     /// <summary>
     /// A unique identifier for an event.
