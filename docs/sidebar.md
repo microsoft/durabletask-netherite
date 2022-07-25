@@ -11,6 +11,7 @@
   * [Storage Resources](storage.md)
   * [Emulation Mode](emulation.md)
   * [Caching](caching.md)
+  * [Placement](placement.md)
   
 * Observability
   * [Partition Table](ptable.md)
