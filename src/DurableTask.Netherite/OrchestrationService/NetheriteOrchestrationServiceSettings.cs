@@ -247,6 +247,11 @@ namespace DurableTask.Netherite
         /// <param name="nameResolver">The resolver for environment variables.</param>
         public void Validate(Func<string,string> nameResolver)
         {
+            if (string.IsNullOrEmpty(this.HubName))
+            {
+                throw new InvalidOperationException($"Must specify {nameof(this.HubName)} for Netherite storage provider.");
+            }
+
             if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
             {
                 if (string.IsNullOrEmpty(this.StorageConnectionName))
