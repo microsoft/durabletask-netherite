@@ -6,7 +6,6 @@ namespace DurableTask.Netherite
     using System;
     using System.Collections.Generic;
     using System.Runtime.Serialization;
-    using Dynamitey.DynamicObjects;
 
     [DataContract]
     class PositionsReceived : LoadMonitorEvent

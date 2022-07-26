@@ -14,7 +14,6 @@ namespace PerformanceTests
     using Newtonsoft.Json;
     using System.Collections.Generic;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Dynamitey;
     using Newtonsoft.Json.Linq;
     using System.Net.Http;
     using System.Linq;

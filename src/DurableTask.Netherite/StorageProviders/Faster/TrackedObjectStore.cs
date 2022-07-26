@@ -19,7 +19,7 @@ namespace DurableTask.Netherite.Faster
 
         public abstract bool CompletePending();
 
-        public abstract ValueTask ReadyToCompletePendingAsync();
+        public abstract ValueTask ReadyToCompletePendingAsync(CancellationToken token);
 
         public abstract void AdjustCacheSize();
 

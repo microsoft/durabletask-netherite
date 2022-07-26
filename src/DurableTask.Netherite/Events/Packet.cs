@@ -5,7 +5,6 @@ namespace DurableTask.Netherite
 {
     using DurableTask.Core.Common;
     using DurableTask.Core.Exceptions;
-    using Dynamitey;
     using Newtonsoft.Json;
     using System;
     using System.Collections.Generic;
