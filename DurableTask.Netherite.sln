@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.29806.167
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32630.192
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DurableTask.Netherite", "src\DurableTask.Netherite\DurableTask.Netherite.csproj", "{FC7FB0AF-2322-4356-AF64-A8E2EB7D1EF8}"
 EndProject
@@ -33,6 +33,8 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ScaleMonitor", "test\ScaleMonitor\ScaleMonitor.csproj", "{2F4D331C-62E4-47E8-852E-163166944DF8}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LoadGeneratorApp", "test\LoadGeneratorApp\LoadGeneratorApp.csproj", "{78B360B8-3A41-4DC0-A300-94A0FABC1FB0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HelloDTFx", "samples\HelloDTFx\HelloDTFx\HelloDTFx.csproj", "{EC293D85-91E3-4F78-8B1E-2C691315CE96}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -72,6 +74,10 @@ Global
 		{78B360B8-3A41-4DC0-A300-94A0FABC1FB0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{78B360B8-3A41-4DC0-A300-94A0FABC1FB0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{78B360B8-3A41-4DC0-A300-94A0FABC1FB0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EC293D85-91E3-4F78-8B1E-2C691315CE96}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EC293D85-91E3-4F78-8B1E-2C691315CE96}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EC293D85-91E3-4F78-8B1E-2C691315CE96}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EC293D85-91E3-4F78-8B1E-2C691315CE96}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -85,6 +91,7 @@ Global
 		{654DA6B4-2E2F-4386-BB9F-7CE5A13998DE} = {AB958467-9236-402E-833C-B8DE4841AB9F}
 		{2F4D331C-62E4-47E8-852E-163166944DF8} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
 		{78B360B8-3A41-4DC0-A300-94A0FABC1FB0} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
+		{EC293D85-91E3-4F78-8B1E-2C691315CE96} = {AB958467-9236-402E-833C-B8DE4841AB9F}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {238A9613-5411-41CF-BDEC-168CCD5C03FB}

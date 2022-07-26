@@ -244,11 +244,21 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Validates the settings, throwing exceptions if there are issues.
         /// </summary>
-        /// <param name="nameResolver">The resolver for environment variables.</param>
-        public void Validate(Func<string,string> nameResolver)
+        /// <param name="nameResolver">Optionally, a resolver for connection names.</param>
+        public void Validate(Func<string,string> nameResolver = null)
         {
+            if (string.IsNullOrEmpty(this.HubName))
+            {
+                throw new InvalidOperationException($"Must specify {nameof(this.HubName)} for Netherite storage provider.");
+            }
+
             if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
             {
+                if (nameResolver == null)
+                {
+                    throw new InvalidOperationException($"Must either specify {nameof(this.ResolvedStorageConnectionString)}, or specify {nameof(this.StorageConnectionName )} and provide a nameResolver, to construct Netherite storage provider.");
+                }
+
                 if (string.IsNullOrEmpty(this.StorageConnectionName))
                 {
                     throw new InvalidOperationException($"Must specify {nameof(this.StorageConnectionName)} for Netherite storage provider.");
@@ -265,6 +275,11 @@ namespace DurableTask.Netherite
             if (string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString)
                 && !string.IsNullOrEmpty(this.PageBlobStorageConnectionName))
             {
+                if (nameResolver == null)
+                {
+                    throw new InvalidOperationException($"Must either specify {nameof(this.ResolvedPageBlobStorageConnectionString)}, or specify {nameof(this.PageBlobStorageConnectionName)} and provide a nameResolver, to construct Netherite storage provider.");
+                }
+
                 this.ResolvedPageBlobStorageConnectionString = nameResolver(this.PageBlobStorageConnectionName);
 
                 if (string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString))
@@ -286,6 +301,11 @@ namespace DurableTask.Netherite
                 }
                 else
                 {
+                    if (nameResolver == null)
+                    {
+                        throw new InvalidOperationException($"Must either specify {nameof(this.ResolvedTransportConnectionString)}, or specify {nameof(this.EventHubsConnectionName)} and provide a nameResolver, to construct Netherite storage provider.");
+                    }
+
                     this.ResolvedTransportConnectionString = nameResolver(this.EventHubsConnectionName);
 
                     if (string.IsNullOrEmpty(this.ResolvedTransportConnectionString))
@@ -302,10 +322,36 @@ namespace DurableTask.Netherite
                 throw new ArgumentOutOfRangeException(nameof(this.PartitionCount));
             }
 
+            if (storage != TransportConnectionString.StorageChoices.Memory)
+            {
+                // make sure the connection string can be parsed correctly
+                try
+                {
+                    Microsoft.Azure.Storage.CloudStorageAccount.Parse(this.ResolvedStorageConnectionString);
+                }
+                catch (Exception e)
+                {
+                    throw new FormatException($"Could not parse the specified storage connection string for Netherite storage provider", e);
+                }
+
+                if (!string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString))
+                {
+                    // make sure the connection string can be parsed correctly
+                    try
+                    {
+                        Microsoft.Azure.Storage.CloudStorageAccount.Parse(this.ResolvedPageBlobStorageConnectionString);
+                    }
+                    catch (Exception e)
+                    {
+                        throw new FormatException($"Could not parse the specified page blob storage connection string for Netherite storage provider", e);
+                    }
+                }
+            }
+
             if (transport == TransportConnectionString.TransportChoices.EventHubs)
             {
                 // validates the connection string
-                TransportConnectionString.EventHubsNamespaceName(this.ResolvedTransportConnectionString);            
+                TransportConnectionString.EventHubsNamespaceName(this.ResolvedTransportConnectionString);
             }
 
             if (this.MaxConcurrentOrchestratorFunctions <= 0)
