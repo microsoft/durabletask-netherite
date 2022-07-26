@@ -15,17 +15,19 @@ var netheriteSettings = new NetheriteOrchestrationServiceSettings()
 {
     HubName = "myhub",
     PartitionCount = 4,
+
+    // we explicitly specify the two required connection strings here.
+    // Another option would be to use a connection name resolver when calling Validate().
+    ResolvedStorageConnectionString = "UseDevelopmentStorage=true;",
+    ResolvedTransportConnectionString = "MemoryF",
 };
+
+netheriteSettings.Validate();
 
 var loggerFactory = LoggerFactory.Create(builder =>
 {
-    builder.AddSimpleConsole(options => {
-        options.SingleLine = true;
-        options.ColorBehavior = Microsoft.Extensions.Logging.Console.LoggerColorBehavior.Enabled;
-    });
+    builder.AddSimpleConsole(options => options.SingleLine = true);
 });
-
-netheriteSettings.Validate((connectionName) => Environment.GetEnvironmentVariable(connectionName));
 
 NetheriteOrchestrationService netherite = new NetheriteOrchestrationService(netheriteSettings, loggerFactory);
 

@@ -88,7 +88,7 @@ namespace DurableTask.Netherite
             }
             catch(Exception e)
             {
-                throw new FormatException("Could not parse the specified Eventhubs namespace connection string.", e);
+                throw new FormatException("Could not parse the specified Eventhubs namespace connection string for the Netherite storage provider.", e);
             }
         }
     }
