@@ -173,7 +173,7 @@ namespace PerformanceTests.EventHubs
                         }
                         catch (Exception e)
                         {
-                            this.logger.LogError("{entityId} Failed to process event {sequenceNumber}: {e}", myEntityId, eventData.SequenceNumber);
+                            this.logger.LogError("{entityId} Failed to process event {sequenceNumber}: {e}", myEntityId, eventData.SequenceNumber, e);
                         }
                     }
 
