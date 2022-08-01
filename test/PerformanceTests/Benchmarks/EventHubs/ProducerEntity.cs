@@ -37,6 +37,12 @@ namespace PerformanceTests.EventHubs
         [JsonProperty]
         public int Exceptions { get; set; }
 
+        [JsonProperty]
+        public DateTime? Starttime { get; set; }
+
+        [JsonProperty]
+        public DateTime? LastUpdate { get; set; }
+
         readonly ILogger logger;
 
         public ProducerEntity(ILogger logger)
@@ -47,6 +53,7 @@ namespace PerformanceTests.EventHubs
         public Task Start()
         {
             this.IsActive = true;
+            this.Starttime = DateTime.UtcNow;
             return this.ProduceMore();
         }
 
@@ -92,7 +99,7 @@ namespace PerformanceTests.EventHubs
             {
                 var r = new Random();
 
-                while (sw.Elapsed < TimeSpan.FromSeconds(5))
+                while (sw.Elapsed < TimeSpan.FromSeconds(3))
                 {
                     try
                     {
@@ -109,8 +116,9 @@ namespace PerformanceTests.EventHubs
                             eventBatch.TryAdd(new EventData(evt.ToBytes()));
                         }
 
-                        this.SentEvents += eventBatch.Count;
+                        int numberEventsInBatch = eventBatch.Count;
                         await producer.SendAsync(eventBatch);
+                        this.SentEvents += numberEventsInBatch;
                     }
 
                     catch (Exception e)
@@ -119,6 +127,8 @@ namespace PerformanceTests.EventHubs
                         this.logger.LogError("{entityId} Failed to send events: {exception}", Entity.Current.EntityId, e);
                     }
                 }
+
+                this.LastUpdate = DateTime.UtcNow;
 
                 // schedule a continuation to send more
                 Entity.Current.SignalEntity(Entity.Current.EntityId, nameof(ProduceMore));

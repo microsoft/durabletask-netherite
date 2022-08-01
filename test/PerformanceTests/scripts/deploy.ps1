@@ -26,7 +26,11 @@ if ($DeployCode)
 	}
 	if (-not ($MaxA -eq ""))
 	{
-	    $hostconf.extensions.durableTask | Add-Member -NotePropertyName "maxConcurrentActivityFunctions" -NotePropertyValue $MaxA
+	    $hostconf.extensions.durableTask | Add-Member -Force -NotePropertyName "maxConcurrentActivityFunctions" -NotePropertyValue $MaxA
+	}
+	if (-not ($MaxO -eq ""))
+	{
+	    $hostconf.extensions.durableTask | Add-Member -Force -NotePropertyName "maxConcurrentOrchestratorFunctions" -NotePropertyValue $MaxO
 	}
 
 	$hostconf | ConvertTo-Json -depth 32 | set-content "./bin/$Configuration/netcoreapp3.1/host.json"

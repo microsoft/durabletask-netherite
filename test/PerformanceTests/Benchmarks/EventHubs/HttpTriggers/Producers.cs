@@ -35,11 +35,6 @@ namespace PerformanceTests.EventProducer
                 string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
                 int numProducers = int.Parse(requestBody);
 
-                if (numProducers < 1 || numProducers > Parameters.MaxProducers)
-                {
-                    return new ObjectResult("invalid number of producers.\n") { StatusCode = (int)HttpStatusCode.BadRequest };
-                }
-
                 switch (action)
                 {
                     case "query":
@@ -49,7 +44,9 @@ namespace PerformanceTests.EventProducer
                         long sent = 0;
                         long exceptions = 0;
                         int active = 0;
-                       
+                        DateTime? Starttime = null;
+                        DateTime? LastUpdate = null;
+
                         log.LogWarning("Checking the status of {NumProducers} producer entities...", numProducers);
                         await Enumerable.Range(0, numProducers).ParallelForEachAsync(500, true, async (partition) =>
                         {
@@ -62,15 +59,31 @@ namespace PerformanceTests.EventProducer
                                     sent += response.EntityState.SentEvents;
                                     exceptions += response.EntityState.Exceptions;
                                     active += response.EntityState.IsActive ? 1 : 0;
+
+                                    if (!Starttime.HasValue || response.EntityState.Starttime < Starttime)
+                                    {
+                                        Starttime = response.EntityState.Starttime;
+                                    }
+                                    if (!LastUpdate.HasValue || response.EntityState.LastUpdate > LastUpdate)
+                                    {
+                                        LastUpdate = response.EntityState.LastUpdate;
+                                    }
                                 }
                             }
                         });
+
+                        double? throughput = null;
+                        if (Starttime.HasValue && LastUpdate.HasValue)
+                        {
+                            throughput = 1.0 * sent / (LastUpdate.Value - Starttime.Value).TotalSeconds;
+                        }
 
                         var resultObject = new
                         {
                             sent,
                             exceptions,
                             active,
+                            throughput,
                         };
 
                         return new OkObjectResult($"{JsonConvert.SerializeObject(resultObject)}\n");

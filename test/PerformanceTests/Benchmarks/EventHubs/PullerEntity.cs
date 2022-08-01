@@ -129,7 +129,7 @@ namespace PerformanceTests.EventHubs
                 });
 
                 int batchSize = 1000;
-                TimeSpan waitTime = TimeSpan.FromSeconds(10);
+                TimeSpan waitTime = TimeSpan.FromSeconds(3);
 
                 this.logger.LogDebug("{entityId} Receiving events from position {receivePosition}", myEntityId, this.ReceivePosition);
                 var eventBatch = await receiver.ReceiveBatchAsync(batchSize, waitTime);

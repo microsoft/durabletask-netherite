@@ -18,9 +18,7 @@ namespace PerformanceTests.EventHubs
         public const int MaxEventHubs = 10;
         public const int MaxPartitionsPerEventHub = 32;
         public const int MaxPartitions = MaxEventHubs * MaxPartitionsPerEventHub;
-        public const int MaxProducers = MaxPartitions;
-        public const int MaxPushersPerEventHub = 32;
-        public const int MaxPullers = MaxEventHubs * MaxPushersPerEventHub;
+        public const int MaxPullers = MaxEventHubs * MaxPartitionsPerEventHub; // max 1 puller per partition
 
         // Event content
         public const int PayloadStringLength = 5;
@@ -46,6 +44,6 @@ namespace PerformanceTests.EventHubs
         public static string EventHubPartitionIdForPuller(int number) => (number % MaxPartitionsPerEventHub).ToString();
 
         // assignment of producer entities to eventhubs
-        public static string EventHubNameForProducer(int number) => EventHubName(number / MaxPushersPerEventHub);
+        public static string EventHubNameForProducer(int number) => EventHubName((number / MaxPartitionsPerEventHub) % MaxEventHubs);
     }
 }
