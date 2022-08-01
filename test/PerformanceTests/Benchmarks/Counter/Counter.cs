@@ -42,7 +42,15 @@ namespace PerformanceTests.Orchestrations.Counter
             this.LastModified = DateTime.UtcNow;
         }
 
-        public (int, DateTime) Get() => (this.CurrentValue, DateTime.UtcNow);
+        public void Crash(DateTime timeStamp)
+        {
+            // crash if less that 4 seconds have passed since the signal was sent
+            // (so that we no longer crash when retrying after recovery)
+            if ((DateTime.UtcNow - timeStamp) < TimeSpan.FromSeconds(4))
+            {
+                System.Environment.Exit(333);
+            }
+        }
 
         [FunctionName(nameof(Counter))]
         public static Task Run([EntityTrigger] IDurableEntityContext ctx)
