@@ -48,7 +48,9 @@ namespace DurableTask.Netherite.AzureFunctions
         public NetheriteProviderFactory(
             IOptions<DurableTaskOptions> extensionOptions,
             ILoggerFactory loggerFactory,
+#pragma warning disable CS0618 // Type or member is obsolete
             IConnectionStringResolver connectionStringResolver,
+#pragma warning restore CS0618 // Type or member is obsolete
             IHostIdProvider hostIdProvider,
             INameResolver nameResolver,
 #pragma warning disable CS0612 // Type or member is obsolete
@@ -80,10 +82,12 @@ namespace DurableTask.Netherite.AzureFunctions
             // different defaults for key configuration values.
             int maxConcurrentOrchestratorsDefault = this.inConsumption ? 5 : 10 * Environment.ProcessorCount;
             int maxConcurrentActivitiesDefault = this.inConsumption ? 20 : 25 * Environment.ProcessorCount;
+            int maxEntityOperationBatchSizeDefault = this.inConsumption ? 50 : 5000;
 
             // The following defaults are only applied if the customer did not explicitely set them on `host.json`
             this.options.MaxConcurrentOrchestratorFunctions = this.options.MaxConcurrentOrchestratorFunctions ?? maxConcurrentOrchestratorsDefault;
             this.options.MaxConcurrentActivityFunctions = this.options.MaxConcurrentActivityFunctions ?? maxConcurrentActivitiesDefault;
+            this.options.MaxEntityOperationBatchSize = this.options.MaxEntityOperationBatchSize ?? maxEntityOperationBatchSizeDefault;
 
             // copy all applicable fields from both the options and the storageProvider options
             JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options), netheriteSettings);

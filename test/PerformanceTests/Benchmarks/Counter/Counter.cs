@@ -14,7 +14,6 @@ namespace PerformanceTests.Orchestrations.Counter
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
-    using Dynamitey;
     using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Azure.WebJobs;

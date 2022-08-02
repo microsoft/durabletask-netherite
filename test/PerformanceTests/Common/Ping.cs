@@ -43,7 +43,7 @@ namespace PerformanceTests
 
                     async Task<string> Ping(int partition)
                     {
-                        string instanceId = $"ping!{partition:D2}";
+                        string instanceId = $"ping!{partition}";
 
                         var timeoutTask = Task.Delay(timeout);
                         var startTask = client.StartNewAsync(nameof(Pingee), instanceId);

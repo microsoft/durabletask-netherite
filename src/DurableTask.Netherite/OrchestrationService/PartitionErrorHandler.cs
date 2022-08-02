@@ -104,9 +104,6 @@ namespace DurableTask.Netherite
 
         void Terminate()
         {
-            // we use a dedicated shutdown thread to help debugging and to contain damage if there are hangs
-            Thread shutdownThread = TrackedThreads.MakeTrackedThread(Shutdown, "PartitionShutdown");
-
             try
             {
                 this.logger?.LogDebug("Part{partition:D2} Started PartitionCancellation", this.partitionId);
@@ -125,6 +122,8 @@ namespace DurableTask.Netherite
                 this.HandleError("PartitionErrorHandler.Terminate", "Exception in PartitionCancellation", e, false, true);
             }
 
+            // we use a dedicated shutdown thread to help debugging and to contain damage if there are hangs
+            Thread shutdownThread = TrackedThreads.MakeTrackedThread(Shutdown, "PartitionShutdown");
             shutdownThread.Start();
 
             void Shutdown()

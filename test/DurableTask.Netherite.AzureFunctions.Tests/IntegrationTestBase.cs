@@ -61,7 +61,9 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
                     services =>
                     {
                         services.AddSingleton<INameResolver>(this.settingsResolver);
+#pragma warning disable CS0618 // Type or member is obsolete
                         services.AddSingleton<IConnectionStringResolver>(this.settingsResolver);
+#pragma warning restore CS0618 // Type or member is obsolete
                         services.AddSingleton<ITypeLocator>(this.typeLocator);
                         services.AddSingleton<IDurabilityProviderFactory, NetheriteProviderFactory>();
                     })
@@ -177,7 +179,9 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             IReadOnlyList<Type> ITypeLocator.GetTypes() => this.functionTypes.AsReadOnly();
         }
 
-        class TestSettingsResolver : INameResolver, IConnectionStringResolver
+#pragma warning disable CS0618 // Type or member is obsolete
+       class TestSettingsResolver : INameResolver, IConnectionStringResolver
+#pragma warning restore CS0618 // Type or member is obsolete
         {
             readonly Dictionary<string, string> testSettings =
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

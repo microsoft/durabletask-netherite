@@ -4,6 +4,7 @@
 namespace DurableTask.Netherite
 {
     using System;
+    using System.Text;
 
     /// <summary>
     /// Hooks for attaching additional checkers and debuggers during testing.
@@ -44,7 +45,29 @@ namespace DurableTask.Netherite
 
         public override string ToString()
         {
-            return $"TestHooks:{(this.CacheDebugger != null ? " CacheDebugger" : "")}{(this.ReplayChecker != null ? " ReplayChecker" : "")}{(this.FaultInjector != null ? " FaultInjector" : "")}";
+            StringBuilder sb = new StringBuilder();
+
+            sb.Append("TestHooks:");
+            
+            if (this.CacheDebugger != null)
+            {
+                sb.Append(" CacheDebugger");
+            }
+            if (this.ReplayChecker != null)
+            {
+                sb.Append(" ReplayChecker");
+
+            }
+            if (this.FaultInjector != null)
+            {
+                sb.Append(" FaultInjector");
+            }
+            if (this.CheckpointInjector != null)
+            {
+                sb.Append(" CheckpointInjector");
+            }
+
+            return sb.ToString();
         }
     }
 }

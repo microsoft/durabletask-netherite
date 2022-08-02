@@ -110,6 +110,15 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        public void FasterCacheSizeMeasured(int numPages, long numRecords, long sizeInBytes, long gcMemory, long processMemory, long discrepancy, double elapsedMs)
+        {
+            if (this.logLevelLimit <= LogLevel.Information)
+            {
+                this.logger.LogInformation("Part{partition:D2} Measured CacheSize numPages={numPages} numRecords={numRecords} sizeInBytes={sizeInBytes} gcMemory={gcMemory} processMemory={processMemory} discrepancy={discrepancy} elapsedMs={elapsedMs:F2}", this.partitionId, numPages, numRecords, sizeInBytes, gcMemory, processMemory, discrepancy, elapsedMs);
+                EtwSource.Log.FasterCacheSizeMeasured(this.account, this.taskHub, this.partitionId, numPages, numRecords, sizeInBytes, gcMemory, processMemory, discrepancy, elapsedMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+            }
+        }
+
         public void FasterProgress(string details)
         {
             if (this.logLevelLimit <= LogLevel.Debug)

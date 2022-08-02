@@ -21,10 +21,11 @@ namespace DurableTask.Netherite
     /// <summary>
     /// Local partition of the distributed orchestration service.
     /// </summary>
-    public class NetheriteOrchestrationService : 
-        IOrchestrationService, 
-        IOrchestrationServiceClient, 
-        IOrchestrationServiceQueryClient,
+    public class NetheriteOrchestrationService :
+        DurableTask.Core.IOrchestrationService, 
+        DurableTask.Core.IOrchestrationServiceClient,
+        DurableTask.Core.IOrchestrationServicePurgeClient,
+        DurableTask.Netherite.IOrchestrationServiceQueryClient,
         TransportAbstraction.IHost,
         IStorageProvider
     {
@@ -164,6 +165,11 @@ namespace DurableTask.Netherite
                     $"Configured trace generation limits: general={settings.LogLevelLimit} , transport={settings.TransportLogLevelLimit}, storage={settings.StorageLogLevelLimit}, "
                     + $"events={settings.EventLogLevelLimit}; workitems={settings.WorkItemLogLevelLimit};  clients={settings.ClientLogLevelLimit}; loadmonitor={settings.LoadMonitorLogLevelLimit}; etwEnabled={EtwSource.Log.IsEnabled()}; "
                     + $"core.IsTraceEnabled={DurableTask.Core.Tracing.DefaultEventSource.Log.IsTraceEnabled}");
+
+                if (this.Settings.TestHooks != null)
+                {
+                    this.Settings.TestHooks.OnError += (string message) => this.TraceHelper.TraceError("TestHook error", message);
+                }
             }
             catch (Exception e) when (!Utils.IsFatal(e))
             {
@@ -517,12 +523,14 @@ namespace DurableTask.Netherite
         /// <returns>The partition id.</returns>
         public uint GetPartitionId(string instanceId)
         {
+            int placementSeparatorPosition = instanceId.LastIndexOf('!');
+
             // if the instance id ends with !nn, where nn is a two-digit number, it indicates explicit partition placement
-            if (instanceId.Length >= 3 
-                && instanceId[instanceId.Length - 3] == '!'
-                && uint.TryParse(instanceId.Substring(instanceId.Length - 2), out uint nn))
+            if (placementSeparatorPosition != -1 
+                && placementSeparatorPosition <= instanceId.Length - 2
+                && uint.TryParse(instanceId.Substring(placementSeparatorPosition + 1), out uint index))
             {
-                var partitionId = nn % this.NumberPartitions;
+                var partitionId = index % this.NumberPartitions;
                 //this.Logger.LogTrace($"Instance: {instanceId} was explicitly placed on partition: {partitionId}");
                 return partitionId;
             }
@@ -705,6 +713,15 @@ namespace DurableTask.Netherite
         async Task<InstanceQueryResult> IOrchestrationServiceQueryClient.QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
             => await (await this.GetClientAsync()).QueryOrchestrationStatesAsync(instanceQuery, pageSize, continuationToken, cancellationToken);
 
+        /// <inheritdoc />
+        async Task<PurgeResult> IOrchestrationServicePurgeClient.PurgeInstanceStateAsync(string instanceId)
+            => new PurgeResult(await (await this.GetClientAsync()).DeleteAllDataForOrchestrationInstance(this.GetPartitionId(instanceId), instanceId));
+
+        /// <inheritdoc />
+        async Task<PurgeResult> IOrchestrationServicePurgeClient.PurgeInstanceStateAsync(PurgeInstanceFilter purgeInstanceFilter)
+            => new PurgeResult(await (await this.GetClientAsync()).PurgeInstanceHistoryAsync(purgeInstanceFilter.CreatedTimeFrom, purgeInstanceFilter.CreatedTimeTo, purgeInstanceFilter.RuntimeStatus));
+
+
         /******************************/
         // Task orchestration methods
         /******************************/
@@ -749,11 +766,6 @@ namespace DurableTask.Netherite
 
             List<TaskMessage> localMessages = null;
             List<TaskMessage> remoteMessages = null;
-
-            // DurableTask.Core keeps the original runtime state in the work item until after this call returns
-            // but we want it to contain the latest runtime state now (otherwise IsExecutableInstance returns incorrect results)
-            // so we update it now.
-            workItem.OrchestrationRuntimeState = newOrchestrationRuntimeState;
 
             // all continue as new requests are processed immediately (DurableTask.Core always uses "fast" continue-as-new)
             // so by the time we get here, it is not a continue as new

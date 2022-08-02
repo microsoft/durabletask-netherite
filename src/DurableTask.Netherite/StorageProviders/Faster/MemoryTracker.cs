@@ -56,7 +56,7 @@ namespace DurableTask.Netherite.Faster
             (int totalPages, long totalSize) = (0, 0);
             foreach(var store in this.stores.Values)
             {
-                (int numPages, long size) = store.ComputeMemorySize();
+                (int numPages, long size, long numRecords) = store.ComputeMemorySize();
                 totalPages += numPages;
                 totalSize += size;
             }
@@ -103,17 +103,26 @@ namespace DurableTask.Netherite.Faster
                 }
             }
 
-            public void MeasureCacheSize()
+            public void MeasureCacheSize(bool isFirstCall)
             {
                 Stopwatch stopwatch = new Stopwatch();
                 stopwatch.Start();
-                (int numPages, long size) = this.store.ComputeMemorySize(true);
-                double MB(long bytes) => (double)bytes / (1024 * 1024);
-                this.store.TraceHelper.FasterProgress($"CacheSize: numPages={numPages} objectSize={MB(size):F2}MB totalSize={MB(size + this.store.MemoryUsedWithoutObjects):F2}MB elapsedMs={stopwatch.Elapsed.TotalMilliseconds:F2}");
+                (int numPages, long size, long numRecords) = this.store.ComputeMemorySize(updateCacheDebugger: true);
+                stopwatch.Stop();
+
+                this.store.TraceHelper.FasterCacheSizeMeasured(
+                    numPages, 
+                    numRecords,
+                    sizeInBytes: size, 
+                    gcMemory: GC.GetTotalMemory(false),
+                    processMemory: System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64,
+                    discrepancy: isFirstCall ? 0 : size - this.trackedObjectSize, 
+                    stopwatch.Elapsed.TotalMilliseconds);
+
                 this.trackedObjectSize = size;
             }
 
-            public (int, long) ComputeMemorySize() => this.store.ComputeMemorySize(false); // used by tests only
+            public (int numPages, long size, long numRecords) ComputeMemorySize() => this.store.ComputeMemorySize(updateCacheDebugger: false); // used by tests only
 
             internal void SetEmptyPageCount(int emptyPageCount) => this.store.SetEmptyPageCount(emptyPageCount); // used by tests only
 

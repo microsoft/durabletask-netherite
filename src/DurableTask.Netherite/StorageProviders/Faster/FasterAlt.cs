@@ -140,7 +140,7 @@ namespace DurableTask.Netherite.Faster
             return this.pendingLoads.Count == 0;
         }
 
-        public override ValueTask ReadyToCompletePendingAsync()
+        public override ValueTask ReadyToCompletePendingAsync(CancellationToken token)
         {
             if (this.pendingLoads.Count == 0)
             {
@@ -187,7 +187,6 @@ namespace DurableTask.Netherite.Faster
         {
             // update the positions
             var dedupState = this.cache[TrackedObjectKey.Dedup];
-            dedupState.TrackedObject.SerializationCache = null;
             ((DedupState)dedupState.TrackedObject).Positions = (commitLogPosition, inputQueuePosition);
             if (!dedupState.Modified)
             {
@@ -199,14 +198,14 @@ namespace DurableTask.Netherite.Faster
             var toWrite = new List<ToWrite>();
             foreach (var cacheEntry in this.modified)
             {
-                Serializer.SerializeTrackedObject(cacheEntry.TrackedObject);
+                byte[] bytes = Serializer.SerializeTrackedObject(cacheEntry.TrackedObject);
                 toWrite.Add(new ToWrite()
                 {
                     Key = cacheEntry.TrackedObject.Key,
                     PreviousValue = cacheEntry.LastCheckpointed,
-                    NewValue = cacheEntry.TrackedObject.SerializationCache,
+                    NewValue = bytes,
                 });
-                cacheEntry.LastCheckpointed = cacheEntry.TrackedObject.SerializationCache;
+                cacheEntry.LastCheckpointed = bytes;
                 cacheEntry.Modified = false;
             }
             this.modified.Clear();
@@ -377,7 +376,6 @@ namespace DurableTask.Netherite.Faster
                 this.cache.Add(key, cacheEntry);
             }
             var trackedObject = cacheEntry.TrackedObject;
-            trackedObject.SerializationCache = null;
             effectTracker.ProcessEffectOn(trackedObject);
             if (!cacheEntry.Modified)
             {
@@ -430,6 +428,7 @@ namespace DurableTask.Netherite.Faster
                     numAttempts++;
                     try
                     {
+                        Interlocked.Increment(ref this.blobManager.LeaseUsers);
                         await this.blobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
 
                         using var stream = new MemoryStream();
@@ -470,6 +469,10 @@ namespace DurableTask.Netherite.Faster
                     {
                         this.blobManager.PartitionErrorHandler.HandleError(nameof(LoadAsync), "Could not read object from storage", exception, true, this.blobManager.PartitionErrorHandler.IsTerminated);
                         throw;
+                    }
+                    finally
+                    {
+                        Interlocked.Decrement(ref this.blobManager.LeaseUsers);
                     }
                 };
             }
@@ -521,6 +524,8 @@ namespace DurableTask.Netherite.Faster
                     numAttempts++;
                     try
                     {
+                        Interlocked.Increment(ref this.blobManager.LeaseUsers);
+
                         await this.blobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
 
                         this.detailTracer?.FasterStorageProgress($"starting upload target={blob.Name} length={length} attempt={numAttempts}");
@@ -546,6 +551,10 @@ namespace DurableTask.Netherite.Faster
                         this.blobManager?.HandleStorageError(nameof(StoreAsync), "could not write object to storage", blob?.Name, exception, true, this.blobManager.PartitionErrorHandler.IsTerminated);
                         throw;
                     }
+                    finally
+                    {
+                        Interlocked.Decrement(ref this.blobManager.LeaseUsers);
+                    }
                 }
             }
             finally
@@ -558,6 +567,7 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
+                Interlocked.Increment(ref this.blobManager.LeaseUsers);
                 var blob = this.blobManager.BlockBlobContainer.GetBlockBlobReference($"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{guid}");
                 await this.blobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
                 await blob.UploadTextAsync("", this.blobManager.PartitionErrorHandler.Token);
@@ -571,12 +581,17 @@ namespace DurableTask.Netherite.Faster
                 this.blobManager.PartitionErrorHandler.HandleError(nameof(WriteCheckpointIntention), "Failed to write checkpoint intention to storage", e, true, this.blobManager.PartitionErrorHandler.IsTerminated);
                 throw;
             }
+            finally
+            {
+                Interlocked.Decrement(ref this.blobManager.LeaseUsers);
+            }
         }
 
         async Task RemoveCheckpointIntention(Guid guid)
         {
             try
             {
+                Interlocked.Increment(ref this.blobManager.LeaseUsers);
                 var blob = this.blobManager.BlockBlobContainer.GetBlockBlobReference($"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{guid}");
                 await this.blobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
                 await blob.DeleteAsync(this.blobManager.PartitionErrorHandler.Token);
@@ -589,6 +604,10 @@ namespace DurableTask.Netherite.Faster
             {
                 this.blobManager.PartitionErrorHandler.HandleError(nameof(RemoveCheckpointIntention), "Failed to remove checkpoint intention from storage", e, true, false);
                 throw;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref this.blobManager.LeaseUsers);
             }
         }
 

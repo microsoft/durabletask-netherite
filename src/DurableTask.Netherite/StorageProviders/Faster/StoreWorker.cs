@@ -44,8 +44,11 @@ namespace DurableTask.Netherite.Faster
         PartitionLoadInfo loadInfo;
         DateTime lastPublished;
         string lastPublishedLatencyTrend;
+        int lastPublishedCachePct;
         public static TimeSpan PublishInterval = TimeSpan.FromSeconds(8);
         public static TimeSpan PokePeriod = TimeSpan.FromSeconds(3); // allows storeworker to checkpoint and publish load even while idle
+
+        CancellationTokenSource ioCompletionNotificationCancellation;
 
 
         public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken)
@@ -63,6 +66,7 @@ namespace DurableTask.Netherite.Faster
             this.loadInfo = PartitionLoadInfo.FirstFrame(this.partition.Settings.WorkerId);
             this.lastPublished = DateTime.MinValue;
             this.lastPublishedLatencyTrend = "";
+            this.lastPublishedCachePct = 0;
 
             // construct an effect tracker that we use to apply effects to the store
             this.effectTracker = new TrackedObjectStoreEffectTracker(this.partition, this, store);
@@ -173,6 +177,7 @@ namespace DurableTask.Netherite.Faster
             this.loadInfo = loadInfoToPublish.NextFrame();
 
             this.lastPublishedLatencyTrend = loadInfoToPublish.LatencyTrend;
+            this.lastPublishedCachePct = loadInfoToPublish.CachePct;
 
             this.partition.TraceHelper.TracePartitionLoad(loadInfoToPublish);
 
@@ -199,8 +204,6 @@ namespace DurableTask.Netherite.Faster
 
         async ValueTask<bool> UpdateLoadInfo()
         {
-            int previousCachePct = this.loadInfo.CachePct;
-
             foreach (var k in TrackedObjectKey.GetSingletons())
             {
                 (await this.store.ReadAsync(k, this.effectTracker)).UpdateLoadInfo(this.loadInfo);
@@ -228,12 +231,17 @@ namespace DurableTask.Netherite.Faster
                 publish = true;
             }
 
-            if (this.loadInfo.CachePct != previousCachePct)
+            if (this.loadInfo.CachePct != this.lastPublishedCachePct)
             {
                 publish = true;
             }
 
-            if (!PartitionLoadInfo.IsLongIdle(this.loadInfo.LatencyTrend) || this.loadInfo.LatencyTrend != this.lastPublishedLatencyTrend)
+            if (!PartitionLoadInfo.IsLongIdle(this.loadInfo.LatencyTrend))            
+            {
+                publish = true;
+            }
+
+            if (this.loadInfo.LatencyTrend != this.lastPublishedLatencyTrend)
             {
                 publish = true;
             }
@@ -348,6 +356,14 @@ namespace DurableTask.Netherite.Faster
             {
                 bool markPartitionAsActive = false;
 
+                // no need to wait any longer for a notification, since we are running now
+                if (this.ioCompletionNotificationCancellation != null)
+                {
+                    this.ioCompletionNotificationCancellation.Cancel();
+                    this.ioCompletionNotificationCancellation.Dispose();
+                    this.ioCompletionNotificationCancellation = null;
+                }
+
                 foreach (var partitionEvent in batch)
                 {
                     if (this.isShuttingDown || this.cancellationToken.IsCancellationRequested)
@@ -411,6 +427,9 @@ namespace DurableTask.Netherite.Faster
                         (this.lastCheckpointedCommitLogPosition, this.lastCheckpointedInputQueuePosition)
                            = await this.pendingStoreCheckpoint; // observe exceptions here
 
+                        // force collection of memory used during checkpointing
+                        GC.Collect();
+
                         // we have reached the end of the state machine transitions
                         this.pendingStoreCheckpoint = null;
                         this.pendingCheckpointTrigger = CheckpointTrigger.None;
@@ -439,6 +458,9 @@ namespace DurableTask.Netherite.Faster
                     if (this.pendingCompaction.IsCompleted == true)
                     {
                         await this.pendingCompaction; // observe exceptions here
+
+                        // force collection of memory used during compaction
+                        GC.Collect();
 
                         // the index checkpoint is next
                         var token = this.store.StartIndexCheckpoint();
@@ -479,7 +501,8 @@ namespace DurableTask.Netherite.Faster
 
                 if (!allRequestsCompleted)
                 {
-                    var _ = this.store.ReadyToCompletePendingAsync().AsTask().ContinueWith(x => this.Notify());
+                    this.ioCompletionNotificationCancellation = CancellationTokenSource.CreateLinkedTokenSource(this.cancellationToken);
+                    var _ = this.store.ReadyToCompletePendingAsync(this.ioCompletionNotificationCancellation.Token).AsTask().ContinueWith(x => this.Notify());
                 }
 
                 // during testing, this is a good time to check invariants in the store
@@ -494,7 +517,7 @@ namespace DurableTask.Netherite.Faster
                 this.partition.ErrorHandler.HandleError("StoreWorker.Process", "Encountered exception while working on store", exception, true, false);
             }
         }
- 
+
         public async Task<(long,long)> WaitForCheckpointAsync(bool isIndexCheckpoint, Guid checkpointToken, bool removeObsoleteCheckpoints)
         {
             var stopwatch = new System.Diagnostics.Stopwatch();
