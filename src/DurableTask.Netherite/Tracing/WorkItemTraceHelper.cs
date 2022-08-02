@@ -10,6 +10,7 @@ namespace DurableTask.Netherite
     using System.Text;
     using System.Threading.Tasks;
     using DurableTask.Core;
+    using DurableTask.Netherite.Tracing;
     using Microsoft.Extensions.Logging;
 
     class WorkItemTraceHelper
@@ -19,6 +20,11 @@ namespace DurableTask.Netherite
         readonly string taskHub;
         readonly EtwSource etw;
         public string StorageAccountName { private get; set; } = string.Empty;
+
+        public RempTrace.IListener RempTracer { get; set; }
+        public const int RempGroupClient = (int) WorkItemType.Client - 1;
+        public const int RempGroupOrchestration = (int)WorkItemType.Orchestration - 1;
+        public const int RempGroupActivity = (int)WorkItemType.Activity - 1;
 
         public static string FormatMessageId(TaskMessage message, string workItem)
             => $"{workItem}M{message.SequenceNumber}";

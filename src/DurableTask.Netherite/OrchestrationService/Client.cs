@@ -13,6 +13,7 @@ namespace DurableTask.Netherite
     using System.Threading.Tasks;
     using DurableTask.Core;
     using DurableTask.Core.History;
+    using FASTER.core;
 
     class Client : TransportAbstraction.IClient
     {
@@ -153,6 +154,39 @@ namespace DurableTask.Netherite
 
         public void Send(PartitionEvent partitionEvent)
         {
+            if (partitionEvent is ClientTaskMessagesReceived request)
+            {
+                this.workItemTraceHelper.RempTracer?.WorkItem(
+                    timeStamp: DateTime.UtcNow.Ticks,
+                    workItemId: request.WorkItemId,
+                    group: WorkItemTraceHelper.RempGroupClient,
+                    latencyMs: 0.0,
+                    consumedMessages: Enumerable.Empty<Tracing.RempTrace.NamedPayload>(),
+                    producedMessages: request.TaskMessages.Select(taskMessage => new Tracing.RempTrace.NamedPayload()
+                    {
+                        Id = WorkItemTraceHelper.FormatMessageId(taskMessage, request.WorkItemId),
+                        NumBytes = Serializer.GetMessageSize(taskMessage),
+                    }),
+                    instanceState: null
+                );
+            }
+            else if (partitionEvent is CreationRequestReceived creationRequestReceived)
+            {
+                this.workItemTraceHelper.RempTracer?.WorkItem(
+                    timeStamp: DateTime.UtcNow.Ticks,
+                    workItemId: creationRequestReceived.WorkItemId,
+                    group: WorkItemTraceHelper.RempGroupClient,
+                    latencyMs: 0.0,
+                    consumedMessages: Enumerable.Empty<Tracing.RempTrace.NamedPayload>(),
+                    producedMessages: new[] { new Tracing.RempTrace.NamedPayload()
+                    {
+                        Id = WorkItemTraceHelper.FormatMessageId(creationRequestReceived.TaskMessage, creationRequestReceived.WorkItemId),
+                        NumBytes = Serializer.GetMessageSize(creationRequestReceived.TaskMessage),
+                    }},
+                    instanceState: null
+                ); 
+            }
+
             this.traceHelper.TraceSend(partitionEvent);
             this.BatchSender.Submit(partitionEvent);
         }

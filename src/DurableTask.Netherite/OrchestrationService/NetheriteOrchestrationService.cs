@@ -863,6 +863,28 @@ namespace DurableTask.Netherite
                 batchProcessedEvent.CustomStatus = state.Status;
             }
 
+            this.workItemTraceHelper.RempTracer?.WorkItem(
+                timeStamp: DateTime.UtcNow.Ticks,
+                workItemId: messageBatch.WorkItemId,
+                group: WorkItemTraceHelper.RempGroupOrchestration,
+                latencyMs: latencyMs,
+                consumedMessages: messageBatch.TracedMessages.Select(x => new Tracing.RempTrace.NamedPayload()
+                {
+                    Id = WorkItemTraceHelper.FormatMessageId(x.Item1, x.Item2),
+                    NumBytes = Serializer.GetMessageSize(x.Item1),
+                }),
+                producedMessages: batchProcessedEvent.ProducedMessages().Select(taskMessage => new Tracing.RempTrace.NamedPayload()
+                {
+                    Id = WorkItemTraceHelper.FormatMessageId(taskMessage, messageBatch.WorkItemId),
+                    NumBytes = Serializer.GetMessageSize(taskMessage),
+                }),
+                instanceState: new Tracing.RempTrace.InstanceState()
+                {
+                    InstanceId = workItem.InstanceId,
+                    Updated = Serializer.GetStateSize(newOrchestrationRuntimeState, state),
+                }
+            );
+
             this.workItemTraceHelper.TraceWorkItemCompleted(
                 partition.PartitionId,
                 WorkItemTraceHelper.WorkItemType.Orchestration,
@@ -1004,6 +1026,24 @@ namespace DurableTask.Netherite
 
                 return Task.CompletedTask;
             }
+
+            this.workItemTraceHelper.RempTracer?.WorkItem(
+                timeStamp: DateTime.UtcNow.Ticks,
+                workItemId: activityWorkItem.WorkItemId,
+                group: WorkItemTraceHelper.RempGroupActivity,
+                latencyMs: latencyMs,
+                consumedMessages: new[] { new Tracing.RempTrace.NamedPayload()
+                {
+                    Id = WorkItemTraceHelper.FormatMessageId(activityWorkItem.TaskMessage, activityWorkItem.OriginWorkItem),
+                    NumBytes = Serializer.GetMessageSize(activityWorkItem.TaskMessage),
+                }},
+                producedMessages: new[] { new Tracing.RempTrace.NamedPayload()
+                {
+                    Id = WorkItemTraceHelper.FormatMessageId(activityCompletedEvent.Response, activityWorkItem.WorkItemId),
+                    NumBytes = Serializer.GetMessageSize(activityCompletedEvent.Response),
+                }},
+                instanceState: null
+            );
 
             this.workItemTraceHelper.TraceWorkItemCompleted(
                 partition.PartitionId,

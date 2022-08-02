@@ -126,6 +126,38 @@ namespace DurableTask.Netherite
             }
         }
 
+        public IEnumerable<TaskMessage> ProducedMessages()
+        {
+            if (this.ActivityMessages != null)
+            {
+                foreach (var message in this.ActivityMessages)
+                {
+                    yield return message;
+                }
+            }
+            if (this.LocalMessages != null)
+            {
+                foreach (var message in this.LocalMessages)
+                {
+                    yield return message;
+                }
+            }
+            if (this.RemoteMessages != null)
+            {
+                foreach (var message in this.RemoteMessages)
+                {
+                    yield return message;
+                }
+            }
+            if (this.TimerMessages != null)
+            {
+                foreach (var message in this.TimerMessages)
+                {
+                    yield return message;
+                }
+            }
+        }
+
         protected override void ExtraTraceInformation(StringBuilder s)
         {
             base.ExtraTraceInformation(s);

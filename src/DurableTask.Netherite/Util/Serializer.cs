@@ -4,10 +4,13 @@
 namespace DurableTask.Netherite
 {
     using System;
+    using System.Collections.Generic;
     using System.IO;
     using System.Runtime.Serialization;
     using System.Text;
+    using DurableTask.Core;
     using DurableTask.Netherite.Faster;
+    using Dynamitey.DynamicObjects;
 
     static class Serializer
     {
@@ -22,6 +25,13 @@ namespace DurableTask.Netherite
 
         static readonly DataContractSerializer checkpointInfoSerializer
             = new DataContractSerializer(typeof(CheckpointInfo));
+
+        static readonly DataContractSerializer taskMessageSerializer
+          = new DataContractSerializer(typeof(Core.TaskMessage));
+
+        static readonly DataContractSerializer historyEventSerializer
+          = new DataContractSerializer(typeof(Core.History.HistoryEvent));
+
 
         static readonly UnicodeEncoding uniEncoding = new UnicodeEncoding();
 
@@ -96,6 +106,34 @@ namespace DurableTask.Netherite
         {
             var result = (CheckpointInfo)checkpointInfoSerializer.ReadObject(stream);
             return result;
+        }
+
+        public static long GetMessageSize(Core.TaskMessage taskMessage)
+        {
+            var stream = new MemoryStream();
+            taskMessageSerializer.WriteObject(stream, taskMessage);
+            return stream.Position;
+        }
+
+        public static long GetStateSize(OrchestrationRuntimeState newRuntimeState, OrchestrationState newOrchestrationState)
+        {
+            var stream = new MemoryStream();
+            var writer = new BinaryWriter(stream);
+            writer.Write(newRuntimeState.Events.Count);
+            foreach(var evt in newRuntimeState.Events)
+            {
+                historyEventSerializer.WriteObject(stream, evt);
+            }
+            if (newOrchestrationState.Status != null)
+            {
+                writer.Write(false);
+            }
+            else
+            {
+                writer.Write(true);
+                writer.Write(newOrchestrationState.Status);
+            }
+            return stream.Position;
         }
     }
 }
