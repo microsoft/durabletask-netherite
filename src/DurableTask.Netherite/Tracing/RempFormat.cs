@@ -38,6 +38,7 @@ namespace DurableTask.Netherite.Tracing
                 double latencyMs,                            // the measured execution latency of the user code in milliseconds.
                 IEnumerable<NamedPayload> consumedMessages,  // the messages consumed by this work item.
                 IEnumerable<NamedPayload> producedMessages,  // the messages produced by this work item.
+                bool allowSpeculation,                       // if false, this work item must not execute before all of its message and state dependencies are persisted
                 InstanceState? instanceState);               // state information for stateful work items.
         }
 
@@ -58,5 +59,7 @@ namespace DurableTask.Netherite.Tracing
             public string InstanceId;          // a unique identifier for this instance.
             public long? Updated;              // size of the updated state (0 means deleted), or null if state was not modified
         }
+
+        public const int CurrentVersion = 1;
     }
 }

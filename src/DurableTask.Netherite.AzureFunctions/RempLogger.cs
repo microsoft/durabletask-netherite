@@ -13,9 +13,9 @@ namespace DurableTask.Netherite.AzureFunctions
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
     using Microsoft.Extensions.Azure;
+    using Microsoft.Extensions.Logging;
 
- 
- class RempLogger : RempFormat.IListener
+    class RempLogger : RempFormat.IListener
     {
         readonly DateTime starttime;
         readonly CloudAppendBlob blob;
@@ -61,11 +61,11 @@ namespace DurableTask.Netherite.AzureFunctions
             }
         }
 
-        public void WorkItem(long timeStamp, string workItemId, int group, double latencyMs, IEnumerable<RempFormat.NamedPayload> consumedMessages, IEnumerable<RempFormat.NamedPayload> producedMessages, RempFormat.InstanceState? instanceState)
+        public void WorkItem(long timeStamp, string workItemId, int group, double latencyMs, IEnumerable<RempFormat.NamedPayload> consumedMessages, IEnumerable<RempFormat.NamedPayload> producedMessages, bool allowSpeculation, RempFormat.InstanceState? instanceState)
         {
             lock (this.writerLock)
             {
-                this.writer.WorkItem(timeStamp, workItemId, group, latencyMs, consumedMessages, producedMessages, instanceState);
+                this.writer.WorkItem(timeStamp, workItemId, group, latencyMs, consumedMessages, producedMessages, allowSpeculation, instanceState);
 
                 if (this.memoryStream.Position > 7.8 * 1024 * 1024)
                 {
@@ -73,7 +73,6 @@ namespace DurableTask.Netherite.AzureFunctions
                 }
             }
         }
- 
 
         void AddBufferToWritebackQueue()
         {

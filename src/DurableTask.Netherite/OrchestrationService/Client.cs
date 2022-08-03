@@ -167,6 +167,7 @@ namespace DurableTask.Netherite
                         Id = WorkItemTraceHelper.FormatMessageId(taskMessage, request.WorkItemId),
                         NumBytes = Serializer.GetMessageSize(taskMessage),
                     }),
+                    allowSpeculation: false,
                     instanceState: null
                 );
             }
@@ -183,6 +184,7 @@ namespace DurableTask.Netherite
                         Id = WorkItemTraceHelper.FormatMessageId(creationRequestReceived.TaskMessage, creationRequestReceived.WorkItemId),
                         NumBytes = Serializer.GetMessageSize(creationRequestReceived.TaskMessage),
                     }},
+                    allowSpeculation: false, 
                     instanceState: null
                 ); 
             }

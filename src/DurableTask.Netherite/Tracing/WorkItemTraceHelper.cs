@@ -22,9 +22,19 @@ namespace DurableTask.Netherite
         public string StorageAccountName { private get; set; } = string.Empty;
 
         public RempFormat.IListener RempTracer { get; set; }
-        public const int RempGroupClient = (int) WorkItemType.Client - 1;
-        public const int RempGroupOrchestration = (int)WorkItemType.Orchestration - 1;
-        public const int RempGroupActivity = (int)WorkItemType.Activity - 1;
+
+        public static IEnumerable<Tracing.RempFormat.WorkitemGroup> GetRempGroups(NetheriteOrchestrationServiceSettings settings) =>
+            new Tracing.RempFormat.WorkitemGroup[]
+                {
+                    new Tracing.RempFormat.WorkitemGroup() {  Name = "Client",        DegreeOfParallelism = null                                        },
+                    new Tracing.RempFormat.WorkitemGroup() {  Name = "Orchestrator",  DegreeOfParallelism = settings.MaxConcurrentOrchestratorFunctions },
+                    new Tracing.RempFormat.WorkitemGroup() {  Name = "Activity",      DegreeOfParallelism = settings.MaxConcurrentActivityFunctions     },
+                };
+
+        // must match order above
+        public const int RempGroupClient = 0;
+        public const int RempGroupOrchestration = 1;
+        public const int RempGroupActivity = 2;
 
         public static string FormatMessageId(TaskMessage message, string workItem)
             => $"{workItem}M{message.SequenceNumber}";

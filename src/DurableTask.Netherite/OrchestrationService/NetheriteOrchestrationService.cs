@@ -22,7 +22,7 @@ namespace DurableTask.Netherite
     /// Local partition of the distributed orchestration service.
     /// </summary>
     public class NetheriteOrchestrationService :
-        DurableTask.Core.IOrchestrationService, 
+        DurableTask.Core.IOrchestrationService,
         DurableTask.Core.IOrchestrationServiceClient,
         DurableTask.Core.IOrchestrationServicePurgeClient,
         DurableTask.Netherite.IOrchestrationServiceQueryClient,
@@ -115,6 +115,12 @@ namespace DurableTask.Netherite
                 this.TraceHelper.StorageAccountName = this.workItemTraceHelper.StorageAccountName = this.StorageAccountName;
 
                 this.TraceHelper.TraceCreated(Environment.ProcessorCount, this.configuredTransport, this.configuredStorage);
+
+                if (settings.RempTracer != null)
+                {
+                    settings.RempTracer?.WorkerHeader($"{settings.HubName}.{settings.WorkerId}", WorkItemTraceHelper.GetRempGroups(settings));
+                    this.workItemTraceHelper.RempTracer = new Tracing.RempSinkWithErrorHandler(settings.RempTracer, (Exception e) => this.TraceHelper.TraceError("exception in RempTracer", e));
+                }
 
                 if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster)
                 {
@@ -878,6 +884,7 @@ namespace DurableTask.Netherite
                     Id = WorkItemTraceHelper.FormatMessageId(taskMessage, messageBatch.WorkItemId),
                     NumBytes = Serializer.GetMessageSize(taskMessage),
                 }),
+                allowSpeculation: messageBatch.AllowSpeculation,
                 instanceState: new Tracing.RempFormat.InstanceState()
                 {
                     InstanceId = workItem.InstanceId,
@@ -1042,6 +1049,7 @@ namespace DurableTask.Netherite
                     Id = WorkItemTraceHelper.FormatMessageId(activityCompletedEvent.Response, activityWorkItem.WorkItemId),
                     NumBytes = Serializer.GetMessageSize(activityCompletedEvent.Response),
                 }},
+                allowSpeculation: true,
                 instanceState: null
             );
 

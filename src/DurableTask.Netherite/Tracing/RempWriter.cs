@@ -26,7 +26,7 @@ namespace DurableTask.Netherite.Tracing
 
         public void WorkerHeader(string workerId, IEnumerable<WorkitemGroup> groups)
         {
-            this.Write(0L);
+            this.Write((long) RempFormat.CurrentVersion);
             this.Assert(!string.IsNullOrEmpty(workerId), nameof(workerId));
             this.Write(workerId);
             foreach (var group in groups)
@@ -36,7 +36,7 @@ namespace DurableTask.Netherite.Tracing
             this.Write(string.Empty); // terminates the group list
         }
 
-        public void WorkItem(long timeStamp, string workItemId, int group, double latencyMs, IEnumerable<NamedPayload> consumedMessages, IEnumerable<NamedPayload> producedMessages, InstanceState? instanceState)
+        public void WorkItem(long timeStamp, string workItemId, int group, double latencyMs, IEnumerable<NamedPayload> consumedMessages, IEnumerable<NamedPayload> producedMessages, bool allowSpeculation, InstanceState? instanceState)
         {
             this.Assert(timeStamp > 100, nameof(timeStamp));
             this.Write(timeStamp);
@@ -54,12 +54,12 @@ namespace DurableTask.Netherite.Tracing
                 this.Write(message);
             }
             this.Write(string.Empty); // terminates the message list
+            this.Write(allowSpeculation);
             this.Write(instanceState.HasValue);
             if (instanceState.HasValue)
             {
                 this.Write(instanceState.Value);
             }
-            throw new NotImplementedException();
         }
 
         public void Write(WorkitemGroup group)

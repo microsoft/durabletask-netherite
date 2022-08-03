@@ -41,7 +41,7 @@
     },
     "durableTask": {
 
-      "hubName": "perftests",
+      "hubName": "c",
 
       "UseGracefulShutdown": true, // helps to avoid lengthy waits for lease expiration
 
@@ -63,7 +63,7 @@
 
         "PackPartitionTaskMessages": 100,
 
-        "PartitionCount": 12,
+        "PartitionCount": 1,
 
         // set this to false to force replay on each orchestration step
         "CacheOrchestrationCursors": true,

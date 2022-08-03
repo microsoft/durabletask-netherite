@@ -31,7 +31,7 @@ namespace DurableTask.Netherite.Tracing
             {
                 // we are reading a worker header
                 long version = versionOrTimestamp;
-                this.Assert(version == 0, "expected version 0");
+                this.Assert(version == RempFormat.CurrentVersion, $"format version mismatch, expected={RempFormat.CurrentVersion}, actual={version}");
                 string workerId = this.ReadString();
                 IEnumerable<WorkitemGroup> groups = this.ReadList(this.ReadWorkitemGroup).ToList();
                 listener.WorkerHeader(workerId, groups);
@@ -45,8 +45,9 @@ namespace DurableTask.Netherite.Tracing
                 double latencyMs = this.ReadDouble();
                 IEnumerable<NamedPayload> consumedMessages = this.ReadList(this.ReadNamedPayload).ToList();
                 IEnumerable<NamedPayload> producedMessages = this.ReadList(this.ReadNamedPayload).ToList();
+                bool allowSpeculation = this.ReadBoolean();
                 InstanceState? instanceState = this.ReadBoolean() ? this.ReadInstanceState() : null;
-                listener.WorkItem(timeStamp, workItemId, group, latencyMs, consumedMessages, producedMessages, instanceState);
+                listener.WorkItem(timeStamp, workItemId, group, latencyMs, consumedMessages, producedMessages, allowSpeculation, instanceState);
             }
         }
 

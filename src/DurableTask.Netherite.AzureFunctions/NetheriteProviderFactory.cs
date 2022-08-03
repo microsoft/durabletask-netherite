@@ -189,6 +189,8 @@ namespace DurableTask.Netherite.AzureFunctions
                     BlobLogger = new BlobLogger(settings.ResolvedStorageConnectionString, settings.HubName, settings.WorkerId);
                 }
 
+                settings.RempTracer  = new RempLogger(settings.ResolvedStorageConnectionString, settings.HubName, settings.WorkerId);
+
                 var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
 
                 service.OnStopping += () => CachedProviders.TryRemove(key, out var _);

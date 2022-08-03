@@ -131,7 +131,11 @@ namespace DurableTask.Netherite
             else
             {
                 writer.Write(true);
-                writer.Write(newOrchestrationState.Status);
+                writer.Write(newOrchestrationState.Status != null);
+                if (newOrchestrationState.Status != null)
+                {
+                    writer.Write(newOrchestrationState.Status);
+                }
             }
             return stream.Position;
         }

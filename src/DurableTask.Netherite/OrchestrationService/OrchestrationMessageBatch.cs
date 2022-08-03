@@ -29,6 +29,8 @@ namespace DurableTask.Netherite
 
         public override EventId EventId => EventId.MakePartitionInternalEventId(this.WorkItemId);
 
+        public bool AllowSpeculation => this.waitForPersistence == null;
+
         public OrchestrationMessageBatch(string instanceId, SessionsState.Session session, Partition partition, PartitionUpdateEvent filingEvent, bool waitForPersistence)
         {
             this.InstanceId = instanceId;
