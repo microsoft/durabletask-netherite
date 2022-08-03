@@ -161,8 +161,8 @@ namespace DurableTask.Netherite
                     workItemId: request.WorkItemId,
                     group: WorkItemTraceHelper.RempGroupClient,
                     latencyMs: 0.0,
-                    consumedMessages: Enumerable.Empty<Tracing.RempTrace.NamedPayload>(),
-                    producedMessages: request.TaskMessages.Select(taskMessage => new Tracing.RempTrace.NamedPayload()
+                    consumedMessages: Enumerable.Empty<Tracing.RempFormat.NamedPayload>(),
+                    producedMessages: request.TaskMessages.Select(taskMessage => new Tracing.RempFormat.NamedPayload()
                     {
                         Id = WorkItemTraceHelper.FormatMessageId(taskMessage, request.WorkItemId),
                         NumBytes = Serializer.GetMessageSize(taskMessage),
@@ -177,8 +177,8 @@ namespace DurableTask.Netherite
                     workItemId: creationRequestReceived.WorkItemId,
                     group: WorkItemTraceHelper.RempGroupClient,
                     latencyMs: 0.0,
-                    consumedMessages: Enumerable.Empty<Tracing.RempTrace.NamedPayload>(),
-                    producedMessages: new[] { new Tracing.RempTrace.NamedPayload()
+                    consumedMessages: Enumerable.Empty<Tracing.RempFormat.NamedPayload>(),
+                    producedMessages: new[] { new Tracing.RempFormat.NamedPayload()
                     {
                         Id = WorkItemTraceHelper.FormatMessageId(creationRequestReceived.TaskMessage, creationRequestReceived.WorkItemId),
                         NumBytes = Serializer.GetMessageSize(creationRequestReceived.TaskMessage),

@@ -868,17 +868,17 @@ namespace DurableTask.Netherite
                 workItemId: messageBatch.WorkItemId,
                 group: WorkItemTraceHelper.RempGroupOrchestration,
                 latencyMs: latencyMs,
-                consumedMessages: messageBatch.TracedMessages.Select(x => new Tracing.RempTrace.NamedPayload()
+                consumedMessages: messageBatch.TracedMessages.Select(x => new Tracing.RempFormat.NamedPayload()
                 {
                     Id = WorkItemTraceHelper.FormatMessageId(x.Item1, x.Item2),
                     NumBytes = Serializer.GetMessageSize(x.Item1),
                 }),
-                producedMessages: batchProcessedEvent.ProducedMessages().Select(taskMessage => new Tracing.RempTrace.NamedPayload()
+                producedMessages: batchProcessedEvent.ProducedMessages().Select(taskMessage => new Tracing.RempFormat.NamedPayload()
                 {
                     Id = WorkItemTraceHelper.FormatMessageId(taskMessage, messageBatch.WorkItemId),
                     NumBytes = Serializer.GetMessageSize(taskMessage),
                 }),
-                instanceState: new Tracing.RempTrace.InstanceState()
+                instanceState: new Tracing.RempFormat.InstanceState()
                 {
                     InstanceId = workItem.InstanceId,
                     Updated = Serializer.GetStateSize(newOrchestrationRuntimeState, state),
@@ -1032,12 +1032,12 @@ namespace DurableTask.Netherite
                 workItemId: activityWorkItem.WorkItemId,
                 group: WorkItemTraceHelper.RempGroupActivity,
                 latencyMs: latencyMs,
-                consumedMessages: new[] { new Tracing.RempTrace.NamedPayload()
+                consumedMessages: new[] { new Tracing.RempFormat.NamedPayload()
                 {
                     Id = WorkItemTraceHelper.FormatMessageId(activityWorkItem.TaskMessage, activityWorkItem.OriginWorkItem),
                     NumBytes = Serializer.GetMessageSize(activityWorkItem.TaskMessage),
                 }},
-                producedMessages: new[] { new Tracing.RempTrace.NamedPayload()
+                producedMessages: new[] { new Tracing.RempFormat.NamedPayload()
                 {
                     Id = WorkItemTraceHelper.FormatMessageId(activityCompletedEvent.Response, activityWorkItem.WorkItemId),
                     NumBytes = Serializer.GetMessageSize(activityCompletedEvent.Response),

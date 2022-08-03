@@ -21,7 +21,7 @@ namespace DurableTask.Netherite
         readonly EtwSource etw;
         public string StorageAccountName { private get; set; } = string.Empty;
 
-        public RempTrace.IListener RempTracer { get; set; }
+        public RempFormat.IListener RempTracer { get; set; }
         public const int RempGroupClient = (int) WorkItemType.Client - 1;
         public const int RempGroupOrchestration = (int)WorkItemType.Orchestration - 1;
         public const int RempGroupActivity = (int)WorkItemType.Activity - 1;

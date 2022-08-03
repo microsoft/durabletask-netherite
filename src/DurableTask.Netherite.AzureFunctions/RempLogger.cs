@@ -15,15 +15,15 @@ namespace DurableTask.Netherite.AzureFunctions
     using Microsoft.Extensions.Azure;
 
  
- class RempLogger : RempTrace.IListener
+ class RempLogger : RempFormat.IListener
     {
         readonly DateTime starttime;
         readonly CloudAppendBlob blob;
-        readonly object flushLock = new object();
-        readonly object writerLock = new object();
+        readonly object flushLock = new();
+        readonly object writerLock = new();
         readonly ConcurrentQueue<MemoryStream> writebackQueue;
         MemoryStream memoryStream;
-        RempTrace.RempWriter writer;
+        RempWriter writer;
 
 #pragma warning disable IDE0052 // Cannot remove timer reference, otherwise timer is garbage-collected and stops
         readonly Timer timer;
@@ -41,14 +41,14 @@ namespace DurableTask.Netherite.AzureFunctions
             this.blob.CreateOrReplace();
 
             this.memoryStream = new MemoryStream();
-            this.writer = new RempTrace.RempWriter(this.memoryStream);
+            this.writer = new RempWriter(this.memoryStream);
             this.writebackQueue = new ConcurrentQueue<MemoryStream>();
 
             int interval = 14000 + new Random().Next(1000);
             this.timer = new Timer(this.Flush, null, interval, interval);
         }
 
-        public void WorkerHeader(string workerId, IEnumerable<RempTrace.WorkitemGroup> groups)
+        public void WorkerHeader(string workerId, IEnumerable<RempFormat.WorkitemGroup> groups)
         {
             lock (this.writerLock)
             {
@@ -61,7 +61,7 @@ namespace DurableTask.Netherite.AzureFunctions
             }
         }
 
-        public void WorkItem(long timeStamp, string workItemId, int group, double latencyMs, IEnumerable<RempTrace.NamedPayload> consumedMessages, IEnumerable<RempTrace.NamedPayload> producedMessages, RempTrace.InstanceState? instanceState)
+        public void WorkItem(long timeStamp, string workItemId, int group, double latencyMs, IEnumerable<RempFormat.NamedPayload> consumedMessages, IEnumerable<RempFormat.NamedPayload> producedMessages, RempFormat.InstanceState? instanceState)
         {
             lock (this.writerLock)
             {
@@ -81,7 +81,7 @@ namespace DurableTask.Netherite.AzureFunctions
             this.writer.Flush();
             this.writebackQueue.Enqueue(this.memoryStream);
             this.memoryStream = new MemoryStream();
-            this.writer = new RempTrace.RempWriter(this.memoryStream);
+            this.writer = new RempWriter(this.memoryStream);
         }
 
         public void Flush(object ignored)
