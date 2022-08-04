@@ -24,6 +24,7 @@ If you have a .NET Durable Functions application already, and want to configure 
 
 - Add the NuGet package `Microsoft.Azure.DurableTask.Netherite.AzureFunctions` to your functions project (if using .NET) or your extensions project (if using TypeScript or Python).
 - Add `"type" : "Netherite"` to the `storageProvider` section of your host.json. See [recommended host.json settings](https://microsoft.github.io/durabletask-netherite/#/settings.md).
+- Configure your function app to run on 64 bit, if not already the case. You can do this in the Azure portal, or using the Azure CLI. Netherite does not run on 32 bit.
 - Create an EventHubs namespace. You can do this in the Azure portal, or using the Azure CLI.
 - Configure `EventHubsConnection` with the connection string for the Event Hubs namespace. You can do this using an environment variable, or with a function app configuration settings.
 
