@@ -12,7 +12,7 @@ To get started, you can either try out the sample, or take an existing DF app an
 
 ### Follow the hello sample walkthrough
 
-For a comprehensive quick start, take a look at [hello sample walkthrough](hello-sample), and the associated [video content](http://localhost:3000/#/hello-sample?id=walk-through-on-youtube-%f0%9f%8e%a5).
+For a comprehensive quick start on using Netherite with Durable Functions, take a look at [hello sample walkthrough](hello-sample), and the associated [video content](hello-sample?id=walk-through-on-youtube-%f0%9f%8e%a5).
 We included several scripts that make it easy to build, run, and deploy this application, both locally and in the cloud.
 Also, this sample is a great starting point for creating your own projects.
 
@@ -22,6 +22,7 @@ If you have a Durable Functions application already, and want to configure it to
 
 - Add the NuGet package `Microsoft.Azure.DurableTask.Netherite.AzureFunctions` to your functions project (if using .NET) or your extensions project (if using TypeScript or Python).
 - Add `"type" : "Netherite"` to the `storageProvider` section of your host.json. See [recommended host.json settings](settings).
+- Configure your function app to run on 64 bit, if not already the case. You can do this in the Azure portal, or using the Azure CLI. Netherite does not run on 32 bit.
 - Create an EventHubs namespace. You can do this in the Azure portal, or using the Azure CLI.
 - Configure `EventHubsConnection` with the connection string for the Event Hubs namespace. You can do this using an environment variable, or with a function app configuration settings.
 
@@ -39,7 +40,7 @@ For more information, see the [DTFx sample](https://github.com/microsoft/durable
 
 ## Why a new engine?
 
-The default Azure Storage engine stores messages in Azure Storage queues and instance states in Azure Storage tables. It executes large numbers of small storage accesses. For example, executing a single orchestration with three activities may require a total of 4 dequeue operations, 3 enqueue operations, 4 table reads, and 4 table writes. Thus, the overall throughput quickly becomes limited by how many I/O operations Azure Storage allows per second. 
+The default Azure Storage engine stores messages in Azure Storage queues and instance states in Azure Storage tables. It executes large numbers of small storage accesses. For example, executing a single orchestration with three activities may require a total of 4 dequeue operations, 3 enqueue operations, 4 table reads, and 4 table writes. Thus, the overall throughput quickly becomes limited by how many I/O operations Azure Storage allows per second.
 
 To achieve better performance, Netherite represents queues and partition states differently, to improve batching:
 
@@ -54,7 +55,7 @@ The following picture illustrates the architecture, in a situation where five pa
 
 Each partition is represented in storage using the FASTER database technology, which also provides basic indexing and querying. We discuss this in more detail in the section on [storage organization](storage?id=description-of-storage-content).
 
-Another advantage of this architecture is that we can store the current input queue position of a partition as part of the partition state. This is important in cases where we need to recover from a crash, or if we need to move a partition from one node to another. In those situation, the node that is restarting the partition can check the input position of the last processed message, and resume processing exactly where it left off. 
+Another advantage of this architecture is that we can store the current input queue position of a partition as part of the partition state. This is important in cases where we need to recover from a crash, or if we need to move a partition from one node to another. In those situation, the node that is restarting the partition can check the input position of the last processed message, and resume processing exactly where it left off.
 
 **Components.** Currently, Netherite relies on the following services:
 
@@ -65,9 +66,9 @@ In the future, we plan to support alternatives for these components. For example
 
 ## Status
 
-The current version of Netherite is *1.0.2*. Netherite supports almost all of the DT and DF APIs. However, there are still some limitations:
+The current version of Netherite is *1.1.0*. Netherite supports almost all of the DT and DF APIs. However, there are still some limitations:
 
 - **Supported hosted plans**. Consumption plan is not supported yet, and auto-scaling only works on Elastic Premium plans with runtime-scaling enabled. This will be resolved by GA.
-- **Query Performance**. Currently, queries do not support paging. We plan to add a range index implementation to fix this soon after GA.
+- **Query Paging**. Currently, queries do not support paging. We plan to add a range index implementation to fix this soon after GA.
 
 To learn more about the Netherite architecture, our [VLDB 2022 paper](https://www.microsoft.com/en-us/research/uploads/prod/2022/07/p1591-burckhardt.pdf) is the best reference. There is also an earlier preprint [paper on arXiv](https://arxiv.org/abs/2103.00033).
