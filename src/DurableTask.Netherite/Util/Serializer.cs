@@ -139,5 +139,30 @@ namespace DurableTask.Netherite
             }
             return stream.Position;
         }
+
+        public static long GetDeltaSize(BatchProcessed batchProcessedEvent)
+        {
+            var stream = new MemoryStream();
+            var writer = new BinaryWriter(stream);
+            writer.Write(batchProcessedEvent.NewEvents.Count);
+            foreach (var evt in batchProcessedEvent.NewEvents)
+            {
+                historyEventSerializer.WriteObject(stream, evt);
+            }
+            if (!batchProcessedEvent.CustomStatusUpdated)
+            {
+                writer.Write(false);
+            }
+            else
+            {
+                writer.Write(true);
+                writer.Write(batchProcessedEvent.CustomStatus != null);
+                if (batchProcessedEvent.CustomStatus != null)
+                {
+                    writer.Write(batchProcessedEvent.CustomStatus);
+                }
+            }
+            return stream.Position;
+        }
     }
 }

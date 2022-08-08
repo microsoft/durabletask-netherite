@@ -1,13 +1,13 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.Tracing
+namespace Remp
 {
     using System;
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
-    using static DurableTask.Netherite.Tracing.RempFormat;
+    using static RempFormat;
 
     public class RempReader : BinaryReader
     {
@@ -101,6 +101,7 @@ namespace DurableTask.Netherite.Tracing
             {
                 InstanceId = this.ReadString(),
                 Updated = this.ReadBoolean() ? this.ReadInt64() : null,
+                Delta = this.ReadBoolean() ? this.ReadInt64() : null,
             };
         }
     }

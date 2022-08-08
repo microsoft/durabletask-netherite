@@ -1,15 +1,19 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.Tracing
+namespace Remp
 {
     using System;
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
     using Microsoft.Azure.Documents.SystemFunctions;
-    using static DurableTask.Netherite.Tracing.RempFormat;
+    using static RempFormat;
 
+    /// <summary>
+    /// Prints a REMP trace in a format suitable for visual inspection by humans.
+    /// Not intended to be parsed, since we already have a binary format.
+    /// </summary>
     public class RempPrinter : IListener
     {
         readonly TextWriter writer;
@@ -34,7 +38,9 @@ namespace DurableTask.Netherite.Tracing
             this.writer.Write($" out: {string.Join(",", producedMessages.Select(m => $"{m.Id}({m.NumBytes})"))}");
             if (instanceState.HasValue)
             {
-                this.writer.Write($" state: {instanceState.Value.InstanceId} {(instanceState.Value.Updated.HasValue ? (instanceState.Value.Updated.Value > 0 ? instanceState.Value.Updated.ToString() : "deleted") : "none")}");
+                string StateSize() => instanceState.Value.Updated.HasValue ? (instanceState.Value.Updated.Value > 0 ? instanceState.Value.Updated.ToString() : "deleted") : "none";
+                string DeltaSize() => instanceState.Value.Delta.HasValue ? $" (+{instanceState.Value.Delta.Value})" : "";
+                this.writer.Write($" state: {instanceState.Value.InstanceId} {StateSize()}{DeltaSize()}");
             }
             this.writer.WriteLine();
         }

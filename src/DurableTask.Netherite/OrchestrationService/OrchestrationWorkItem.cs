@@ -32,6 +32,8 @@ namespace DurableTask.Netherite
 
         public override bool RestoreOriginalRuntimeStateDuringCompletion => false;
 
+        public string PreviousExecutionId { get; set; }
+
         public OrchestrationWorkItem(Partition partition, OrchestrationMessageBatch messageBatch, List<HistoryEvent> previousHistory = null, string customStatus = null)
         {
             this.Partition = partition;

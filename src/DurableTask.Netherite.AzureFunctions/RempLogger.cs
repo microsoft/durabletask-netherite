@@ -9,13 +9,12 @@ namespace DurableTask.Netherite.AzureFunctions
     using System.Collections.Generic;
     using System.IO;
     using System.Threading;
-    using DurableTask.Netherite.Tracing;
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
     using Microsoft.Extensions.Azure;
     using Microsoft.Extensions.Logging;
 
-    class RempLogger : RempFormat.IListener
+    class RempLogger : Remp.RempFormat.IListener
     {
         readonly DateTime starttime;
         readonly CloudAppendBlob blob;
@@ -23,7 +22,7 @@ namespace DurableTask.Netherite.AzureFunctions
         readonly object writerLock = new();
         readonly ConcurrentQueue<MemoryStream> writebackQueue;
         MemoryStream memoryStream;
-        RempWriter writer;
+        Remp.RempWriter writer;
 
 #pragma warning disable IDE0052 // Cannot remove timer reference, otherwise timer is garbage-collected and stops
         readonly Timer timer;
@@ -41,14 +40,14 @@ namespace DurableTask.Netherite.AzureFunctions
             this.blob.CreateOrReplace();
 
             this.memoryStream = new MemoryStream();
-            this.writer = new RempWriter(this.memoryStream);
+            this.writer = new Remp.RempWriter(this.memoryStream);
             this.writebackQueue = new ConcurrentQueue<MemoryStream>();
 
             int interval = 14000 + new Random().Next(1000);
             this.timer = new Timer(this.Flush, null, interval, interval);
         }
 
-        public void WorkerHeader(string workerId, IEnumerable<RempFormat.WorkitemGroup> groups)
+        public void WorkerHeader(string workerId, IEnumerable<Remp.RempFormat.WorkitemGroup> groups)
         {
             lock (this.writerLock)
             {
@@ -61,7 +60,7 @@ namespace DurableTask.Netherite.AzureFunctions
             }
         }
 
-        public void WorkItem(long timeStamp, string workItemId, int group, double latencyMs, IEnumerable<RempFormat.NamedPayload> consumedMessages, IEnumerable<RempFormat.NamedPayload> producedMessages, bool allowSpeculation, RempFormat.InstanceState? instanceState)
+        public void WorkItem(long timeStamp, string workItemId, int group, double latencyMs, IEnumerable<Remp.RempFormat.NamedPayload> consumedMessages, IEnumerable<Remp.RempFormat.NamedPayload> producedMessages, bool allowSpeculation, Remp.RempFormat.InstanceState? instanceState)
         {
             lock (this.writerLock)
             {
@@ -80,7 +79,7 @@ namespace DurableTask.Netherite.AzureFunctions
             this.writer.Flush();
             this.writebackQueue.Enqueue(this.memoryStream);
             this.memoryStream = new MemoryStream();
-            this.writer = new RempWriter(this.memoryStream);
+            this.writer = new Remp.RempWriter(this.memoryStream);
         }
 
         public void Flush(object ignored)

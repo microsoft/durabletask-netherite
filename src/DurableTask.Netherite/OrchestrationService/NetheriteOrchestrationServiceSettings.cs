@@ -195,7 +195,7 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Attach a logger for Remp traces
         /// </summary>
-        public Tracing.RempFormat.IListener RempTracer { get; set; }
+        public Remp.RempFormat.IListener RempTracer { get; set; }
 
         /// <summary>
         /// A lower limit on the severity level of trace events emitted by the transport layer.

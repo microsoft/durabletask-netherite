@@ -1,16 +1,12 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.Tracing
+namespace Remp
 {
     using System;
     using System.Collections.Generic;
-    using System.Diagnostics;
     using System.IO;
-    using System.Linq;
     using System.Text;
-    using Microsoft.IdentityModel.Clients.ActiveDirectory;
-    using Microsoft.Spatial;
 
     public class RempFormat
     {
@@ -57,9 +53,10 @@ namespace DurableTask.Netherite.Tracing
         public struct InstanceState // represents information about the instance state
         {
             public string InstanceId;          // a unique identifier for this instance.
-            public long? Updated;              // size of the updated state (0 means deleted), or null if state was not modified
+            public long? Updated;              // total size of the updated state (0 means deleted), or null if state was not modified
+            public long? Delta;                // if this was an incremental state update, the size of the delta
         }
 
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 2;
     }
 }

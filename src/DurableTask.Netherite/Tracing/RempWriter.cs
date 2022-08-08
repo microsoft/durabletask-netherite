@@ -1,13 +1,13 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.Tracing
+namespace Remp
 {
     using System;
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
-    using static DurableTask.Netherite.Tracing.RempFormat;
+    using static RempFormat;
 
     public class RempWriter : BinaryWriter, IListener
     {
@@ -90,6 +90,11 @@ namespace DurableTask.Netherite.Tracing
             if (instanceState.Updated.HasValue)
             {
                 this.Write(instanceState.Updated.Value);
+            }
+            this.Write(instanceState.Delta.HasValue);
+            if (instanceState.Delta.HasValue)
+            {
+                this.Write(instanceState.Delta.Value);
             }
         }
     }

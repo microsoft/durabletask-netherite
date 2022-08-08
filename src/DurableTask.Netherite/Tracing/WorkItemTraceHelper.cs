@@ -10,8 +10,8 @@ namespace DurableTask.Netherite
     using System.Text;
     using System.Threading.Tasks;
     using DurableTask.Core;
-    using DurableTask.Netherite.Tracing;
     using Microsoft.Extensions.Logging;
+    using Remp;
 
     class WorkItemTraceHelper
     {
@@ -23,12 +23,12 @@ namespace DurableTask.Netherite
 
         public RempFormat.IListener RempTracer { get; set; }
 
-        public static IEnumerable<Tracing.RempFormat.WorkitemGroup> GetRempGroups(NetheriteOrchestrationServiceSettings settings) =>
-            new Tracing.RempFormat.WorkitemGroup[]
+        public static IEnumerable<RempFormat.WorkitemGroup> GetRempGroups(NetheriteOrchestrationServiceSettings settings) =>
+            new RempFormat.WorkitemGroup[]
                 {
-                    new Tracing.RempFormat.WorkitemGroup() {  Name = "Client",        DegreeOfParallelism = null                                        },
-                    new Tracing.RempFormat.WorkitemGroup() {  Name = "Orchestrator",  DegreeOfParallelism = settings.MaxConcurrentOrchestratorFunctions },
-                    new Tracing.RempFormat.WorkitemGroup() {  Name = "Activity",      DegreeOfParallelism = settings.MaxConcurrentActivityFunctions     },
+                    new RempFormat.WorkitemGroup() {  Name = "Client",        DegreeOfParallelism = null                                        },
+                    new RempFormat.WorkitemGroup() {  Name = "Orchestrator",  DegreeOfParallelism = settings.MaxConcurrentOrchestratorFunctions },
+                    new RempFormat.WorkitemGroup() {  Name = "Activity",      DegreeOfParallelism = settings.MaxConcurrentActivityFunctions     },
                 };
 
         // must match order above

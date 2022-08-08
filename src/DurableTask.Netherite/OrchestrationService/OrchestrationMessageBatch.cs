@@ -90,6 +90,7 @@ namespace DurableTask.Netherite
                 this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: null, customStatus: null);
                 this.workItem.Type = OrchestrationWorkItem.ExecutionType.Fresh;
                 this.workItem.EventCount = 0;
+                this.workItem.PreviousExecutionId = null;
             }
             else if (historyState.CachedOrchestrationWorkItem != null)
             {
@@ -98,6 +99,7 @@ namespace DurableTask.Netherite
                 this.workItem.SetNextMessageBatch(this);
                 this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromCursor;
                 this.workItem.EventCount = this.workItem.OrchestrationRuntimeState?.Events?.Count ?? 0;
+                this.workItem.PreviousExecutionId = this.workItem.OrchestrationRuntimeState.OrchestrationInstance.ExecutionId;
 
                 // sanity check: it appears cursor is sometimes corrupted, in that case, construct fresh
                 // TODO investigate reasons and fix root cause
@@ -110,6 +112,7 @@ namespace DurableTask.Netherite
                     this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History, historyState.CustomStatus);
                     this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
                     this.workItem.EventCount = historyState.History?.Count ?? 0;
+                    this.workItem.PreviousExecutionId = historyState.ExecutionId;
                 }
             }
             else
@@ -118,6 +121,7 @@ namespace DurableTask.Netherite
                 this.workItem = new OrchestrationWorkItem(partition, this, previousHistory: historyState.History, historyState.CustomStatus);
                 this.workItem.Type = OrchestrationWorkItem.ExecutionType.ContinueFromHistory;
                 this.workItem.EventCount = historyState.History?.Count ?? 0;
+                this.workItem.PreviousExecutionId = historyState.ExecutionId;
             }
 
             if (!this.IsExecutableInstance(this.workItem, out var reason))
