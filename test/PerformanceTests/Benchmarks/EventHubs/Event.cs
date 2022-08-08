@@ -5,21 +5,34 @@ namespace PerformanceTests.EventHubs
 {
     using System;
     using System.Collections.Generic;
+    using System.IO;
     using System.Text;
+    using Dynamitey;
     using Newtonsoft.Json;
 
-    [JsonObject(MemberSerialization.OptOut)]
     public struct Event
     {
-        public int Partition { get; set; }
+        public int Destination { get; set; }
+    
+        public string Payload { get; set; }
 
-        public long SeqNo { get; set; }
-
-        public byte[] Payload { get; set; }
-
-        public override string ToString()
+        public static Event FromStream(Stream s)
         {
-            return $"Event {this.Partition}.{this.SeqNo} size={this.Payload.Length}";
+            var r = new BinaryReader(s);
+            return new Event
+            {
+                Destination = r.ReadInt32(),
+                Payload = r.ReadString(),
+            };
+        }
+
+        public byte[] ToBytes()
+        {
+            var m = new MemoryStream();
+            var r = new BinaryWriter(m);
+            r.Write(this.Destination);
+            r.Write(this.Payload);
+            return m.ToArray();
         }
     }
 }

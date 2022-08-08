@@ -26,7 +26,11 @@ if ($DeployCode)
 	}
 	if (-not ($MaxA -eq ""))
 	{
-	    $hostconf.extensions.durableTask | Add-Member -NotePropertyName "maxConcurrentActivityFunctions" -NotePropertyValue $MaxA
+	    $hostconf.extensions.durableTask | Add-Member -Force -NotePropertyName "maxConcurrentActivityFunctions" -NotePropertyValue $MaxA
+	}
+	if (-not ($MaxO -eq ""))
+	{
+	    $hostconf.extensions.durableTask | Add-Member -Force -NotePropertyName "maxConcurrentOrchestratorFunctions" -NotePropertyValue $MaxO
 	}
 
 	$hostconf | ConvertTo-Json -depth 32 | set-content "./bin/$Configuration/netcoreapp3.1/host.json"
@@ -42,7 +46,7 @@ if (-not ((az functionapp list -g $groupName --query "[].name"| ConvertFrom-Json
 	az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 3
     az functionapp config set -n $functionAppName -g $groupName --use-32bit-worker-process false
     az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EventHubsConnection=$eventHubsConnectionString
-    az functionapp config appsettings set -n $functionAppName -g  $groupName --settings CorpusConnection=$corpusConnectionString
+    az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EHNamespace=$Env:EHNamespace
 }
 else
 {

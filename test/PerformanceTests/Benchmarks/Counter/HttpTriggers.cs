@@ -18,20 +18,14 @@ namespace PerformanceTests.Orchestrations.Counter
 
     public static class HttpTriggers
     {
-        class Input
-        {
-            public string Key { get; set; }
-            public int Expected { get; set; }
-        }
-
-        [FunctionName(nameof(WaitForCount))]
-        public static async Task<IActionResult> WaitForCount(
-            [HttpTrigger(AuthorizationLevel.Function, methods: "post", Route = nameof(WaitForCount))] HttpRequest req,
+        [FunctionName(nameof(WaitFor))]
+        public static async Task<IActionResult> WaitFor(
+            [HttpTrigger(AuthorizationLevel.Function, methods: "get", Route = "counter/{key}/waitfor/{count}")] HttpRequest req,
+            string key, 
+            int count,
             [DurableClient] IDurableClient client)
         {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var input = JsonConvert.DeserializeObject<Input>(requestBody);
-            var entityId = new EntityId("Counter", input.Key);
+            var entityId = new EntityId("Counter", key);
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 
@@ -41,7 +35,7 @@ namespace PerformanceTests.Orchestrations.Counter
                 var response = await client.ReadEntityStateAsync<Counter>(entityId);
 
                 if (response.EntityExists
-                    && response.EntityState.CurrentValue >= input.Expected)
+                    && response.EntityState.CurrentValue >= count)
                 {
                     return new OkObjectResult($"{JsonConvert.SerializeObject(response.EntityState)}\n");
                 }
@@ -52,17 +46,63 @@ namespace PerformanceTests.Orchestrations.Counter
             return new OkObjectResult("timed out.\n");
         }
 
-        [FunctionName(nameof(Increment))]
-        public static async Task<IActionResult> Increment(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = nameof(Increment))] HttpRequest req,
+        [FunctionName(nameof(Add))]
+        public static async Task<IActionResult> Add(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "counter/{key}/add")] HttpRequest req,
+            string key,
             [DurableClient] IDurableClient client)
         {
             try
             {
-                string entityKey = await new StreamReader(req.Body).ReadToEndAsync();
-                var entityId = new EntityId("Counter", entityKey);
-                await client.SignalEntityAsync(entityId, "add", 1);
-                return new OkObjectResult($"increment was sent to {entityId}.\n");
+                string input = await new StreamReader(req.Body).ReadToEndAsync();
+                int amount = int.Parse(input);
+                var entityId = new EntityId("Counter", key);
+                await client.SignalEntityAsync(entityId, "add", amount);
+                return new OkObjectResult($"add({amount}) was sent to {entityId}.\n");
+            }
+            catch (Exception e)
+            {
+                return new OkObjectResult(e.ToString());
+            }
+        }
+
+        [FunctionName(nameof(GetCounter))]
+        public static async Task<IActionResult> GetCounter(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "counter/{key}")] HttpRequest req,
+            string key,
+            [DurableClient] IDurableClient client)
+        {
+            try
+            {
+                var entityId = new EntityId("Counter", key);
+                var response = await client.ReadEntityStateAsync<Counter>(entityId);
+
+                if (!response.EntityExists)
+                {
+                    return new NotFoundObjectResult($"no such entity: {entityId}");
+                }
+                else
+                {
+                    return new OkObjectResult(response.EntityState);
+                }
+            }
+            catch (Exception e)
+            {
+                return new OkObjectResult(e.ToString());
+            }
+        }
+
+        [FunctionName(nameof(Crash))]
+        public static async Task<IActionResult> Crash(
+           [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "counter/{key}/crash")] HttpRequest req,
+           string key,
+           [DurableClient] IDurableClient client)
+        {
+            try
+            {
+                var entityId = new EntityId("Counter", key);
+                await client.SignalEntityAsync(entityId, "crash", DateTime.UtcNow);
+                return new OkObjectResult($"crash was sent to {entityId}.\n");
             }
             catch (Exception e)
             {
@@ -72,7 +112,7 @@ namespace PerformanceTests.Orchestrations.Counter
 
         [FunctionName(nameof(CountSignals))]
         public static async Task<IActionResult> CountSignals(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = nameof(CountSignals))] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", nameof(CountSignals))] HttpRequest req,
             [DurableClient] IDurableClient client)
         {
             try
