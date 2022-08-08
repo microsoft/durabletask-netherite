@@ -2,12 +2,12 @@
 param (
     $Settings="./settings.ps1",
 	$Plan="EP2", 
-	$MinNodes="1", 
-	$MaxNodes="20", 
+	$MinNodes="4", 
+	$MaxNodes="4", 
 	$Configuration="Release",
 	$HostConfigurationFile="./host.json",
 	$HubName="",
-	$MaxA="",
+	$MaxA="10",
 	$DeployCode=$true
 )
 
