@@ -7,7 +7,8 @@ param (
 	$Configuration="Release",
 	$HostConfigurationFile="./host.json",
 	$HubName="",
-	$MaxA="10",
+	$MaxA="",
+	$MaxO="",
 	$DeployCode=$true
 )
 

@@ -53,8 +53,8 @@ namespace Remp
         public struct InstanceState // represents information about the instance state
         {
             public string InstanceId;          // a unique identifier for this instance.
-            public long? Updated;              // total size of the updated state (0 means deleted), or null if state was not modified
-            public long? Delta;                // if this was an incremental state update, the size of the delta
+            public long? Updated;              // total size of the state after the update (0 means deleted), or null if state was not modified.
+            public long? Delta;                // if this is an incremental state update, the size of the delta. Otherwise, null.
         }
 
         public const int CurrentVersion = 2;
