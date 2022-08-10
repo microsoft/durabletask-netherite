@@ -7,10 +7,10 @@
 dotnet build
 
 # enter the directory with the debug binaries
-if (-not (Test-Path -Path ./bin/Debug/netcoreapp3.1/bin)) {
+if (-not (Test-Path -Path ./bin/Debug/net6.0/bin)) {
     throw 'No debug binaries found. Must `dotnet build` first.'
 } else {
-    cd bin/Debug/netcoreapp3.1
+    cd bin/Debug/net6.0
 }
 
 # look up the two connection strings and assign them to the respective environment variables
