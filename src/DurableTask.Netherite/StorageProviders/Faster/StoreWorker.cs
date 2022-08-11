@@ -487,7 +487,7 @@ namespace DurableTask.Netherite.Faster
                 if (this.partition.NumberPartitions() > 1 && this.partition.Settings.ActivityScheduler == ActivitySchedulerOptions.Locavore)
                 {
                     var activitiesState = (await this.store.ReadAsync(TrackedObjectKey.Activities, this.effectTracker)) as ActivitiesState;
-                    activitiesState.CollectLoadMonitorInformation();
+                    activitiesState.CollectLoadMonitorInformation(DateTime.UtcNow);
                 }
 
                 if (this.loadInfo.IsBusy() != null)

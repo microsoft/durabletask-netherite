@@ -41,6 +41,9 @@ namespace DurableTask.Netherite
         public DateTime[] TransferCommandsReceived { get; set; }
 
         [IgnoreDataMember]
+        DateTime LastSentToLoadMonitor = DateTime.MinValue;
+
+        [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Activities);
 
         public static string GetWorkItemId(uint partition, long activityId) => $"{partition:D2}A{activityId}";
@@ -107,13 +110,14 @@ namespace DurableTask.Netherite
         }
 
         // called frequently, directly from the StoreWorker. Must not modify any [DataMember] fields.
-        public void CollectLoadMonitorInformation()
+        public void CollectLoadMonitorInformation(DateTime now)
         {
             // send load information if there is a backlog of if it was solicited recently
             if (this.LocalBacklog.Count > 0  
                 || this.QueuedRemotes.Count > 0
+                || (now - this.LastSentToLoadMonitor) > TimeSpan.FromSeconds(10)
                 || (this.LastSolicitation.HasValue 
-                    && (DateTime.UtcNow - this.LastSolicitation.Value) < LoadMonitor.SOLICITATION_VALIDITY))
+                    && (now - this.LastSolicitation.Value) < LoadMonitor.SOLICITATION_VALIDITY))
             {          
                 this.Partition.Send(new LoadInformationReceived()
                 {
@@ -124,6 +128,7 @@ namespace DurableTask.Netherite
                     AverageActCompletionTime = this.AverageActivityCompletionTime,
                     TransfersReceived = (DateTime[]) this.TransferCommandsReceived.Clone()
                 });
+                this.LastSentToLoadMonitor = now;
             }
         }
 
