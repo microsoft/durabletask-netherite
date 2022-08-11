@@ -1,8 +1,8 @@
 {
   "IsEncrypted": false,
   "Values": {
-    "AzureWebJobsStorage": "Should be ignored because we have the environment variable set",
-    "EventHubsConnection": "Should be ignored because we have the environment variable set",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true;",
+    "EventHubsConnection": "MemoryF",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet"
   }
 }

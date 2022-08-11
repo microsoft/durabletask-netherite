@@ -12,7 +12,7 @@ $Env:AzureWebJobsStorage = (az storage account show-connection-string --name $st
 $Env:EventHubsConnection = (az eventhubs namespace authorization-rule keys list --resource-group $groupName --namespace-name $namespaceName --name RootManageSharedAccessKey | ConvertFrom-Json).primaryConnectionString
 
 # enter the directory with the binaries 
-Push-Location -Path bin/$Configuration/netcoreapp3.1  
+Push-Location -Path bin/$Configuration/net6.0  
 
 # start an interactive windows cmd shell in the deployment directory
 cmd

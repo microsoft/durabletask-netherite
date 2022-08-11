@@ -1,13 +1,13 @@
 {
-  "rate": 0.01,
-  "ServiceUrls": "https://functionssb2.azurewebsites.net",
-  "GeneratorUrl": "https://sbloadgenerator7924.azurewebsites.net",
-  "Duration": 3600,
+  "rate": 0.1,
+  "ServiceUrls": "url-of-service-under-test",
+  "GeneratorUrl": "url-of this-load-generator",
+  "Duration": 20,
   "TimeoutSeconds": 300,
-  "Prefix": "seqlong-blob-af",
+  "Prefix": "myprefix",
   "Robots": 10,
   "NumberObjects": 10,
   "Warmup": 0,
   "Cooldown": 0,
-  "Operation": "TriggeredSequenceLong"
+  "Operation": "Wait5"
 }

@@ -12,7 +12,7 @@ Write-Host Building $Configuration Configuration...
 dotnet build -c $Configuration
 
 # enter the directory with the binaries 
-Push-Location -Path bin/$Configuration/netcoreapp3.1  
+Push-Location -Path bin/$Configuration/net6.0  
 
 # look up the two connection strings and assign them to the respective environment variables
 $Env:AzureWebJobsStorage = (az storage account show-connection-string --name $storageName --resource-group $groupName | ConvertFrom-Json).connectionString
