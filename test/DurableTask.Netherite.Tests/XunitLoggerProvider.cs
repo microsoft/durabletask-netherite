@@ -41,24 +41,35 @@ namespace DurableTask.Netherite.Tests
                 // Write the information to the system trace
                 string formattedString = formatter(state, exception);
 
-                switch (logLevel)
+                int attempts = 0;
+                while (++attempts <= 2)
                 {
-                    case LogLevel.Information:
-                    case LogLevel.Debug:
-                    case LogLevel.Trace:
-                        System.Diagnostics.Trace.TraceInformation(formattedString);
-                        break;
-                    case LogLevel.Error:
-                    case LogLevel.Critical:
-                        System.Diagnostics.Trace.TraceError(formattedString);
-                        if (exception != null)
-                            System.Diagnostics.Trace.TraceError(exception.ToString());
-                        break;
-                    case LogLevel.Warning:
-                        System.Diagnostics.Trace.TraceWarning(formattedString);
-                        if (exception != null)
-                            System.Diagnostics.Trace.TraceWarning(exception.ToString());
-                        break;
+                    try
+                    {
+                        switch (logLevel)
+                        {
+                            case LogLevel.Information:
+                            case LogLevel.Debug:
+                            case LogLevel.Trace:
+                                System.Diagnostics.Trace.TraceInformation(formattedString);
+                                break;
+                            case LogLevel.Error:
+                            case LogLevel.Critical:
+                                System.Diagnostics.Trace.TraceError(formattedString);
+                                if (exception != null)
+                                    System.Diagnostics.Trace.TraceError(exception.ToString());
+                                break;
+                            case LogLevel.Warning:
+                                System.Diagnostics.Trace.TraceWarning(formattedString);
+                                if (exception != null)
+                                    System.Diagnostics.Trace.TraceWarning(exception.ToString());
+                                break;
+                        }
+                    }
+                    catch (InvalidOperationException) when (attempts < 2)
+                    {
+                        continue; // logger throws this sometimes when listener list is being concurrently modified
+                    }
                 }
             }
 
