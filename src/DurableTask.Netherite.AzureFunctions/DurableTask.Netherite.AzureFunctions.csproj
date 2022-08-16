@@ -53,7 +53,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.10.0" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.7.2" />
-    <PackageReference Include="Microsoft.Azure.Functions.Extensions" Version="1.1.0" />
   </ItemGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' != 'netcoreapp2.2' ">

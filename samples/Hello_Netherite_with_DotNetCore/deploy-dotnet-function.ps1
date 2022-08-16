@@ -12,8 +12,7 @@ Write-Host Building $Configuration Configuration...
 dotnet build -c $Configuration
 
 # enter the directory with the binaries
-Push-Location -Path bin/$Configuration/netcoreapp3.1  
-
+Push-Location -Path bin/$Configuration/net6.0  
 
 Write-Host "Publishing Code to Function App..."
 func azure functionapp publish $functionAppName

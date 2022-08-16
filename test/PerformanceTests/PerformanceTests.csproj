@@ -1,16 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
-    <AzureFunctionsVersion>v3</AzureFunctionsVersion>
+    <TargetFramework>net6.0</TargetFramework>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Azure.Messaging.EventHubs" Version="5.7.0" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions" Version="4.0.1" />
-    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.10.0" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.7.2" />
-    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.EventHubs" Version="4.2.0" />
-    <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="3.0.13" />
+    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.EventHubs" Version="5.1.1" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.Storage" Version="4.0.4" />
+	<PackageReference Include="Microsoft.NET.Sdk.Functions" Version="4.1.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\DurableTask.Netherite.AzureFunctions\DurableTask.Netherite.AzureFunctions.csproj" />

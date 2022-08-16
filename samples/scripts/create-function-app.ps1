@@ -25,11 +25,11 @@ if (-not ((az functionapp list -g $groupName --query "[].name" | ConvertFrom-Jso
 
 	if ($Runtime -eq "dotnet") {
 		Write-Host "for .NET"
-		az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 3 --runtime $Runtime --os-type $OsType
+		az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 4 --runtime $Runtime --os-type $OsType
 	}
 	else {
 		Write-Host "for $Runtime"
-		az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 3 --runtime $Runtime --runtime-version $RuntimeVersion --os-type $OsType		
+		az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 4 --runtime $Runtime --runtime-version $RuntimeVersion --os-type $OsType		
 	}
 	
 	az functionapp config set -n $functionAppName -g $groupName --use-32bit-worker-process false

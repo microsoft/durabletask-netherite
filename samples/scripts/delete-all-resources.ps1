@@ -4,4 +4,4 @@
 . ./settings.ps1
  
 Write-Host "Deleting Resource Group..."
-az group delete --name $groupName
+az group delete --name $groupName --yes
