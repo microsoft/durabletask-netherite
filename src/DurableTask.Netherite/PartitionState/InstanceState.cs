@@ -105,6 +105,20 @@ namespace DurableTask.Netherite
 
         public override void Process(BatchProcessed evt, EffectTracker effects)
         {
+            if (evt.DeleteInstance)
+            {
+                // this instance is an entity that was implicitly deleted
+                if (this.OrchestrationState != null)
+                {
+                    // decrement the instance count
+                    effects.Add(TrackedObjectKey.Stats);
+                }
+                this.OrchestrationState = null;
+                this.OrchestrationStateSize = 0;
+                effects.AddDeletion(this.Key);
+                return;
+            }
+
             if (this.OrchestrationState == null)
             {
                 // a new instance is created (this can happen for suborchestrations or for entities)

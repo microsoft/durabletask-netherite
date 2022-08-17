@@ -854,6 +854,7 @@ namespace DurableTask.Netherite
                 RemoteMessages = remoteMessages,
                 TimerMessages = (List<TaskMessage>)timerMessages,
                 Timestamp = state.LastUpdatedTime,
+                DeleteInstance = newOrchestrationRuntimeState.IsImplicitDeletion(),
             };
 
             if (state.Status != orchestrationWorkItem.CustomStatus)

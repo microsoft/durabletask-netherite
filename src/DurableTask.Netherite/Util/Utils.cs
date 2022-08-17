@@ -82,5 +82,15 @@ namespace DurableTask.Netherite
                 }
             }
         }
+
+        public static bool IsImplicitDeletion(this OrchestrationRuntimeState runtimeState)
+        {
+            return runtimeState.Events.Count == 3
+               && runtimeState.Events[0].EventType == EventType.OrchestratorStarted
+               && runtimeState.Events[1] is ExecutionStartedEvent executionStartedEvent
+               && executionStartedEvent.Input == null
+               && DurableTask.Core.Common.Entities.IsEntityInstance(executionStartedEvent.OrchestrationInstance.InstanceId)
+               && runtimeState.Events[2].EventType == EventType.OrchestratorCompleted;
+        }
     }
 }
