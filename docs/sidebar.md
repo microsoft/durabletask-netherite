@@ -17,7 +17,8 @@
   * [Partition Table](ptable.md)
 
 * Performance
-  * [Throughput](throughput.md)
+  * [Basic Scenarios](scenarios.md)
+  * [Benchmarks](throughput.md)
 
 * Configuration
   * [Connection Names](connectionnames.md)  

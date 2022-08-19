@@ -1,8 +1,15 @@
-# Throughput testing
+# Throughput Benchmarks
 
-The following tests demonstrate the performance characteristics of Netherite, and compare them to the legacy Azure Storage backend. 
+To test Netherite at scale, we run a large number of orchestrations at the same time. For the results in this section, we disabled the autoscaling and used a fixed number of workers. This provides us with a general idea of the tradeoff between cost and time taken to execute the work.
 
-**Counting events**. To make throughput easier to compare between benchmarks and backends, we report it as *events per second*. Conceptually, orchestration events correspond to the messages going through persistent queues. For example,
+**How the experiments are run.** Simply put, we start a number of independent orchestrations and wait for them all to complete. The experiment is started by an Http Trigger function. For large scale experiments, launching all the orchestrations from a single function is too slow, i.e. the speed of starting orchestrations becomes a limiting factor on the throughput. Thus, we use a different method:
+
+|#Orchestrations|Launch Method|
+|-|-|
+|<10000| start all the orchestrations directly  |
+|10000| signal 50 entities that each launches 200 orchestrations |
+
+**Counting events**. To make throughput easier to compare between benchmarks and backends, we report it not only as orchestrations per seconds, but also as *events per second*. Conceptually, orchestration events correspond to the messages going through persistent queues. For example,
 
 - calling an activity function and handling the response is 2 events
 - calling a suborchestrator function and handling the response is 2 events
@@ -12,13 +19,6 @@ The following tests demonstrate the performance characteristics of Netherite, an
 - handling an expired timer is 1 event
 
 Event counting is useful for quick back-of-the-napkin calculations to get a rough idea of the throughput requirements for an application. Of course, these are approximations; not all events are in fact equal. For example, the size of the message matters, and the backends contain various optimizations that improve the performance of certain events (such as batching of entity operations).  
-
-**How the experiment is run.** Simply put, we start a number of independent orchestrations and wait for them all to complete. The experiment is started by an Http Trigger function. For large scale experiments, launching all the orchestrations from a single function is too slow, i.e. the speed of starting orchestrations becomes a limiting factor on the throughput. Thus, we use a different method:
-
-|#Orchestrations|Launch Method|
-|-|-|
-|<10000| start all the orchestrations directly  |
-|10000| signal 50 entities that each launches 200 orchestrations |
 
 **How throughput is defined and measured.** For these experiments we define the throughput, in events per second, as
 
