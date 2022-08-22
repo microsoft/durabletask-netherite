@@ -252,6 +252,8 @@ namespace DurableTask.Netherite
                 throw new InvalidOperationException($"Must specify {nameof(this.HubName)} for Netherite storage provider.");
             }
 
+            ValidateTaskhubName(this.HubName);
+
             if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
             {
                 if (nameResolver == null)
@@ -363,6 +365,32 @@ namespace DurableTask.Netherite
             {
                 throw new ArgumentOutOfRangeException(nameof(this.MaxConcurrentActivityFunctions));
             }
-        }      
+        }
+
+        const int MinTaskHubNameSize = 1;
+        const int MaxTaskHubNameSize = 45;
+
+        public static void ValidateTaskhubName(string taskhubName)
+        {
+            if (taskhubName.Length < MinTaskHubNameSize || taskhubName.Length > MaxTaskHubNameSize)
+            {
+                throw new ArgumentException(GetTaskHubErrorString(taskhubName));
+            }
+
+            try
+            {
+                Microsoft.Azure.Storage.NameValidator.ValidateContainerName(taskhubName.ToLowerInvariant());
+                Microsoft.Azure.Storage.NameValidator.ValidateBlobName(taskhubName);
+            }
+            catch (ArgumentException e)
+            {
+                throw new ArgumentException(GetTaskHubErrorString(taskhubName), e);
+            }
+        }
+
+        static string GetTaskHubErrorString(string hubName)
+        {
+            return $"Task hub name '{hubName}' should contain only alphanumeric characters, start with a letter, and have length between {MinTaskHubNameSize} and {MaxTaskHubNameSize}.";
+        }
     }
 }
