@@ -234,7 +234,7 @@ namespace DurableTask.Netherite.Faster
             return this.RemoveCheckpointIntention(guid);
         }
 
-        public override void CheckInvariants()
+        public override void CheckInvariants(int retries)
         {
         }
 

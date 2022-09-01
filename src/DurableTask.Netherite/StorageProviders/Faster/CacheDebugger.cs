@@ -281,6 +281,21 @@ namespace DurableTask.Netherite.Faster
             });
         }
 
+        internal class ValidationFailedException : Exception
+        {
+            public ValidationFailedException()
+            {
+            }
+
+            public ValidationFailedException(string message, TrackedObjectKey key)
+                : base(message)
+            {
+                this.Key = key;
+            }
+
+            public TrackedObjectKey Key { get; set; }
+        }     
+
         internal bool CheckSize(TrackedObjectKey key, List<(long delta, long address, string desc)> entries, long headAddress)
         {
             if (!this.EnableSizeChecking)
@@ -321,8 +336,7 @@ namespace DurableTask.Netherite.Faster
                 // forcefully terminate if the adjusted size does not match
                 if (adjustedReference != adjustedActual)
                 {
-                    this.Fail($"Size tracking is not accurate reference={reference} actual={actual} referenceEntries={PrintExpectedEntries()} actualEntries={PrintActualEntries()} adjustedReference={adjustedReference} adjustedActual={adjustedActual} adjustedHead={adjustedHead:x} headAddress={headAddress:x}", key);
-                    return false;
+                    throw new ValidationFailedException($"Size tracking is not accurate reference={reference} actual={actual} referenceEntries={PrintExpectedEntries()} actualEntries={PrintActualEntries()} adjustedReference={adjustedReference} adjustedActual={adjustedActual} adjustedHead={adjustedHead:x} headAddress={headAddress:x}", key);
 
                     string PrintExpectedEntries()
                     {

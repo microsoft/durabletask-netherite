@@ -506,7 +506,7 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 // during testing, this is a good time to check invariants in the store
-                this.store.CheckInvariants();
+                this.store.CheckInvariants(1);
             }
             catch (OperationCanceledException) when (this.cancellationToken.IsCancellationRequested)
             {

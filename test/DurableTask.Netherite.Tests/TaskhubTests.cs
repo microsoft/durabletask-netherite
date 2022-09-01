@@ -89,7 +89,6 @@ namespace DurableTask.Netherite.Tests
                 var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
                 var orchestrationService = (IOrchestrationService)service;
                 var orchestrationServiceClient = (IOrchestrationServiceQueryClient)service;
-                await orchestrationService.CreateAsync();
                 await orchestrationService.StartAsync();
                 var host = (TransportAbstraction.IHost)service;
                 var client = new TaskHubClient(service);

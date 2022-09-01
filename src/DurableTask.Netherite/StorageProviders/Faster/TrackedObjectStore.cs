@@ -39,7 +39,7 @@ namespace DurableTask.Netherite.Faster
 
         public abstract Task<long> RunCompactionAsync(long target);
 
-        public abstract void CheckInvariants();
+        public abstract void CheckInvariants(int retries);
 
         // perform a query
         public abstract Task QueryAsync(PartitionQueryEvent queryEvent, EffectTracker effectTracker);

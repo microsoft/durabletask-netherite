@@ -104,7 +104,10 @@ namespace DurableTask.Netherite.Tests
             var service = new NetheriteOrchestrationService(this.settings, this.loggerFactory);
             var orchestrationService = (IOrchestrationService)service;
             var orchestrationServiceClient = (IOrchestrationServiceClient)service;
-            await orchestrationService.CreateAsync();
+            if (!recover)
+            {
+                await orchestrationService.CreateAsync();
+            }
             await orchestrationService.StartAsync();
             Assert.Equal(this.settings.PartitionCount, (int)service.NumberPartitions);
             var worker = new TaskHubWorker(service);
@@ -761,7 +764,6 @@ namespace DurableTask.Netherite.Tests
                 var service = new NetheriteOrchestrationService(this.settings, this.loggerFactory);
                 var orchestrationService = (IOrchestrationService)service;
                 var orchestrationServiceQueryClient = (IOrchestrationServiceQueryClient)service;
-                await orchestrationService.CreateAsync();
                 await orchestrationService.StartAsync();
                 var host = (TransportAbstraction.IHost)service;
                 Assert.Equal(1u, service.NumberPartitions);
@@ -860,7 +862,6 @@ namespace DurableTask.Netherite.Tests
                 var service = new NetheriteOrchestrationService(this.settings, this.loggerFactory);
                 var orchestrationService = (IOrchestrationService)service;
                 var orchestrationServiceClient = (IOrchestrationServiceClient)service;
-                await orchestrationService.CreateAsync();
                 await orchestrationService.StartAsync();
                 Assert.Equal(this.settings.PartitionCount, (int)service.NumberPartitions);
                 var worker = new TaskHubWorker(service);

@@ -22,7 +22,6 @@ namespace DurableTask.Netherite
 
         Partition partition;
         EffectTracker effects;
-        long nextSubmitPosition = 0;
         long commitPosition = 0;
         long inputQueuePosition = 0;
 

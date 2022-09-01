@@ -177,7 +177,7 @@ namespace DurableTask.Netherite.Faster
             this.singletons = new TrackedObject[TrackedObjectKey.NumberSingletonTypes];
             this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
             this.cacheTracker.MeasureCacheSize(true);
-            this.CheckInvariants();
+            this.CheckInvariants(0);
         }
 
         public override async Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
@@ -202,7 +202,7 @@ namespace DurableTask.Netherite.Faster
                 await this.fht.RecoverAsync(this.partition.Settings.FasterTuningParameters?.NumPagesToPreload ?? 1, true, -1, this.terminationToken);
                 this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
                 this.cacheTracker.MeasureCacheSize(true);
-                this.CheckInvariants();
+                this.CheckInvariants(0);
 
                 return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition, this.blobManager.CheckpointInfo.InputQueueFingerprint);
             }
@@ -988,12 +988,26 @@ namespace DurableTask.Netherite.Faster
             this.cacheTracker.Notify();
         }
 
-        public override void CheckInvariants()
+        public override void CheckInvariants(int retries)
         {
-            this.ValidateMemoryTracker();
+            try
+            {
+                this.ValidateMemoryTracker(false);
+            }
+            catch (CacheDebugger.ValidationFailedException e)
+            {
+                if (retries == 0)
+                {
+                    this.cacheDebugger.Fail(e.Message, e.Key);
+                }
+                else
+                {
+                    this.CheckInvariants(retries - 1);
+                }
+            }
         }
 
-        public void ValidateMemoryTracker()
+        public void ValidateMemoryTracker(bool failOnMismatch)
         {
             if (this.cacheDebugger == null)
             {
