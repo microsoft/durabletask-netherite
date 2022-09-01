@@ -177,7 +177,7 @@ namespace DurableTask.Netherite.Faster
             this.singletons = new TrackedObject[TrackedObjectKey.NumberSingletonTypes];
             this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
             this.cacheTracker.MeasureCacheSize(true);
-            this.CheckInvariants(0);
+            this.CheckInvariants();
         }
 
         public override async Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
@@ -202,7 +202,7 @@ namespace DurableTask.Netherite.Faster
                 await this.fht.RecoverAsync(this.partition.Settings.FasterTuningParameters?.NumPagesToPreload ?? 1, true, -1, this.terminationToken);
                 this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
                 this.cacheTracker.MeasureCacheSize(true);
-                this.CheckInvariants(0);
+                this.CheckInvariants();
 
                 return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition, this.blobManager.CheckpointInfo.InputQueueFingerprint);
             }
@@ -988,11 +988,77 @@ namespace DurableTask.Netherite.Faster
             this.cacheTracker.Notify();
         }
 
-        public override void CheckInvariants(int retries)
+        public override void CheckInvariants()
+        {
+            if (this.cacheDebugger != null)
+            {
+                this.ValidateMemoryTracker(1);
+            }
+        }
+
+        public void ValidateMemoryTracker(int retries)
         {
             try
             {
-                this.ValidateMemoryTracker(false);
+
+                long trackedSizeBefore = 0;
+                long totalSize = 0;
+                Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>> perKey = null;
+
+                // we now scan the in-memory part of the log and compute the total size, and store, for each key, the list of records found
+                this.ScanMemorySection(Init, Iteration);
+
+                void Init()
+                {
+                    trackedSizeBefore = this.cacheTracker.TrackedObjectSize;
+                    totalSize = 0;
+                    perKey = new Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>>();
+                }
+
+                void Iteration(RecordInfo recordInfo, Key key, Value value, long currentAddress)
+                {
+                    long delta = key.Val.EstimatedSize;
+                    if (!recordInfo.Tombstone)
+                    {
+                        delta += value.EstimatedSize;
+                    }
+                    Add(key, delta, currentAddress, $"{(recordInfo.Invalid ? "I" : "")}{(recordInfo.Tombstone ? "T" : "")}{delta}@{currentAddress.ToString("x")}");
+                }
+
+                void Add(TrackedObjectKey key, long delta, long address, string desc)
+                {
+                    perKey.TryGetValue(key, out var current);
+                    if (current == null)
+                    {
+                        current = perKey[key] = new List<(long delta, long address, string desc)>();
+                    }
+                    current.Add((delta, address, desc));
+                    totalSize += delta;
+                }
+
+                foreach (var k in this.cacheDebugger.Keys)
+                {
+                    if (!perKey.ContainsKey(k))
+                    {
+                        perKey.Add(k, emptyList); // for keys that were not found in memory, the list of records is empty
+                    }
+                }
+
+                long trackedSizeAfter = this.cacheTracker.TrackedObjectSize;
+                bool sizeMatches = true;
+
+                // now we compare, for each key, the list of entries found in memory with what the cache debugger is tracking
+                foreach (var kvp in perKey)
+                {
+                    sizeMatches = sizeMatches && this.cacheDebugger.CheckSize(kvp.Key, kvp.Value, this.Log.HeadAddress);
+                }
+
+                // if the records matched for each key, then the total size should also match
+                if (sizeMatches && trackedSizeBefore == trackedSizeAfter && trackedSizeBefore != totalSize)
+                {
+                    this.cacheDebugger.Fail("total size of tracked objects does not match");
+                }
+
             }
             catch (CacheDebugger.ValidationFailedException e)
             {
@@ -1002,74 +1068,9 @@ namespace DurableTask.Netherite.Faster
                 }
                 else
                 {
-                    this.CheckInvariants(retries - 1);
+                    Thread.Sleep(TimeSpan.FromSeconds(1));
+                    this.ValidateMemoryTracker(retries - 1);
                 }
-            }
-        }
-
-        public void ValidateMemoryTracker(bool failOnMismatch)
-        {
-            if (this.cacheDebugger == null)
-            {
-                return; // we only do this when the cache debugger is attached
-            }
-
-            long trackedSizeBefore = 0;
-            long totalSize = 0;
-            Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>> perKey = null;
-
-            // we now scan the in-memory part of the log and compute the total size, and store, for each key, the list of records found
-            this.ScanMemorySection(Init, Iteration);
-
-            void Init()
-            {
-                trackedSizeBefore = this.cacheTracker.TrackedObjectSize;
-                totalSize = 0;
-                perKey = new Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>>();
-            }
-
-            void Iteration(RecordInfo recordInfo, Key key, Value value, long currentAddress)
-            {
-                long delta = key.Val.EstimatedSize;
-                if (!recordInfo.Tombstone)
-                {
-                    delta += value.EstimatedSize;
-                }
-                Add(key, delta, currentAddress, $"{(recordInfo.Invalid ? "I" : "")}{(recordInfo.Tombstone ? "T" : "")}{delta}@{currentAddress.ToString("x")}");
-            }
-              
-            void Add(TrackedObjectKey key, long delta, long address, string desc)
-            {
-                perKey.TryGetValue(key, out var current);
-                if (current == null)
-                {
-                    current = perKey[key] = new List<(long delta, long address, string desc)>();
-                }       
-                current.Add((delta, address, desc));
-                totalSize += delta;
-            }
-
-            foreach (var k in this.cacheDebugger.Keys)
-            {
-                if (!perKey.ContainsKey(k))
-                {
-                    perKey.Add(k, emptyList); // for keys that were not found in memory, the list of records is empty
-                }
-            }
-
-            long trackedSizeAfter = this.cacheTracker.TrackedObjectSize;
-            bool sizeMatches = true;
-
-            // now we compare, for each key, the list of entries found in memory with what the cache debugger is tracking
-            foreach (var kvp in perKey)
-            {
-                sizeMatches = sizeMatches && this.cacheDebugger.CheckSize(kvp.Key, kvp.Value, this.Log.HeadAddress);
-            }
-
-            // if the records matched for each key, then the total size should also match
-            if (sizeMatches && trackedSizeBefore == trackedSizeAfter && trackedSizeBefore != totalSize)
-            {
-                this.cacheDebugger.Fail("total size of tracked objects does not match");
             }
         }
 
