@@ -11,12 +11,12 @@ namespace DurableTask.Netherite.Scaling
     using System.Threading;
     using System.Threading.Tasks;
 
-    class AzureTableLoadMonitor : ILoadMonitorService
+    class AzureTableLoadPublisher : ILoadPublisherService
     {
         readonly CloudTable table;
         readonly string taskHubName;
 
-        public AzureTableLoadMonitor(string connectionString, string tableName, string taskHubName)
+        public AzureTableLoadPublisher(string connectionString, string tableName, string taskHubName)
         {
             var account = CloudStorageAccount.Parse(connectionString);
             this.table = account.CreateCloudTableClient().GetTableReference(tableName);

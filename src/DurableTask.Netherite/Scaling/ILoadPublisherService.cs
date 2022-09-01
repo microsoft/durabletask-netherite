@@ -10,9 +10,9 @@ namespace DurableTask.Netherite.Scaling
     using System.Threading.Tasks;
 
     /// <summary>
-    /// An interface for the load monitor service.
+    /// An interface for the load publish service.
     /// </summary>
-    public interface ILoadMonitorService
+    public interface ILoadPublisherService
     {
         /// <summary>
         /// Publish the load of a partition to the service.

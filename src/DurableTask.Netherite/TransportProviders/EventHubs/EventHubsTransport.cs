@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.EventHubs
+namespace DurableTask.Netherite.EventHubsTransport
 {
     using System;
     using System.Collections.Generic;
@@ -16,12 +16,13 @@ namespace DurableTask.Netherite.EventHubs
     using DurableTask.Netherite.Faster;
     using System.Linq;
     using System.Threading.Channels;
+    using DurableTask.Netherite.Abstractions;
 
     /// <summary>
     /// The EventHubs transport implementation.
     /// </summary>
     class EventHubsTransport :
-        ITaskHub,
+        ITransportProvider,
         IEventProcessorFactory,
         TransportAbstraction.ISender
     {
@@ -30,6 +31,7 @@ namespace DurableTask.Netherite.EventHubs
         readonly CloudStorageAccount cloudStorageAccount;
         readonly ILogger logger;
         readonly EventHubsTraceHelper traceHelper;
+        readonly IStorageProvider storage;
 
         EventProcessorHost eventProcessorHost;
         EventProcessorHost loadMonitorHost;
@@ -37,6 +39,7 @@ namespace DurableTask.Netherite.EventHubs
         bool hasWorkers;
 
         TaskhubParameters parameters;
+        string pathPrefix;
         byte[] taskhubGuid;
         EventHubsConnections connections;
 
@@ -45,28 +48,28 @@ namespace DurableTask.Netherite.EventHubs
         Task[] clientConnectionsEstablished;
 
         CancellationTokenSource shutdownSource;
-        readonly CloudBlobContainer cloudBlobContainer;
-        readonly CloudBlockBlob taskhubParameters;
-        readonly CloudBlockBlob partitionScript;
+        CloudBlobContainer cloudBlobContainer;
+        CloudBlockBlob partitionScript;
         ScriptedEventProcessorHost scriptedEventProcessorHost;
 
         public Guid ClientId { get; private set; }
         public string Fingerprint => this.connections.Fingerprint;
 
-        public EventHubsTransport(TransportAbstraction.IHost host, NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory)
+        public EventHubsTransport(TransportAbstraction.IHost host, NetheriteOrchestrationServiceSettings settings, IStorageProvider storage, ILoggerFactory loggerFactory)
         {
+            if (storage is MemoryStorageProvider)
+            {
+                throw new InvalidOperationException($"Configuration error: in-memory storage cannot be used together with a real event hubs namespace");
+            }
+
             this.host = host;
             this.settings = settings;
             this.cloudStorageAccount = CloudStorageAccount.Parse(this.settings.ResolvedStorageConnectionString);
+            this.storage = storage;
             string namespaceName = TransportConnectionString.EventHubsNamespaceName(settings.ResolvedTransportConnectionString);
             this.logger = EventHubsTraceHelper.CreateLogger(loggerFactory);
             this.traceHelper = new EventHubsTraceHelper(this.logger, settings.TransportLogLevelLimit, null, this.cloudStorageAccount.Credentials.AccountName, settings.HubName, namespaceName);
             this.ClientId = Guid.NewGuid();
-            var blobContainerName = GetContainerName(settings.HubName);
-            var cloudBlobClient = this.cloudStorageAccount.CreateCloudBlobClient();
-            this.cloudBlobContainer = cloudBlobClient.GetContainerReference(blobContainerName);
-            this.taskhubParameters = this.cloudBlobContainer.GetBlockBlobReference("taskhubparameters.json");
-            this.partitionScript = this.cloudBlobContainer.GetBlockBlobReference("partitionscript.json");
         }
 
         // these are hardcoded now but we may turn them into settings
@@ -77,123 +80,29 @@ namespace DurableTask.Netherite.EventHubs
         public static string ClientConsumerGroup = "$Default";
         public static string LoadMonitorConsumerGroup = "$Default";
 
-        // the path prefix is used to prevent some issues (races, partial deletions) when recreating a taskhub of the same name
-        // since it is a rare circumstance, taking six characters of the Guid is unique enough
-        public static string TaskhubPathPrefix(Guid taskhubGuid) => $"{taskhubGuid.ToString()}/";
-
-        static string GetContainerName(string taskHubName) => taskHubName.ToLowerInvariant() + "-storage";
-
-        async Task<TaskhubParameters> TryLoadExistingTaskhubAsync()
-        {
-            // try load the taskhub parameters
-            try
-            {
-                var jsonText = await this.taskhubParameters.DownloadTextAsync();
-                return  JsonConvert.DeserializeObject<TaskhubParameters>(jsonText);
-            }
-            catch (StorageException ex) when (ex.RequestInformation.HttpStatusCode == 404)
-            {
-                return null;
-            }
-        }
-
-        async Task<bool> ExistsAsync()
-        {
-            var parameters = await this.TryLoadExistingTaskhubAsync();
-            return (parameters != null && parameters.TaskhubName == this.settings.HubName);
-        }
-
-        async Task<bool> CreateIfNotExistsAsync()
-        {
-            bool containerCreated = await this.cloudBlobContainer.CreateIfNotExistsAsync();
-            if (containerCreated)
-            {
-                this.traceHelper.LogInformation("Created new blob container at {container}", this.cloudBlobContainer.Uri);
-            }
-            else
-            {
-                this.traceHelper.LogInformation("Using existing blob container at {container}", this.cloudBlobContainer.Uri);
-            }
-
-            var taskHubParameters = new TaskhubParameters()
-            {
-                TaskhubName = this.settings.HubName,
-                TaskhubGuid = Guid.NewGuid(),
-                CreationTimestamp = DateTime.UtcNow,
-                StorageFormat = BlobManager.GetStorageFormat(this.settings),
-                PartitionCount = this.settings.PartitionCount,
-            };
-
-            // try to create the taskhub blob
-            try
-            {
-                var jsonText = JsonConvert.SerializeObject(
-                    taskHubParameters,
-                    Newtonsoft.Json.Formatting.Indented,
-                    new JsonSerializerSettings() { TypeNameHandling = TypeNameHandling.None });
-
-                var noOverwrite = AccessCondition.GenerateIfNoneMatchCondition("*");
-                await this.taskhubParameters.UploadTextAsync(jsonText, null, noOverwrite, null, null);
-                this.traceHelper.LogInformation("Created new taskhub");
-
-                // zap the partition hub so we start from zero queue positions
-                await EventHubsUtil.DeleteEventHubIfExistsAsync(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHub);
-            }
-            catch (StorageException e) when (BlobUtils.BlobAlreadyExists(e))
-            {
-                // taskhub already exists, possibly because a different node created it faster
-                this.traceHelper.LogInformation("Confirmed existing taskhub");
-
-                return false;
-            }
-
-            // we successfully created the taskhub
-            return true;
-        }
-
-        async Task DeleteAsync()
-        {
-            var parameters = await this.TryLoadExistingTaskhubAsync();
-
-            if (parameters != null)
-            {           
-                // first, delete the parameters file which deletes the taskhub logically
-                await BlobUtils.ForceDeleteAsync(this.taskhubParameters);
-
-                // delete all the files/blobs in the directory/container that represents this taskhub
-                // If this does not complete successfully, some garbage may be left behind.
-                await this.host.StorageProvider.DeleteTaskhubAsync(TaskhubPathPrefix(parameters.TaskhubGuid));
-            }
-        }
-
-        async Task StartClientAsync()
+        async Task<TaskhubParameters> ITransportProvider.StartAsync()
         {
             this.shutdownSource = new CancellationTokenSource();
 
-            // load the taskhub parameters
-            try
-            {
-                var jsonText = await this.taskhubParameters.DownloadTextAsync();
-                this.parameters = JsonConvert.DeserializeObject<TaskhubParameters>(jsonText);
-                this.taskhubGuid = this.parameters.TaskhubGuid.ToByteArray();
-            }
-            catch(StorageException e) when (e.RequestInformation.HttpStatusCode == (int) System.Net.HttpStatusCode.NotFound)
-            {
-                throw new InvalidOperationException($"The specified taskhub does not exist (TaskHub={this.settings.HubName}, StorageConnectionName={this.settings.StorageConnectionName}, EventHubsConnectionName={this.settings.EventHubsConnectionName})");
-            }
+            this.parameters = await this.storage.TryLoadTaskhubAsync(throwIfNotFound: true);
 
             // check that we are the correct taskhub!
             if (this.parameters.TaskhubName != this.settings.HubName)
             {
-                throw new InvalidOperationException($"The specified taskhub name does not match the task hub name in {this.taskhubParameters.Name}");
+                throw new InvalidOperationException($"The specified taskhub name does not match the task hub name in storage");
             }
+
+            this.taskhubGuid = this.parameters.TaskhubGuid.ToByteArray();
+            (string containerName, string path) = this.storage.GetTaskhubPathPrefix(this.parameters);
+            this.pathPrefix = path;
+
+            var cloudBlobClient = this.cloudStorageAccount.CreateCloudBlobClient();
+            this.cloudBlobContainer = cloudBlobClient.GetContainerReference(containerName);
+            this.partitionScript = this.cloudBlobContainer.GetBlockBlobReference("partitionscript.json");
 
             // check that the storage format is supported
             BlobManager.CheckStorageFormat(this.parameters.StorageFormat, this.settings);
 
-            this.host.NumberPartitions = (uint)this.parameters.PartitionCount;
-            this.host.PathPrefix = TaskhubPathPrefix(this.parameters.TaskhubGuid);
-           
             this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub)
             {
                 Host = host,
@@ -202,6 +111,11 @@ namespace DurableTask.Netherite.EventHubs
 
             await this.connections.StartAsync(this.parameters);
 
+            return this.parameters;
+        }
+
+        async Task ITransportProvider.StartClientAsync()
+        {
             this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
 
             var channel = Channel.CreateBounded<ClientEvent>(new BoundedChannelOptions(500)
@@ -229,7 +143,7 @@ namespace DurableTask.Netherite.EventHubs
             await Task.WhenAll(this.clientConnectionsEstablished);
         }
 
-        async Task StartWorkersAsync()
+        async Task ITransportProvider.StartWorkersAsync()
         {
             if (this.client == null)
             {
@@ -257,7 +171,7 @@ namespace DurableTask.Netherite.EventHubs
                         this.settings.ResolvedTransportConnectionString,
                         this.settings.ResolvedStorageConnectionString,
                         this.cloudBlobContainer.Name,
-                        $"{TaskhubPathPrefix(this.parameters.TaskhubGuid)}eh-checkpoints/{(EventHubsTransport.PartitionHub)}/{formattedCreationDate}");
+                        $"{this.pathPrefix}eh-checkpoints/{(EventHubsTransport.PartitionHub)}/{formattedCreationDate}");
 
                     var processorOptions = new EventProcessorOptions()
                     {
@@ -304,7 +218,7 @@ namespace DurableTask.Netherite.EventHubs
                         this.settings.ResolvedTransportConnectionString,
                         this.settings.ResolvedStorageConnectionString,
                         this.cloudBlobContainer.Name,
-                        $"{TaskhubPathPrefix(this.parameters.TaskhubGuid)}eh-checkpoints/{LoadMonitorHub}");
+                        $"{this.pathPrefix}eh-checkpoints/{LoadMonitorHub}");
 
                 var processorOptions = new EventProcessorOptions()
                 {
@@ -376,7 +290,7 @@ namespace DurableTask.Netherite.EventHubs
             }
         }
 
-        async Task StopAsync()
+        async Task ITransportProvider.StopAsync()
         {
             this.traceHelper.LogInformation("Shutting down EventHubsBackend");
             this.shutdownSource.Cancel(); // initiates shutdown of client and of all partitions
@@ -401,11 +315,6 @@ namespace DurableTask.Netherite.EventHubs
             this.traceHelper.LogInformation("EventHubsBackend shutdown completed");
         }
 
-        async Task Restart()
-        {
-            await this.StopAsync();
-
-        }
         Task StopPartitionHost()
         {
             if (this.settings.PartitionManagement != PartitionManagementOptions.Scripted)
@@ -417,7 +326,6 @@ namespace DurableTask.Netherite.EventHubs
                 return this.scriptedEventProcessorHost.StopAsync();
             }   
         }
-
 
         IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
         {
@@ -547,98 +455,6 @@ namespace DurableTask.Netherite.EventHubs
             finally
             {
                 this.traceHelper.LogInformation("Client{clientId} event processing terminated", Client.GetShortId(this.ClientId));
-            }
-        }
-
-        async Task<bool> ITaskHub.ExistsAsync()
-        {
-            try
-            {
-                this.traceHelper.LogDebug("ITaskHub.ExistsAsync called");
-                bool result = await this.ExistsAsync();
-                this.traceHelper.LogDebug("ITaskHub.ExistsAsync returned {result}", result);
-                return result;
-            }
-            catch (Exception e)
-            {
-                this.traceHelper.LogError("ITaskHub.ExistsAsync failed with exception: {exception}", e);
-                throw;
-            }
-        }
-
-        async Task<bool> ITaskHub.CreateIfNotExistsAsync()
-        {
-            try
-            {
-                this.traceHelper.LogDebug("ITaskHub.CreateIfNotExistsAsync called");
-                bool result = await this.CreateIfNotExistsAsync();
-                this.traceHelper.LogDebug("ITaskHub.CreateIfNotExistsAsync returned {result}", result);
-                return result;
-            }
-            catch (Exception e)
-            {
-                this.traceHelper.LogError("ITaskHub.CreateIfNotExistsAsync failed with exception: {exception}", e);
-                throw;
-            }
-        }
-
-        async Task ITaskHub.DeleteAsync()
-        {
-            try
-            {
-                this.traceHelper.LogDebug("ITaskHub.DeleteAsync called");
-                await this.DeleteAsync();
-                this.traceHelper.LogDebug("ITaskHub.DeleteAsync returned");
-            }
-            catch (Exception e)
-            {
-                this.traceHelper.LogError("ITaskHub.DeleteAsync failed with exception: {exception}", e);
-                throw;
-            }
-        }
-
-        async Task ITaskHub.StartClientAsync()
-        {
-            try
-            {
-                this.traceHelper.LogDebug("ITaskHub.StartClientAsync called");
-                await this.StartClientAsync();
-                this.traceHelper.LogDebug("ITaskHub.StartClientAsync returned");
-            }
-            catch (Exception e)
-            {
-                this.traceHelper.LogError("ITaskHub.StartClientAsync failed with exception: {exception}", e);
-                throw;
-            }
-        }
-
-        async Task ITaskHub.StartWorkersAsync()
-        {
-            try
-            {
-                this.traceHelper.LogDebug("ITaskHub.StartWorkersAsync called");
-                await this.StartWorkersAsync();
-                this.traceHelper.LogDebug("ITaskHub.StartWorkersAsync returned");
-            }
-            catch (Exception e)
-            {
-                this.traceHelper.LogError("ITaskHub.StartWorkersAsync failed with exception: {exception}", e);
-                throw;
-            }
-        }
-
-        async Task ITaskHub.StopAsync()
-        {
-            try
-            {
-                this.traceHelper.LogDebug("ITaskHub.StopAsync called");
-                await this.StopAsync();
-                this.traceHelper.LogDebug("ITaskHub.StopAsync returned");
-            }
-            catch (Exception e)
-            {
-                this.traceHelper.LogError("ITaskHub.StopAsync failed with exception: {exception}", e);
-                throw;
             }
         }
     }

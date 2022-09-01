@@ -4,38 +4,28 @@
 namespace DurableTask.Netherite
 {
     using System.Threading.Tasks;
+    using DurableTask.Netherite.Abstractions;
 
     /// <summary>
     /// Top-level functionality for starting and stopping the transport back-end on a machine.
     /// </summary>
-    public interface ITaskHub
+    public interface ITransportProvider
     {
         /// <summary>
-        /// Tests whether this taskhub exists in storage.
+        /// Starts the transport backend. Throws an exception if taskhub does not exist in storage.
         /// </summary>
-        /// <returns>true if this taskhub has been created in storage.</returns>
-        Task<bool> ExistsAsync();
+        /// <param name="parameters"></param>
+        /// <returns>the task hub parameters</returns>
+        Task<TaskhubParameters> StartAsync();
 
         /// <summary>
-        /// Creates this taskhub in storage.
-        /// </summary>
-        /// <returns>true if the taskhub was actually created, false if it already existed.</returns>
-        Task<bool> CreateIfNotExistsAsync();
-
-        /// <summary>
-        /// Deletes this taskhub and all of its associated data in storage.
-        /// </summary>
-        /// <returns>after the taskhub has been deleted from storage.</returns>
-        Task DeleteAsync();
-
-        /// <summary>
-        /// Starts the transport backend and creates a client. 
+        /// Creates a client. Must be called after StartAsync() and before StartWorkersAsync();
         /// </summary>
         /// <returns>After the transport backend has started and created the client.</returns>
         Task StartClientAsync();
 
         /// <summary>
-        /// Starts the workers that process work items.
+        /// Starts the workers that process work items. Must be called after StartClientAsync();
         /// </summary>
         /// <returns>After the transport backend has started and created the client.</returns>
         Task StartWorkersAsync();

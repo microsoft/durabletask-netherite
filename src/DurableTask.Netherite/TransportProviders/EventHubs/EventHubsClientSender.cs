@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.EventHubs
+namespace DurableTask.Netherite.EventHubsTransport
 {
     using DurableTask.Core.Common;
     using Microsoft.Azure.EventHubs;
@@ -21,7 +21,7 @@ namespace DurableTask.Netherite.EventHubs
 
         public EventHubsClientSender(TransportAbstraction.IHost host, byte[] taskHubGuid, Guid clientId, PartitionSender[] senders, EventHubsTraceHelper traceHelper)
         {
-            this.channels = new EventHubs.EventHubsSender<ClientEvent>[senders.Length];
+            this.channels = new Netherite.EventHubsTransport.EventHubsSender<ClientEvent>[senders.Length];
             for (int i = 0; i < senders.Length; i++)
             {
                 this.channels[i] = new EventHubsSender<ClientEvent>(host, taskHubGuid, senders[i], traceHelper);

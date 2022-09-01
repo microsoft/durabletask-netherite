@@ -22,15 +22,16 @@ namespace DurableTask.Netherite.Tests
 
     [Collection("NetheriteTests")]
     [Trait("AnyTransport", "false")]
-    public partial class ConcurrentTests : IDisposable
+    public partial class ConcurrentTestsFaster : IDisposable
     {
         ITestOutputHelper outputHelper;
         readonly NetheriteOrchestrationServiceSettings settings;
 
-        public ConcurrentTests(ITestOutputHelper outputHelper)
+        public ConcurrentTestsFaster(ITestOutputHelper outputHelper)
         {
             this.outputHelper = outputHelper;
-            this.settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            TestConstants.ValidateEnvironment(requiresTransportSpec: false);
+            this.settings = TestConstants.GetNetheriteOrchestrationServiceSettings(emulationSpec: "SingleHost");
             string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
             this.settings.HubName = $"ConcurrentTests-{Guid.NewGuid().ToString("n")}";
         }
@@ -87,7 +88,7 @@ namespace DurableTask.Netherite.Tests
         public async Task EachScenarioOnce(bool restrictMemory)
         {
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, useCacheDebugger: true, useReplayChecker: true, restrictMemory ? (int?) 0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await HostFixture.StartNew(this.settings, useCacheDebugger: true, useReplayChecker: true, restrictMemory ? (int?) 0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = scenarios.StartAllScenarios(includeTimers: !restrictMemory, includeLarge: true).ToList();
@@ -105,9 +106,9 @@ namespace DurableTask.Netherite.Tests
         public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
             var orchestrationTimeout = TimeSpan.FromMinutes((restrictMemory ? 10 : 5) + multiplicity * (restrictMemory ? 0.5 : 0.1));
-            var startupTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsEmulatorSpecification(this.settings.ResolvedTransportConnectionString) ? 1 : 3.5);
+            var startupTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsPseudoConnectionString(this.settings.ResolvedTransportConnectionString) ? 1 : 3.5);
             var testTimeout = orchestrationTimeout + TimeSpan.FromMinutes(multiplicity * 0.2);
-            var shutDownTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsEmulatorSpecification(this.settings.ResolvedTransportConnectionString) ? 0.1 : 3);
+            var shutDownTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsPseudoConnectionString(this.settings.ResolvedTransportConnectionString) ? 0.1 : 3);
             var totalTimeout = startupTimeout + testTimeout + shutDownTimeout;
 
             using var _ = TestOrchestrationClient.WithExtraTime(orchestrationTimeout);
@@ -116,7 +117,7 @@ namespace DurableTask.Netherite.Tests
             {
                 Trace.WriteLine($"TestProgress: Started RunAsync");
 
-                using (var fixture = await SingleHostFixture.StartNew(
+                using (var fixture = await HostFixture.StartNew(
                     this.settings,
                     true,
                     useReplayChecker,
@@ -175,7 +176,7 @@ namespace DurableTask.Netherite.Tests
 
 
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(3));
-            using var fixture = await SingleHostFixture.StartNew(this.settings, true, false, 0, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await HostFixture.StartNew(this.settings, true, false, 0, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
 
             this.settings.TestHooks.CacheDebugger.EnableSizeChecking = false;
 

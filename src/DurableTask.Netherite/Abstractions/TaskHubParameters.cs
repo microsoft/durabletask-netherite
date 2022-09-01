@@ -1,17 +1,16 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.EventHubs
+namespace DurableTask.Netherite.Abstractions
 {
     using System;
     using System.Runtime.Serialization;
 
     /// <summary>
     /// The parameters for a specific taskhub instance.
-    /// This is saved in the blob "taskhub-parameters.json".
     /// </summary>
     [DataContract]
-    class TaskhubParameters
+    public class TaskhubParameters
     {
         [DataMember]
         public string TaskhubName { get; set; }

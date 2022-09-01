@@ -15,7 +15,7 @@ namespace DurableTask.Netherite.Tests
     /// <summary>
     /// A test fixture that starts the host before the tests start, and shuts it down after all the tests complete.
     /// </summary>
-    public class SingleHostFixture : IDisposable
+    public class HostFixture : IDisposable
     {
         readonly TestTraceListener traceListener;
         readonly XunitLoggerProvider loggerProvider;
@@ -26,22 +26,22 @@ namespace DurableTask.Netherite.Tests
 
         internal string TestHooksError { get; private set; }
 
-        public SingleHostFixture()
+        public HostFixture()
             : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, true, null, null)
         {
+            TestConstants.ValidateEnvironment(requiresTransportSpec: true);
             this.Host.StartAsync().Wait();
         }
 
-        SingleHostFixture(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, Action<string> output)
+        HostFixture(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, Action<string> output)
         {
             this.LoggerFactory = new LoggerFactory();
             this.loggerProvider = new XunitLoggerProvider();
             this.LoggerFactory.AddProvider(this.loggerProvider);
             this.traceListener = new TestTraceListener() { Output = output };
             Trace.Listeners.Add(this.traceListener);
-            TestConstants.ValidateEnvironment();
             string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
-            settings.HubName = $"SingleHostFixture-{timestamp}";
+            settings.HubName = $"HostFixture-{timestamp}";
             settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
             settings.InstanceCacheSizeMB = restrictMemory;
             if (useCacheDebugger)
@@ -61,16 +61,16 @@ namespace DurableTask.Netherite.Tests
             this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
         }
 
-        public static async Task<SingleHostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, TimeSpan timeout, Action<string> output)
+        public static async Task<HostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, TimeSpan timeout, Action<string> output)
         {
-            var fixture = new SingleHostFixture(settings, useCacheDebugger, useReplayChecker, restrictMemory, output);
+            var fixture = new HostFixture(settings, useCacheDebugger, useReplayChecker, restrictMemory, output);
             var startupTask = fixture.Host.StartAsync(); 
             timeout = TestOrchestrationClient.AdjustTimeout(timeout);
             var timeoutTask = Task.Delay(timeout);
             await Task.WhenAny(timeoutTask, startupTask);
             if (!startupTask.IsCompleted)
             {
-                throw new TimeoutException($"SingleHostFixture.StartNew timed out after {timeout}");
+                throw new TimeoutException($"HostFixture.StartNew timed out after {timeout}");
             }
             await startupTask;
             return fixture;

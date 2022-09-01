@@ -16,6 +16,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core.Common;
     using DurableTask.Core.History;
     using DurableTask.Core.Tracing;
+    using DurableTask.Netherite.Abstractions;
     using DurableTask.Netherite.Scaling;
     using Microsoft.Extensions.Logging;
 
@@ -45,7 +46,7 @@ namespace DurableTask.Netherite
         public TransportAbstraction.ISender BatchSender { get; private set; }
         public WorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; private set; }
         public WorkItemQueue<OrchestrationWorkItem> OrchestrationWorkItemQueue { get; private set; }
-        public LoadPublisher LoadPublisher { get; private set; }
+        public LoadPublishWorker LoadPublisher { get; private set; }
 
         public BatchTimer<PartitionEvent> PendingTimers { get; private set; }
 
@@ -66,7 +67,7 @@ namespace DurableTask.Netherite
             string storageAccountName,
             WorkItemQueue<ActivityWorkItem> activityWorkItemQueue,
             WorkItemQueue<OrchestrationWorkItem> orchestrationWorkItemQueue,
-            LoadPublisher loadPublisher,
+            LoadPublishWorker loadPublisher,
 
             WorkItemTraceHelper workItemTraceHelper)
         {
@@ -87,7 +88,7 @@ namespace DurableTask.Netherite
             this.LastTransition = this.CurrentTimeMs;
         }
 
-        public async Task<long> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, string inputQueueFingerprint)
+        public async Task<long> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, TaskhubParameters parameters, string inputQueueFingerprint)
         {
             EventTraceContext.Clear();
 
@@ -108,14 +109,13 @@ namespace DurableTask.Netherite
 
             }, useSynchronizationContext: false);
           
-
             await MaxConcurrentStarts.WaitAsync();
 
             // create or restore partition state from last snapshot
             try
             {
                 // create the state
-                this.State = ((IStorageProvider)this.host).CreatePartitionState();
+                this.State = ((TransportAbstraction.IHost) this.host).StorageProvider.CreatePartitionState(parameters);
 
                 // initialize timer for this partition
                 this.PendingTimers = new BatchTimer<PartitionEvent>(this.ErrorHandler.Token, this.TimersFired);

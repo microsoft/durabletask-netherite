@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.EventHubs
+namespace DurableTask.Netherite.EventHubsTransport
 {
     using System;
     using System.Collections.Concurrent;
@@ -12,6 +12,7 @@ namespace DurableTask.Netherite.EventHubs
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Core.Common;
+    using DurableTask.Netherite.Abstractions;
     using Microsoft.Azure.EventHubs;
     using Microsoft.Azure.EventHubs.Processor;
     using Microsoft.Extensions.Logging;
@@ -197,7 +198,7 @@ namespace DurableTask.Netherite.EventHubs
 
                 // start this partition (which may include waiting for the lease to become available)
                 c.Partition = this.host.AddPartition(this.partitionId, this.sender);
-                c.NextPacketToReceive = await c.Partition.CreateOrRestoreAsync(c.ErrorHandler, this.eventHubsTransport.Fingerprint);
+                c.NextPacketToReceive = await c.Partition.CreateOrRestoreAsync(c.ErrorHandler, this.parameters, this.eventHubsTransport.Fingerprint);
 
                 this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} started partition (incarnation {incarnation}), next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, c.Incarnation, c.NextPacketToReceive);
 

@@ -18,10 +18,10 @@ namespace DurableTask.Netherite.Tests
     using Xunit.Abstractions;
 
     [Collection("NetheriteTests")]
-    [Trait("AnyTransport", "true")]
+    [Trait("AnyTransport", "false")]
     public class TaskhubTests : IDisposable
     {
-        readonly SingleHostFixture.TestTraceListener traceListener;
+        readonly HostFixture.TestTraceListener traceListener;
         readonly ILoggerFactory loggerFactory;
         readonly XunitLoggerProvider provider;
         readonly Action<string> output;
@@ -35,9 +35,10 @@ namespace DurableTask.Netherite.Tests
             this.loggerFactory = new LoggerFactory();
             this.provider = new XunitLoggerProvider();
             this.loggerFactory.AddProvider(this.provider);
-            this.traceListener = new SingleHostFixture.TestTraceListener();
+            this.traceListener = new HostFixture.TestTraceListener();
             Trace.Listeners.Add(this.traceListener);
             this.traceListener.Output = this.output;
+            TestConstants.ValidateEnvironment(requiresTransportSpec: true);
         }
 
         public void Dispose()
@@ -50,11 +51,12 @@ namespace DurableTask.Netherite.Tests
         /// Create a taskhub, delete it, and create it again.
         /// </summary>
         [Theory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public async Task CreateDeleteCreate(bool deleteTwice)
+        [InlineData(true, false)]
+        [InlineData(true, true)]
+        [InlineData(false, true)]
+        public async Task CreateDeleteCreate(bool singleHost, bool deleteTwice)
         {
-            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings(singleHost ? "SingleHost" : null);
             settings.HubName = $"{nameof(TaskhubTests)}-{Guid.NewGuid()}";
 
             {

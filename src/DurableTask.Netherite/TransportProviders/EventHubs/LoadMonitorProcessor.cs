@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.EventHubs
+namespace DurableTask.Netherite.EventHubsTransport
 {
     using System;
     using System.Collections.Concurrent;
@@ -12,6 +12,7 @@ namespace DurableTask.Netherite.EventHubs
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Core.Common;
+    using DurableTask.Netherite.Abstractions;
     using Microsoft.Azure.EventHubs;
     using Microsoft.Azure.EventHubs.Processor;
     using Microsoft.Extensions.Logging;

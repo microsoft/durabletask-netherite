@@ -14,14 +14,14 @@ namespace DurableTask.Netherite.Scaling
     using System.Threading;
     using System.Threading.Tasks;
 
-    class AzureBlobLoadMonitor : ILoadMonitorService
+    class AzureBlobLoadPublisher : ILoadPublisherService
     {
         readonly string taskHubName;
         readonly CloudBlobContainer blobContainer;
         
         int? numPartitions;
 
-        public AzureBlobLoadMonitor(string connectionString, string taskHubName)
+        public AzureBlobLoadPublisher(string connectionString, string taskHubName)
         {
             var cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
             CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
@@ -65,7 +65,14 @@ namespace DurableTask.Netherite.Scaling
                 // determine number of partitions of taskhub
                 var blob = this.blobContainer.GetBlockBlobReference("taskhubparameters.json");
                 var jsonText = await blob.DownloadTextAsync().ConfigureAwait(false);
+
+/* Unmerged change from project 'DurableTask.Netherite (netcoreapp3.1)'
+Before:
                 var info = JsonConvert.DeserializeObject<EventHubs.TaskhubParameters>(jsonText);
+After:
+                var info = JsonConvert.DeserializeObject<TaskhubParameters>(jsonText);
+*/
+                var info = JsonConvert.DeserializeObject<Netherite.Abstractions.TaskhubParameters>(jsonText);
                 this.numPartitions = info.PartitionCount;
             }
 

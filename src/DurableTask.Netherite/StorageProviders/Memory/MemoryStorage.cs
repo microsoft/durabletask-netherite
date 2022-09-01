@@ -10,36 +10,36 @@ namespace DurableTask.Netherite
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Core;
+    using DurableTask.Netherite.Abstractions;
+    using DurableTask.Netherite.Faster;
+    using DurableTask.Netherite.Scaling;
     using Microsoft.Extensions.Logging;
 
     class MemoryStorage : BatchWorker<PartitionEvent>, IPartitionState
     {
         readonly ILogger logger;
+        readonly ConcurrentDictionary<TrackedObjectKey, TrackedObject> trackedObjects;
+
         Partition partition;
         EffectTracker effects;
         long nextSubmitPosition = 0;
         long commitPosition = 0;
         long inputQueuePosition = 0;
-        readonly ConcurrentDictionary<TrackedObjectKey, TrackedObject> trackedObjects
-            = new ConcurrentDictionary<TrackedObjectKey, TrackedObject>();
 
-        public MemoryStorage(ILogger logger) : base(nameof(MemoryStorage), true, int.MaxValue, CancellationToken.None, null)
+        public MemoryStorage(ILogger logger) : base(nameof(MemoryStorageProvider), true, int.MaxValue, CancellationToken.None, null)
         {
             this.logger = logger;
+            this.trackedObjects = new ConcurrentDictionary<TrackedObjectKey, TrackedObject>();
             foreach (var k in TrackedObjectKey.GetSingletons())
             {
                 this.GetOrAdd(k);
             }
         }
+ 
         public CancellationToken Termination => CancellationToken.None;
 
         public void SubmitEvent(PartitionEvent entry)
         {
-            if (entry is PartitionUpdateEvent updateEvent)
-            {
-                updateEvent.NextCommitLogPosition = ++this.nextSubmitPosition;
-            }
-
             base.Submit(entry);
         }
 
@@ -50,19 +50,12 @@ namespace DurableTask.Netherite
 
         public void SubmitEvents(IList<PartitionEvent> entries)
         {
-            foreach (var entry in entries)
-            {
-                if (entry is PartitionUpdateEvent updateEvent)
-                {
-                    updateEvent.NextCommitLogPosition = ++this.nextSubmitPosition;
-                }
-            }
-
             base.SubmitBatch(entries);
         }
 
-        public Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler termination, string fingerprint)
+        public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler termination, string fingerprint)
         {
+            await Task.Yield();
             this.partition = partition;
             this.effects = new MemoryStorageEffectTracker(partition, this);
 
@@ -77,7 +70,8 @@ namespace DurableTask.Netherite
             }
 
             this.commitPosition = 1;
-            return Task.FromResult(1L);
+            this.inputQueuePosition = 0;
+            return this.inputQueuePosition;
         }
 
         public void StartProcessing()
@@ -87,8 +81,7 @@ namespace DurableTask.Netherite
 
         public async Task CleanShutdown(bool takeFinalStateCheckpoint)
         {
-            await Task.Delay(10).ConfigureAwait(false);
-            
+            await Task.Yield();    
             this.partition.ErrorHandler.TerminateNormally();
         }
 

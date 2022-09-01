@@ -1,9 +1,10 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-namespace DurableTask.Netherite.EventHubs
+namespace DurableTask.Netherite.EventHubsTransport
 {
     using DurableTask.Core.Common;
+    using DurableTask.Netherite.Abstractions;
     using Microsoft.Azure.EventHubs;
     using Microsoft.Azure.Storage.Blob;
     using Microsoft.Extensions.Logging;
@@ -251,7 +252,7 @@ namespace DurableTask.Netherite.EventHubs
 
                     var errorHandler = this.host.host.CreateErrorHandler(this.partitionId);
 
-                    var nextPacketToReceive = await this.partition.CreateOrRestoreAsync(errorHandler, this.host.Fingerprint).ConfigureAwait(false);
+                    var nextPacketToReceive = await this.partition.CreateOrRestoreAsync(errorHandler, this.host.parameters, this.host.Fingerprint).ConfigureAwait(false);
                     this.host.logger.LogInformation("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) started partition, next expected packet is #{nextSeqno}", this.host.eventHubPath, this.partitionId, this.Incarnation, nextPacketToReceive);
 
                     this.partitionEventLoop = Task.Run(() => this.PartitionEventLoop(nextPacketToReceive));

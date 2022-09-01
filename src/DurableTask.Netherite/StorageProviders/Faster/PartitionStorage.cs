@@ -12,16 +12,17 @@ namespace DurableTask.Netherite.Faster
     using Microsoft.Azure.Storage;
     using Microsoft.Extensions.Logging;
 
-    class FasterStorage : IPartitionState
+    class PartitionStorage : IPartitionState
     {
-        readonly CloudStorageAccount storageAccount;
-        readonly string localFileDirectory;
-        readonly CloudStorageAccount pageBlobStorageAccount;
         readonly string taskHubName;
         readonly string pathPrefix;
         readonly ILogger logger;
         readonly ILogger performanceLogger;
         readonly MemoryTracker memoryTracker;
+
+        readonly CloudStorageAccount storageAccount;
+        readonly string localFileDirectory;
+        readonly CloudStorageAccount pageBlobStorageAccount;
 
         Partition partition;
         BlobManager blobManager;
@@ -38,8 +39,14 @@ namespace DurableTask.Netherite.Faster
 
         public long TargetMemorySize { get; set; }
 
-        public FasterStorage(NetheriteOrchestrationServiceSettings settings, string pathPrefix, MemoryTracker memoryTracker, ILoggerFactory loggerFactory)
+        public PartitionStorage(NetheriteOrchestrationServiceSettings settings, string pathPrefix, MemoryTracker memoryTracker, ILogger logger, ILogger performanceLogger)
         {
+            this.taskHubName = settings.HubName;
+            this.pathPrefix = pathPrefix;
+            this.logger = logger;
+            this.performanceLogger = performanceLogger;
+            this.memoryTracker = memoryTracker;
+
             string connectionString = settings.ResolvedStorageConnectionString;
             string pageBlobConnectionString = settings.ResolvedPageBlobStorageConnectionString;
 
@@ -59,23 +66,11 @@ namespace DurableTask.Netherite.Faster
             {
                 this.pageBlobStorageAccount = this.storageAccount;
             }
-            this.taskHubName = settings.HubName;
-            this.pathPrefix = pathPrefix;
-            this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
-            this.performanceLogger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage.Performance");
-            this.memoryTracker = memoryTracker;
 
             if (settings.TestHooks?.CacheDebugger != null)
             {
                 settings.TestHooks.CacheDebugger.MemoryTracker = this.memoryTracker;
             }
-        }
-
-        public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, string pathPrefix)
-        {
-            var storageAccount = string.IsNullOrEmpty(connectionString) ? null : CloudStorageAccount.Parse(connectionString);
-            var pageBlobAccount = string.IsNullOrEmpty(pageBlobConnectionString) ? storageAccount : CloudStorageAccount.Parse(pageBlobConnectionString);
-            return BlobManager.DeleteTaskhubStorageAsync(storageAccount, pageBlobAccount, localFileDirectory, taskHubName, pathPrefix);
         }
 
         async Task<T> TerminationWrapper<T>(Task<T> what)

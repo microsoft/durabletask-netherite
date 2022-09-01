@@ -23,7 +23,7 @@ namespace DurableTask.Netherite.Tests
     [Trait("AnyTransport", "false")]
     public class FasterPartitionTests : IDisposable
     {
-        readonly SingleHostFixture.TestTraceListener traceListener;
+        readonly HostFixture.TestTraceListener traceListener;
         readonly ILoggerFactory loggerFactory;
         readonly XunitLoggerProvider provider;
         readonly Action<string> output;
@@ -44,13 +44,13 @@ namespace DurableTask.Netherite.Tests
             this.loggerFactory = new LoggerFactory();
             this.provider = new XunitLoggerProvider();
             this.loggerFactory.AddProvider(this.provider);
-            this.traceListener = new SingleHostFixture.TestTraceListener();
+            this.traceListener = new HostFixture.TestTraceListener();
             Trace.Listeners.Add(this.traceListener);
             this.traceListener.Output = this.output;
-            this.settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            TestConstants.ValidateEnvironment(requiresTransportSpec: false);
+            this.settings = TestConstants.GetNetheriteOrchestrationServiceSettings(emulationSpec: "SingleHost");
             string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
             this.settings.HubName = $"FasterPartitionTest-{timestamp}";
-            this.settings.ResolvedTransportConnectionString = "MemoryF";
             this.cts = new CancellationTokenSource();
             this.cacheDebugger = this.settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(this.settings.TestHooks);
             this.settings.TestHooks.OnError += (message) =>
