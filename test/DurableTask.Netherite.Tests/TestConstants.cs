@@ -39,7 +39,7 @@ namespace DurableTask.Netherite.Tests
                 WorkItemLogLevelLimit = LogLevel.Trace,
                 ClientLogLevelLimit = LogLevel.Trace,
                 LoadMonitorLogLevelLimit = LogLevel.Trace,
-                PartitionCount = 12,
+                PartitionCount = 6,
                 ThrowExceptionOnInvalidDedupeStatus = true,
                 TakeStateCheckpointWhenStoppingPartition = true,  // set to false for testing recovery from log
                 UseAlternateObjectStore = false,                  // set to true to bypass FasterKV; default is false

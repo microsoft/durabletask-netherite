@@ -53,7 +53,6 @@ namespace DurableTask.Netherite.Tests
         [Theory]
         [InlineData(true, false)]
         [InlineData(true, true)]
-        [InlineData(false, true)]
         public async Task CreateDeleteCreate(bool singleHost, bool deleteTwice)
         {
             var settings = TestConstants.GetNetheriteOrchestrationServiceSettings(singleHost ? "SingleHost" : null);
@@ -89,6 +88,7 @@ namespace DurableTask.Netherite.Tests
                 var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
                 var orchestrationService = (IOrchestrationService)service;
                 var orchestrationServiceClient = (IOrchestrationServiceQueryClient)service;
+                await orchestrationService.CreateIfNotExistsAsync();
                 await orchestrationService.StartAsync();
                 var host = (TransportAbstraction.IHost)service;
                 var client = new TaskHubClient(service);
