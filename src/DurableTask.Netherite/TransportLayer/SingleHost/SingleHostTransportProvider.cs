@@ -15,13 +15,13 @@ namespace DurableTask.Netherite.SingleHostTransport
     using Microsoft.Extensions.Logging;
 
     /// <summary>
-    /// An transport provider that executes on a single node only, using in-memory queues to connect the components.
+    /// An transport layer that executes on a single node only, using in-memory queues to connect the components.
     /// </summary>
-    class SingleHostTransportProvider : ITransportProvider
+    class SingleHostTransportLayer : ITransportLayer
     {
         readonly TransportAbstraction.IHost host;
         readonly NetheriteOrchestrationServiceSettings settings;
-        readonly IStorageProvider storage;
+        readonly IStorageLayer storage;
         readonly uint numberPartitions;
         readonly ILogger logger;
         readonly FaultInjector faultInjector;
@@ -33,7 +33,7 @@ namespace DurableTask.Netherite.SingleHostTransport
         ClientQueue clientQueue;
         LoadMonitorQueue loadMonitorQueue;
 
-        public SingleHostTransportProvider(TransportAbstraction.IHost host, NetheriteOrchestrationServiceSettings settings, IStorageProvider storage, ILogger logger)
+        public SingleHostTransportLayer(TransportAbstraction.IHost host, NetheriteOrchestrationServiceSettings settings, IStorageLayer storage, ILogger logger)
         {
             this.host = host;
             this.settings = settings;
@@ -44,14 +44,14 @@ namespace DurableTask.Netherite.SingleHostTransport
             this.faultInjector = settings.TestHooks?.FaultInjector;
             this.fingerPrint = Guid.NewGuid().ToString("N");
         }
-        async Task<TaskhubParameters> ITransportProvider.StartAsync()
+        async Task<TaskhubParameters> ITransportLayer.StartAsync()
         {
             this.parameters = await this.storage.TryLoadTaskhubAsync(throwIfNotFound: true);
             (string containerName, string path) = this.storage.GetTaskhubPathPrefix(this.parameters);
             return this.parameters;
         }
 
-        Task ITransportProvider.StartClientAsync()
+        Task ITransportLayer.StartClientAsync()
         {    
             // create the send workers
             this.sendWorkers = new SendWorker[Environment.ProcessorCount];
@@ -86,7 +86,7 @@ namespace DurableTask.Netherite.SingleHostTransport
             return Task.CompletedTask;
         }
 
-        Task ITransportProvider.StartWorkersAsync()
+        Task ITransportLayer.StartWorkersAsync()
         {
             // wake up all the workers
             for (uint i = 0; i < this.partitionQueues.Length; i++)
@@ -96,7 +96,7 @@ namespace DurableTask.Netherite.SingleHostTransport
             return Task.CompletedTask;
         }
 
-        async Task ITransportProvider.StopAsync()
+        async Task ITransportLayer.StopAsync()
         {
             var tasks = new List<Task>();
             tasks.Add(this.clientQueue.Client.StopAsync());
@@ -110,12 +110,12 @@ namespace DurableTask.Netherite.SingleHostTransport
         
         class SendWorker : BatchWorker<Event>, TransportAbstraction.ISender
         {
-            readonly SingleHostTransportProvider provider;
+            readonly SingleHostTransportLayer transport;
 
-            public SendWorker(SingleHostTransportProvider provider, int index)
+            public SendWorker(SingleHostTransportLayer transport, int index)
                 : base($"SendWorker{index:D2}", true, int.MaxValue, CancellationToken.None, null)
             {
-                this.provider = provider;
+                this.transport = transport;
             }
 
             protected override Task Process(IList<Event> batch)
@@ -129,15 +129,15 @@ namespace DurableTask.Netherite.SingleHostTransport
                             switch(batch[i])
                             {
                                 case PartitionEvent partitionEvent:
-                                    this.provider.partitionQueues[partitionEvent.PartitionId].Submit(partitionEvent);
+                                    this.transport.partitionQueues[partitionEvent.PartitionId].Submit(partitionEvent);
                                     break;
 
                                 case ClientEvent clientEvent:
-                                    this.provider.clientQueue.Submit(clientEvent);
+                                    this.transport.clientQueue.Submit(clientEvent);
                                     break;
 
                                 case LoadMonitorEvent loadMonitorEvent:
-                                    this.provider.loadMonitorQueue.Submit(loadMonitorEvent);
+                                    this.transport.loadMonitorQueue.Submit(loadMonitorEvent);
                                     break;
                             }
                         }

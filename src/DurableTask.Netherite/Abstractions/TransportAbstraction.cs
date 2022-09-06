@@ -16,15 +16,15 @@ namespace DurableTask.Netherite
     static class TransportAbstraction
     {
         /// <summary>
-        /// The host functionality visible to the transport back-end. 
-        /// The transport back-end calls this interface to place clients and partitions on this host.
+        /// The host functionality visible to the transport layer. 
+        /// The transport layer calls this interface to place clients and partitions on this host.
         /// </summary>
         public interface IHost
         {
             /// <summary>
-            ///  Gets the storage provider used by this host.
+            ///  Gets the storage layer used by this host.
             /// </summary>
-            IStorageProvider StorageProvider { get; }
+            IStorageLayer StorageLayer { get; }
 
             /// <summary>
             /// Creates a client on this host.
@@ -59,7 +59,7 @@ namespace DurableTask.Netherite
         }
 
         /// <summary>
-        /// The partition functionality, as seen by the transport back-end.
+        /// The partition functionality, as seen by the transport layer.
         /// </summary>
         public interface IPartition
         {
@@ -113,7 +113,7 @@ namespace DurableTask.Netherite
         }
 
         /// <summary>
-        /// The client functionality, as seen by the transport back-end.
+        /// The client functionality, as seen by the transport layer.
         /// </summary>
         public interface IClient
         {
@@ -143,7 +143,7 @@ namespace DurableTask.Netherite
         }
 
         /// <summary>
-        /// The load monitor functionality, as seen by the transport back-end.
+        /// The load monitor functionality, as seen by the transport layer.
         /// </summary>
         public interface ILoadMonitor
         {

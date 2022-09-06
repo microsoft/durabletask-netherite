@@ -27,7 +27,7 @@ namespace DurableTask.Netherite.Faster
 
         public bool IsTracingAtMostDetailedLevel => this.logLevelLimit == LogLevel.Trace;
 
-        // ----- faster storage provider events
+        // ----- faster storage layer events
 
         public void FasterStoreCreated(long inputQueuePosition, long latencyMs)
         {

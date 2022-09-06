@@ -25,7 +25,7 @@ namespace DurableTask.Netherite
         long commitPosition = 0;
         long inputQueuePosition = 0;
 
-        public MemoryStorage(ILogger logger) : base(nameof(MemoryStorageProvider), true, int.MaxValue, CancellationToken.None, null)
+        public MemoryStorage(ILogger logger) : base(nameof(MemoryStorageLayer), true, int.MaxValue, CancellationToken.None, null)
         {
             this.logger = logger;
             this.trackedObjects = new ConcurrentDictionary<TrackedObjectKey, TrackedObject>();

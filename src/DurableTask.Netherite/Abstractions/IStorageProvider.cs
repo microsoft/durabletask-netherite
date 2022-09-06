@@ -11,7 +11,7 @@ namespace DurableTask.Netherite
     /// <summary>
     /// The functionality for storing and recovering partition states.
     /// </summary>
-    interface IStorageProvider
+    interface IStorageLayer
     {
         /// <summary>
         /// Tries to loads the task hub parameters.

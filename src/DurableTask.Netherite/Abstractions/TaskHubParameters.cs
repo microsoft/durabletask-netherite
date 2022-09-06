@@ -8,6 +8,7 @@ namespace DurableTask.Netherite.Abstractions
 
     /// <summary>
     /// The parameters for a specific taskhub instance.
+    /// This is used for the taskhubparameters.json file. 
     /// </summary>
     [DataContract]
     public class TaskhubParameters

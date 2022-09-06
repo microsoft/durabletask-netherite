@@ -20,7 +20,7 @@ namespace DurableTask.Netherite.Faster
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
 
-    class FasterStorageProvider : IStorageProvider
+    class FasterStorageLayer : IStorageLayer
     {
         readonly NetheriteOrchestrationServiceSettings settings;
         readonly OrchestrationServiceTraceHelper traceHelper;
@@ -50,7 +50,7 @@ namespace DurableTask.Netherite.Faster
             return (GetContainerName(parameters.TaskhubName), TaskhubPathPrefix(parameters));
         }
 
-        public FasterStorageProvider(NetheriteOrchestrationServiceSettings settings, OrchestrationServiceTraceHelper traceHelper, ILoggerFactory loggerFactory)
+        public FasterStorageLayer(NetheriteOrchestrationServiceSettings settings, OrchestrationServiceTraceHelper traceHelper, ILoggerFactory loggerFactory)
         {
             this.settings = settings;
             this.traceHelper = traceHelper;
@@ -115,7 +115,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
         
-        async Task<TaskhubParameters> IStorageProvider.TryLoadTaskhubAsync(bool throwIfNotFound)
+        async Task<TaskhubParameters> IStorageLayer.TryLoadTaskhubAsync(bool throwIfNotFound)
         {
             // try load the taskhub parameters
             try
@@ -136,7 +136,7 @@ namespace DurableTask.Netherite.Faster
             }
         }       
 
-        async Task<bool> IStorageProvider.CreateTaskhubIfNotExistsAsync()
+        async Task<bool> IStorageLayer.CreateTaskhubIfNotExistsAsync()
         {
             bool containerCreated = await this.cloudBlobContainer.CreateIfNotExistsAsync();
             if (containerCreated)
@@ -190,9 +190,9 @@ namespace DurableTask.Netherite.Faster
             return true;
         }
 
-        async Task IStorageProvider.DeleteTaskhubAsync()
+        async Task IStorageLayer.DeleteTaskhubAsync()
         {
-            var parameters = await ((IStorageProvider)this).TryLoadTaskhubAsync(throwIfNotFound: false);
+            var parameters = await ((IStorageLayer)this).TryLoadTaskhubAsync(throwIfNotFound: false);
 
             if (parameters != null)
             {
@@ -215,7 +215,7 @@ namespace DurableTask.Netherite.Faster
             return BlobManager.DeleteTaskhubStorageAsync(storageAccount, pageBlobAccount, localFileDirectory, taskHubName, pathPrefix);
         }
 
-        IPartitionState IStorageProvider.CreatePartitionState(TaskhubParameters parameters)
+        IPartitionState IStorageLayer.CreatePartitionState(TaskhubParameters parameters)
         {
             return new PartitionStorage(this.settings, TaskhubPathPrefix(parameters), this.memoryTracker, this.logger, this.performanceLogger);
         }

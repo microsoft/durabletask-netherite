@@ -115,7 +115,7 @@ namespace DurableTask.Netherite
             try
             {
                 // create the state
-                this.State = ((TransportAbstraction.IHost) this.host).StorageProvider.CreatePartitionState(parameters);
+                this.State = ((TransportAbstraction.IHost) this.host).StorageLayer.CreatePartitionState(parameters);
 
                 // initialize timer for this partition
                 this.PendingTimers = new BatchTimer<PartitionEvent>(this.ErrorHandler.Token, this.TimersFired);

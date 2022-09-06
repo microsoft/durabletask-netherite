@@ -15,14 +15,14 @@ namespace DurableTask.Netherite
     using DurableTask.Netherite.Scaling;
     using Microsoft.Extensions.Logging;
 
-    class MemoryStorageProvider : IStorageProvider
+    class MemoryStorageLayer : IStorageLayer
     {
         readonly NetheriteOrchestrationServiceSettings settings;
         readonly ILogger logger;
 
         TaskhubParameters taskhub;
 
-        public MemoryStorageProvider(NetheriteOrchestrationServiceSettings settings, ILogger logger)
+        public MemoryStorageLayer(NetheriteOrchestrationServiceSettings settings, ILogger logger)
         {
             this.settings = settings;
             this.logger = logger;
@@ -35,9 +35,9 @@ namespace DurableTask.Netherite
 
         public CancellationToken Termination => CancellationToken.None;
 
-        ILoadPublisherService IStorageProvider.LoadPublisher => null; // we do not use this for memory emulation
+        ILoadPublisherService IStorageLayer.LoadPublisher => null; // we do not use this for memory emulation
 
-        async Task<bool> IStorageProvider.CreateTaskhubIfNotExistsAsync()
+        async Task<bool> IStorageLayer.CreateTaskhubIfNotExistsAsync()
         {
             await Task.Yield();
             if (this.taskhub == null)
@@ -58,23 +58,23 @@ namespace DurableTask.Netherite
             }
         }
 
-        async Task IStorageProvider.DeleteTaskhubAsync()
+        async Task IStorageLayer.DeleteTaskhubAsync()
         {
             await Task.Yield();
             this.taskhub = null;
         }
 
-        IPartitionState IStorageProvider.CreatePartitionState(TaskhubParameters parameters)
+        IPartitionState IStorageLayer.CreatePartitionState(TaskhubParameters parameters)
         {
             return new MemoryStorage(this.logger);
         }
 
-        (string containerName, string path) IStorageProvider.GetTaskhubPathPrefix(TaskhubParameters parameters)
+        (string containerName, string path) IStorageLayer.GetTaskhubPathPrefix(TaskhubParameters parameters)
         {
             return (string.Empty, string.Empty);
         }
 
-        async Task<TaskhubParameters> IStorageProvider.TryLoadTaskhubAsync(bool throwIfNotFound)
+        async Task<TaskhubParameters> IStorageLayer.TryLoadTaskhubAsync(bool throwIfNotFound)
         {
             await Task.Yield();
             return this.taskhub;

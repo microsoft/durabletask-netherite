@@ -7,9 +7,9 @@ namespace DurableTask.Netherite
     using DurableTask.Netherite.Abstractions;
 
     /// <summary>
-    /// Top-level functionality for starting and stopping the transport back-end on a machine.
+    /// Top-level functionality for starting and stopping the transport layer on a machine.
     /// </summary>
-    public interface ITransportProvider
+    public interface ITransportLayer
     {
         /// <summary>
         /// Starts the transport backend. Throws an exception if taskhub does not exist in storage.

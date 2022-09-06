@@ -22,7 +22,7 @@ namespace DurableTask.Netherite.EventHubsTransport
     /// The EventHubs transport implementation.
     /// </summary>
     class EventHubsTransport :
-        ITransportProvider,
+        ITransportLayer,
         IEventProcessorFactory,
         TransportAbstraction.ISender
     {
@@ -31,7 +31,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly CloudStorageAccount cloudStorageAccount;
         readonly ILogger logger;
         readonly EventHubsTraceHelper traceHelper;
-        readonly IStorageProvider storage;
+        readonly IStorageLayer storage;
 
         EventProcessorHost eventProcessorHost;
         EventProcessorHost loadMonitorHost;
@@ -55,9 +55,9 @@ namespace DurableTask.Netherite.EventHubsTransport
         public Guid ClientId { get; private set; }
         public string Fingerprint => this.connections.Fingerprint;
 
-        public EventHubsTransport(TransportAbstraction.IHost host, NetheriteOrchestrationServiceSettings settings, IStorageProvider storage, ILoggerFactory loggerFactory)
+        public EventHubsTransport(TransportAbstraction.IHost host, NetheriteOrchestrationServiceSettings settings, IStorageLayer storage, ILoggerFactory loggerFactory)
         {
-            if (storage is MemoryStorageProvider)
+            if (storage is MemoryStorageLayer)
             {
                 throw new InvalidOperationException($"Configuration error: in-memory storage cannot be used together with a real event hubs namespace");
             }
@@ -80,7 +80,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         public static string ClientConsumerGroup = "$Default";
         public static string LoadMonitorConsumerGroup = "$Default";
 
-        async Task<TaskhubParameters> ITransportProvider.StartAsync()
+        async Task<TaskhubParameters> ITransportLayer.StartAsync()
         {
             this.shutdownSource = new CancellationTokenSource();
 
@@ -114,7 +114,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             return this.parameters;
         }
 
-        async Task ITransportProvider.StartClientAsync()
+        async Task ITransportLayer.StartClientAsync()
         {
             this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
 
@@ -143,7 +143,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             await Task.WhenAll(this.clientConnectionsEstablished);
         }
 
-        async Task ITransportProvider.StartWorkersAsync()
+        async Task ITransportLayer.StartWorkersAsync()
         {
             if (this.client == null)
             {
@@ -290,7 +290,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
         }
 
-        async Task ITransportProvider.StopAsync()
+        async Task ITransportLayer.StopAsync()
         {
             this.traceHelper.LogInformation("Shutting down EventHubsBackend");
             this.shutdownSource.Cancel(); // initiates shutdown of client and of all partitions

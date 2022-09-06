@@ -32,8 +32,8 @@ namespace DurableTask.Netherite
     {
         readonly TransportConnectionString.StorageChoices configuredStorage;
         readonly TransportConnectionString.TransportChoices configuredTransport;
-        readonly ITransportProvider transport;
-        readonly IStorageProvider storage;
+        readonly ITransportLayer transport;
+        readonly IStorageLayer storage;
 
         readonly WorkItemTraceHelper workItemTraceHelper;
 
@@ -104,7 +104,7 @@ namespace DurableTask.Netherite
            
             try
             {
-                this.TraceHelper.TraceProgress("Reading configuration for transport and storage providers");
+                this.TraceHelper.TraceProgress("Reading configuration for transport and storage layers");
                 TransportConnectionString.Parse(this.Settings.ResolvedTransportConnectionString, out this.configuredStorage, out this.configuredTransport);
                 
                 // determine a storage account name to be used for tracing
@@ -118,11 +118,11 @@ namespace DurableTask.Netherite
                 switch (this.configuredStorage)
                 {
                     case TransportConnectionString.StorageChoices.Memory:
-                        this.storage = new MemoryStorageProvider(this.Settings, this.TraceHelper.Logger);
+                        this.storage = new MemoryStorageLayer(this.Settings, this.TraceHelper.Logger);
                         break;
 
                     case TransportConnectionString.StorageChoices.Faster:
-                        this.storage = new FasterStorageProvider(this.Settings, this.TraceHelper, this.LoggerFactory);
+                        this.storage = new FasterStorageLayer(this.Settings, this.TraceHelper, this.LoggerFactory);
                         break;
 
                     default:
@@ -132,7 +132,7 @@ namespace DurableTask.Netherite
                 switch (this.configuredTransport)
                 {
                     case TransportConnectionString.TransportChoices.SingleHost:
-                        this.transport = new SingleHostTransport.SingleHostTransportProvider(this, settings, this.storage, this.TraceHelper.Logger);
+                        this.transport = new SingleHostTransport.SingleHostTransportLayer(this, settings, this.storage, this.TraceHelper.Logger);
                         break;
 
                     case TransportConnectionString.TransportChoices.EventHubs:
@@ -484,7 +484,7 @@ namespace DurableTask.Netherite
         // host methods
         /******************************/
 
-        IStorageProvider TransportAbstraction.IHost.StorageProvider => this.storage;
+        IStorageLayer TransportAbstraction.IHost.StorageLayer => this.storage;
 
         TransportAbstraction.IClient TransportAbstraction.IHost.AddClient(Guid clientId, Guid taskHubGuid, TransportAbstraction.ISender batchSender)
         {
