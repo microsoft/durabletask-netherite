@@ -45,7 +45,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public sealed override void DetermineEffects(EffectTracker effects)
+        public override void DetermineEffects(EffectTracker effects)
         {
             effects.Add(TrackedObjectKey.Prefetch);
         }

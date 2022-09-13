@@ -11,6 +11,7 @@ namespace DurableTask.Netherite
     using DurableTask.Netherite.Scaling;
     using Microsoft.Azure.Cosmos.Tables.SharedFiles;
     using Microsoft.Azure.Storage;
+    using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
     using System;
@@ -32,6 +33,7 @@ namespace DurableTask.Netherite
     {
         readonly TransportConnectionString.StorageChoices configuredStorage;
         readonly TransportConnectionString.TransportChoices configuredTransport;
+
         readonly ITransportLayer transport;
         readonly IStorageLayer storage;
 
@@ -43,6 +45,11 @@ namespace DurableTask.Netherite
         /// The logger category prefix used for all ILoggers in this backend.
         /// </summary>
         public const string LoggerCategoryName = "DurableTask.Netherite";
+
+        public ITransportLayer TransportLayer => this.transport;
+        internal IStorageLayer StorageLayer => this.storage;
+
+        public IServiceProvider ServiceProvider { get; }
 
         CancellationTokenSource serviceShutdownSource;
         Exception startupException;
@@ -95,9 +102,10 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Creates a new instance of the OrchestrationService with default settings
         /// </summary>
-        public NetheriteOrchestrationService(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory)
+        public NetheriteOrchestrationService(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory, IServiceProvider serviceProvider = null)
         {
             this.LoggerFactory = loggerFactory;
+            this.ServiceProvider = serviceProvider;
             this.Settings = settings;
             this.TraceHelper = new OrchestrationServiceTraceHelper(loggerFactory, settings.LogLevelLimit, settings.WorkerId, settings.HubName);
             this.workItemTraceHelper = new WorkItemTraceHelper(loggerFactory, settings.WorkItemLogLevelLimit, settings.HubName);
@@ -115,32 +123,50 @@ namespace DurableTask.Netherite
 
                 this.TraceHelper.TraceCreated(Environment.ProcessorCount, this.configuredTransport, this.configuredStorage);
 
-                switch (this.configuredStorage)
+                var storageLayerFactory = this.ServiceProvider?.GetService<IStorageLayerFactory>();
+
+                if (storageLayerFactory == null)
                 {
-                    case TransportConnectionString.StorageChoices.Memory:
-                        this.storage = new MemoryStorageLayer(this.Settings, this.TraceHelper.Logger);
-                        break;
+                    switch (this.configuredStorage)
+                    {
+                        case TransportConnectionString.StorageChoices.Memory:
+                            this.storage = new MemoryStorageLayer(this.Settings, this.TraceHelper.Logger);
+                            break;
 
-                    case TransportConnectionString.StorageChoices.Faster:
-                        this.storage = new FasterStorageLayer(this.Settings, this.TraceHelper, this.LoggerFactory);
-                        break;
+                        case TransportConnectionString.StorageChoices.Faster:
+                            this.storage = new FasterStorageLayer(this.Settings, this.TraceHelper, this.LoggerFactory);
+                            break;
 
-                    default:
-                        throw new NotImplementedException("no such storage choice");
+                        default:
+                            throw new NotImplementedException("no such storage choice");
+                    }
+                }
+                else
+                {
+                    this.storage = storageLayerFactory.Create(this);
                 }
 
-                switch (this.configuredTransport)
+                var transportLayerFactory = this.ServiceProvider?.GetService<ITransportLayerFactory>();
+
+                if (transportLayerFactory == null)
                 {
-                    case TransportConnectionString.TransportChoices.SingleHost:
-                        this.transport = new SingleHostTransport.SingleHostTransportLayer(this, settings, this.storage, this.TraceHelper.Logger);
-                        break;
+                    switch (this.configuredTransport)
+                    {
+                        case TransportConnectionString.TransportChoices.SingleHost:
+                            this.transport = new SingleHostTransport.SingleHostTransportLayer(this, settings, this.storage, this.TraceHelper.Logger);
+                            break;
 
-                    case TransportConnectionString.TransportChoices.EventHubs:
-                        this.transport = new EventHubsTransport.EventHubsTransport(this, settings, this.storage, loggerFactory);
-                        break;
+                        case TransportConnectionString.TransportChoices.EventHubs:
+                            this.transport = new EventHubsTransport.EventHubsTransport(this, settings, this.storage, loggerFactory);
+                            break;
 
-                    default:
-                        throw new NotImplementedException("no such transport choice");
+                        default:
+                            throw new NotImplementedException("no such transport choice");
+                    }
+                }
+                else
+                {
+                    this.transport = transportLayerFactory.Create(this);
                 }
 
                 this.workItemStopwatch.Start();

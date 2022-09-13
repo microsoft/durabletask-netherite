@@ -4,6 +4,7 @@
 namespace DurableTask.Netherite
 {
     using System;
+    using System.Collections.Generic;
     using System.IO;
     using System.Runtime.Serialization;
     using System.Text;
@@ -20,8 +21,12 @@ namespace DurableTask.Netherite
         static readonly DataContractSerializer singletonsSerializer
             = new DataContractSerializer(typeof(TrackedObject[]));
 
+        static readonly DataContractSerializer batchSerializer
+           = new DataContractSerializer(typeof(PartitionEvent));
+
         static readonly DataContractSerializer checkpointInfoSerializer
             = new DataContractSerializer(typeof(CheckpointInfo));
+
 
         static readonly UnicodeEncoding uniEncoding = new UnicodeEncoding();
 
@@ -56,6 +61,16 @@ namespace DurableTask.Netherite
         public static Event DeserializeEvent(Stream stream)
         {
             return (Event)eventSerializer.ReadObject(stream);
+        }
+
+        public static void SerializeBatch(List<PartitionEvent> batch, Stream s)
+        {
+            batchSerializer.WriteObject(s, batch);
+        }
+
+        public static List<PartitionEvent> DeserializeBatch(Stream stream)
+        {
+            return (List<PartitionEvent>) batchSerializer.ReadObject(stream);
         }
 
         public static byte[] SerializeTrackedObject(TrackedObject trackedObject)
