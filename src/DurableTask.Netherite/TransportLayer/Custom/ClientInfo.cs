@@ -11,7 +11,7 @@
     using Microsoft.Extensions.Azure;
     using Microsoft.Extensions.Logging;
 
-    public class ClientInfo : TransportAbstraction.ISender
+    class ClientInfo : BatchWorker<ClientEvent>, TransportAbstraction.ISender
     {
         readonly CustomTransport transport;
         readonly PartitionSender[] partitionSenders;
@@ -20,6 +20,7 @@
         public Guid ClientId => this.client.ClientId;
 
         public ClientInfo(Guid clientId, CustomTransport transport)
+            : base($"ClientWorker{clientId:N}", false, 100, CancellationToken.None, null)
         {
             this.transport = transport;
             this.client = this.transport.Host.AddClient(clientId, this.transport.Parameters.TaskhubGuid, this);
@@ -50,9 +51,18 @@
 
         public void Deliver(Stream stream)
         {
-            var evt = Serializer.DeserializeEvent(stream);
-            var clientEvent = (ClientEvent)evt;
-            this.client.Process(clientEvent);
+            var clientEvents = Serializer.DeserializeClientBatch(stream);
+            this.SubmitBatch(clientEvents);
+        }
+
+        protected override Task Process(IList<ClientEvent> batch)
+        {
+            foreach(var clientEvent in batch)
+            {
+                Debug.Assert(clientEvent.ClientId == this.ClientId);
+                this.client.Process(clientEvent);
+            }
+            return Task.CompletedTask;
         }
     }
 }

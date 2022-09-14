@@ -10,13 +10,14 @@
     using System.Threading.Tasks;
     using Microsoft.Extensions.Logging;
 
-    public class LoadMonitorInfo : TransportAbstraction.ISender
+    class LoadMonitorInfo : BatchWorker<LoadMonitorEvent>, TransportAbstraction.ISender
     {
         readonly CustomTransport transport;
         readonly PartitionSender[] partitionSenders;
         readonly TransportAbstraction.ILoadMonitor loadMonitor;
 
         public LoadMonitorInfo(CustomTransport transport)
+            : base($"LoadMonitorWorker", false, 100, CancellationToken.None, null)
         {
             this.transport = transport;
             this.loadMonitor = this.transport.Host.AddLoadMonitor(this.transport.Parameters.TaskhubGuid, this);
@@ -47,9 +48,17 @@
 
         public void Deliver(Stream stream)
         {
-            var evt = Serializer.DeserializeEvent(stream);
-            var loadMonitorEvent = (LoadMonitorEvent)evt;
-            this.loadMonitor.Process(loadMonitorEvent);
+            var loadMonitorEvents = Serializer.DeserializeLoadMonitorBatch(stream);
+            this.SubmitBatch(loadMonitorEvents);
+        }
+
+        protected override Task Process(IList<LoadMonitorEvent> batch)
+        {
+            foreach (var loadMonitorEvent in batch)
+            {
+                this.loadMonitor.Process(loadMonitorEvent);
+            }
+            return Task.CompletedTask;
         }
     }
 }

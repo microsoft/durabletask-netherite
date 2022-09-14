@@ -30,10 +30,10 @@
         public Task WhenLocallyStarted => this.localStartComplete.Task;
 
 
-        public override Task SendToClientAsync(Guid clientId, byte[] content)
+        public override Task SendToClientAsync(Guid clientId, Stream content)
             => this.client.SendToClientAsync(clientId, content);
 
-        public override Task SendToLoadMonitorAsync(byte[] content)
+        public override Task SendToLoadMonitorAsync(Stream content)
             => this.client.SendToLoadMonitorAsync(content);
 
         public override Task SendToPartitionAsync(int i, Stream content)

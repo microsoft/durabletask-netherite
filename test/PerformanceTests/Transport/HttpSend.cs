@@ -8,6 +8,7 @@
     using System.Text;
     using System.Threading.Tasks;
     using Newtonsoft.Json;
+    using Newtonsoft.Json.Linq;
 
     class SharedClient
     {
@@ -21,17 +22,17 @@
             this.client = new HttpClient();
         }
 
-        public async Task SendToClientAsync(Guid clientId, byte[] content)
+        public async Task SendToClientAsync(Guid clientId, Stream content)
         {
             string hostUri = this.placement.ClientHost(clientId);
-            var response = await this.client.PostAsync($"{hostUri}/triggertransport/client/{clientId}", new ByteArrayContent(content));
+            var response = await this.client.PostAsync($"{hostUri}/triggertransport/client/{clientId}", new StreamContent(content));
             response.EnsureSuccessStatusCode();
         }
 
-        public async Task SendToLoadMonitorAsync(byte[] content)
+        public async Task SendToLoadMonitorAsync(Stream content)
         {
             string hostUri = this.placement.LoadMonitorHost();
-            var response = await this.client.PostAsync($"{hostUri}/triggertransport/loadmonitor", new ByteArrayContent(content));
+            var response = await this.client.PostAsync($"{hostUri}/triggertransport/loadmonitor", new StreamContent(content));
             response.EnsureSuccessStatusCode();
         }
 
@@ -47,7 +48,9 @@
             string hostUri = this.placement.Hosts[hostIndex];
             var response = await this.client.GetAsync($"{hostUri}/triggertransport/client");
             response.EnsureSuccessStatusCode();
-            return Guid.Parse(response.Content.ToString());
+            string content = await response.Content.ReadAsStringAsync();
+            JObject responseJson = JsonConvert.DeserializeObject<JObject>(content);
+            return Guid.Parse((string) responseJson.GetValue("clientId"));
         }
 
         public async Task StartLocalAsync(string[] hosts, int index)

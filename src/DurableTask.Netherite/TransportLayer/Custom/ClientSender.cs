@@ -8,26 +8,26 @@
     using System.Threading;
     using System.Threading.Tasks;
 
-    class PartitionSender : DurableTask.Netherite.BatchWorker<PartitionEvent>
+    class ClientSender : DurableTask.Netherite.BatchWorker<ClientEvent>
     {
-        readonly int partitionId;
+        readonly Guid clientId;
         readonly CustomTransport transport;
 
-        public PartitionSender(int partitionId, CustomTransport transport)
-            : base($"PartitionSender{partitionId:D2}", false, 500, CancellationToken.None, null)
+        public ClientSender(Guid clientId, CustomTransport transport)
+            : base($"ClientSender{clientId:N}", false, 500, CancellationToken.None, null)
         {
-            this.partitionId = partitionId;
+            this.clientId = clientId;
             this.transport = transport;
         }
 
-        protected override async Task Process(IList<PartitionEvent> batch)
+        protected override async Task Process(IList<ClientEvent> batch)
         {
             try
             {
                 using var stream = new MemoryStream();
-                Serializer.SerializePartitionBatch((List<PartitionEvent>)batch, stream);
+                Serializer.SerializeClientBatch((List<ClientEvent>)batch, stream);
                 stream.Seek(0, SeekOrigin.Begin);
-                await this.transport.SendToPartitionAsync(this.partitionId, stream);
+                await this.transport.SendToClientAsync(this.clientId, stream);
             }
             catch (Exception e)
             {

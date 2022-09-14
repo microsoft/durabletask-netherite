@@ -1,6 +1,7 @@
 ﻿namespace DurableTask.Netherite.CustomTransport
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
@@ -15,7 +16,9 @@
         readonly CustomTransport transport;
         readonly uint partitionId;
         readonly PartitionSender[] partitionSenders;
-        
+        readonly ConcurrentDictionary<Guid,ClientSender> clientSenders;
+        readonly LoadMonitorSender loadMonitorSender;
+
         public Task StartupTask { get; private set; }
 
         TransportAbstraction.IPartition partition;
@@ -28,6 +31,8 @@
                 .Range(0, transport.Parameters.PartitionCount)
                 .Select(i => new PartitionSender(i, transport))
                 .ToArray();
+            this.clientSenders = new ConcurrentDictionary<Guid, ClientSender>();
+            this.loadMonitorSender = new LoadMonitorSender(transport);
             this.StartupTask = Task.Run(this.StartAsync);
         }
 
@@ -53,15 +58,12 @@
                     break;
 
                 case ClientEvent clientEvent:
-                    var serializedClientEvent = Serializer.SerializeEvent(clientEvent);
-                    this.transport.SendToClientAsync(clientEvent.ClientId, serializedClientEvent);
-                    DurabilityListeners.ConfirmDurable(clientEvent);
+                    var clientSender = this.clientSenders.GetOrAdd(clientEvent.ClientId, (Guid guid) => new ClientSender(guid, this.transport));
+                    clientSender.Submit(clientEvent);
                     break;
 
                 case LoadMonitorEvent loadMonitorEvent:
-                    var serializedLoadMonitorEvent = Serializer.SerializeEvent(loadMonitorEvent);
-                    this.transport.SendToLoadMonitorAsync(serializedLoadMonitorEvent);
-                    DurabilityListeners.ConfirmDurable(loadMonitorEvent);
+                    this.loadMonitorSender.Submit(loadMonitorEvent);
                     break;
             }
         }
@@ -69,7 +71,7 @@
         public async Task DeliverAsync(Stream stream)
         {
             await this.StartupTask;
-            var partitionEvents = Serializer.DeserializeBatch(stream);
+            var partitionEvents = Serializer.DeserializePartitionBatch(stream);
 
             DurabilityWaiter waiter = null;
             for (int i = partitionEvents.Count - 1; i >= 0; i--)

@@ -143,6 +143,7 @@ namespace DurableTask.Netherite
                 }
                 else
                 {
+                    this.configuredStorage = TransportConnectionString.StorageChoices.Custom;
                     this.storage = storageLayerFactory.Create(this);
                 }
 
@@ -166,6 +167,7 @@ namespace DurableTask.Netherite
                 }
                 else
                 {
+                    this.configuredTransport = TransportConnectionString.TransportChoices.Custom;
                     this.transport = transportLayerFactory.Create(this);
                 }
 

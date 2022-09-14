@@ -39,8 +39,8 @@
         }
 
         public abstract Task SendToPartitionAsync(int i, Stream content);
-        public abstract Task SendToLoadMonitorAsync(byte[] content);
-        public abstract Task SendToClientAsync(Guid clientId, byte[] content);
+        public abstract Task SendToLoadMonitorAsync(Stream content);
+        public abstract Task SendToClientAsync(Guid clientId, Stream content);
 
         public async Task DeliverToPartition(int partitionId, Stream stream)
         {
@@ -154,8 +154,8 @@
         async Task ITransportLayer.StopAsync()
         {
             await Task.WhenAll(
-              this.clientInfo.StopAsync(),
-              this.loadMonitorInfo.StopAsync(),
+              this.clientInfo?.StopAsync() ?? Task.CompletedTask,
+              this.loadMonitorInfo?.StopAsync() ?? Task.CompletedTask,
               Task.WhenAll(this.partitions.Select(kvp => kvp.Value.StopAsync()).ToList()));
         }
 

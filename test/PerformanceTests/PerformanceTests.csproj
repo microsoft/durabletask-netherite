@@ -5,10 +5,12 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Azure.Messaging.EventHubs" Version="5.7.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Extensions" Version="1.1.0" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions" Version="4.0.1" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.7.2" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.EventHubs" Version="5.1.1" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.Storage" Version="4.0.4" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
 	<PackageReference Include="Microsoft.NET.Sdk.Functions" Version="4.1.1" />
   </ItemGroup>
   <ItemGroup>

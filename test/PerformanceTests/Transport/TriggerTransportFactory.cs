@@ -9,14 +9,14 @@
 
     public class TriggerTransportFactory : ITransportLayerFactory
     {
-        TriggerTransport transport;
+        static TriggerTransport transport;
 
         public ITransportLayer Create(NetheriteOrchestrationService orchestrationService)
         {
-            this.transport = new TriggerTransport(orchestrationService);
-            return this.transport;
+            transport = new TriggerTransport(orchestrationService);
+            return transport;
         }
 
-        public TriggerTransport Instance => this.transport;
+        public static TriggerTransport Instance => transport;
     }
 }

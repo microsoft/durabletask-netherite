@@ -21,8 +21,14 @@ namespace DurableTask.Netherite
         static readonly DataContractSerializer singletonsSerializer
             = new DataContractSerializer(typeof(TrackedObject[]));
 
-        static readonly DataContractSerializer batchSerializer
-           = new DataContractSerializer(typeof(PartitionEvent));
+        static readonly DataContractSerializer partitionBatchSerializer
+           = new DataContractSerializer(typeof(List<PartitionEvent>));
+
+        static readonly DataContractSerializer clientBatchSerializer
+           = new DataContractSerializer(typeof(List<ClientEvent>));
+
+        static readonly DataContractSerializer loadMonitorBatchSerializer
+           = new DataContractSerializer(typeof(List<LoadMonitorEvent>));
 
         static readonly DataContractSerializer checkpointInfoSerializer
             = new DataContractSerializer(typeof(CheckpointInfo));
@@ -63,14 +69,34 @@ namespace DurableTask.Netherite
             return (Event)eventSerializer.ReadObject(stream);
         }
 
-        public static void SerializeBatch(List<PartitionEvent> batch, Stream s)
+        public static void SerializePartitionBatch(List<PartitionEvent> batch, Stream s)
         {
-            batchSerializer.WriteObject(s, batch);
+            partitionBatchSerializer.WriteObject(s, batch);
         }
 
-        public static List<PartitionEvent> DeserializeBatch(Stream stream)
+        public static List<PartitionEvent> DeserializePartitionBatch(Stream stream)
         {
-            return (List<PartitionEvent>) batchSerializer.ReadObject(stream);
+            return (List<PartitionEvent>) partitionBatchSerializer.ReadObject(stream);
+        }
+
+        public static void SerializeClientBatch(List<ClientEvent> batch, Stream s)
+        {
+            clientBatchSerializer.WriteObject(s, batch);
+        }
+
+        public static List<ClientEvent> DeserializeClientBatch(Stream stream)
+        {
+            return (List<ClientEvent>)clientBatchSerializer.ReadObject(stream);
+        }
+
+        public static void SerializeLoadMonitorBatch(List<LoadMonitorEvent> batch, Stream s)
+        {
+            loadMonitorBatchSerializer.WriteObject(s, batch);
+        }
+
+        public static List<LoadMonitorEvent> DeserializeLoadMonitorBatch(Stream stream)
+        {
+            return (List<LoadMonitorEvent>)loadMonitorBatchSerializer.ReadObject(stream);
         }
 
         public static byte[] SerializeTrackedObject(TrackedObject trackedObject)

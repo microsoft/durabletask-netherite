@@ -13,6 +13,7 @@ namespace PerformanceTests.Transport
     using Dynamitey.DynamicObjects;
     using System.Collections.Generic;
     using System.Web.Http;
+    using DurableTask.Netherite;
 
     public static class TransportHttp
     {
@@ -25,14 +26,16 @@ namespace PerformanceTests.Transport
         [FunctionName(nameof(StartAll))]
         public static async Task<IActionResult> StartAll(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "triggertransport/startall")] HttpRequest req,
-            TriggerTransportFactory transportFactory,
+            //ITransportLayerFactory transportFactory,
             ILogger log)
         {
             try
             {
                 string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
                 string[] hosts = JsonConvert.DeserializeObject<string[]>(requestBody);
-                await transportFactory.Instance.StartAllAsync(hosts);
+                //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
+                TriggerTransport transport = TriggerTransportFactory.Instance;
+                await transport.StartAllAsync(hosts);
                 return new OkResult();
             }
             catch (Exception e)
@@ -45,14 +48,16 @@ namespace PerformanceTests.Transport
         public static async Task<IActionResult> StartLocal(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "triggertransport/startlocal/{index}")] HttpRequest req,
             int index,
-            TriggerTransportFactory transportFactory,
+            //ITransportLayerFactory transportFactory,
             ILogger log)
         {
             try
             {
                 string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
                 string[] hosts = JsonConvert.DeserializeObject<string[]>(requestBody);
-                await transportFactory.Instance.StartLocalAsync(hosts, index);
+                //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
+                TriggerTransport transport = TriggerTransportFactory.Instance;
+                await transport.StartLocalAsync(hosts, index);
                 return new OkResult();
             }
             catch (Exception e)
@@ -64,13 +69,15 @@ namespace PerformanceTests.Transport
         [FunctionName(nameof(GetClientId))]
         public static async Task<IActionResult> GetClientId(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "triggertransport/client")] HttpRequest req,
-            TriggerTransportFactory transportFactory,
+            //ITransportLayerFactory transportFactory,
             ILogger log)
         {
             try
             {
-                await transportFactory.Instance.WhenOrchestrationServiceStarted;
-                return new OkObjectResult(new { transportFactory.Instance.ClientId });
+                //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
+                TriggerTransport transport = TriggerTransportFactory.Instance;
+                await transport.WhenOrchestrationServiceStarted;
+                return new OkObjectResult(new { transport.ClientId });
             }
             catch (Exception e)
             {
@@ -82,13 +89,15 @@ namespace PerformanceTests.Transport
         public static async Task<IActionResult> DeliverToPartition(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "triggertransport/partition/{partitionId}")] HttpRequest req,
             int partitionId,
-            TriggerTransportFactory transportFactory,
+            //ITransportLayerFactory transportFactory,
             ILogger log)
         {
             try
             {
-                await transportFactory.Instance.WhenLocallyStarted;
-                await transportFactory.Instance.DeliverToPartition(partitionId, req.Body);
+                //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
+                TriggerTransport transport = TriggerTransportFactory.Instance;
+                await transport.WhenLocallyStarted;
+                await transport.DeliverToPartition(partitionId, req.Body);
                 return new OkResult();
             }
             catch(Exception e)
@@ -101,13 +110,15 @@ namespace PerformanceTests.Transport
         public static async Task<IActionResult> DeliverToClient(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "triggertransport/client/{clientId}")] HttpRequest req,
             Guid clientId,
-            TriggerTransportFactory transportFactory,
+            //ITransportLayerFactory transportFactory,
             ILogger log)
         {
             try
             {
-                await transportFactory.Instance.WhenLocallyStarted;
-                await transportFactory.Instance.DeliverToClient(clientId, req.Body);
+                //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
+                TriggerTransport transport = TriggerTransportFactory.Instance;
+                await transport.WhenLocallyStarted;
+                await transport.DeliverToClient(clientId, req.Body);
                 return new OkResult();
             }
             catch (Exception e)
@@ -119,13 +130,15 @@ namespace PerformanceTests.Transport
         [FunctionName(nameof(DeliverToLoadMonitor))]
         public static async Task<IActionResult> DeliverToLoadMonitor(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "triggertransport/loadmonitor")] HttpRequest req,
-            TriggerTransportFactory transportFactory,
+            //ITransportLayerFactory transportFactory,
             ILogger log)
         {
             try
             {
-                await transportFactory.Instance.WhenLocallyStarted;
-                await transportFactory.Instance.DeliverToLoadMonitor(req.Body);
+                //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
+                TriggerTransport transport = TriggerTransportFactory.Instance;
+                await transport.WhenLocallyStarted;
+                await transport.DeliverToLoadMonitor(req.Body);
                 return new OkResult();
             }
             catch (Exception e)
