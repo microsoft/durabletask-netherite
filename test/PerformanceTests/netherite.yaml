@@ -18,7 +18,7 @@ spec:
         app: netherite
     spec:
       nodeSelector:
-        "beta.kubernetes.io/os": linux
+        "kubernetes.io/os": linux
       containers:
       - name: netherite
         image: <IMAGE_TAG>
