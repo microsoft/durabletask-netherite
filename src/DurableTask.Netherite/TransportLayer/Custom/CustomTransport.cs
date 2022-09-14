@@ -23,7 +23,9 @@
         ClientInfo clientInfo;
 
         public TaskhubParameters Parameters { get; private set; }
-        public Guid ClientId => this.clientInfo.ClientId;
+        public Guid? ClientId => this.clientInfo?.ClientId;
+
+        public bool HostsLoadMonitor => this.loadMonitorInfo != null;
 
         internal TransportAbstraction.IHost Host => this.orchestrationService;
 
@@ -42,41 +44,42 @@
         public abstract Task SendToLoadMonitorAsync(Stream content);
         public abstract Task SendToClientAsync(Guid clientId, Stream content);
 
-        public async Task DeliverToPartition(int partitionId, Stream stream)
+        public async Task<bool> DeliverToLocalPartitionAsync(int partitionId, Stream stream)
         {
             if (!this.partitions.TryGetValue(partitionId, out PartitionInfo partitionInfo))
             {
-                throw new InvalidOperationException("partition does not exist on this host");
+                return false;
             }
             else
             {
                 await partitionInfo.DeliverAsync(stream);
+                return true;
             }
         }
 
-        public Task DeliverToLoadMonitor(Stream stream)
+        public bool DeliverToLocalLoadMonitor(Stream stream)
         {
             if (this.loadMonitorInfo == null)
             {
-                throw new InvalidOperationException("loadmonitor does not exist on this host");
+                return false;
             }
             else
             {
                 this.loadMonitorInfo.Deliver(stream);
-                return Task.CompletedTask;
+                return true;
             }
         }
 
-        public Task DeliverToClient(Guid clientId, Stream stream)
+        public bool DeliverToLocalClient(Guid clientId, Stream stream)
         {
-            if (this.clientInfo.ClientId != clientId)
+            if (this.clientInfo?.ClientId != clientId)
             {
-                throw new InvalidOperationException("client does not exist on this host");
+                return false;
             }
             else
             {
                 this.clientInfo.Deliver(stream);
-                return Task.CompletedTask;
+                return true;
             }
         }
 

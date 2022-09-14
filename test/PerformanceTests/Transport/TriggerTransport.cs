@@ -31,13 +31,36 @@
 
 
         public override Task SendToClientAsync(Guid clientId, Stream content)
-            => this.client.SendToClientAsync(clientId, content);
+        {
+            if (this.DeliverToLocalClient(clientId, content))
+            {
+                return Task.CompletedTask;
+            }
+            else
+            {
+                return this.client.SendToClientAsync(clientId, content);
+            }
+        }
 
         public override Task SendToLoadMonitorAsync(Stream content)
-            => this.client.SendToLoadMonitorAsync(content);
+        {
+            if (this.DeliverToLocalLoadMonitor(content))
+            {
+                return Task.CompletedTask;
+            }
+            else
+            {
+                return this.client.SendToLoadMonitorAsync(content);
+            }
+        }
 
-        public override Task SendToPartitionAsync(int i, Stream content)
-            => this.client.SendToPartitionAsync(i, content);
+        public override async Task SendToPartitionAsync(int i, Stream content)
+        {
+            if (!await this.DeliverToLocalPartitionAsync(i, content))
+            {
+                await this.client.SendToPartitionAsync(i, content);
+            }
+        }
 
         public async Task StartAllAsync(string[] hosts)
         {

@@ -97,8 +97,15 @@ namespace PerformanceTests.Transport
                 //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
                 TriggerTransport transport = TriggerTransportFactory.Instance;
                 await transport.WhenLocallyStarted;
-                await transport.DeliverToPartition(partitionId, req.Body);
-                return new OkResult();
+                bool success = await transport.DeliverToLocalPartitionAsync(partitionId, req.Body);
+                if (!success)
+                {
+                    return new NotFoundResult();
+                }
+                else
+                {
+                    return new OkResult();
+                }
             }
             catch(Exception e)
             {
@@ -118,8 +125,15 @@ namespace PerformanceTests.Transport
                 //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
                 TriggerTransport transport = TriggerTransportFactory.Instance;
                 await transport.WhenLocallyStarted;
-                await transport.DeliverToClient(clientId, req.Body);
-                return new OkResult();
+                bool success = transport.DeliverToLocalClient(clientId, req.Body);
+                if (!success)
+                {
+                    return new NotFoundResult();
+                }
+                else
+                {
+                    return new OkResult();
+                }
             }
             catch (Exception e)
             {
@@ -138,8 +152,15 @@ namespace PerformanceTests.Transport
                 //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
                 TriggerTransport transport = TriggerTransportFactory.Instance;
                 await transport.WhenLocallyStarted;
-                await transport.DeliverToLoadMonitor(req.Body);
-                return new OkResult();
+                bool success = transport.DeliverToLocalLoadMonitor(req.Body);
+                if (!success)
+                {
+                    return new NotFoundResult();
+                }
+                else
+                {
+                    return new OkResult();
+                }
             }
             catch (Exception e)
             {
