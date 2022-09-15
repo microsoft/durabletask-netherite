@@ -55,10 +55,10 @@ namespace PerformanceTests.Transport
             try
             {
                 string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-                string[] hosts = JsonConvert.DeserializeObject<string[]>(requestBody);
+                var placement = JsonConvert.DeserializeObject<Placement>(requestBody);
                 //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
                 TriggerTransport transport = TriggerTransportFactory.Instance;
-                await transport.StartLocalAsync(hosts, index);
+                await transport.StartLocalAsync(placement.Hosts, placement.Clients, index);
                 return new OkResult();
             }
             catch (Exception e)

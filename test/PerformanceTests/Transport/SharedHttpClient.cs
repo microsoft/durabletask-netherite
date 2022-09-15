@@ -54,10 +54,10 @@
             return Guid.Parse((string) responseJson.GetValue("clientId"));
         }
 
-        public async Task StartLocalAsync(string[] hosts, int index)
+        public async Task StartLocalAsync(Placement placement, int index)
         {
             string hostUri = this.placement.PartitionHost(index);
-            string content = JsonConvert.SerializeObject(hosts);
+            string content = JsonConvert.SerializeObject(placement);
             var response = await this.client.PostAsync($"{hostUri}/triggertransport/startlocal/{index}", new StringContent(content));
             response.EnsureSuccessStatusCode();
         }

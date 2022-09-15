@@ -7,35 +7,21 @@
     using System.Text;
     using System.Threading.Tasks;
     using Microsoft.AspNetCore.Http;
+    using Newtonsoft.Json;
 
-    class Placement  
+    public class Placement  
     {
-        string[] hosts;
-        readonly Dictionary<Guid, string> clients;
+        public string[] Hosts { get; set; }
 
-        public Placement()
-        {
-            this.clients = new Dictionary<Guid, string>();
-        }
-
-        public void SetHosts(string[] hosts)
-        {
-            this.hosts = hosts;
-        }
-
-        public void SetClientLocation(Guid clientId, int index)
-        {
-            this.clients[clientId] = this.hosts[index];
-        }
-
-        public IList<string> Hosts => this.hosts;
-        public IEnumerable<Guid> Clients => this.clients.Keys;
+        public Dictionary<Guid, string> Clients { get; set; } = new Dictionary<Guid, string>();
 
         public string PartitionHost(int partitionId) 
-            => this.hosts[partitionId % this.hosts.Length];
+            => this.Hosts[partitionId % this.Hosts.Length];
+
         public string LoadMonitorHost()
-             => this.hosts[0];
+             => this.Hosts[0];
+
         public string ClientHost(Guid clientId)
-             => this.clients[clientId];
+             => this.Clients[clientId];
     }
 }
