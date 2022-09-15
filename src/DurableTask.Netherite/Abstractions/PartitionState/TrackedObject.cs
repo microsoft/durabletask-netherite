@@ -35,7 +35,7 @@ namespace DurableTask.Netherite
         /// used by serializers to compute a type map.
         /// </summary>
         /// <returns>The collection of types.</returns>
-        static IEnumerable<Type> KnownTypes()
+        internal static IEnumerable<Type> KnownTypes()
         {
             foreach (var t in Core.History.HistoryEvent.KnownTypes())
             {

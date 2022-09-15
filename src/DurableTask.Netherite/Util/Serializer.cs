@@ -6,6 +6,7 @@ namespace DurableTask.Netherite
     using System;
     using System.Collections.Generic;
     using System.IO;
+    using System.Linq;
     using System.Runtime.Serialization;
     using System.Text;
     using DurableTask.Netherite.Faster;
@@ -13,26 +14,25 @@ namespace DurableTask.Netherite
     static class Serializer
     {
         static readonly DataContractSerializer eventSerializer
-            = new DataContractSerializer(typeof(Event));
+            = new DataContractSerializer(typeof(Event), Event.KnownTypes());
 
         static readonly DataContractSerializer trackedObjectSerializer
-            = new DataContractSerializer(typeof(TrackedObject));
+            = new DataContractSerializer(typeof(TrackedObject), TrackedObject.KnownTypes());
 
         static readonly DataContractSerializer singletonsSerializer
-            = new DataContractSerializer(typeof(TrackedObject[]));
+            = new DataContractSerializer(typeof(TrackedObject[]), TrackedObject.KnownTypes());
 
         static readonly DataContractSerializer partitionBatchSerializer
-           = new DataContractSerializer(typeof(List<PartitionEvent>));
+           = new DataContractSerializer(typeof(List<PartitionEvent>), Event.KnownTypes());
 
         static readonly DataContractSerializer clientBatchSerializer
-           = new DataContractSerializer(typeof(List<ClientEvent>));
+           = new DataContractSerializer(typeof(List<ClientEvent>), Event.KnownTypes());
 
         static readonly DataContractSerializer loadMonitorBatchSerializer
-           = new DataContractSerializer(typeof(List<LoadMonitorEvent>));
+           = new DataContractSerializer(typeof(List<LoadMonitorEvent>), Event.KnownTypes());
 
         static readonly DataContractSerializer checkpointInfoSerializer
             = new DataContractSerializer(typeof(CheckpointInfo));
-
 
         static readonly UnicodeEncoding uniEncoding = new UnicodeEncoding();
 
