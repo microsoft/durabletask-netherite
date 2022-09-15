@@ -88,7 +88,7 @@ namespace PerformanceTests
                 }
                 else
                 {
-                    return new OkObjectResult($"Hello from {client} ({(is64bit ? "x64" : "x32")})\n");
+                    return new OkObjectResult($"Hello from {client} ({(is64bit ? "x64" : "x32")}) MachineName={Environment.MachineName}\n");
                 }
             }
             catch(Exception e)

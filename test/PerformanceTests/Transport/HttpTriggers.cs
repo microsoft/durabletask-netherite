@@ -14,6 +14,7 @@ namespace PerformanceTests.Transport
     using System.Collections.Generic;
     using System.Web.Http;
     using DurableTask.Netherite;
+    using System.Linq;
 
     public static class TransportHttp
     {
@@ -63,6 +64,34 @@ namespace PerformanceTests.Transport
             catch (Exception e)
             {
                 return ErrorResult(e, nameof(StartLocal), log);
+            }
+        }
+
+        [FunctionName(nameof(TestAddress))]
+        public static async Task<IActionResult> TestAddress(
+           [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "triggertransport/test")] HttpRequest req,
+           //ITransportLayerFactory transportFactory,
+           ILogger log)
+        {
+            try
+            {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                string[] hosts = JsonConvert.DeserializeObject<string[]>(requestBody);
+                //TriggerTransport transport = ((TriggerTransportFactory)transportFactory).Instance;
+                TriggerTransport transport = TriggerTransportFactory.Instance;
+                await transport.WhenOrchestrationServiceStarted;
+                var tasks = new List<Task<string>>();
+                for (int i = 0; i < hosts.Length; i++)
+                {
+                    tasks.Add(transport.Test(hosts[i]));
+                }
+                await Task.WhenAll(tasks);
+                ;
+                return new OkObjectResult(string.Join('\n', tasks.Select(t => t.Result)));
+            }
+            catch (Exception e)
+            {
+                return ErrorResult(e, nameof(StartAll), log);
             }
         }
 

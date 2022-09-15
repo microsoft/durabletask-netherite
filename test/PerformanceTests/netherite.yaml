@@ -11,6 +11,50 @@ spec:
   selector:
     app: netherite
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netherite-0
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    statefulset.kubernetes.io/pod-name: neth-0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netherite-1
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    statefulset.kubernetes.io/pod-name: neth-1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netherite-2
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    statefulset.kubernetes.io/pod-name: neth-2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netherite-3
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    statefulset.kubernetes.io/pod-name: neth-3
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -27,7 +71,7 @@ spec:
       labels:
         app: netherite
     spec:
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: 30 
       nodeSelector:
         "kubernetes.io/os": linux
       containers:

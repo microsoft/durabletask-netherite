@@ -15,14 +15,14 @@
 
     public class TriggerTransport : CustomTransport
     {
-        readonly SharedClient client;
+        readonly SharedHttpClient httpClient;
         readonly Placement placement;
 
         public TriggerTransport(NetheriteOrchestrationService service)
             : base(service)
         {
             this.placement = new Placement();
-            this.client = new SharedClient(this.placement);
+            this.httpClient = new SharedHttpClient(this.placement);
         }
 
         // barrier for completing local startup of partitions and load monitor
@@ -38,7 +38,7 @@
             }
             else
             {
-                return this.client.SendToClientAsync(clientId, content);
+                return this.httpClient.SendToClientAsync(clientId, content);
             }
         }
 
@@ -50,7 +50,7 @@
             }
             else
             {
-                return this.client.SendToLoadMonitorAsync(content);
+                return this.httpClient.SendToLoadMonitorAsync(content);
             }
         }
 
@@ -58,7 +58,7 @@
         {
             if (!await this.DeliverToLocalPartitionAsync(i, content))
             {
-                await this.client.SendToPartitionAsync(i, content);
+                await this.httpClient.SendToPartitionAsync(i, content);
             }
         }
 
@@ -69,7 +69,7 @@
                 var tasks = new List<Task<Guid>>();
                 for (int i = 0; i < hosts.Length; i++)
                 {
-                    tasks.Add(this.client.GetClientIdAsync(i));
+                    tasks.Add(this.httpClient.GetClientIdAsync(i));
                 }
                 await Task.WhenAll(tasks);
                 for (int i = 0; i < hosts.Length; i++)
@@ -81,7 +81,7 @@
                 var tasks = new List<Task>();
                 for (int i = 0; i < hosts.Length; i++)
                 {
-                    tasks.Add(this.client.StartLocalAsync(hosts, i));
+                    tasks.Add(this.httpClient.StartLocalAsync(hosts, i));
                 }
                 await Task.WhenAll(tasks);
             }
@@ -104,6 +104,11 @@
             }
             await Task.WhenAll(tasks);
             this.localStartComplete.TrySetResult(true);
+        }
+
+        public Task<string> Test(string host)
+        {
+            return this.httpClient.Test(host);
         }
     }
 }

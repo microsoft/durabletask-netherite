@@ -7,15 +7,16 @@
     using System.Net.Http;
     using System.Text;
     using System.Threading.Tasks;
+    using Microsoft.Azure.Documents;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
 
-    class SharedClient
+    class SharedHttpClient
     {
         readonly Placement placement;
         readonly HttpClient client;
 
-        public SharedClient(Placement placement)
+        public SharedHttpClient(Placement placement)
             : base()
         {
             this.placement = placement;
@@ -59,6 +60,19 @@
             string content = JsonConvert.SerializeObject(hosts);
             var response = await this.client.PostAsync($"{hostUri}/triggertransport/startlocal/{index}", new StringContent(content));
             response.EnsureSuccessStatusCode();
+        }
+
+        public async Task<string> Test(string hostUri)
+        {
+            try
+            {
+                var response = await this.client.GetAsync($"{hostUri}/ping");
+                return $"{response.StatusCode} {await response.Content.ReadAsStringAsync()}";
+            }
+            catch(Exception e)
+            {
+                return $"exception: {e}";
+            }
         }
     }
 }
