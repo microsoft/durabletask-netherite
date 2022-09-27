@@ -31,6 +31,7 @@ steps:
   env:
     AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: Memory
+  displayName: Memory Parametric Tests
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.Tests.csproj'
@@ -41,6 +42,7 @@ steps:
   env:
     AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: Memory
+  displayName: Memory AzureFunctions Tests
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
@@ -51,6 +53,7 @@ steps:
   env:
     AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: SingleHost
+  displayName: SingleHost Parametric Tests
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.Tests.csproj'
@@ -61,6 +64,7 @@ steps:
   env:
     AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: $(TransportConnectionString)
+  displayName: EventHubs Specific Tests
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.Tests.csproj'
@@ -71,6 +75,7 @@ steps:
   env:
     AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: $(TransportConnectionString)
+  displayName: EventHubs Parametric Tests
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.Tests.csproj'
@@ -81,6 +86,7 @@ steps:
   env:
     AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: SingleHost
+  displayName: SingleHost AzureFunctions Tests
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
@@ -91,6 +97,7 @@ steps:
   env:
     AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: $(TransportConnectionString)
+  displayName: EventHubs AzureFunctions Tests
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
