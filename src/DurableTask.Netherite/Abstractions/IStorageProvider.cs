@@ -44,7 +44,7 @@ namespace DurableTask.Netherite
         IPartitionState CreatePartitionState(TaskhubParameters parameters);
 
         /// <summary>
-        /// Where to publish the load information to.
+        /// Where to publish the load information to. Is null if load should not be published.
         /// </summary>
         ILoadPublisherService LoadPublisher { get; }
     }

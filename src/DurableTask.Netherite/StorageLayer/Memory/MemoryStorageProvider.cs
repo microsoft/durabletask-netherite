@@ -35,7 +35,7 @@ namespace DurableTask.Netherite
 
         public CancellationToken Termination => CancellationToken.None;
 
-        ILoadPublisherService IStorageLayer.LoadPublisher => null; // we do not use this for memory emulation
+        ILoadPublisherService IStorageLayer.LoadPublisher => null; // we do not publish load for in-memory storage emulation
 
         async Task<bool> IStorageLayer.CreateTaskhubIfNotExistsAsync()
         {
