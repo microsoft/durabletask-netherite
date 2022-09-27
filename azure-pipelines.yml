@@ -28,79 +28,84 @@ steps:
     configuration: '$(buildConfiguration)'
 
 - task: DotNetCoreCLI@2
-  env:
-    AzureWebJobsStorage: $(StorageConnectionString)
-    EventHubsConnection: Memory
-  displayName: Memory Parametric Tests
-  inputs:
-    command: 'test' 
-    projects: '**/DurableTask.Netherite.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true"'
-    testRunTitle: 'Netherite Transport-Parametric Tests on Memory'
-
-- task: DotNetCoreCLI@2
-  env:
-    AzureWebJobsStorage: $(StorageConnectionString)
-    EventHubsConnection: Memory
-  displayName: Memory AzureFunctions Tests
-  inputs:
-    command: 'test' 
-    projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal'
-    testRunTitle: 'Netherite Tests for Azure Functions on Memory'
-
-- task: DotNetCoreCLI@2
-  env:
-    AzureWebJobsStorage: $(StorageConnectionString)
-    EventHubsConnection: SingleHost
-  displayName: SingleHost Parametric Tests
-  inputs:
-    command: 'test' 
-    projects: '**/DurableTask.Netherite.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true"'
-    testRunTitle: 'Netherite Transport-Parametric Tests on SingleHost'
-
-- task: DotNetCoreCLI@2
-  env:
-    AzureWebJobsStorage: $(StorageConnectionString)
-    EventHubsConnection: $(TransportConnectionString)
-  displayName: EventHubs Specific Tests
-  inputs:
-    command: 'test' 
-    projects: '**/DurableTask.Netherite.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=false"'
-    testRunTitle: 'Netherite Transport-Specific Tests'
-
-- task: DotNetCoreCLI@2
-  env:
-    AzureWebJobsStorage: $(StorageConnectionString)
-    EventHubsConnection: $(TransportConnectionString)
   displayName: EventHubs Parametric Tests
+  env:
+    AzureWebJobsStorage: $(StorageConnectionString)
+    EventHubsConnection: $(TransportConnectionString)
+  timeoutInMinutes: 15
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true"'
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true" --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Transport-Parametric Tests on EventHubs'
 
 - task: DotNetCoreCLI@2
+  displayName: SingleHost AzureFunctions Tests
   env:
     AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: SingleHost
-  displayName: SingleHost AzureFunctions Tests
+  timeoutInMinutes: 15
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal'
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Tests for Azure Functions on SingleHost'
 
 - task: DotNetCoreCLI@2
+  displayName: EventHubs AzureFunctions Tests
   env:
     AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: $(TransportConnectionString)
-  displayName: EventHubs AzureFunctions Tests
+  timeoutInMinutes: 15
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal'
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Tests for Azure Functions on EventHubs'
 
+- task: DotNetCoreCLI@2
+  displayName: EventHubs Specific Tests
+  env:
+    AzureWebJobsStorage: $(StorageConnectionString)
+    EventHubsConnection: $(TransportConnectionString)
+  timeoutInMinutes: 15
+  inputs:
+    command: 'test' 
+    projects: '**/DurableTask.Netherite.Tests.csproj'
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=false" --blame-hang --blame-hang-timeout 5m' 
+    testRunTitle: 'Netherite Transport-Specific Tests'
+
+- task: DotNetCoreCLI@2
+  displayName: Memory Parametric Tests
+  env:
+    AzureWebJobsStorage: $(StorageConnectionString)
+    EventHubsConnection: Memory
+  inputs:
+    command: 'test' 
+    projects: '**/DurableTask.Netherite.Tests.csproj'
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true" --blame-hang --blame-hang-timeout 5m' 
+    testRunTitle: 'Netherite Transport-Parametric Tests on Memory'
+
+- task: DotNetCoreCLI@2
+  displayName: Memory AzureFunctions Tests
+  env:
+    AzureWebJobsStorage: $(StorageConnectionString)
+    EventHubsConnection: Memory
+  timeoutInMinutes: 15
+  inputs:
+    command: 'test' 
+    projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --blame-hang --blame-hang-timeout 5m' 
+    testRunTitle: 'Netherite Tests for Azure Functions on Memory'
+
+- task: DotNetCoreCLI@2
+  displayName: SingleHost Parametric Tests
+  env:
+    AzureWebJobsStorage: $(StorageConnectionString)
+    EventHubsConnection: SingleHost
+  timeoutInMinutes: 15
+  inputs:
+    command: 'test' 
+    projects: '**/DurableTask.Netherite.Tests.csproj'
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true" --blame-hang --blame-hang-timeout 5m' 
+    testRunTitle: 'Netherite Transport-Parametric Tests on SingleHost'
