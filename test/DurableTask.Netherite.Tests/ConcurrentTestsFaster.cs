@@ -82,18 +82,54 @@ namespace DurableTask.Netherite.Tests
             await Task.WhenAll(alldone); // to propagate exceptions
         }
 
-        //[Theory]
-        //[InlineData(false)]
-        //[InlineData(true)]
-        //public async Task EachScenarioOnce(bool restrictMemory)
-        //{
-        //    using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
-        //    using var fixture = await HostFixture.StartNew(this.settings, useCacheDebugger: true, useReplayChecker: true, restrictMemory ? (int?) 0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
-        //    var scenarios = new ScenarioTests(fixture, this.outputHelper);
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task EachScenarioOnce(bool restrictMemory)
+        {
+            var orchestrationTimeout = TimeSpan.FromMinutes(restrictMemory ? 10 : 5);
+            var startupTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsPseudoConnectionString(this.settings.ResolvedTransportConnectionString) ? 1 : 3.5);
+            var shutDownTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsPseudoConnectionString(this.settings.ResolvedTransportConnectionString) ? 0.1 : 3);
+            var totalTimeout = startupTimeout + orchestrationTimeout + shutDownTimeout;
 
-        //    var tests = scenarios.StartAllScenarios(includeTimers: !restrictMemory, includeLarge: true).ToList();
-        //    await this.WaitForCompletion(tests, TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
-        //}
+            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
+
+            async Task RunAsync()
+            {
+                Trace.WriteLine($"TestProgress: Started RunAsync");
+
+                using (var fixture = await HostFixture.StartNew(
+                    this.settings,
+                    useCacheDebugger: true,
+                    useReplayChecker: false,
+                    restrictMemory ? (int?)0 : null,
+                    startupTimeout,
+                    (msg) => this.outputHelper?.WriteLine(msg)))
+                {
+                    var scenarios = new ScenarioTests(fixture, this.outputHelper);
+
+                    var tests = new List<(string, Task)>();
+
+                    foreach ((string name, Task task) in scenarios.StartAllScenarios(includeTimers: true, includeLarge: true))
+                    {
+                        Trace.WriteLine($"TestProgress: Adding {name}");
+                        tests.Add((name, task));
+                    }
+
+                    await this.WaitForCompletion(tests, orchestrationTimeout);
+
+                    Trace.WriteLine($"TestProgress: Shutting Down");
+                }
+
+                Trace.WriteLine($"TestProgress: Completed RunAsync");
+            }
+
+            var task = Task.Run(RunAsync);
+            var timeoutTask = Task.Delay(totalTimeout);
+            await Task.WhenAny(task, timeoutTask);
+            Assert.True(task.IsCompleted);
+            await task;
+        }
 
         [Theory]
         [InlineData(false, false, 4)]
