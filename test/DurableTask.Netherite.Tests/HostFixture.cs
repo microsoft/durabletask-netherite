@@ -27,7 +27,7 @@ namespace DurableTask.Netherite.Tests
         internal string TestHooksError { get; private set; }
 
         public HostFixture()
-            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, true, null, null)
+            : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, false, null, null)
         {
             TestConstants.ValidateEnvironment(requiresTransportSpec: true);
             this.Host.StartAsync().Wait();
