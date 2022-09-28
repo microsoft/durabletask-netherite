@@ -7,6 +7,7 @@ namespace DurableTask.Netherite
     using System.Collections.Generic;
     using System.Threading;
     using System.Threading.Tasks;
+    using DurableTask.Netherite.Abstractions;
 
     /// <summary>
     /// Interfaces that separate the transport functionality (which includes both load balancing of partitions
@@ -15,25 +16,15 @@ namespace DurableTask.Netherite
     static class TransportAbstraction
     {
         /// <summary>
-        /// The host functionality visible to the transport back-end. 
-        /// The transport back-end calls this interface to place clients and partitions on this host.
+        /// The host functionality visible to the transport layer. 
+        /// The transport layer calls this interface to place clients and partitions on this host.
         /// </summary>
         public interface IHost
         {
             /// <summary>
-            /// Assigned by the transport backend to inform the host about the number of partitions.
+            ///  Gets the storage layer used by this host.
             /// </summary>
-            uint NumberPartitions { set; }
-
-            /// <summary>
-            /// Assigned by the transport backend to inform the host about the file/blob paths for the partitition state in storage.
-            /// </summary>
-            string PathPrefix { set; }
-
-            /// <summary>
-            /// Returns the storage provider for storing the partition states.
-            /// </summary>
-            IStorageProvider StorageProvider { get; }
+            IStorageLayer StorageLayer { get; }
 
             /// <summary>
             /// Creates a client on this host.
@@ -68,7 +59,7 @@ namespace DurableTask.Netherite
         }
 
         /// <summary>
-        /// The partition functionality, as seen by the transport back-end.
+        /// The partition functionality, as seen by the transport layer.
         /// </summary>
         public interface IPartition
         {
@@ -88,7 +79,7 @@ namespace DurableTask.Netherite
             /// Also, it can be used to detect that the partition has terminated for any other reason, 
             /// be it cleanly (after StopAsync) or uncleanly (after losing a lease or hitting a fatal error).
             /// </remarks>
-            Task<long> CreateOrRestoreAsync(IPartitionErrorHandler termination, string inputQueueFingerprint);
+            Task<long> CreateOrRestoreAsync(IPartitionErrorHandler termination, TaskhubParameters parameters, string inputQueueFingerprint);
 
             /// <summary>
             /// Clean shutdown: stop processing, save partition state to storage, and release ownership.
@@ -122,7 +113,7 @@ namespace DurableTask.Netherite
         }
 
         /// <summary>
-        /// The client functionality, as seen by the transport back-end.
+        /// The client functionality, as seen by the transport layer.
         /// </summary>
         public interface IClient
         {
@@ -152,7 +143,7 @@ namespace DurableTask.Netherite
         }
 
         /// <summary>
-        /// The load monitor functionality, as seen by the transport back-end.
+        /// The load monitor functionality, as seen by the transport layer.
         /// </summary>
         public interface ILoadMonitor
         {

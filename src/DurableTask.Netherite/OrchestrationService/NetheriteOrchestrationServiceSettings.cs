@@ -245,20 +245,83 @@ namespace DurableTask.Netherite
         /// Validates the settings, throwing exceptions if there are issues.
         /// </summary>
         /// <param name="nameResolver">Optionally, a resolver for connection names.</param>
-        public void Validate(Func<string,string> nameResolver = null)
+        public void Validate(Func<string, string> nameResolver = null)
         {
             if (string.IsNullOrEmpty(this.HubName))
             {
                 throw new InvalidOperationException($"Must specify {nameof(this.HubName)} for Netherite storage provider.");
             }
 
+            if (this.PartitionCount < 1 || this.PartitionCount > 32)
+            {
+                throw new ArgumentOutOfRangeException(nameof(this.PartitionCount));
+            }
+
             ValidateTaskhubName(this.HubName);
 
+            if (string.IsNullOrEmpty(this.ResolvedTransportConnectionString))
+            {
+                if (string.IsNullOrEmpty(this.EventHubsConnectionName))
+                {
+                    throw new InvalidOperationException($"Must specify {nameof(this.EventHubsConnectionName)} for Netherite storage provider.");
+                }
+
+                if (TransportConnectionString.IsPseudoConnectionString(this.EventHubsConnectionName))
+                {
+                    this.ResolvedTransportConnectionString = this.EventHubsConnectionName;
+                }
+                else
+                {
+                    if (nameResolver == null)
+                    {
+                        throw new InvalidOperationException($"Must either specify {nameof(this.ResolvedTransportConnectionString)}, or specify {nameof(this.EventHubsConnectionName)} and provide a nameResolver, to construct Netherite storage provider.");
+                    }
+
+                    this.ResolvedTransportConnectionString = nameResolver(this.EventHubsConnectionName);
+
+                    if (string.IsNullOrEmpty(this.ResolvedTransportConnectionString))
+                    {
+                        throw new InvalidOperationException($"Could not resolve {nameof(this.EventHubsConnectionName)}:{this.EventHubsConnectionName} for Netherite storage provider.");
+                    }
+                }
+            }
+
+            TransportConnectionString.Parse(this.ResolvedTransportConnectionString, out var storage, out var transport);
+
+            if (transport == TransportConnectionString.TransportChoices.EventHubs)
+            {
+                // validates the connection string
+                TransportConnectionString.EventHubsNamespaceName(this.ResolvedTransportConnectionString);
+            }
+
+            if (storage == TransportConnectionString.StorageChoices.Memory)
+            {
+                this.ResolvedStorageConnectionString = null;
+                this.ResolvedPageBlobStorageConnectionString = null;
+            }
+            else
+            {
+                this.ValidateAzureStorageConnectionStrings(nameResolver);
+            }
+
+            if (this.MaxConcurrentOrchestratorFunctions <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(this.MaxConcurrentOrchestratorFunctions));
+            }
+
+            if (this.MaxConcurrentActivityFunctions <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(this.MaxConcurrentActivityFunctions));
+            }
+        }
+
+        public void ValidateAzureStorageConnectionStrings(Func<string, string> nameResolver)
+        {
             if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
             {
                 if (nameResolver == null)
                 {
-                    throw new InvalidOperationException($"Must either specify {nameof(this.ResolvedStorageConnectionString)}, or specify {nameof(this.StorageConnectionName )} and provide a nameResolver, to construct Netherite storage provider.");
+                    throw new InvalidOperationException($"Must either specify {nameof(this.ResolvedStorageConnectionString)}, or specify {nameof(this.StorageConnectionName)} and provide a nameResolver, to construct Netherite storage provider.");
                 }
 
                 if (string.IsNullOrEmpty(this.StorageConnectionName))
@@ -290,80 +353,27 @@ namespace DurableTask.Netherite
                 }
             }
 
-            if (string.IsNullOrEmpty(this.ResolvedTransportConnectionString))
+            // make sure the connection string can be parsed correctly
+            try
             {
-                if (string.IsNullOrEmpty(this.EventHubsConnectionName))
-                {
-                    throw new InvalidOperationException($"Must specify {nameof(this.EventHubsConnectionName)} for Netherite storage provider.");
-                }
-
-                if (TransportConnectionString.IsEmulatorSpecification(this.EventHubsConnectionName))
-                {
-                    this.ResolvedTransportConnectionString = this.EventHubsConnectionName;
-                }
-                else
-                {
-                    if (nameResolver == null)
-                    {
-                        throw new InvalidOperationException($"Must either specify {nameof(this.ResolvedTransportConnectionString)}, or specify {nameof(this.EventHubsConnectionName)} and provide a nameResolver, to construct Netherite storage provider.");
-                    }
-
-                    this.ResolvedTransportConnectionString = nameResolver(this.EventHubsConnectionName);
-
-                    if (string.IsNullOrEmpty(this.ResolvedTransportConnectionString))
-                    {
-                        throw new InvalidOperationException($"Could not resolve {nameof(this.EventHubsConnectionName)}:{this.EventHubsConnectionName} for Netherite storage provider.");
-                    }
-                }
+                Microsoft.Azure.Storage.CloudStorageAccount.Parse(this.ResolvedStorageConnectionString);
+            }
+            catch (Exception e)
+            {
+                throw new FormatException($"Could not parse the specified storage connection string for Netherite storage provider", e);
             }
 
-            TransportConnectionString.Parse(this.ResolvedTransportConnectionString, out var storage, out var transport);
-
-            if (this.PartitionCount < 1 || this.PartitionCount > 32)
-            {
-                throw new ArgumentOutOfRangeException(nameof(this.PartitionCount));
-            }
-
-            if (storage != TransportConnectionString.StorageChoices.Memory)
+            if (!string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString))
             {
                 // make sure the connection string can be parsed correctly
                 try
                 {
-                    Microsoft.Azure.Storage.CloudStorageAccount.Parse(this.ResolvedStorageConnectionString);
+                    Microsoft.Azure.Storage.CloudStorageAccount.Parse(this.ResolvedPageBlobStorageConnectionString);
                 }
                 catch (Exception e)
                 {
-                    throw new FormatException($"Could not parse the specified storage connection string for Netherite storage provider", e);
+                    throw new FormatException($"Could not parse the specified page blob storage connection string for Netherite storage provider", e);
                 }
-
-                if (!string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString))
-                {
-                    // make sure the connection string can be parsed correctly
-                    try
-                    {
-                        Microsoft.Azure.Storage.CloudStorageAccount.Parse(this.ResolvedPageBlobStorageConnectionString);
-                    }
-                    catch (Exception e)
-                    {
-                        throw new FormatException($"Could not parse the specified page blob storage connection string for Netherite storage provider", e);
-                    }
-                }
-            }
-
-            if (transport == TransportConnectionString.TransportChoices.EventHubs)
-            {
-                // validates the connection string
-                TransportConnectionString.EventHubsNamespaceName(this.ResolvedTransportConnectionString);
-            }
-
-            if (this.MaxConcurrentOrchestratorFunctions <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(this.MaxConcurrentOrchestratorFunctions));
-            }
-
-            if (this.MaxConcurrentActivityFunctions <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(this.MaxConcurrentActivityFunctions));
             }
         }
 

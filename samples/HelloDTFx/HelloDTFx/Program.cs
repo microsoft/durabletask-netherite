@@ -19,7 +19,7 @@ var netheriteSettings = new NetheriteOrchestrationServiceSettings()
     // we explicitly specify the two required connection strings here.
     // Another option would be to use a connection name resolver when calling Validate().
     ResolvedStorageConnectionString = "UseDevelopmentStorage=true;",
-    ResolvedTransportConnectionString = "MemoryF",
+    ResolvedTransportConnectionString = "SingleHost",
 };
 
 netheriteSettings.Validate();

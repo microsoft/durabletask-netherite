@@ -6,6 +6,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
     using DurableTask.Core.Common;
     using DurableTask.Core.History;
+    using DurableTask.Netherite.Abstractions;
     using DurableTask.Netherite.Faster;
     using DurableTask.Netherite.Scaling;
     using Microsoft.Azure.Storage;
@@ -26,13 +27,12 @@ namespace DurableTask.Netherite
         DurableTask.Core.IOrchestrationServiceClient,
         DurableTask.Core.IOrchestrationServicePurgeClient,
         DurableTask.Netherite.IOrchestrationServiceQueryClient,
-        TransportAbstraction.IHost,
-        IStorageProvider
+        TransportAbstraction.IHost
     {
-        readonly ITaskHub taskHub;
         readonly TransportConnectionString.StorageChoices configuredStorage;
         readonly TransportConnectionString.TransportChoices configuredTransport;
-        readonly MemoryTracker memoryTracker;
+        readonly ITransportLayer transport;
+        readonly IStorageLayer storage;
 
         readonly WorkItemTraceHelper workItemTraceHelper;
 
@@ -64,18 +64,16 @@ namespace DurableTask.Netherite
         Client client;
         Client checkedClient;
 
-        internal ILoadMonitorService LoadMonitorService { get; private set; }
-
         internal NetheriteOrchestrationServiceSettings Settings { get; private set; }
         internal uint NumberPartitions { get; private set; }
-        uint TransportAbstraction.IHost.NumberPartitions { set => this.NumberPartitions = value; }
-        internal string PathPrefix { get;  private set; }
-        string TransportAbstraction.IHost.PathPrefix { set => this.PathPrefix = value; }
+        internal string PathPrefix { get; private set; }
+        internal string ContainerName { get; private set; }
         internal string StorageAccountName { get; private set; }
+        internal TaskhubParameters TaskhubParameters { get; private set; }
 
         internal WorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; private set; }
         internal WorkItemQueue<OrchestrationWorkItem> OrchestrationWorkItemQueue { get; private set; }
-        internal LoadPublisher LoadPublisher { get; private set; }
+        internal LoadPublishWorker LoadPublisher { get; private set; }
 
         internal ILoggerFactory LoggerFactory { get; }
         internal OrchestrationServiceTraceHelper TraceHelper { get; private set; }
@@ -105,58 +103,43 @@ namespace DurableTask.Netherite
            
             try
             {
-                this.TraceHelper.TraceProgress("Reading configuration for transport and storage providers");
+                this.TraceHelper.TraceProgress("Reading configuration for transport and storage layers");
                 TransportConnectionString.Parse(this.Settings.ResolvedTransportConnectionString, out this.configuredStorage, out this.configuredTransport);
+                
+                // determine a storage account name to be used for tracing
                 this.StorageAccountName = this.configuredStorage == TransportConnectionString.StorageChoices.Memory
                     ? "Memory"
                     : CloudStorageAccount.Parse(this.Settings.ResolvedStorageConnectionString).Credentials.AccountName;
-                
-                // set the account name in the trace helpers
                 this.TraceHelper.StorageAccountName = this.workItemTraceHelper.StorageAccountName = this.StorageAccountName;
 
                 this.TraceHelper.TraceCreated(Environment.ProcessorCount, this.configuredTransport, this.configuredStorage);
 
-                if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster)
+                switch (this.configuredStorage)
                 {
-                    // force the loading of potentially problematic dll dependencies here so exceptions are observed early
-                    var _a = System.Threading.Channels.Channel.CreateBounded<DateTime>(10);
-                    bool _c = System.Runtime.CompilerServices.Unsafe.AreSame(ref _a, ref _a);
+                    case TransportConnectionString.StorageChoices.Memory:
+                        this.storage = new MemoryStorageLayer(this.Settings, this.TraceHelper.Logger);
+                        break;
 
-                    // throw descriptive exception if run on 32bit platform
-                    if (!Environment.Is64BitProcess)
-                    {
-                        throw new NotSupportedException("Netherite backend requires 64bit, but current process is 32bit.");
-                    }
+                    case TransportConnectionString.StorageChoices.Faster:
+                        this.storage = new FasterStorageLayer(this.Settings, this.TraceHelper, this.LoggerFactory);
+                        break;
 
-                    this.memoryTracker = new MemoryTracker((long) (settings.InstanceCacheSizeMB ?? 400) * 1024 * 1024);
+                    default:
+                        throw new NotImplementedException("no such storage choice");
                 }
 
                 switch (this.configuredTransport)
                 {
-                    case TransportConnectionString.TransportChoices.Memory:
-                        this.taskHub = new Emulated.MemoryTransport(this, settings, this.TraceHelper.Logger);
+                    case TransportConnectionString.TransportChoices.SingleHost:
+                        this.transport = new SingleHostTransport.SingleHostTransportLayer(this, settings, this.storage, this.TraceHelper.Logger);
                         break;
 
                     case TransportConnectionString.TransportChoices.EventHubs:
-                        this.taskHub = new EventHubs.EventHubsTransport(this, settings, loggerFactory);
+                        this.transport = new EventHubsTransport.EventHubsTransport(this, settings, this.storage, loggerFactory);
                         break;
 
                     default:
                         throw new NotImplementedException("no such transport choice");
-                }
-
-
-                if (this.configuredTransport != TransportConnectionString.TransportChoices.Memory)
-                {
-                    this.TraceHelper.TraceProgress("Creating LoadMonitor Service");
-                    if (!string.IsNullOrEmpty(settings.LoadInformationAzureTableName))
-                    {
-                        this.LoadMonitorService = new AzureTableLoadMonitor(settings.ResolvedStorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
-                    }
-                    else
-                    {
-                        this.LoadMonitorService = new AzureBlobLoadMonitor(settings.ResolvedStorageConnectionString, settings.HubName);
-                    }
                 }
 
                 this.workItemStopwatch.Start();
@@ -223,50 +206,6 @@ namespace DurableTask.Netherite
        
 
         /******************************/
-        // storage provider
-        /******************************/
-
-        IPartitionState IStorageProvider.CreatePartitionState()
-        {
-            switch (this.configuredStorage)
-            {
-                case TransportConnectionString.StorageChoices.Memory:
-                    return new MemoryStorage(this.TraceHelper.Logger);
-
-                case TransportConnectionString.StorageChoices.Faster:
-                    return new Faster.FasterStorage(this.Settings, this.PathPrefix, this.memoryTracker, this.LoggerFactory);
-
-                default:
-                    throw new NotImplementedException("no such storage choice");
-            }
-        }
-
-        async Task IStorageProvider.DeleteTaskhubAsync(string pathPrefix)
-        {
-            if (!(this.LoadMonitorService is null))
-                await this.LoadMonitorService.DeleteIfExistsAsync(CancellationToken.None).ConfigureAwait(false);
-
-            switch (this.configuredStorage)
-            {
-                case TransportConnectionString.StorageChoices.Memory:
-                    await Task.Delay(10).ConfigureAwait(false);
-                    break;
-
-                case TransportConnectionString.StorageChoices.Faster:
-                    await Faster.FasterStorage.DeleteTaskhubStorageAsync(
-                        this.Settings.ResolvedStorageConnectionString, 
-                        this.Settings.ResolvedPageBlobStorageConnectionString, 
-                        this.Settings.UseLocalDirectoryForPartitionStorage, 
-                        this.Settings.HubName,
-                        pathPrefix).ConfigureAwait(false);
-                    break;
-
-                default:
-                    throw new NotImplementedException("no such storage choice");
-            }
-        }
-
-        /******************************/
         // management methods
         /******************************/
 
@@ -276,23 +215,20 @@ namespace DurableTask.Netherite
         /// <inheritdoc />
         async Task IOrchestrationService.CreateAsync(bool recreateInstanceStore)
         {
-            if (await this.taskHub.ExistsAsync())
+            if ((await this.storage.TryLoadTaskhubAsync(throwIfNotFound: false)) != null)
             {
                 if (recreateInstanceStore)
                 {
                     this.TraceHelper.TraceProgress("Creating");
 
-                    await this.taskHub.DeleteAsync();
-                    await this.taskHub.CreateIfNotExistsAsync();
+                    await this.storage.DeleteTaskhubAsync();
+                    await this.storage.CreateTaskhubIfNotExistsAsync();
                 }
             }
             else
             {
-                await this.taskHub.CreateIfNotExistsAsync();
+                await this.storage.CreateTaskhubIfNotExistsAsync();
             }
-
-            if (!(this.LoadMonitorService is null))
-                await this.LoadMonitorService.CreateIfNotExistsAsync(CancellationToken.None);
         }
 
         /// <inheritdoc />
@@ -301,10 +237,7 @@ namespace DurableTask.Netherite
         /// <inheritdoc />
         async Task IOrchestrationService.DeleteAsync()
         {
-            await this.taskHub.DeleteAsync();
-
-            if (!(this.LoadMonitorService is null))
-                await this.LoadMonitorService.DeleteIfExistsAsync(CancellationToken.None);
+            await this.storage.DeleteTaskhubAsync();
         }
 
         /// <inheritdoc />
@@ -383,9 +316,13 @@ namespace DurableTask.Netherite
 
                 this.serviceShutdownSource = new CancellationTokenSource();
 
-                await this.taskHub.StartClientAsync();
+                this.TaskhubParameters = await this.transport.StartAsync();
+                (this.ContainerName, this.PathPrefix) = this.storage.GetTaskhubPathPrefix(this.TaskhubParameters);
+                this.NumberPartitions = (uint) this.TaskhubParameters.PartitionCount;
 
-                System.Diagnostics.Debug.Assert(this.client != null, "Backend should have added client");
+                await this.transport.StartClientAsync();
+
+                System.Diagnostics.Debug.Assert(this.client != null, "transport layer should have added client");
                
                 this.checkedClient = this.client;
 
@@ -421,7 +358,7 @@ namespace DurableTask.Netherite
 
             try
             {
-                System.Diagnostics.Debug.Assert(this.client != null, "Backend should have added client");
+                System.Diagnostics.Debug.Assert(this.client != null, "transport layer should have added client");
 
                 this.TraceHelper.TraceProgress("Starting Workers");
 
@@ -431,13 +368,13 @@ namespace DurableTask.Netherite
                 LeaseTimer.Instance.DelayWarning = (int delay) =>
                     this.TraceHelper.TraceWarning($"Lease timer is running {delay}s behind schedule");
 
-                if (!(this.LoadMonitorService is null))
+                if (this.storage.LoadPublisher != null)
                 {
                     this.TraceHelper.TraceProgress("Starting Load Publisher");
-                    this.LoadPublisher = new LoadPublisher(this.LoadMonitorService, CancellationToken.None, this.TraceHelper);
+                    this.LoadPublisher = new LoadPublishWorker(this.storage.LoadPublisher, CancellationToken.None, this.TraceHelper);
                 }
 
-                await this.taskHub.StartWorkersAsync();
+                await this.transport.StartWorkersAsync();
 
                 if (this.Settings.PartitionCount != this.NumberPartitions)
                 {
@@ -492,7 +429,7 @@ namespace DurableTask.Netherite
                     this.serviceShutdownSource.Dispose();
                     this.serviceShutdownSource = null;
 
-                    await this.taskHub.StopAsync();
+                    await this.transport.StopAsync();
 
                     this.ActivityWorkItemQueue.Dispose();
                     this.OrchestrationWorkItemQueue.Dispose();
@@ -546,6 +483,8 @@ namespace DurableTask.Netherite
         // host methods
         /******************************/
 
+        IStorageLayer TransportAbstraction.IHost.StorageLayer => this.storage;
+
         TransportAbstraction.IClient TransportAbstraction.IHost.AddClient(Guid clientId, Guid taskHubGuid, TransportAbstraction.ISender batchSender)
         {
             System.Diagnostics.Debug.Assert(this.client == null, "Backend should create only 1 client");
@@ -566,8 +505,6 @@ namespace DurableTask.Netherite
         {
             return new LoadMonitor(this, taskHubGuid, batchSender);
         }
-
-        IStorageProvider TransportAbstraction.IHost.StorageProvider => this;
 
         IPartitionErrorHandler TransportAbstraction.IHost.CreateErrorHandler(uint partitionId)
         {
