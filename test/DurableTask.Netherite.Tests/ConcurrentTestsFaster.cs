@@ -191,13 +191,13 @@ namespace DurableTask.Netherite.Tests
 
         [Theory]
         [InlineData(1)]
-        [InlineData(2)]
-        [InlineData(3)]
-        [InlineData(4)]
-        [InlineData(5)]
-        [InlineData(6)]
-        [InlineData(7)]
-        [InlineData(8)]
+        //[InlineData(2)]
+        //[InlineData(3)]
+        //[InlineData(4)]
+        //[InlineData(5)]
+        //[InlineData(6)]
+        //[InlineData(7)]
+        //[InlineData(8)]
         public async Task ReproHangingReads(int sequenceNumber)
         {
             // running a single test is usually not enough to repro, so we run the same test multiple times
