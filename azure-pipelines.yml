@@ -36,7 +36,7 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true" --blame-hang --blame-hang-timeout 5m' 
+    arguments: '--configuration $(buildConfiguration) --filter "AnyTransport=true" --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Transport-Parametric Tests on EventHubs'
 
 - task: DotNetCoreCLI@2
@@ -48,7 +48,7 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --blame-hang --blame-hang-timeout 5m' 
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Tests for Azure Functions on SingleHost'
 
 - task: DotNetCoreCLI@2
@@ -60,7 +60,7 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --blame-hang --blame-hang-timeout 5m' 
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Tests for Azure Functions on EventHubs'
 
 - task: DotNetCoreCLI@2
@@ -71,7 +71,7 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true" --blame-hang --blame-hang-timeout 5m' 
+    arguments: '--configuration $(buildConfiguration) --filter "AnyTransport=true" --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Transport-Parametric Tests on Memory'
 
 - task: DotNetCoreCLI@2
@@ -83,7 +83,7 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --blame-hang --blame-hang-timeout 5m' 
+    arguments: '--configuration $(buildConfiguration) --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Tests for Azure Functions on Memory'
 
 - task: DotNetCoreCLI@2
@@ -95,7 +95,7 @@ steps:
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=true" --blame-hang --blame-hang-timeout 5m' 
+    arguments: '--configuration $(buildConfiguration) --filter "AnyTransport=true" --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Transport-Parametric Tests on SingleHost'
 
 - task: DotNetCoreCLI@2
@@ -103,9 +103,9 @@ steps:
   env:
     AzureWebJobsStorage: $(StorageConnectionString)
     EventHubsConnection: $(TransportConnectionString)
-  timeoutInMinutes: 15
+  timeoutInMinutes: 45
   inputs:
     command: 'test' 
     projects: '**/DurableTask.Netherite.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --filter "AnyTransport=false" --blame-hang --blame-hang-timeout 5m' 
+    arguments: '--configuration $(buildConfiguration) --filter "AnyTransport=false" --verbosity normal --no-build --blame-hang --blame-hang-timeout 10m' 
     testRunTitle: 'Netherite Transport-Specific Tests'
