@@ -75,7 +75,7 @@ namespace DurableTask.Netherite.Tests
         [Fact]
         public async Task EachScenarioOnce()
         {
-            using var fixture = await HostFixture.StartNew(this.settings, useCacheDebugger: false, useReplayChecker: true, null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+            using var fixture = await HostFixture.StartNew(this.settings, useCacheDebugger: false, useReplayChecker: false, null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
             var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
             var tests = scenarios.StartAllScenarios(includeTimers: true, includeLarge: true).ToList();
