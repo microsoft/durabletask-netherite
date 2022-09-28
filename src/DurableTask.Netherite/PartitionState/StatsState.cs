@@ -38,7 +38,14 @@ namespace DurableTask.Netherite
 
         public override void Process(BatchProcessed evt, EffectTracker effects)
         {
-            this.InstanceCount++;
+            if (!evt.DeleteInstance)
+            {
+                this.InstanceCount++;
+            }
+            else
+            {
+                this.InstanceCount--;
+            }
         }
 
         public override void Process(PurgeBatchIssued evt, EffectTracker effects)

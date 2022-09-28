@@ -12,7 +12,6 @@ namespace DurableTask.Netherite.Faster
     using DurableTask.Netherite.Abstractions;
     using DurableTask.Netherite.EventHubsTransport;
     using DurableTask.Netherite.Scaling;
-    using Dynamitey.Internal.Optimization;
     using Microsoft.Azure.Documents;
     using Microsoft.Azure.Documents.SystemFunctions;
     using Microsoft.Azure.Storage;

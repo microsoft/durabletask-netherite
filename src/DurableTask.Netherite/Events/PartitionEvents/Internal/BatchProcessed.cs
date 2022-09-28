@@ -66,6 +66,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public int PackPartitionTaskMessages { get; set; }
 
+        [DataMember]
+        public bool DeleteInstance { get; set; }
+
         [IgnoreDataMember]
         public OrchestrationWorkItem WorkItemForReuse { get; set; }
 

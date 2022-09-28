@@ -44,6 +44,8 @@ namespace DurableTask.Netherite.AzureFunctions
 
         public override bool GuaranteesOrderedDelivery => true;
 
+        public override bool SupportsImplicitEntityDeletion => true;
+
         public override TimeSpan MaximumDelayTime { get; set; } = TimeSpan.MaxValue;
 
         public override string EventSourceName => "DurableTask-Netherite";
