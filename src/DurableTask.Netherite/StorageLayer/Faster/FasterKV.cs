@@ -1060,7 +1060,7 @@ namespace DurableTask.Netherite.Faster
                 }
 
             }
-            catch (CacheDebugger.ValidationFailedException e)
+            catch (CacheDebugger.ValidationFailedException)
             {
                 if (retries == 0)
                 {
