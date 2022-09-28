@@ -13,24 +13,24 @@ namespace DurableTask.Netherite.Tests
         public const string EventHubsConnectionName ="EventHubsConnection";
         public const string DefaultTaskHubName ="test-taskhub";
         
-        public static void ValidateEnvironment()
+        public static void ValidateEnvironment(bool requiresTransportSpec)
         {
             if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(StorageConnectionName)))
             {
                 throw new InvalidOperationException($"To run tests, environment must define '{StorageConnectionName}'");
             }
-            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(EventHubsConnectionName)))
+            if (requiresTransportSpec && string.IsNullOrEmpty(Environment.GetEnvironmentVariable(EventHubsConnectionName)))
             {
                 throw new InvalidOperationException($"To run tests, environment must define '{EventHubsConnectionName}'");
             }
         }
 
-        public static NetheriteOrchestrationServiceSettings GetNetheriteOrchestrationServiceSettings()
+        public static NetheriteOrchestrationServiceSettings GetNetheriteOrchestrationServiceSettings(string emulationSpec = null)
         {
             var settings = new NetheriteOrchestrationServiceSettings
             {
                 StorageConnectionName = StorageConnectionName,
-                EventHubsConnectionName = EventHubsConnectionName,
+                EventHubsConnectionName = emulationSpec ?? EventHubsConnectionName,
                 HubName = DefaultTaskHubName,
                 TransportLogLevelLimit = LogLevel.Trace,
                 StorageLogLevelLimit = LogLevel.Trace,
@@ -39,7 +39,7 @@ namespace DurableTask.Netherite.Tests
                 WorkItemLogLevelLimit = LogLevel.Trace,
                 ClientLogLevelLimit = LogLevel.Trace,
                 LoadMonitorLogLevelLimit = LogLevel.Trace,
-                PartitionCount = 12,
+                PartitionCount = 6,
                 ThrowExceptionOnInvalidDedupeStatus = true,
                 TakeStateCheckpointWhenStoppingPartition = true,  // set to false for testing recovery from log
                 UseAlternateObjectStore = false,                  // set to true to bypass FasterKV; default is false
@@ -49,7 +49,7 @@ namespace DurableTask.Netherite.Tests
             };
 
             // uncomment the following for testing FASTER using local files only
-            //settings.ResolvedTransportConnectionString = "MemoryF";
+            //settings.ResolvedTransportConnectionString = "SingleHost";
             //settings.ResolvedStorageConnectionString = "";
             //settings.UseLocalDirectoryForPartitionStorage = $"{Environment.GetEnvironmentVariable("temp")}\\FasterTestStorage";
 

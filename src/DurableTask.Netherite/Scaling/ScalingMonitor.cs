@@ -11,7 +11,7 @@ namespace DurableTask.Netherite.Scaling
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
-    using DurableTask.Netherite.EventHubs;
+    using DurableTask.Netherite.EventHubsTransport;
 
     /// <summary>
     /// Monitors the performance of the Netherite backend and makes scaling decisions.
@@ -29,7 +29,7 @@ namespace DurableTask.Netherite.Scaling
         public Action<string> InformationTracer { get; }
         public Action<string, Exception> ErrorTracer { get; }
 
-        readonly ILoadMonitorService loadMonitor;
+        readonly ILoadPublisherService loadPublisher;
 
         /// <summary>
         /// The name of the taskhub.
@@ -65,11 +65,11 @@ namespace DurableTask.Netherite.Scaling
 
             if (!string.IsNullOrEmpty(partitionLoadTableName))
             {
-                this.loadMonitor = new AzureTableLoadMonitor(storageConnectionString, partitionLoadTableName, taskHubName);
+                this.loadPublisher = new AzureTableLoadPublisher(storageConnectionString, partitionLoadTableName, taskHubName);
             }
             else
             {
-                this.loadMonitor = new AzureBlobLoadMonitor(storageConnectionString, taskHubName);
+                this.loadPublisher = new AzureBlobLoadPublisher(storageConnectionString, taskHubName);
             }
         }
 
@@ -111,7 +111,7 @@ namespace DurableTask.Netherite.Scaling
         public async Task<Metrics> CollectMetrics()
         {
             DateTime now = DateTime.UtcNow;
-            var loadInformation = await this.loadMonitor.QueryAsync(CancellationToken.None).ConfigureAwait(false);
+            var loadInformation = await this.loadPublisher.QueryAsync(CancellationToken.None).ConfigureAwait(false);
             var busy = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
 
             return new Metrics()
@@ -232,7 +232,7 @@ namespace DurableTask.Netherite.Scaling
 
             if (this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
             {
-                List<long> positions = await EventHubs.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHub).ConfigureAwait(false);
+                List<long> positions = await Netherite.EventHubsTransport.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHub).ConfigureAwait(false);
 
                 if (positions == null)
                 {

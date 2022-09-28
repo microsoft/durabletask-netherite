@@ -52,18 +52,18 @@ namespace DurableTask.Netherite.Tests
                             case LogLevel.Debug:
                             case LogLevel.Trace:
                                 System.Diagnostics.Trace.TraceInformation(formattedString);
-                                break;
+                                return;
                             case LogLevel.Error:
                             case LogLevel.Critical:
                                 System.Diagnostics.Trace.TraceError(formattedString);
                                 if (exception != null)
                                     System.Diagnostics.Trace.TraceError(exception.ToString());
-                                break;
+                                return;
                             case LogLevel.Warning:
                                 System.Diagnostics.Trace.TraceWarning(formattedString);
                                 if (exception != null)
                                     System.Diagnostics.Trace.TraceWarning(exception.ToString());
-                                break;
+                                return;
                         }
                     }
                     catch (InvalidOperationException) when (attempts < 2)

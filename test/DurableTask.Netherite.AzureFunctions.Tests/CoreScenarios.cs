@@ -21,7 +21,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
         public CoreScenarios(ITestOutputHelper output)
             : base(output)
         {
-            TestConstants.ValidateEnvironment();
+            TestConstants.ValidateEnvironment(requiresTransportSpec: true);
             this.AddFunctions(typeof(Functions));
         }
 

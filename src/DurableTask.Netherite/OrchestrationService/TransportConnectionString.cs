@@ -40,7 +40,7 @@ namespace DurableTask.Netherite
             /// Passes messages through memory and puts all partitions on a single host
             /// Intended for testing scenarios.
             /// </summary>
-            Memory = 0,
+            SingleHost = 0,
 
             /// <summary>
             /// Passes messages through eventhubs; can distribute over multiple machines via
@@ -53,26 +53,43 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Determines the components to use given a transport connection string.
         /// </summary>
-        public static bool IsEmulatorSpecification(string specification)
+        public static bool IsPseudoConnectionString(string connectionString)
         {
-            return specification == "Memory" || specification == "MemoryF";         
+            switch (connectionString.ToLowerInvariant().Trim())
+            {
+                case "memory":
+                case "singlehost":
+                case "memoryf": // for backwards compatibility
+                    return true;
+
+                default:
+                    return false;
+            }
         }
 
         /// <summary>
         /// Determines the components to use given a transport connection string.
         /// </summary>
-        public static void Parse(string specification, out StorageChoices storage, out TransportChoices transport)
+        public static void Parse(string transportConnectionString, out StorageChoices storage, out TransportChoices transport)
         {
-            if (IsEmulatorSpecification(specification))
+            switch (transportConnectionString.ToLowerInvariant().Trim())
             {
-                transport = TransportChoices.Memory;
-                storage = specification == "MemoryF" ? StorageChoices.Faster : StorageChoices.Memory;
+                case "memory":
+                    transport = TransportChoices.SingleHost;
+                    storage = StorageChoices.Memory;
+                    return;
+
+                case "singlehost":
+                case "memoryf": // for backwards compatibility
+                    transport = TransportChoices.SingleHost;
+                    storage = StorageChoices.Faster;
+                    return;
+
+                default:
+                    transport = TransportChoices.EventHubs;
+                    storage = StorageChoices.Faster;
+                    return;
             }
-            else
-            {
-                transport = TransportChoices.EventHubs;
-                storage = StorageChoices.Faster;
-            }            
         }
  
         /// <summary>

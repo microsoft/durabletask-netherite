@@ -48,6 +48,8 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
                         {
                             options.StorageProvider["type"] = NetheriteProviderFactory.ProviderName;
 
+                            options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.PartitionCount)] = "6";
+
                             options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.LogLevelLimit)] = LogLevel.Trace.ToString();
                             options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.StorageLogLevelLimit)] = LogLevel.Trace.ToString();
                             options.StorageProvider[nameof(NetheriteOrchestrationServiceSettings.TransportLogLevelLimit)] = LogLevel.Trace.ToString();

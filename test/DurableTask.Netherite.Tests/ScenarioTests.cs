@@ -24,14 +24,14 @@ namespace DurableTask.Netherite.Tests
 
     [Collection("NetheriteTests")]
     [Trait("AnyTransport", "true")]
-    public partial class ScenarioTests : IClassFixture<SingleHostFixture>, IDisposable
+    public partial class ScenarioTests : IClassFixture<HostFixture>, IDisposable
     {
-        readonly SingleHostFixture fixture;
+        readonly HostFixture fixture;
         readonly TestOrchestrationHost host;
         readonly Action<string> output;
         ITestOutputHelper outputHelper;
 
-        public ScenarioTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
+        public ScenarioTests(HostFixture fixture, ITestOutputHelper outputHelper)
         {
             this.outputHelper = outputHelper;
             this.output = (string message) => this.outputHelper?.WriteLine(message);
