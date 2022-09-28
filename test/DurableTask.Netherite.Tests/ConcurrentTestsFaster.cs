@@ -82,18 +82,18 @@ namespace DurableTask.Netherite.Tests
             await Task.WhenAll(alldone); // to propagate exceptions
         }
 
-        [Theory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public async Task EachScenarioOnce(bool restrictMemory)
-        {
-            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
-            using var fixture = await HostFixture.StartNew(this.settings, useCacheDebugger: true, useReplayChecker: true, restrictMemory ? (int?) 0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
-            var scenarios = new ScenarioTests(fixture, this.outputHelper);
+        //[Theory]
+        //[InlineData(false)]
+        //[InlineData(true)]
+        //public async Task EachScenarioOnce(bool restrictMemory)
+        //{
+        //    using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
+        //    using var fixture = await HostFixture.StartNew(this.settings, useCacheDebugger: true, useReplayChecker: true, restrictMemory ? (int?) 0 : null, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+        //    var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
-            var tests = scenarios.StartAllScenarios(includeTimers: !restrictMemory, includeLarge: true).ToList();
-            await this.WaitForCompletion(tests, TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
-        }
+        //    var tests = scenarios.StartAllScenarios(includeTimers: !restrictMemory, includeLarge: true).ToList();
+        //    await this.WaitForCompletion(tests, TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
+        //}
 
         [Theory]
         [InlineData(false, false, 4)]
