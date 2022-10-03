@@ -6,7 +6,6 @@ namespace DurableTask.Netherite
     using System;
     using System.Threading;
     using System.Threading.Tasks;
-    using Microsoft.Azure.Documents.SystemFunctions;
     using Microsoft.Extensions.Logging;
 
     // For indicating and initiating termination, and for tracing errors and warnings relating to a partition.
