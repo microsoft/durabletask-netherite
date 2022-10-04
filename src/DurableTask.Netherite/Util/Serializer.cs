@@ -4,7 +4,9 @@
 namespace DurableTask.Netherite
 {
     using System;
+    using System.Collections.Generic;
     using System.IO;
+    using System.Linq;
     using System.Runtime.Serialization;
     using System.Text;
     using DurableTask.Netherite.Faster;
@@ -12,13 +14,22 @@ namespace DurableTask.Netherite
     static class Serializer
     {
         static readonly DataContractSerializer eventSerializer
-            = new DataContractSerializer(typeof(Event));
+            = new DataContractSerializer(typeof(Event), Event.KnownTypes());
 
         static readonly DataContractSerializer trackedObjectSerializer
-            = new DataContractSerializer(typeof(TrackedObject));
+            = new DataContractSerializer(typeof(TrackedObject), TrackedObject.KnownTypes());
 
         static readonly DataContractSerializer singletonsSerializer
-            = new DataContractSerializer(typeof(TrackedObject[]));
+            = new DataContractSerializer(typeof(TrackedObject[]), TrackedObject.KnownTypes());
+
+        static readonly DataContractSerializer partitionBatchSerializer
+           = new DataContractSerializer(typeof(List<PartitionEvent>), Event.KnownTypes());
+
+        static readonly DataContractSerializer clientBatchSerializer
+           = new DataContractSerializer(typeof(List<ClientEvent>), Event.KnownTypes());
+
+        static readonly DataContractSerializer loadMonitorBatchSerializer
+           = new DataContractSerializer(typeof(List<LoadMonitorEvent>), Event.KnownTypes());
 
         static readonly DataContractSerializer checkpointInfoSerializer
             = new DataContractSerializer(typeof(CheckpointInfo));
@@ -56,6 +67,36 @@ namespace DurableTask.Netherite
         public static Event DeserializeEvent(Stream stream)
         {
             return (Event)eventSerializer.ReadObject(stream);
+        }
+
+        public static void SerializePartitionBatch(List<PartitionEvent> batch, Stream s)
+        {
+            partitionBatchSerializer.WriteObject(s, batch);
+        }
+
+        public static List<PartitionEvent> DeserializePartitionBatch(Stream stream)
+        {
+            return (List<PartitionEvent>) partitionBatchSerializer.ReadObject(stream);
+        }
+
+        public static void SerializeClientBatch(List<ClientEvent> batch, Stream s)
+        {
+            clientBatchSerializer.WriteObject(s, batch);
+        }
+
+        public static List<ClientEvent> DeserializeClientBatch(Stream stream)
+        {
+            return (List<ClientEvent>)clientBatchSerializer.ReadObject(stream);
+        }
+
+        public static void SerializeLoadMonitorBatch(List<LoadMonitorEvent> batch, Stream s)
+        {
+            loadMonitorBatchSerializer.WriteObject(s, batch);
+        }
+
+        public static List<LoadMonitorEvent> DeserializeLoadMonitorBatch(Stream stream)
+        {
+            return (List<LoadMonitorEvent>)loadMonitorBatchSerializer.ReadObject(stream);
         }
 
         public static byte[] SerializeTrackedObject(TrackedObject trackedObject)

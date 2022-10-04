@@ -1,5 +1,5 @@
-FROM mcr.microsoft.com/azure-functions/dotnet:3.0
+FROM mcr.microsoft.com/azure-functions/dotnet:4
 
-ENV AzureWebJobsScriptRoot=/home/site/wwwroot WEBSITE_HOSTNAME=localhost:80
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
 COPY . /home/site/wwwroot
