@@ -13,6 +13,7 @@ namespace DurableTask.Netherite.AzureFunctions
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Azure.WebJobs.Host.Executors;
+    using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using Newtonsoft.Json;
@@ -28,6 +29,7 @@ namespace DurableTask.Netherite.AzureFunctions
         readonly DurableTaskOptions options;
         readonly INameResolver nameResolver;
         readonly IHostIdProvider hostIdProvider;
+        readonly IServiceProvider serviceProvider;
 
         readonly bool inConsumption;
         
@@ -48,6 +50,7 @@ namespace DurableTask.Netherite.AzureFunctions
         public NetheriteProviderFactory(
             IOptions<DurableTaskOptions> extensionOptions,
             ILoggerFactory loggerFactory,
+            IServiceProvider serviceProvider,
 #pragma warning disable CS0618 // Type or member is obsolete
             IConnectionStringResolver connectionStringResolver,
 #pragma warning restore CS0618 // Type or member is obsolete
@@ -61,6 +64,7 @@ namespace DurableTask.Netherite.AzureFunctions
             this.loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
             this.nameResolver = nameResolver ?? throw new ArgumentNullException(nameof(nameResolver));
 
+            this.serviceProvider = serviceProvider;
             this.hostIdProvider = hostIdProvider;
             this.inConsumption = platformInfo.IsInConsumptionPlan();
 
@@ -189,8 +193,8 @@ namespace DurableTask.Netherite.AzureFunctions
                     BlobLogger = new BlobLogger(settings.ResolvedStorageConnectionString, settings.HubName, settings.WorkerId);
                 }
 
-                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory, this.serviceProvider);
+                  
                 service.OnStopping += () => CachedProviders.TryRemove(key, out var _);
 
                 return new NetheriteProvider(service, settings);

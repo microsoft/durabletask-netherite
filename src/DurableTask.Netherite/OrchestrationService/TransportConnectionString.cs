@@ -15,7 +15,7 @@ namespace DurableTask.Netherite
     public static class TransportConnectionString
     {
         /// <summary>
-        /// Configuration options for the storage component
+        /// Configuration options for the storage layer
         /// </summary>
         public enum StorageChoices
         {
@@ -29,10 +29,15 @@ namespace DurableTask.Netherite
             /// Uses the Faster key-value store.
             /// </summary>
             Faster = 1,
+
+            /// <summary>
+            /// Uses a custom dependency-injected storage layer
+            /// </summary>
+            Custom = 2,
         }
 
         /// <summary>
-        /// Configuration options for the transport component
+        /// Configuration options for the transport layer
         /// </summary>
         public enum TransportChoices
         {
@@ -47,6 +52,11 @@ namespace DurableTask.Netherite
             /// the eventhubs EventProcessor.
             /// </summary>
             EventHubs = 1,
+
+            /// <summary>
+            /// Uses a custom dependency-injected transport layer
+            /// </summary>
+            Custom = 2,
         }
 
 
