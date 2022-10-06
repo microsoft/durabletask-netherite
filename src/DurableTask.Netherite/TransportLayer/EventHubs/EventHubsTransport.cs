@@ -17,6 +17,7 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.Linq;
     using System.Threading.Channels;
     using DurableTask.Netherite.Abstractions;
+    using DurableTask.Netherite.Connections;
 
     /// <summary>
     /// The EventHubs transport implementation.
@@ -64,9 +65,8 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             this.host = host;
             this.settings = settings;
-            this.cloudStorageAccount = CloudStorageAccount.Parse(this.settings.ResolvedStorageConnectionString);
             this.storage = storage;
-            string namespaceName = TransportConnectionString.EventHubsNamespaceName(settings.ResolvedTransportConnectionString);
+            string namespaceName = settings.EventHubsConnection.ResourceName;
             this.logger = EventHubsTraceHelper.CreateLogger(loggerFactory);
             this.traceHelper = new EventHubsTraceHelper(this.logger, settings.TransportLogLevelLimit, null, this.cloudStorageAccount.Credentials.AccountName, settings.HubName, namespaceName);
             this.ClientId = Guid.NewGuid();
@@ -96,14 +96,15 @@ namespace DurableTask.Netherite.EventHubsTransport
             (string containerName, string path) = this.storage.GetTaskhubPathPrefix(this.parameters);
             this.pathPrefix = path;
 
-            var cloudBlobClient = this.cloudStorageAccount.CreateCloudBlobClient();
+            var cloudStorageAccount = await this.settings.BlobStorageConnection.GetAzureStorageV11AccountAsync(CancellationToken.None);
+            var cloudBlobClient = cloudStorageAccount.CreateCloudBlobClient();
             this.cloudBlobContainer = cloudBlobClient.GetContainerReference(containerName);
             this.partitionScript = this.cloudBlobContainer.GetBlockBlobReference("partitionscript.json");
 
             // check that the storage format is supported
             BlobManager.CheckStorageFormat(this.parameters.StorageFormat, this.settings);
 
-            this.connections = new EventHubsConnections(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub)
+            this.connections = new EventHubsConnections(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub)
             {
                 Host = host,
                 TraceHelper = this.traceHelper,
@@ -164,12 +165,11 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                     string formattedCreationDate = this.connections.CreationTimestamp.ToString("o").Replace("/", "-");
 
-                    this.eventProcessorHost = new EventProcessorHost(
+                    this.eventProcessorHost = await this.settings.EventHubsConnection.GetEventProcessorHostAsync(
                         Guid.NewGuid().ToString(),
                         EventHubsTransport.PartitionHub,
                         EventHubsTransport.PartitionConsumerGroup,
-                        this.settings.ResolvedTransportConnectionString,
-                        this.settings.ResolvedStorageConnectionString,
+                        this.settings.BlobStorageConnection,
                         this.cloudBlobContainer.Name,
                         $"{this.pathPrefix}eh-checkpoints/{(EventHubsTransport.PartitionHub)}/{formattedCreationDate}");
 
@@ -191,8 +191,8 @@ namespace DurableTask.Netherite.EventHubsTransport
                     this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
                             EventHubsTransport.PartitionHub,
                             EventHubsTransport.PartitionConsumerGroup,
-                            this.settings.ResolvedTransportConnectionString,
-                            this.settings.ResolvedStorageConnectionString,
+                            this.settings.EventHubsConnection,
+                            this.settings.BlobStorageConnection,
                             this.cloudBlobContainer.Name,
                             this.host,
                             this,
@@ -211,12 +211,11 @@ namespace DurableTask.Netherite.EventHubsTransport
             {
                 this.traceHelper.LogInformation("Registering LoadMonitor Host with EventHubs");
 
-                this.loadMonitorHost = new EventProcessorHost(
+                this.loadMonitorHost = await this.settings.EventHubsConnection.GetEventProcessorHostAsync(
                         Guid.NewGuid().ToString(),
                         LoadMonitorHub,
                         LoadMonitorConsumerGroup,
-                        this.settings.ResolvedTransportConnectionString,
-                        this.settings.ResolvedStorageConnectionString,
+                        this.settings.BlobStorageConnection,
                         this.cloudBlobContainer.Name,
                         $"{this.pathPrefix}eh-checkpoints/{LoadMonitorHub}");
 

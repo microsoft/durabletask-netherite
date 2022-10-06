@@ -23,8 +23,8 @@ namespace DurableTask.Netherite.EventHubsTransport
     {
         readonly string eventHubPath;
         readonly string consumerGroupName;
-        readonly string eventHubConnectionString;
-        readonly string storageConnectionString;
+        readonly ConnectionInfo eventHubConnection;
+        readonly ConnectionInfo storageConnection;
         readonly string leaseContainerName;
         readonly string workerId;
         readonly TransportAbstraction.IHost host;
@@ -41,8 +41,8 @@ namespace DurableTask.Netherite.EventHubsTransport
         public ScriptedEventProcessorHost(
             string eventHubPath,
             string consumerGroupName,
-            string eventHubConnectionString,
-            string storageConnectionString,
+            ConnectionInfo eventHubConnection,
+            ConnectionInfo storageConnection,
             string leaseContainerName,
             TransportAbstraction.IHost host,
             TransportAbstraction.ISender sender,
@@ -54,8 +54,8 @@ namespace DurableTask.Netherite.EventHubsTransport
         {
             this.eventHubPath = eventHubPath;
             this.consumerGroupName = consumerGroupName;
-            this.eventHubConnectionString = eventHubConnectionString;
-            this.storageConnectionString = storageConnectionString;
+            this.eventHubConnection = eventHubConnection;
+            this.storageConnection = storageConnection;
             this.leaseContainerName = leaseContainerName;
             this.host = host;
             this.sender = sender;

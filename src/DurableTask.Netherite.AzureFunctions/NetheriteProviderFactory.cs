@@ -190,7 +190,7 @@ namespace DurableTask.Netherite.AzureFunctions
             {
                 if (this.TraceToBlob && BlobLogger == null)
                 {
-                    BlobLogger = new BlobLogger(settings.ResolvedStorageConnectionString, settings.HubName, settings.WorkerId);
+                    BlobLogger = new BlobLogger(settings.BlobStorageConnection, settings.HubName, settings.WorkerId);
                 }
 
                 var service = new NetheriteOrchestrationService(settings, this.loggerFactory, this.serviceProvider);

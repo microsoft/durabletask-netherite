@@ -111,6 +111,7 @@ namespace DurableTask.Netherite
             try
             {
                 this.TraceHelper.TraceProgress("Reading configuration for transport and storage layers");
+
                 TransportConnectionString.Parse(this.Settings.ResolvedTransportConnectionString, out this.configuredStorage, out this.configuredTransport);
                 
                 // determine a storage account name to be used for tracing
