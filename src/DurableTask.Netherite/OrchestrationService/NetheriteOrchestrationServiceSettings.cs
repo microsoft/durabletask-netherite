@@ -377,7 +377,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        const int MinTaskHubNameSize = 1;
+        const int MinTaskHubNameSize = 3;
         const int MaxTaskHubNameSize = 45;
 
         public static void ValidateTaskhubName(string taskhubName)
