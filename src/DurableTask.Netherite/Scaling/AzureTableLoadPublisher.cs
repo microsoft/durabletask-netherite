@@ -32,7 +32,7 @@ namespace DurableTask.Netherite.Scaling
             try
             {
                 var tableBatch = new List<TableTransactionAction>();
-                await foreach (var e in this.table.QueryAsync<PartitionInfoEntity>($"PartitionKey eq '{this.taskHubName}'"))
+                await foreach (var e in this.table.QueryAsync<PartitionInfoEntity>(x => x.PartitionKey == this.taskhubName, cancellationToken: cancellationToken)
                 {
                     tableBatch.Add(new TableTransactionAction(TableTransactionActionType.Delete, e));
                 }
@@ -46,12 +46,12 @@ namespace DurableTask.Netherite.Scaling
 
         public Task CreateIfNotExistsAsync(CancellationToken cancellationToken)
         {
-            return this.table.CreateIfNotExistsAsync();
+            return this.table.CreateIfNotExistsAsync(cancellationToken);
         }
 
         public Task PublishAsync(Dictionary<uint, PartitionLoadInfo> info, CancellationToken cancellationToken)
         {
-            var tableBatch = new List<TableTransactionAction>();          
+            var tableBatch = new List<TableTransactionAction>();
             foreach(var kvp in info)
             {
                 tableBatch.Add(new TableTransactionAction(TableTransactionActionType.UpsertReplace, new PartitionInfoEntity(this.taskHubName, kvp.Key, kvp.Value)));
@@ -62,7 +62,7 @@ namespace DurableTask.Netherite.Scaling
         public async Task<Dictionary<uint, PartitionLoadInfo>> QueryAsync(CancellationToken cancellationToken)
         {
             Dictionary<uint, PartitionLoadInfo> result = new Dictionary<uint, PartitionLoadInfo>();
-            await foreach (var e in this.table.QueryAsync<PartitionInfoEntity>($"PartitionKey eq '{this.taskHubName}'"))
+            await foreach (var e in this.table.QueryAsync<PartitionInfoEntity>(x => x.PartitionKey == this.taskhubName, cancellationToken: cancellationToken)
             {
                 int.TryParse(e.CachePct, out int cachePct);
                 double.TryParse(e.MissRate, out double missRatePct);
