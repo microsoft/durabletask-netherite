@@ -32,15 +32,17 @@ namespace DurableTask.Netherite.Scaling
             try
             {
                 var tableBatch = new List<TableTransactionAction>();
-                await foreach (var e in this.table.QueryAsync<PartitionInfoEntity>(x => x.PartitionKey == this.taskhubName, cancellationToken: cancellationToken)
+                await foreach (var e in this.table.QueryAsync<PartitionInfoEntity>(x => x.PartitionKey == this.taskHubName, cancellationToken: cancellationToken).ConfigureAwait(false))
                 {
                     tableBatch.Add(new TableTransactionAction(TableTransactionActionType.Delete, e));
                 }
-                await this.table.SubmitTransactionAsync(tableBatch, cancellationToken);
+                if (tableBatch.Count > 0)
+                {
+                    await this.table.SubmitTransactionAsync(tableBatch, cancellationToken).ConfigureAwait(false);
+                }
             }
-            catch(Exception) // table may not exist
+            catch(Azure.RequestFailedException e) when (e.Status == 404) // table may not exist
             {
-
             }
         }
 
@@ -56,16 +58,21 @@ namespace DurableTask.Netherite.Scaling
             {
                 tableBatch.Add(new TableTransactionAction(TableTransactionActionType.UpsertReplace, new PartitionInfoEntity(this.taskHubName, kvp.Key, kvp.Value)));
             }
-            return this.table.SubmitTransactionAsync(tableBatch, cancellationToken);
+            if (tableBatch.Count > 0)
+            {
+                return this.table.SubmitTransactionAsync(tableBatch, cancellationToken);
+            }
+            else
+            {
+                return Task.CompletedTask;
+            }
         }
 
         public async Task<Dictionary<uint, PartitionLoadInfo>> QueryAsync(CancellationToken cancellationToken)
         {
             Dictionary<uint, PartitionLoadInfo> result = new Dictionary<uint, PartitionLoadInfo>();
-            await foreach (var e in this.table.QueryAsync<PartitionInfoEntity>(x => x.PartitionKey == this.taskhubName, cancellationToken: cancellationToken)
+            await foreach (var e in this.table.QueryAsync<PartitionInfoEntity>(x => x.PartitionKey == this.taskHubName, cancellationToken: cancellationToken).ConfigureAwait(false))
             {
-                int.TryParse(e.CachePct, out int cachePct);
-                double.TryParse(e.MissRate, out double missRatePct);
                 result.Add(uint.Parse(e.RowKey), new PartitionLoadInfo()
                 {
                     WorkItems = e.WorkItems,
@@ -79,8 +86,8 @@ namespace DurableTask.Netherite.Scaling
                     CommitLogPosition = e.CommitLogPosition,
                     WorkerId = e.WorkerId,
                     LatencyTrend = e.LatencyTrend,
-                    MissRate = missRatePct / 100,
-                    CachePct = cachePct,
+                    MissRate = double.Parse(e.MissRate.Substring(0, e.MissRate.Length - 1)) / 100,
+                    CachePct = int.Parse(e.CachePct.Substring(0, e.CachePct.Length - 1)),
                     CacheMB = e.CacheMB,
                 });
             }
@@ -127,7 +134,7 @@ namespace DurableTask.Netherite.Scaling
                 this.Activities = info.Activities;
                 this.Timers = info.Timers;
                 this.Requests = info.Requests;
-                this.NextTimer = info.Wakeup;
+                this.NextTimer = info.Wakeup.HasValue ? info.Wakeup.Value.ToUniversalTime() : null;
                 this.Outbox = info.Outbox;
                 this.Instances = info.Instances;
                 this.InputQueuePosition = info.InputQueuePosition;

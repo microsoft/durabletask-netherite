@@ -193,11 +193,11 @@ namespace DurableTask.Netherite.Faster
 
             if (parameters != null)
             {
-                // first, delete the parameters file which deletes the taskhub logically
-                await BlobUtils.ForceDeleteAsync(this.taskhubParameters);
-
                 // delete load information
                 await this.LoadPublisher.DeleteIfExistsAsync(CancellationToken.None).ConfigureAwait(false);
+
+                // delete the parameters file which deletes the taskhub logically
+                await BlobUtils.ForceDeleteAsync(this.taskhubParameters);
 
                 // delete all the files/blobs in the directory/container that represents this taskhub
                 // If this does not complete successfully, some garbage may be left behind.
