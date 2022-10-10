@@ -95,7 +95,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             (string containerName, string path) = this.storage.GetTaskhubPathPrefix(this.parameters);
             this.pathPrefix = path;
 
-            var cloudStorageAccount = await this.settings.BlobStorageConnection.GetAzureStorageV11AccountAsync(CancellationToken.None);
+            var cloudStorageAccount = await this.settings.BlobStorageConnection.GetAzureStorageV11AccountAsync();
             var cloudBlobClient = cloudStorageAccount.CreateCloudBlobClient();
             this.cloudBlobContainer = cloudBlobClient.GetContainerReference(containerName);
             this.partitionScript = this.cloudBlobContainer.GetBlockBlobReference("partitionscript.json");

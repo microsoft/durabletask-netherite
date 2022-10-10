@@ -14,15 +14,15 @@ namespace DurableTask.Netherite.Faster
 
     class PartitionStorage : IPartitionState
     {
+        readonly NetheriteOrchestrationServiceSettings settings;
         readonly string taskHubName;
         readonly string pathPrefix;
         readonly ILogger logger;
         readonly ILogger performanceLogger;
         readonly MemoryTracker memoryTracker;
-
-        readonly CloudStorageAccount storageAccount;
-        readonly string localFileDirectory;
-        readonly CloudStorageAccount pageBlobStorageAccount;
+        //readonly CloudStorageAccount storageAccount;
+        //readonly string localFileDirectory;
+        //readonly CloudStorageAccount pageBlobStorageAccount;
 
         Partition partition;
         BlobManager blobManager;
@@ -41,29 +41,13 @@ namespace DurableTask.Netherite.Faster
 
         public PartitionStorage(NetheriteOrchestrationServiceSettings settings, string pathPrefix, MemoryTracker memoryTracker, ILogger logger, ILogger performanceLogger)
         {
+            this.settings = settings;
             this.taskHubName = settings.HubName;
             this.pathPrefix = pathPrefix;
             this.logger = logger;
             this.performanceLogger = performanceLogger;
             this.memoryTracker = memoryTracker;
 
-            if (!string.IsNullOrEmpty(settings.UseLocalDirectoryForPartitionStorage))
-            {
-                this.localFileDirectory = settings.UseLocalDirectoryForPartitionStorage;
-            }
-            else
-            { 
-                this.storageAccount = settings.BlobStorageConnection.GetAzureStorageV11AccountAsync(CancellationToken.None).GetAwaiter().GetResult();
-
-                if (settings.PageBlobStorageConnection != null)
-                {
-                    this.pageBlobStorageAccount = settings.PageBlobStorageConnection.GetAzureStorageV11AccountAsync(CancellationToken.None).GetAwaiter().GetResult();
-                }
-                else
-                {
-                    this.pageBlobStorageAccount = this.storageAccount;
-                }
-            }
         
 
             if (settings.TestHooks?.CacheDebugger != null)
@@ -97,9 +81,7 @@ namespace DurableTask.Netherite.Faster
             int psfCount = 0;
 
             this.blobManager = new BlobManager(
-                this.storageAccount,
-                this.pageBlobStorageAccount,
-                this.localFileDirectory,
+                this.settings,
                 this.taskHubName,
                 this.pathPrefix,
                 partition.Settings.TestHooks?.FaultInjector,

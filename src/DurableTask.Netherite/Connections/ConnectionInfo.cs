@@ -90,6 +90,14 @@ namespace DurableTask.Netherite
                 ? cloudStorageAccount.TableEndpoint : cloudStorageAccount.BlobEndpoint;
         }
 
+        /// <summary>
+        /// Creates a connection info from a token credential.
+        /// </summary>
+        /// <param name="tokenCredential">The token credential.</param>
+        /// <param name="name">The name of the resource (account name or namespace name).</param>
+        /// <param name="resourceType">The type of the resource.</param>
+        /// <returns></returns>
+        /// <returns>The connection info.</returns>
         public static ConnectionInfo FromTokenCredential(Azure.Core.TokenCredential tokenCredential, string name, ConnectionResolver.ResourceType resourceType)
         {
             switch (resourceType)

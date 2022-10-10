@@ -21,9 +21,18 @@ namespace DurableTask.Netherite
     using Newtonsoft.Json.Serialization;
     using DurableTask.Netherite.Faster;
 
+    /// <summary>
+    /// Utilities for constructing various SDK objects from a connection information.
+    /// </summary>
     public static class ConnectionInfoExtensions
     {
-        public Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAzureStorageV11AccountAsync(this ConnectionInfo connectionInfo, CancellationToken cancellationToken)
+        /// <summary>
+        /// Returns a classic (v11 SDK) storage account object.
+        /// </summary>
+        /// <param name="connectionInfo">The connection info.</param>
+        /// <returns>A task for the storage account object.</returns>
+        /// <exception cref="FormatException">Thrown if the host name of the connection info is not of the expected format {ResourceName}.{HostNameSuffix}.</exception>
+        public static Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAzureStorageV11AccountAsync(this ConnectionInfo connectionInfo)
         {
             // storage accounts run a token renewal timer, which we want to share for all instances
             if (connectionInfo.CachedStorageAccount == null)
@@ -32,36 +41,40 @@ namespace DurableTask.Netherite
             }
             return connectionInfo.CachedStorageAccount;
 
-            static async Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAsync()
+            async Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAsync()
             {
-                if (connectionInfo.CachedStorageAccount == null)
+                if (connectionInfo.ConnectionString != null)
                 {
-                    if (connectionInfo.ConnectionString != null)
+                    return Microsoft.Azure.Storage.CloudStorageAccount.Parse(connectionInfo.ConnectionString);
+                }
+                else
+                {
+                    var credentials = new Microsoft.Azure.Storage.Auth.StorageCredentials(await connectionInfo.ToLegacyCredentialAsync(CancellationToken.None));
+
+                    string expectedHostNamePrefix = $"{connectionInfo.ResourceName}.";
+
+                    if (!connectionInfo.HostName.StartsWith(expectedHostNamePrefix))
                     {
-                        return Microsoft.Azure.Storage.CloudStorageAccount.Parse(connectionInfo.ConnectionString);
+                        throw new FormatException("ConnectionInfo: unexpected format for host name");
                     }
-                    else
-                    {
-                        var credentials = new Microsoft.Azure.Storage.Auth.StorageCredentials(await connectionInfo.GetLegacyTokenCredentialAsync(cancellationToken));
 
-                        string expectedHostNamePrefix = $"{connectionInfo.ResourceName}.";
-
-                        if (!connectionInfo.HostName.StartsWith(expectedHostNamePrefix))
-                        {
-                            throw new FormatException("ConnectionInfo: unexpected format for host name");
-                        }
-
-                        return new Microsoft.Azure.Storage.CloudStorageAccount(
-                                storageCredentials: credentials,
-                                accountName: connectionInfo.ResourceName,
-                                endpointSuffix: connectionInfo.HostName.Substring(expectedHostNamePrefix.Length),
-                                useHttps: true);
-                    }
+                    return new Microsoft.Azure.Storage.CloudStorageAccount(
+                            storageCredentials: credentials,
+                            accountName: connectionInfo.ResourceName,
+                            endpointSuffix: connectionInfo.HostName.Substring(expectedHostNamePrefix.Length),
+                            useHttps: true);
                 }
             }
         }
 
-        public static Azure.Data.Tables.TableClient GetAzureStorageV12TableClientAsync(this ConnectionInfo connectionInfo, string tableName, CancellationToken cancellationToken)
+        /// <summary>
+        /// Creates an Azure Storage table client for the v12 SDK.
+        /// </summary>
+        /// <param name="connectionInfo">The connection info.</param>
+        /// <param name="tableName">The table name.</param>
+        /// <param name="cancellationToken">A cancellation token.</param>
+        /// <returns></returns>
+        public static Azure.Data.Tables.TableClient GetAzureStorageV12TableClientAsync(this ConnectionInfo connectionInfo, string tableName, CancellationToken cancellationToken = default)
         {
             if (connectionInfo.ConnectionString != null)
             {
@@ -73,6 +86,12 @@ namespace DurableTask.Netherite
             }
         }
 
+        /// <summary>
+        /// Creates an Event Hub client for the given connection info.
+        /// </summary>
+        /// <param name="connectionInfo">The connection info.</param>
+        /// <param name="eventHub">The event hub name.</param>
+        /// <returns></returns>
         public static EventHubClient CreateEventHubClient(this ConnectionInfo connectionInfo, string eventHub)
         {
             if (connectionInfo.ConnectionString != null)
@@ -91,6 +110,17 @@ namespace DurableTask.Netherite
             }
         }
 
+        /// <summary>
+        /// Creates an event processor host for the given connection info.
+        /// </summary>
+        /// <param name="connectionInfo">The connection info.</param>
+        /// <param name="hostName">The host name.</param>
+        /// <param name="eventHubPath">The event hub name.</param>
+        /// <param name="consumerGroupName">The consumer group name.</param>
+        /// <param name="checkpointStorage">A connection info for the checkpoint storage.</param>
+        /// <param name="leaseContainerName">The name of the lease container.</param>
+        /// <param name="storageBlobPrefix">A prefix for storing the blobs.</param>
+        /// <returns>An event processor host.</returns>
         public static async Task<EventProcessorHost> GetEventProcessorHostAsync(
             this ConnectionInfo connectionInfo, 
             string hostName,
@@ -113,7 +143,7 @@ namespace DurableTask.Netherite
             }
             else
             {
-                var storageAccount = await checkpointStorage.GetAzureStorageV11AccountAsync(CancellationToken.None);
+                var storageAccount = await checkpointStorage.GetAzureStorageV11AccountAsync();
                 return new EventProcessorHost(
                       new Uri($"sb://{connectionInfo.HostName}"),
                       eventHubPath,
@@ -125,7 +155,6 @@ namespace DurableTask.Netherite
             }
         }
 
-       
         class EventHubsTokenProvider : Microsoft.Azure.EventHubs.ITokenProvider
         {
             readonly ConnectionInfo info;
@@ -151,6 +180,13 @@ namespace DurableTask.Netherite
             }
         }
 
+        /// <summary>
+        /// Adds the necessary authorization headers to a REST http request.
+        /// </summary>
+        /// <param name="connectionInfo">The connection info.</param>
+        /// <param name="request">The request object.</param>
+        /// <param name="cancellationToken">A cancellation token.</param>
+        /// <returns></returns>
         public static async Task AuthorizeHttpRequestMessage(this ConnectionInfo connectionInfo, HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (connectionInfo.ConnectionString != null)
@@ -175,7 +211,7 @@ namespace DurableTask.Netherite
             }
             else
             {
-                var bearerToken = (await connectionInfo.GetLegacyTokenCredentialAsync(cancellationToken)).Token;
+                var bearerToken = (await connectionInfo.ToLegacyCredentialAsync(cancellationToken)).Token;
                 request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
             }
         }

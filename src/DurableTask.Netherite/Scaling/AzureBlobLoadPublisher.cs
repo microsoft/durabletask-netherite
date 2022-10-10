@@ -56,7 +56,7 @@ namespace DurableTask.Netherite.Scaling
                 var blobDirectory = (await this.blobContainer).GetDirectoryReference($"p{partitionId:D2}");
                 var blob = blobDirectory.GetBlockBlobReference("loadinfo.json");
                 var json = JsonConvert.SerializeObject(loadInfo, Formatting.Indented, serializerSettings);
-                return await blob.UploadTextAsync(json, cancellationToken);
+                await blob.UploadTextAsync(json, cancellationToken);
             }
 
             List<Task> tasks = info.Select(kvp => UploadPartitionInfo(kvp.Key, kvp.Value)).ToList();

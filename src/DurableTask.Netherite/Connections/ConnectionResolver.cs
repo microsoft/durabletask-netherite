@@ -8,7 +8,7 @@ namespace DurableTask.Netherite
     using System.Text;
 
     /// <summary>
-    /// Can resolve named connections into ConnectionInfo objects that contain all the parameters needed to connect.
+    /// An abstract class that represents a method for resolving named connections into ConnectionInfo objects, which can then be used to connect.
     /// </summary>
     public abstract class ConnectionResolver
     {

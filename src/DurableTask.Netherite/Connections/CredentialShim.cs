@@ -17,7 +17,7 @@ namespace DurableTask.Netherite
     /// </summary>
     public static class CredentialShim
     {
-        public static async Task<Microsoft.Azure.Storage.Auth.TokenCredential> ToLegacyCredential(this ConnectionInfo connectionInfo, CancellationToken cancellationToken)
+        public static async Task<Microsoft.Azure.Storage.Auth.TokenCredential> ToLegacyCredentialAsync(this ConnectionInfo connectionInfo, CancellationToken cancellationToken)
         {
             AccessToken token = await GetTokenAsync(connectionInfo.TokenCredential, connectionInfo.Scopes, cancellationToken);
             return new Microsoft.Azure.Storage.Auth.TokenCredential(token.Token, RenewTokenAsync, connectionInfo, NextRefresh(token));
