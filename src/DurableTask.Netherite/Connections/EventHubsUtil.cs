@@ -11,7 +11,6 @@ namespace DurableTask.Netherite
     using System.Threading;
     using System.Threading.Tasks;
     using System.Web;
-    using DurableTask.Netherite.Connections;
 
     /// <summary>
     /// Utility functions for dealing with event hubs.
@@ -56,7 +55,7 @@ namespace DurableTask.Netherite
             // send an http request to create or delete the eventhub
             HttpClient client = new HttpClient();
             var request = new HttpRequestMessage();
-            request.RequestUri = new Uri($"https://{info.FullyQualifiedResourceName}/{eventHubName}?timeout=60&api-version=2014-01");
+            request.RequestUri = new Uri($"https://{info.HostName}/{eventHubName}?timeout=60&api-version=2014-01");
             request.Method = partitionCount.HasValue ? HttpMethod.Put : HttpMethod.Delete;
             if (partitionCount.HasValue)
             {
@@ -72,7 +71,7 @@ namespace DurableTask.Netherite
                                 Encoding.UTF8,
                                 "application/xml");
             }
-            request.Headers.Add("Host", info.FullyQualifiedResourceName);
+            request.Headers.Add("Host", info.HostName);
 
             // add an authorization header to the request
             await info.AuthorizeHttpRequestMessage(request, cancellationToken);

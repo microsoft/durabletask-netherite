@@ -19,25 +19,45 @@ namespace DurableTask.Netherite
     using System.Runtime.CompilerServices;
     using Microsoft.Azure.EventHubs.Processor;
     using Newtonsoft.Json.Serialization;
+    using DurableTask.Netherite.Faster;
 
     public static class ConnectionInfoExtensions
     {
-       
-
-        public static async ValueTask<Microsoft.Azure.Storage.CloudStorageAccount> GetAzureStorageV11AccountAsync(this ConnectionInfo connectionInfo, CancellationToken cancellationToken)
+        public Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAzureStorageV11AccountAsync(this ConnectionInfo connectionInfo, CancellationToken cancellationToken)
         {
-            if (connectionInfo.ConnectionString != null)
+            // storage accounts run a token renewal timer, which we want to share for all instances
+            if (connectionInfo.CachedStorageAccount == null)
             {
-                return Microsoft.Azure.Storage.CloudStorageAccount.Parse(connectionInfo.ConnectionString);
+                connectionInfo.CachedStorageAccount = GetAsync();
             }
-            else
+            return connectionInfo.CachedStorageAccount;
+
+            static async Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAsync()
             {
-                var credentials = new Microsoft.Azure.Storage.Auth.StorageCredentials(await connectionInfo.GetLegacyTokenCredentialAsync(cancellationToken));
-                return new Microsoft.Azure.Storage.CloudStorageAccount(
-                        storageCredentials: credentials,
-                        accountName: connectionInfo.ResourceName,
-                        endpointSuffix: connectionInfo.EndpointSuffix,
-                        useHttps: true);
+                if (connectionInfo.CachedStorageAccount == null)
+                {
+                    if (connectionInfo.ConnectionString != null)
+                    {
+                        return Microsoft.Azure.Storage.CloudStorageAccount.Parse(connectionInfo.ConnectionString);
+                    }
+                    else
+                    {
+                        var credentials = new Microsoft.Azure.Storage.Auth.StorageCredentials(await connectionInfo.GetLegacyTokenCredentialAsync(cancellationToken));
+
+                        string expectedHostNamePrefix = $"{connectionInfo.ResourceName}.";
+
+                        if (!connectionInfo.HostName.StartsWith(expectedHostNamePrefix))
+                        {
+                            throw new FormatException("ConnectionInfo: unexpected format for host name");
+                        }
+
+                        return new Microsoft.Azure.Storage.CloudStorageAccount(
+                                storageCredentials: credentials,
+                                accountName: connectionInfo.ResourceName,
+                                endpointSuffix: connectionInfo.HostName.Substring(expectedHostNamePrefix.Length),
+                                useHttps: true);
+                    }
+                }
             }
         }
 
@@ -65,7 +85,7 @@ namespace DurableTask.Netherite
             }
             else
             {
-                Uri uri = new Uri($"sb://{connectionInfo.FullyQualifiedResourceName}");
+                Uri uri = new Uri($"sb://{connectionInfo.HostName}");
                 var tokenProvider = new EventHubsTokenProvider(connectionInfo);
                 return EventHubClient.CreateWithTokenProvider(uri, eventHub, tokenProvider);
             }
@@ -95,7 +115,7 @@ namespace DurableTask.Netherite
             {
                 var storageAccount = await checkpointStorage.GetAzureStorageV11AccountAsync(CancellationToken.None);
                 return new EventProcessorHost(
-                      new Uri($"sb://{connectionInfo.FullyQualifiedResourceName}"),
+                      new Uri($"sb://{connectionInfo.HostName}"),
                       eventHubPath,
                       consumerGroupName,
                       (ITokenProvider) (new EventHubsTokenProvider(connectionInfo)),

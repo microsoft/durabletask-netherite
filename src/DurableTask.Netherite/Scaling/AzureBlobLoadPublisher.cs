@@ -17,7 +17,7 @@ namespace DurableTask.Netherite.Scaling
     class AzureBlobLoadPublisher : ILoadPublisherService
     {
         readonly string taskHubName;
-        readonly CloudBlobContainer blobContainer;
+        readonly Task<CloudBlobContainer> blobContainer;
 
         readonly static JsonSerializerSettings serializerSettings = new JsonSerializerSettings() 
         {
@@ -27,13 +27,18 @@ namespace DurableTask.Netherite.Scaling
 
         int? numPartitions;
 
-        public AzureBlobLoadPublisher(string connectionString, string taskHubName)
+        public AzureBlobLoadPublisher(ConnectionInfo connectionInfo, string taskHubName)
         {
-            var cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
+            this.blobContainer = this.GetBlobContainer(connectionInfo, taskHubName);
+            this.taskHubName = taskHubName;
+        }
+
+        async Task<CloudBlobContainer> GetBlobContainer(ConnectionInfo connectionInfo, string taskHubName)
+        {
+            var cloudStorageAccount = await connectionInfo.GetAzureStorageV11AccountAsync();
             CloudBlobClient serviceClient = cloudStorageAccount.CreateCloudBlobClient();
             string containerName = BlobManager.GetContainerName(taskHubName);
-            this.blobContainer = serviceClient.GetContainerReference(containerName);
-            this.taskHubName = taskHubName;
+            return serviceClient.GetContainerReference(containerName);
         }
 
         public TimeSpan PublishInterval => TimeSpan.FromSeconds(10);
@@ -46,12 +51,12 @@ namespace DurableTask.Netherite.Scaling
 
         public Task PublishAsync(Dictionary<uint, PartitionLoadInfo> info, CancellationToken cancellationToken)
         {
-            Task UploadPartitionInfo(uint partitionId, PartitionLoadInfo loadInfo)
+            async Task UploadPartitionInfo(uint partitionId, PartitionLoadInfo loadInfo)
             {
-                var blobDirectory = this.blobContainer.GetDirectoryReference($"p{partitionId:D2}");
+                var blobDirectory = (await this.blobContainer).GetDirectoryReference($"p{partitionId:D2}");
                 var blob = blobDirectory.GetBlockBlobReference("loadinfo.json");
                 var json = JsonConvert.SerializeObject(loadInfo, Formatting.Indented, serializerSettings);
-                return blob.UploadTextAsync(json, cancellationToken);
+                return await blob.UploadTextAsync(json, cancellationToken);
             }
 
             List<Task> tasks = info.Select(kvp => UploadPartitionInfo(kvp.Key, kvp.Value)).ToList();
@@ -88,7 +93,7 @@ namespace DurableTask.Netherite.Scaling
             {
                 // determine number of partitions of taskhub
                 var info = await this.ReadJsonBlobAsync<Netherite.Abstractions.TaskhubParameters>(
-                    this.blobContainer.GetBlockBlobReference("taskhubparameters.json"),
+                    (await this.blobContainer).GetBlockBlobReference("taskhubparameters.json"),
                     throwIfNotFound: true,
                     throwOnParseError: true,
                     cancellationToken);
@@ -99,7 +104,7 @@ namespace DurableTask.Netherite.Scaling
             async Task<(uint, PartitionLoadInfo)> DownloadPartitionInfo(uint partitionId)
             {
                 PartitionLoadInfo info = await this.ReadJsonBlobAsync<PartitionLoadInfo>(
-                    this.blobContainer.GetDirectoryReference($"p{partitionId:D2}").GetBlockBlobReference("loadinfo.json"), 
+                    (await this.blobContainer).GetDirectoryReference($"p{partitionId:D2}").GetBlockBlobReference("loadinfo.json"), 
                     throwIfNotFound: false, 
                     throwOnParseError: true,
                     cancellationToken);
@@ -117,7 +122,7 @@ namespace DurableTask.Netherite.Scaling
             {
                 // determine number of partitions of taskhub
                 var info = await this.ReadJsonBlobAsync<Netherite.Abstractions.TaskhubParameters>(
-                    this.blobContainer.GetBlockBlobReference("taskhubparameters.json"),
+                    (await this.blobContainer).GetBlockBlobReference("taskhubparameters.json"),
                     throwIfNotFound: false,
                     throwOnParseError: false,
                     cancellationToken);
@@ -134,7 +139,7 @@ namespace DurableTask.Netherite.Scaling
 
             async Task DeletePartitionInfo(uint partitionId)
             {
-                var blob = this.blobContainer.GetDirectoryReference($"p{partitionId:D2}").GetBlockBlobReference("loadinfo.json");
+                var blob = (await this.blobContainer).GetDirectoryReference($"p{partitionId:D2}").GetBlockBlobReference("loadinfo.json");
                 await BlobUtils.ForceDeleteAsync(blob);
             }
 

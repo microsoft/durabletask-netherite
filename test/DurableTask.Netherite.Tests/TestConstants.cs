@@ -53,7 +53,7 @@ namespace DurableTask.Netherite.Tests
             //settings.ResolvedStorageConnectionString = "";
             //settings.UseLocalDirectoryForPartitionStorage = $"{Environment.GetEnvironmentVariable("temp")}\\FasterTestStorage";
 
-            settings.Validate((name) => Environment.GetEnvironmentVariable(name));
+            settings.Resolve(new ConnectionStringResolver((name) => Environment.GetEnvironmentVariable(name)));
             settings.TestHooks = new TestHooks();
 
             return settings;
@@ -67,5 +67,9 @@ namespace DurableTask.Netherite.Tests
         internal static TestOrchestrationHost GetTestOrchestrationHost(ILoggerFactory loggerFactory)
             => new TestOrchestrationHost(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
+        internal static bool UsesEmulation(this NetheriteOrchestrationServiceSettings settings)
+        {
+            return TransportConnectionString.IsPseudoConnectionString(settings.EventHubsConnectionName);
+        }
     }
 }

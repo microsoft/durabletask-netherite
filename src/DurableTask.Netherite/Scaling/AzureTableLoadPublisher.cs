@@ -19,9 +19,9 @@ namespace DurableTask.Netherite.Scaling
         readonly TableClient table;
         readonly string taskHubName;
 
-        public AzureTableLoadPublisher(string connectionString, string tableName, string taskHubName)
+        public AzureTableLoadPublisher(ConnectionInfo connectionInfo, string tableName, string taskHubName)
         {
-            this.table = new TableClient(connectionString, tableName); 
+            this.table = connectionInfo.GetAzureStorageV12TableClientAsync(tableName, CancellationToken.None); 
             this.taskHubName = taskHubName;
         }
 

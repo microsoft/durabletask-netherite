@@ -135,7 +135,7 @@ namespace DurableTask.Netherite.AzureFunctions
                 netheriteSettings.CacheOrchestrationCursors = false; // cannot resume orchestrations in the middle
             }
 
-            netheriteSettings.Validate((name) => this.nameResolver.Resolve(name));
+            netheriteSettings.Resolve(new ConnectionStringResolver((name) => this.nameResolver.Resolve(name)));
 
             int randomProbability = 0;
             bool attachFaultInjector =

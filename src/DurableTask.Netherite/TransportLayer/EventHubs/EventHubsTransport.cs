@@ -17,7 +17,6 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.Linq;
     using System.Threading.Channels;
     using DurableTask.Netherite.Abstractions;
-    using DurableTask.Netherite.Connections;
 
     /// <summary>
     /// The EventHubs transport implementation.

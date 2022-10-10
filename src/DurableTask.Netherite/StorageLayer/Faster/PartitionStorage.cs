@@ -47,25 +47,24 @@ namespace DurableTask.Netherite.Faster
             this.performanceLogger = performanceLogger;
             this.memoryTracker = memoryTracker;
 
-            string connectionString = settings.ResolvedStorageConnectionString;
-            string pageBlobConnectionString = settings.ResolvedPageBlobStorageConnectionString;
-
             if (!string.IsNullOrEmpty(settings.UseLocalDirectoryForPartitionStorage))
             {
                 this.localFileDirectory = settings.UseLocalDirectoryForPartitionStorage;
             }
             else
             { 
-                this.storageAccount = CloudStorageAccount.Parse(connectionString);
+                this.storageAccount = settings.BlobStorageConnection.GetAzureStorageV11AccountAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+                if (settings.PageBlobStorageConnection != null)
+                {
+                    this.pageBlobStorageAccount = settings.PageBlobStorageConnection.GetAzureStorageV11AccountAsync(CancellationToken.None).GetAwaiter().GetResult();
+                }
+                else
+                {
+                    this.pageBlobStorageAccount = this.storageAccount;
+                }
             }
-            if (pageBlobConnectionString != connectionString && !string.IsNullOrEmpty(pageBlobConnectionString))
-            {
-                this.pageBlobStorageAccount = CloudStorageAccount.Parse(pageBlobConnectionString);
-            }
-            else
-            {
-                this.pageBlobStorageAccount = this.storageAccount;
-            }
+        
 
             if (settings.TestHooks?.CacheDebugger != null)
             {

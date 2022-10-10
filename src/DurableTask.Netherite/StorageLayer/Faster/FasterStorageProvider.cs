@@ -52,10 +52,8 @@ namespace DurableTask.Netherite.Faster
             this.settings = settings;
             this.traceHelper = traceHelper;
 
-            string connectionString = settings.ResolvedStorageConnectionString;
-            string pageBlobConnectionString = settings.ResolvedPageBlobStorageConnectionString;
-
             this.TestRuntimeAndLoading();
+
 
             if (!string.IsNullOrEmpty(settings.UseLocalDirectoryForPartitionStorage))
             {
@@ -63,16 +61,18 @@ namespace DurableTask.Netherite.Faster
             }
             else
             {
-                this.storageAccount = CloudStorageAccount.Parse(connectionString);
+                this.storageAccount = settings.BlobStorageConnection.GetAzureStorageV11AccountAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+                if (settings.PageBlobStorageConnection != null)
+                {
+                    this.pageBlobStorageAccount = settings.PageBlobStorageConnection.GetAzureStorageV11AccountAsync(CancellationToken.None).GetAwaiter().GetResult();
+                }
+                else
+                {
+                    this.pageBlobStorageAccount = this.storageAccount;
+                }
             }
-            if (pageBlobConnectionString != connectionString && !string.IsNullOrEmpty(pageBlobConnectionString))
-            {
-                this.pageBlobStorageAccount = CloudStorageAccount.Parse(pageBlobConnectionString);
-            }
-            else
-            {
-                this.pageBlobStorageAccount = this.storageAccount;
-            }
+            
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
             this.performanceLogger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage.Performance");
 
@@ -91,11 +91,11 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper.TraceProgress("Creating LoadMonitor Service");
             if (!string.IsNullOrEmpty(settings.LoadInformationAzureTableName))
             {
-                this.LoadPublisher = new AzureTableLoadPublisher(settings.ResolvedStorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
+                this.LoadPublisher = new AzureTableLoadPublisher(settings.TableStorageConnection, settings.LoadInformationAzureTableName, settings.HubName);
             }
             else
             {
-                this.LoadPublisher = new AzureBlobLoadPublisher(settings.ResolvedStorageConnectionString, settings.HubName);
+                this.LoadPublisher = new AzureBlobLoadPublisher(settings.BlobStorageConnection, settings.HubName);
             }
         }
 
@@ -170,9 +170,9 @@ namespace DurableTask.Netherite.Faster
                 this.traceHelper.TraceProgress("Created new taskhub");
 
                 // zap the partition hub so we start from zero queue positions
-                if (!TransportConnectionString.IsPseudoConnectionString(this.settings.ResolvedTransportConnectionString))
+                if (this.settings.TransportChoice == TransportChoices.EventHubs)
                 {
-                    await EventHubsUtil.DeleteEventHubIfExistsAsync(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHub);
+                    await EventHubsUtil.DeleteEventHubIfExistsAsync(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, CancellationToken.None);
                 }
             }
             catch (StorageException e) when (BlobUtils.BlobAlreadyExists(e))

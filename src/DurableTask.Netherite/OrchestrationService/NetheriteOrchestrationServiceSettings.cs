@@ -4,6 +4,7 @@
 namespace DurableTask.Netherite
 {
     using System;
+    using System.Runtime;
     using DurableTask.Core;
     using FASTER.core;
     using Microsoft.Extensions.Logging;
@@ -23,46 +24,15 @@ namespace DurableTask.Netherite
 
         /// <summary>
         /// Specifies a connection name identifying the Azure Storage account to be used. 
-        /// This name is resolved at startup to obtain a connection string via environment variable or app setting.
+        /// This name is resolved during validation to obtain connection information
         public string StorageConnectionName { get; set; } = "AzureWebJobsStorage";
 
         /// <summary>
         /// Specifies the Event Hubs namespace to be used. Can contain one of the following:
-        /// - A connection name, for which an Event Hubs namespace connection string is then resolved at startup via environment variable or app setting.
+        /// - A connection name, for which an Event Hubs namespace connection string is then resolved during validation to obtain connection information
         /// - A keyword ("Memory" or "SingleHost") that runs Netherite without Event Hubs.
         /// </summary>
         public string EventHubsConnectionName { get; set; } = "EventHubsConnection";
-
-        /// <summary>
-        /// The connection information for Azure Storage blobs.
-        /// If not explicitly set, this is populated during startup by resolving <see cref="StorageConnectionName"/>.
-        /// </summary>
-        [JsonIgnore]
-        public ConnectionInfo BlobStorageConnection { get; set; }
-
-        /// <summary>
-        /// The connection information for Azure Storage tables.
-        /// If not explicitly set, this is populated during startup by resolving <see cref="StorageConnectionName"/>.
-        /// </summary>
-        [JsonIgnore]
-        public ConnectionInfo TableStorageConnection { get; set; }
-
-        /// <summary>
-        /// The connection information for the event hubs namespace.
-        /// If not explicitly set, this is populated during startup by resolving <see cref="EventHubsConnectionName"/>.
-        /// </summary>
-        [JsonIgnore]
-        public ConnectionInfo EventHubsConnection { get; set; }
-
-        /// <summary>
-        /// The connection information for Azure Storage page blobs. 
-        /// Unless explicitly set by the application, this is null, which means page blobs use the same connection as other blobs.
-        /// </summary>
-        [JsonIgnore]
-        public ConnectionInfo PageBlobStorageConnection { get; set; }
-
-        [JsonIgnore]
-        internal bool UseSeparatePageBlobStorage => this.PageBlobStorageConnection != null;
 
         /// <summary>
         /// Gets or sets the identifier for the current worker.
@@ -247,67 +217,82 @@ namespace DurableTask.Netherite
         [JsonConverter(typeof(StringEnumConverter))]
         public LogLevel LogLevelLimit { get; set; } = LogLevel.Debug;
 
+        #region Parameters that are set during resolution
+
         /// <summary>
-        /// Validates the settings, throwing exceptions if there are issues.
+        /// The type of storage layer to be used
         /// </summary>
-        /// <param name="nameResolver">Optionally, a resolver for connection names.</param>
-        public void Validate(Func<string, string> nameResolver = null)
+        [JsonIgnore]
+        public StorageChoices StorageChoice { get; protected set; }
+
+        /// <summary>
+        /// The type of transport layer to be used
+        /// </summary>
+        [JsonIgnore]
+        public TransportChoices TransportChoice { get; protected set; }
+
+        /// <summary>
+        /// The connection information for Azure Storage blobs.
+        /// If not explicitly set, this is populated during validation by resolving <see cref="StorageConnectionName"/>.
+        /// </summary>
+        [JsonIgnore]
+        public ConnectionInfo BlobStorageConnection { get; protected set; }
+
+        /// <summary>
+        /// The connection information for Azure Storage tables.
+        /// If not explicitly set, this is populated during validation by resolving <see cref="StorageConnectionName"/>.
+        /// </summary>
+        [JsonIgnore]
+        public ConnectionInfo TableStorageConnection { get; protected set; }
+
+        /// <summary>
+        /// The connection information for the event hubs namespace.
+        /// If not explicitly set, this is populated during validation by resolving <see cref="EventHubsConnectionName"/>.
+        /// </summary>
+        [JsonIgnore]
+        public ConnectionInfo EventHubsConnection { get; protected set; }
+
+        /// <summary>
+        /// The connection information for Azure Storage page blobs. 
+        ///This is usually null, which means the same <see cref="BlobStorageConnection"/> should be used for page blobs also.
+        /// </summary>
+        [JsonIgnore]
+        public ConnectionInfo PageBlobStorageConnection { get; protected set; }
+
+        /// <summary>
+        /// Whether the storage layer was configured to use a different connection for page blobs than for other blobs
+        /// </summary>
+        [JsonIgnore]
+        internal bool UseSeparatePageBlobStorage => this.PageBlobStorageConnection != null;
+
+        [JsonIgnore]
+        public string StorageAccountName
+            => this.StorageChoice == StorageChoices.Memory ? "Memory" : this.BlobStorageConnection.ResourceName;
+
+        /// <summary>
+        /// Whether the settings have been validated and resolved
+        /// </summary>
+        [JsonIgnore]
+        public bool ResolutionComplete { get; protected set; }
+
+        #endregion
+
+        /// <summary>
+        /// Validates and resolves the settings, throwing exceptions if there are issues.
+        /// </summary>
+        /// <param name="resolver">A connection resolver.</param>
+        public virtual void Resolve(ConnectionResolver resolver)
         {
             if (string.IsNullOrEmpty(this.HubName))
             {
-                throw new InvalidOperationException($"Must specify {nameof(this.HubName)} for Netherite storage provider.");
-            }
-
-            if (this.PartitionCount < 1 || this.PartitionCount > 32)
-            {
-                throw new ArgumentOutOfRangeException(nameof(this.PartitionCount));
+                throw new NetheriteConfigurationException($"Must specify {nameof(this.HubName)} for Netherite storage provider.");
             }
 
             ValidateTaskhubName(this.HubName);
 
-            if (string.IsNullOrEmpty(this.ResolvedTransportConnectionString))
+            if (this.PartitionCount < 1 || this.PartitionCount > 32)
             {
-                if (string.IsNullOrEmpty(this.EventHubsConnectionName))
-                {
-                    throw new InvalidOperationException($"Must specify {nameof(this.EventHubsConnectionName)} for Netherite storage provider.");
-                }
-
-                if (TransportConnectionString.IsPseudoConnectionString(this.EventHubsConnectionName))
-                {
-                    this.ResolvedTransportConnectionString = this.EventHubsConnectionName;
-                }
-                else
-                {
-                    if (nameResolver == null)
-                    {
-                        throw new InvalidOperationException($"Must either specify {nameof(this.ResolvedTransportConnectionString)}, or specify {nameof(this.EventHubsConnectionName)} and provide a nameResolver, to construct Netherite storage provider.");
-                    }
-
-                    this.ResolvedTransportConnectionString = nameResolver(this.EventHubsConnectionName);
-
-                    if (string.IsNullOrEmpty(this.ResolvedTransportConnectionString))
-                    {
-                        throw new InvalidOperationException($"Could not resolve {nameof(this.EventHubsConnectionName)}:{this.EventHubsConnectionName} for Netherite storage provider.");
-                    }
-                }
-            }
-
-            TransportConnectionString.Parse(this.ResolvedTransportConnectionString, out var storage, out var transport);
-
-            if (transport == TransportConnectionString.TransportChoices.EventHubs)
-            {
-                // validates the connection string
-                TransportConnectionString.EventHubsNamespaceName(this.ResolvedTransportConnectionString);
-            }
-
-            if (storage == TransportConnectionString.StorageChoices.Memory)
-            {
-                this.ResolvedStorageConnectionString = null;
-                this.ResolvedPageBlobStorageConnectionString = null;
-            }
-            else
-            {
-                this.ValidateAzureStorageConnectionStrings(nameResolver);
+                throw new ArgumentOutOfRangeException(nameof(this.PartitionCount));
             }
 
             if (this.MaxConcurrentOrchestratorFunctions <= 0)
@@ -319,78 +304,80 @@ namespace DurableTask.Netherite
             {
                 throw new ArgumentOutOfRangeException(nameof(this.MaxConcurrentActivityFunctions));
             }
-        }
 
-        public void ValidateAzureStorageConnectionStrings(Func<string, string> nameResolver)
-        {
-            if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
+            resolver.ResolveLayerConfiguration(this.EventHubsConnectionName, out var storage, out var transport);
+            this.StorageChoice = storage;
+            this.TransportChoice = transport;
+
+            if (this.TransportChoice == TransportChoices.EventHubs)
             {
-                if (nameResolver == null)
-                {
-                    throw new InvalidOperationException($"Must either specify {nameof(this.ResolvedStorageConnectionString)}, or specify {nameof(this.StorageConnectionName)} and provide a nameResolver, to construct Netherite storage provider.");
-                }
-
-                if (string.IsNullOrEmpty(this.StorageConnectionName))
-                {
-                    throw new InvalidOperationException($"Must specify {nameof(this.StorageConnectionName)} for Netherite storage provider.");
-                }
-
-                this.ResolvedStorageConnectionString = nameResolver(this.StorageConnectionName);
-
-                if (string.IsNullOrEmpty(this.ResolvedStorageConnectionString))
-                {
-                    throw new InvalidOperationException($"Could not resolve {nameof(this.StorageConnectionName)}:{this.StorageConnectionName} for Netherite storage provider.");
-                }
-            }
-
-            if (string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString)
-                && !string.IsNullOrEmpty(this.PageBlobStorageConnectionName))
-            {
-                if (nameResolver == null)
-                {
-                    throw new InvalidOperationException($"Must either specify {nameof(this.ResolvedPageBlobStorageConnectionString)}, or specify {nameof(this.PageBlobStorageConnectionName)} and provide a nameResolver, to construct Netherite storage provider.");
-                }
-
-                this.ResolvedPageBlobStorageConnectionString = nameResolver(this.PageBlobStorageConnectionName);
-
-                if (string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString))
-                {
-                    throw new InvalidOperationException($"Could not resolve {nameof(this.PageBlobStorageConnectionName)}:{this.PageBlobStorageConnectionName} for Netherite storage provider.");
-                }
-            }
-
-            // make sure the connection string can be parsed correctly
-            try
-            {
-                Microsoft.Azure.Storage.CloudStorageAccount.Parse(this.ResolvedStorageConnectionString);
-            }
-            catch (Exception e)
-            {
-                throw new FormatException($"Could not parse the specified storage connection string for Netherite storage provider", e);
-            }
-
-            if (!string.IsNullOrEmpty(this.ResolvedPageBlobStorageConnectionString))
-            {
-                // make sure the connection string can be parsed correctly
+                // we need a valid event hubs connection
                 try
                 {
-                    Microsoft.Azure.Storage.CloudStorageAccount.Parse(this.ResolvedPageBlobStorageConnectionString);
+                    this.EventHubsConnection = resolver.ResolveConnectionInfo(this.HubName, this.EventHubsConnectionName, ConnectionResolver.ResourceType.EventHubsNamespace);
                 }
                 catch (Exception e)
                 {
-                    throw new FormatException($"Could not parse the specified page blob storage connection string for Netherite storage provider", e);
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.EventHubsConnectionName)} for required event hub namespace connection: {e.Message}", e);
+                }
+                if (this.TableStorageConnection == null)
+                {
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.EventHubsConnectionName)} for required event hub namespace connection.");
                 }
             }
+
+            if (this.StorageChoice == StorageChoices.Faster || this.TransportChoice == TransportChoices.EventHubs)
+            {
+                // we need a valid blob storage connection
+                try
+                {
+                    this.BlobStorageConnection = resolver.ResolveConnectionInfo(this.HubName, this.StorageConnectionName, ConnectionResolver.ResourceType.BlobStorage);
+                }
+                catch (Exception e)
+                {
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)} for required blob storage connection: {e.Message}", e);
+                }
+                if (this.BlobStorageConnection == null)
+                {
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)} for required blob storage connection.");
+                }
+            }
+
+            if (this.StorageChoice == StorageChoices.Faster && this.LoadInformationAzureTableName != null)
+            {
+                // we need a valid table storage connection
+                try
+                {
+                    this.TableStorageConnection = resolver.ResolveConnectionInfo(this.HubName, this.StorageConnectionName, ConnectionResolver.ResourceType.TableStorage);
+                }
+                catch (Exception e)
+                {
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)} for required table storage connection: {e.Message}", e);
+                }
+                if (this.TableStorageConnection == null)
+                {
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)} for required table storage connection.");
+                }
+            }
+
+            if (this.StorageChoice == StorageChoices.Faster)
+            {
+                // some custom resolvers may specify a separate page blob connection, but usually this will be null
+                this.PageBlobStorageConnection = resolver.ResolveConnectionInfo(this.HubName, this.StorageConnectionName, ConnectionResolver.ResourceType.PageBlobStorage);
+            }
+
+            // we have completed validation and resolution
+            this.ResolutionComplete = true;
         }
 
-        const int MinTaskHubNameSize = 1;
+        const int MinTaskHubNameSize = 3;
         const int MaxTaskHubNameSize = 45;
 
         public static void ValidateTaskhubName(string taskhubName)
         {
             if (taskhubName.Length < MinTaskHubNameSize || taskhubName.Length > MaxTaskHubNameSize)
             {
-                throw new ArgumentException(GetTaskHubErrorString(taskhubName));
+                throw new NetheriteConfigurationException(GetTaskHubErrorString(taskhubName));
             }
 
             try
@@ -400,7 +387,7 @@ namespace DurableTask.Netherite
             }
             catch (ArgumentException e)
             {
-                throw new ArgumentException(GetTaskHubErrorString(taskhubName), e);
+                throw new NetheriteConfigurationException(GetTaskHubErrorString(taskhubName), e);
             }
         }
 

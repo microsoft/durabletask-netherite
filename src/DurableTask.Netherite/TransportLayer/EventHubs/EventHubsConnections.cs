@@ -52,7 +52,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.loadMonitorHub = loadMonitorHub;
         }
 
-        public string Fingerprint => $"{this.connectionInfo.FullyQualifiedResourceName}{this.partitionHub}/{this.CreationTimestamp:o}";
+        public string Fingerprint => $"{this.connectionInfo.HostName}{this.partitionHub}/{this.CreationTimestamp:o}";
 
         public async Task StartAsync(TaskhubParameters parameters)
         {
@@ -209,13 +209,9 @@ namespace DurableTask.Netherite.EventHubsTransport
             await this.EnsureLoadMonitorAsync(retries - 1);
         }
 
-        public static async Task<List<long>> GetQueuePositionsAsync(string connectionString, string partitionHub)
+        public static async Task<List<long>> GetQueuePositionsAsync(ConnectionInfo connectionInfo, string partitionHub)
         {
-            var connectionStringBuilder = new EventHubsConnectionStringBuilder(connectionString)
-            {
-                EntityPath = partitionHub,
-            };
-            var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+            var client = connectionInfo.CreateEventHubClient(partitionHub);
             try
             {
                 var runtimeInformation = await client.GetRuntimeInformationAsync();
