@@ -75,8 +75,7 @@ namespace DurableTask.Netherite.Scaling
             }
             catch(StorageException e) when (e.InnerException is OperationCanceledException operationCanceledException)
             {
-                // unwrap the cancellation exception
-                throw operationCanceledException;
+                throw new OperationCanceledException("Blob read was canceled.", operationCanceledException);
             }
 
             return null;
