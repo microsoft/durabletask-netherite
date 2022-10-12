@@ -36,6 +36,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LoadGeneratorApp", "test\Lo
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HelloDTFx", "samples\HelloDTFx\HelloDTFx\HelloDTFx.csproj", "{EC293D85-91E3-4F78-8B1E-2C691315CE96}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TokenCredentialDF", "samples\TokenCredentialDF\TokenCredentialDF.csproj", "{B99AB043-47DC-467C-93CB-D6C69D3B1AD4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -78,6 +80,10 @@ Global
 		{EC293D85-91E3-4F78-8B1E-2C691315CE96}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EC293D85-91E3-4F78-8B1E-2C691315CE96}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EC293D85-91E3-4F78-8B1E-2C691315CE96}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -92,6 +98,7 @@ Global
 		{2F4D331C-62E4-47E8-852E-163166944DF8} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
 		{78B360B8-3A41-4DC0-A300-94A0FABC1FB0} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
 		{EC293D85-91E3-4F78-8B1E-2C691315CE96} = {AB958467-9236-402E-833C-B8DE4841AB9F}
+		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4} = {AB958467-9236-402E-833C-B8DE4841AB9F}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {238A9613-5411-41CF-BDEC-168CCD5C03FB}

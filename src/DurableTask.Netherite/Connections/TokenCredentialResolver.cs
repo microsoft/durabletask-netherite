@@ -4,29 +4,28 @@
     using System.Collections.Generic;
     using System.Text;
     using Azure.Identity;
+    using Microsoft.Azure.Storage.Blob.Protocol;
     using Microsoft.Extensions.Logging.Abstractions;
 
     /// <summary>
-    /// Resolves connections using a token credential and a resource-type-to-resource-name mapping.
+    /// Resolves connections using a token credential and a mapping from connection names to resource names.
     /// </summary>
-    public class TokenCredentialResolver : ConnectionResolver
+    public abstract class TokenCredentialResolver : ConnectionResolver
     {
         readonly Azure.Core.TokenCredential tokenCredential;
-        readonly string storageAccountName;
-        readonly string eventHubNamespaceName;
 
         /// <summary>
         /// Create a connection resolver that uses an Azure token credential.
         /// </summary>
         /// <param name="tokenCredential">The token credential to use.</param>
-        /// <param name="storageAccountName">The name of the storage account, or null if using in-memory emulation.</param>
-        /// <param name="eventHubNamespaceName">The name of the event hub namespace, or null if using the singlehost configuration.</param>
-        public TokenCredentialResolver(Azure.Core.TokenCredential tokenCredential, string storageAccountName = null, string eventHubNamespaceName = null)
+        public TokenCredentialResolver(Azure.Core.TokenCredential tokenCredential)
         {      
             this.tokenCredential = tokenCredential;
-            this.storageAccountName = storageAccountName;
-            this.eventHubNamespaceName = eventHubNamespaceName;
         }
+
+        public abstract string GetStorageAccountName(string connectionName);
+
+        public abstract string GetEventHubsNamespaceName(string connectionName);
 
         /// <inheritdoc/>
         public override ConnectionInfo ResolveConnectionInfo(string taskHub, string connectionName, ResourceType recourceType)
@@ -35,13 +34,23 @@
             {
                 case ResourceType.BlobStorage:
                 case ResourceType.TableStorage:
-                    return ConnectionInfo.FromTokenCredential(this.tokenCredential, this.storageAccountName, recourceType);
+                    string storageAccountName = this.GetStorageAccountName(connectionName);
+                    if (string.IsNullOrEmpty(storageAccountName))
+                    {
+                        throw new ArgumentException("GetStorageAccountName returned invalid result");
+                    }
+                    return ConnectionInfo.FromTokenCredential(this.tokenCredential, storageAccountName, recourceType);
 
                 case ResourceType.PageBlobStorage:
                     return null; // same as blob storage
 
                 case ResourceType.EventHubsNamespace:
-                    return ConnectionInfo.FromTokenCredential(this.tokenCredential, this.eventHubNamespaceName, recourceType);
+                    string eventHubsNamespaceName = this.GetEventHubsNamespaceName(connectionName);
+                    if (string.IsNullOrEmpty(eventHubsNamespaceName))
+                    {
+                        throw new ArgumentException("GetEventHubsNamespaceName returned invalid result");
+                    }
+                    return ConnectionInfo.FromTokenCredential(this.tokenCredential, eventHubsNamespaceName, recourceType);
 
                 default:
                     throw new NotImplementedException("unknown resource type");
@@ -51,15 +60,9 @@
         /// <inheritdoc/>
         public override void ResolveLayerConfiguration(string connectionName, out StorageChoices storageChoice, out TransportChoices transportChoice)
         {
-            if (string.IsNullOrEmpty(this.storageAccountName))
+            if (TransportConnectionString.IsPseudoConnectionString(connectionName))
             {
-                storageChoice = StorageChoices.Memory;
-                transportChoice = TransportChoices.SingleHost;
-            }
-            else if (string.IsNullOrEmpty(this.eventHubNamespaceName))
-            {
-                storageChoice = StorageChoices.Faster;
-                transportChoice = TransportChoices.SingleHost;
+                TransportConnectionString.Parse(connectionName, out storageChoice, out transportChoice);
             }
             else
             {
