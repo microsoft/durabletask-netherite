@@ -105,14 +105,15 @@ namespace DurableTask.Netherite.Faster
             // try load the taskhub parameters
             try
             {
-                var jsonText = await (await this.taskhubParameters).DownloadTextAsync();
+                var blob = await this.taskhubParameters;
+                var jsonText = await blob.DownloadTextAsync();
                 return JsonConvert.DeserializeObject<TaskhubParameters>(jsonText);
             }
             catch (StorageException ex) when (ex.RequestInformation.HttpStatusCode == (int)System.Net.HttpStatusCode.NotFound)
             {
                 if (throwIfNotFound)
                 {
-                    throw new InvalidOperationException($"The specified taskhub does not exist (TaskHub={this.settings.HubName}, StorageConnectionName={this.settings.StorageConnectionName}");
+                    throw new NetheriteConfigurationException($"The specified taskhub does not exist (TaskHub={this.settings.HubName}, StorageConnectionName={this.settings.StorageConnectionName}");
                 }
                 else
                 {

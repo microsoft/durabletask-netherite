@@ -10,11 +10,15 @@
     /// <summary>
     /// Resolves connection names by using a mapping from connection names to connection strings.
     /// </summary>
-    public class ConnectionStringResolver : ConnectionResolver
+    public class ConnectionNameToConnectionStringResolver : ConnectionResolver
     {
         readonly Func<string, string> connectionStringLookup;
 
-        public ConnectionStringResolver(Func<string, string> connectionStringLookup)
+        /// <summary>
+        /// Creates a connection string resolver for a given lookup function.
+        /// </summary>
+        /// <param name="connectionStringLookup">A function that maps connection names to connection strings.</param>
+        public ConnectionNameToConnectionStringResolver(Func<string, string> connectionStringLookup)
         {
             this.connectionStringLookup = connectionStringLookup;
         }
@@ -42,6 +46,7 @@
             }
         }
 
+        /// <inheritdoc/>
         public override void ResolveLayerConfiguration(string connectionName, out StorageChoices storageChoice, out TransportChoices transportChoice)
         {
             if (TransportConnectionString.IsPseudoConnectionString(connectionName))
@@ -52,9 +57,9 @@
             {
                 var connectionString = this.connectionStringLookup(connectionName);
 
-                if (TransportConnectionString.IsPseudoConnectionString(connectionName))
+                if (TransportConnectionString.IsPseudoConnectionString(connectionString))
                 {
-                    TransportConnectionString.Parse(connectionName, out storageChoice, out transportChoice);
+                    TransportConnectionString.Parse(connectionString, out storageChoice, out transportChoice);
                 }
                 else
                 {

@@ -121,7 +121,7 @@ namespace DurableTask.Netherite
                         ResourceName = name,
                         ConnectionString = null,
                         TokenCredential = tokenCredential,
-                        HostName = $"{name}.blobs.core.windows.net",
+                        HostName = $"{name}.blob.core.windows.net",
                         Scopes = s_storage_scopes,
                     };
 
@@ -144,9 +144,9 @@ namespace DurableTask.Netherite
         }
 
         /// <summary>
-        /// When converting to a classic storage account, a timer is started. We therefore want to share
-        /// all instances.
+        /// When converting to a classic storage account, a renewal timer is associated with each CloudStorageAccount instance. We therefore use
+        /// a single instance to be shared by all.
         /// </summary>
-        internal Task<Microsoft.Azure.Storage.CloudStorageAccount> CachedStorageAccount;
+        internal Task<Microsoft.Azure.Storage.CloudStorageAccount> CachedStorageAccountTask;
     }
 }

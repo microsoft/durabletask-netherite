@@ -8,6 +8,7 @@ namespace DurableTask.Netherite.AzureFunctions
     using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Threading;
+    using Azure.Identity;
     using DurableTask.Core;
     using DurableTask.Netherite;
     using Microsoft.Azure.WebJobs;
@@ -96,7 +97,7 @@ namespace DurableTask.Netherite.AzureFunctions
             // copy all applicable fields from both the options and the storageProvider options
             JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options), netheriteSettings);
             JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options.StorageProvider), netheriteSettings);
- 
+
             // configure the cache size if not already configured
             netheriteSettings.InstanceCacheSizeMB ??= (this.inConsumption ? 100 : 200 * Environment.ProcessorCount);
 
@@ -135,7 +136,12 @@ namespace DurableTask.Netherite.AzureFunctions
                 netheriteSettings.CacheOrchestrationCursors = false; // cannot resume orchestrations in the middle
             }
 
-            netheriteSettings.Resolve(new ConnectionStringResolver((name) => this.nameResolver.Resolve(name)));
+            // connections for Netherite are resolved either via an injected resolver, or otherwise by resolving connection names to connection strings
+            var connectionResolver = this.serviceProvider.GetService<DurableTask.Netherite.ConnectionResolver>()
+                ?? new ConnectionNameToConnectionStringResolver((name) => this.nameResolver.Resolve(name));
+
+            // validate the settings and resolve the connections
+            netheriteSettings.Validate(connectionResolver);
 
             int randomProbability = 0;
             bool attachFaultInjector =

@@ -192,16 +192,16 @@ namespace DurableTask.Netherite.Faster
 
                 if (taskhubFormat.UseAlternateObjectStore != settings.UseAlternateObjectStore)
                 {
-                    throw new InvalidOperationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
+                    throw new NetheriteConfigurationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
                 }
                 if (taskhubFormat.FormatVersion != StorageFormatVersion.Last())
                 {
-                    throw new InvalidOperationException($"The current storage format version (={StorageFormatVersion.Last()}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
+                    throw new NetheriteConfigurationException($"The current storage format version (={StorageFormatVersion.Last()}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
                 }
             }
             catch (Exception e)
             {
-                throw new InvalidOperationException("The taskhub has an incompatible storage format", e);
+                throw new NetheriteConfigurationException("The taskhub has an incompatible storage format", e);
             }
         }
 

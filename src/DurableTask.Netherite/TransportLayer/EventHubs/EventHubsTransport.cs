@@ -59,7 +59,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         {
             if (storage is MemoryStorageLayer)
             {
-                throw new InvalidOperationException($"Configuration error: in-memory storage cannot be used together with a real event hubs namespace");
+                throw new NetheriteConfigurationException($"Configuration error: in-memory storage cannot be used together with a real event hubs namespace");
             }
 
             this.host = host;
@@ -67,7 +67,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.storage = storage;
             string namespaceName = settings.EventHubsConnection.ResourceName;
             this.logger = EventHubsTraceHelper.CreateLogger(loggerFactory);
-            this.traceHelper = new EventHubsTraceHelper(this.logger, settings.TransportLogLevelLimit, null, this.cloudStorageAccount.Credentials.AccountName, settings.HubName, namespaceName);
+            this.traceHelper = new EventHubsTraceHelper(this.logger, settings.TransportLogLevelLimit, null, settings.StorageAccountName, settings.HubName, namespaceName);
             this.ClientId = Guid.NewGuid();
         }
 
@@ -88,7 +88,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             // check that we are the correct taskhub!
             if (this.parameters.TaskhubName != this.settings.HubName)
             {
-                throw new InvalidOperationException($"The specified taskhub name does not match the task hub name in storage");
+                throw new NetheriteConfigurationException($"The specified taskhub name does not match the task hub name in storage");
             }
 
             this.taskhubGuid = this.parameters.TaskhubGuid.ToByteArray();

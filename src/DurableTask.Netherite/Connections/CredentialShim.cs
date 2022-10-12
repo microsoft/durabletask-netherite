@@ -17,6 +17,12 @@ namespace DurableTask.Netherite
     /// </summary>
     public static class CredentialShim
     {
+        /// <summary>
+        /// Creates a <see cref="Microsoft.Azure.Storage.Auth.TokenCredential"/> from the connection info. 
+        /// </summary>
+        /// <param name="connectionInfo">The connection info.</param>
+        /// <param name="cancellationToken">A cancellation token.</param>
+        /// <returns></returns>
         public static async Task<Microsoft.Azure.Storage.Auth.TokenCredential> ToLegacyCredentialAsync(this ConnectionInfo connectionInfo, CancellationToken cancellationToken)
         {
             AccessToken token = await GetTokenAsync(connectionInfo.TokenCredential, connectionInfo.Scopes, cancellationToken);

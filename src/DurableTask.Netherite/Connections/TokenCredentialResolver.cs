@@ -7,40 +7,62 @@
     using Microsoft.Extensions.Logging.Abstractions;
 
     /// <summary>
-    /// Resolves connection names using a token credential and a name-to-resource mapping.
+    /// Resolves connections using a token credential and a resource-type-to-resource-name mapping.
     /// </summary>
     public class TokenCredentialResolver : ConnectionResolver
     {
-        readonly Azure.Core.TokenCredential credential;
-        readonly Func<string, string> nameResolver;
+        readonly Azure.Core.TokenCredential tokenCredential;
+        readonly string storageAccountName;
+        readonly string eventHubNamespaceName;
 
         /// <summary>
-        /// Create a connection resolver based on a token credential and a function that maps connection names to resource names.
+        /// Create a connection resolver that uses an Azure token credential.
         /// </summary>
         /// <param name="tokenCredential">The token credential to use.</param>
-        /// <param name="nameResolver">A mapping from connection names to resource names.</param>
-        public TokenCredentialResolver(Azure.Core.TokenCredential tokenCredential, Func<string, string> nameResolver)
-        {
-            this.nameResolver = nameResolver;
-            this.credential = tokenCredential;
+        /// <param name="storageAccountName">The name of the storage account, or null if using in-memory emulation.</param>
+        /// <param name="eventHubNamespaceName">The name of the event hub namespace, or null if using the singlehost configuration.</param>
+        public TokenCredentialResolver(Azure.Core.TokenCredential tokenCredential, string storageAccountName = null, string eventHubNamespaceName = null)
+        {      
+            this.tokenCredential = tokenCredential;
+            this.storageAccountName = storageAccountName;
+            this.eventHubNamespaceName = eventHubNamespaceName;
         }
 
         /// <inheritdoc/>
         public override ConnectionInfo ResolveConnectionInfo(string taskHub, string connectionName, ResourceType recourceType)
         {
-            string resourceName = this.nameResolver(connectionName);
-            return ConnectionInfo.FromTokenCredential(this.credential, resourceName, recourceType);
+            switch (recourceType)
+            {
+                case ResourceType.BlobStorage:
+                case ResourceType.TableStorage:
+                    return ConnectionInfo.FromTokenCredential(this.tokenCredential, this.storageAccountName, recourceType);
+
+                case ResourceType.PageBlobStorage:
+                    return null; // same as blob storage
+
+                case ResourceType.EventHubsNamespace:
+                    return ConnectionInfo.FromTokenCredential(this.tokenCredential, this.eventHubNamespaceName, recourceType);
+
+                default:
+                    throw new NotImplementedException("unknown resource type");
+            }   
         }
 
+        /// <inheritdoc/>
         public override void ResolveLayerConfiguration(string connectionName, out StorageChoices storageChoice, out TransportChoices transportChoice)
         {
-            if (TransportConnectionString.IsPseudoConnectionString(connectionName))
+            if (string.IsNullOrEmpty(this.storageAccountName))
             {
-                TransportConnectionString.Parse(connectionName, out storageChoice, out transportChoice);
+                storageChoice = StorageChoices.Memory;
+                transportChoice = TransportChoices.SingleHost;
+            }
+            else if (string.IsNullOrEmpty(this.eventHubNamespaceName))
+            {
+                storageChoice = StorageChoices.Faster;
+                transportChoice = TransportChoices.SingleHost;
             }
             else
             {
-                // the default settings are Faster and EventHubs
                 storageChoice = StorageChoices.Faster;
                 transportChoice = TransportChoices.EventHubs;
             }

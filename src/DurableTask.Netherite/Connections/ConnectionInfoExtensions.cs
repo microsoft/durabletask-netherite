@@ -34,12 +34,12 @@ namespace DurableTask.Netherite
         /// <exception cref="FormatException">Thrown if the host name of the connection info is not of the expected format {ResourceName}.{HostNameSuffix}.</exception>
         public static Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAzureStorageV11AccountAsync(this ConnectionInfo connectionInfo)
         {
-            // storage accounts run a token renewal timer, which we want to share for all instances
-            if (connectionInfo.CachedStorageAccount == null)
+            // storage accounts run a token renewal timer, so we want to share a single instance
+            if (connectionInfo.CachedStorageAccountTask == null)
             {
-                connectionInfo.CachedStorageAccount = GetAsync();
+                connectionInfo.CachedStorageAccountTask = GetAsync();
             }
-            return connectionInfo.CachedStorageAccount;
+            return connectionInfo.CachedStorageAccountTask;
 
             async Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAsync()
             {
@@ -51,17 +51,19 @@ namespace DurableTask.Netherite
                 {
                     var credentials = new Microsoft.Azure.Storage.Auth.StorageCredentials(await connectionInfo.ToLegacyCredentialAsync(CancellationToken.None));
 
-                    string expectedHostNamePrefix = $"{connectionInfo.ResourceName}.";
+                    // hostnames are generally structured like
+                    //    accountname.blob.core.windows.net
+                    //    accountname.table.core.windows.net
+                    //    databasename.table.cosmos.azure.com
 
-                    if (!connectionInfo.HostName.StartsWith(expectedHostNamePrefix))
-                    {
-                        throw new FormatException("ConnectionInfo: unexpected format for host name");
-                    }
+                    int firstDot = connectionInfo.HostName.IndexOf('.');
+                    int secondDot = connectionInfo.HostName.IndexOf('.', firstDot + 1);
+                    string hostNameSuffix = connectionInfo.HostName.Substring(secondDot + 1);
 
                     return new Microsoft.Azure.Storage.CloudStorageAccount(
                             storageCredentials: credentials,
                             accountName: connectionInfo.ResourceName,
-                            endpointSuffix: connectionInfo.HostName.Substring(expectedHostNamePrefix.Length),
+                            endpointSuffix: hostNameSuffix,
                             useHttps: true);
                 }
             }
@@ -82,7 +84,7 @@ namespace DurableTask.Netherite
             }
             else
             {
-                return new Azure.Data.Tables.TableClient(new Uri($"https://{connectionInfo.ResourceName}.table.core.windows.net/"), tableName, connectionInfo.TokenCredential);
+                return new Azure.Data.Tables.TableClient(new Uri($"https://{connectionInfo.HostName}/"), tableName, connectionInfo.TokenCredential);
             }
         }
 
@@ -174,9 +176,7 @@ namespace DurableTask.Netherite
             {
                 TokenRequestContext request = new(this.info.Scopes);
                 AccessToken accessToken = await this.info.TokenCredential.GetTokenAsync(request, CancellationToken.None);
-                string audience = "???"; // Event Hubs SecurityToken requires this argument, but does not document what it means
-                string tokentype = "???"; // Event Hubs  SecurityToken requires this argument, but does not document what it means
-                return new SecurityToken(accessToken.Token, DateTime.UtcNow + NextRefresh(accessToken), audience, tokentype);
+                return new JsonSecurityToken(accessToken.Token, appliesTo);
             }
         }
 

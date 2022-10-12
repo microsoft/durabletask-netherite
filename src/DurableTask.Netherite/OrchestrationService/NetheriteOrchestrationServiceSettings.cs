@@ -23,14 +23,14 @@ namespace DurableTask.Netherite
         public string HubName { get; set; }
 
         /// <summary>
-        /// Specifies a connection name identifying the Azure Storage account to be used. 
-        /// This name is resolved during validation to obtain connection information
+        /// Gets or sets the name for resolving the Azure storage connection string.
+        /// </summary>
         public string StorageConnectionName { get; set; } = "AzureWebJobsStorage";
 
         /// <summary>
-        /// Specifies the Event Hubs namespace to be used. Can contain one of the following:
-        /// - A connection name, for which an Event Hubs namespace connection string is then resolved during validation to obtain connection information
-        /// - A keyword ("Memory" or "SingleHost") that runs Netherite without Event Hubs.
+        /// Gets or sets the name for resolving the Eventhubs namespace connection string.
+        /// Pseudo-connection-strings "Memory" or "SingleHost" can be used to configure
+        /// in-memory emulation, or single-host configuration, respectively.
         /// </summary>
         public string EventHubsConnectionName { get; set; } = "EventHubsConnection";
 
@@ -278,10 +278,10 @@ namespace DurableTask.Netherite
         #endregion
 
         /// <summary>
-        /// Validates and resolves the settings, throwing exceptions if there are issues.
+        /// Validates the settings and resolves the connections, throwing exceptions if there are issues.
         /// </summary>
         /// <param name="resolver">A connection resolver.</param>
-        public virtual void Resolve(ConnectionResolver resolver)
+        public void Validate(ConnectionResolver resolver)
         {
             if (string.IsNullOrEmpty(this.HubName))
             {
@@ -312,34 +312,44 @@ namespace DurableTask.Netherite
             if (this.TransportChoice == TransportChoices.EventHubs)
             {
                 // we need a valid event hubs connection
+
+                if (string.IsNullOrEmpty(this.EventHubsConnectionName) && resolver is ConnectionNameToConnectionStringResolver)
+                {
+                    throw new NetheriteConfigurationException($"Must specify {nameof(this.EventHubsConnectionName)} for Netherite storage provider.");
+                }
                 try
                 {
                     this.EventHubsConnection = resolver.ResolveConnectionInfo(this.HubName, this.EventHubsConnectionName, ConnectionResolver.ResourceType.EventHubsNamespace);
                 }
                 catch (Exception e)
                 {
-                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.EventHubsConnectionName)} for required event hub namespace connection: {e.Message}", e);
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.EventHubsConnectionName)}={this.EventHubsConnectionName} to create an eventhubs connection for Netherite storage provider: {e.Message}", e);
                 }
-                if (this.TableStorageConnection == null)
+                if (this.EventHubsConnection == null)
                 {
-                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.EventHubsConnectionName)} for required event hub namespace connection.");
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.EventHubsConnectionName)}={this.EventHubsConnectionName} to create an eventhubs connection for Netherite storage provider.");
                 }
             }
 
             if (this.StorageChoice == StorageChoices.Faster || this.TransportChoice == TransportChoices.EventHubs)
             {
                 // we need a valid blob storage connection
+
+                if (string.IsNullOrEmpty(this.StorageConnectionName) && resolver is ConnectionNameToConnectionStringResolver)
+                {
+                    throw new NetheriteConfigurationException($"Must specify {nameof(this.StorageConnectionName)} for Netherite storage provider.");
+                }
                 try
                 {
                     this.BlobStorageConnection = resolver.ResolveConnectionInfo(this.HubName, this.StorageConnectionName, ConnectionResolver.ResourceType.BlobStorage);
                 }
                 catch (Exception e)
                 {
-                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)} for required blob storage connection: {e.Message}", e);
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)}={this.StorageConnectionName} to create a blob storage connection for Netherite storage provider: {e.Message}", e);
                 }
                 if (this.BlobStorageConnection == null)
                 {
-                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)} for required blob storage connection.");
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)}={this.StorageConnectionName} to create a blob storage connection for Netherite storage provider.");
                 }
             }
 
@@ -352,11 +362,11 @@ namespace DurableTask.Netherite
                 }
                 catch (Exception e)
                 {
-                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)} for required table storage connection: {e.Message}", e);
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)}={this.StorageConnectionName} to create a table storage connection for Netherite storage provider: {e.Message}", e);
                 }
                 if (this.TableStorageConnection == null)
                 {
-                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)} for required table storage connection.");
+                    throw new NetheriteConfigurationException($"Could not resolve {nameof(this.StorageConnectionName)}={this.StorageConnectionName} to create a table storage connection for Netherite storage provider.");
                 }
             }
 
