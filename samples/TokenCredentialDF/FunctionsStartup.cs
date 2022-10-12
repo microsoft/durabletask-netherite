@@ -8,6 +8,7 @@ namespace PerformanceTests
     using System;
     using Azure.Identity;
     using DurableTask.Netherite;
+    using DurableTask.Netherite.AzureFunctions;
     using Microsoft.Azure.Functions.Extensions.DependencyInjection;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Extensions.DependencyInjection;
@@ -15,7 +16,7 @@ namespace PerformanceTests
 
     public class Startup : FunctionsStartup
     {
-        public class MyConnectionResolver : TokenCredentialResolver
+        public class MyConnectionResolver : CredentialBasedConnectionNameResolver
         {
             readonly INameResolver nameResolver;
 
@@ -29,7 +30,7 @@ namespace PerformanceTests
                 ?? Environment.GetEnvironmentVariable(name)
                 ?? throw new InvalidOperationException($"missing configuration setting '{name}'");
 
-            public override string GetStorageAccountName(string connectionName) => this.Resolve($"{connectionName}__storageAccountName");
+            public override string GetStorageAccountName(string connectionName) => this.Resolve($"{connectionName}__accountName");
 
             public override string GetEventHubsNamespaceName(string connectionName) => this.Resolve($"{connectionName}__eventHubsNamespaceName");
         }

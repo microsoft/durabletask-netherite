@@ -1,11 +1,11 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
+using Azure.Identity;
 using DurableTask.Core;
 using DurableTask.Netherite;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-
 
 // ----------- construct the Netherite orchestration service
 
@@ -15,14 +15,13 @@ var netheriteSettings = new NetheriteOrchestrationServiceSettings()
 {
     HubName = "myhub",
     PartitionCount = 4,
-
-    // we explicitly specify the two required connection strings here.
-    // Another option would be to use a connection name resolver when calling Validate().
-    ResolvedStorageConnectionString = "UseDevelopmentStorage=true;",
-    ResolvedTransportConnectionString = "SingleHost",
 };
 
-netheriteSettings.Validate();
+netheriteSettings.Validate(new SimpleCredentialResolver(
+    new DefaultAzureCredential(),
+    Environment.GetEnvironmentVariable("AccountName") ?? throw new Exception("missing env var: AccountName"),
+    Environment.GetEnvironmentVariable("NamespaceName") ?? throw new Exception("missing env var: NamespaceName")
+));
 
 var loggerFactory = LoggerFactory.Create(builder =>
 {

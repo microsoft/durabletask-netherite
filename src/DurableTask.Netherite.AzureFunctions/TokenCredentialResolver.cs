@@ -1,16 +1,17 @@
-﻿namespace DurableTask.Netherite
+﻿namespace DurableTask.Netherite.AzureFunctions
 {
     using System;
     using System.Collections.Generic;
     using System.Text;
     using Azure.Identity;
-    using Microsoft.Azure.Storage.Blob.Protocol;
     using Microsoft.Extensions.Logging.Abstractions;
+
+#if !NETCOREAPP2_2
 
     /// <summary>
     /// Resolves connections using a token credential and a mapping from connection names to resource names.
     /// </summary>
-    public abstract class TokenCredentialResolver : ConnectionResolver
+    public abstract class CredentialBasedConnectionNameResolver : DurableTask.Netherite.ConnectionResolver
     {
         readonly Azure.Core.TokenCredential tokenCredential;
 
@@ -18,7 +19,7 @@
         /// Create a connection resolver that uses an Azure token credential.
         /// </summary>
         /// <param name="tokenCredential">The token credential to use.</param>
-        public TokenCredentialResolver(Azure.Core.TokenCredential tokenCredential)
+        public CredentialBasedConnectionNameResolver(Azure.Core.TokenCredential tokenCredential)
         {      
             this.tokenCredential = tokenCredential;
         }
@@ -71,4 +72,6 @@
             }
         }
     }
+
+#endif
 }

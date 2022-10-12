@@ -28,7 +28,6 @@ namespace DurableTask.Netherite.EventHubsTransport
     {
         readonly TransportAbstraction.IHost host;
         readonly NetheriteOrchestrationServiceSettings settings;
-        readonly CloudStorageAccount cloudStorageAccount;
         readonly ILogger logger;
         readonly EventHubsTraceHelper traceHelper;
         readonly IStorageLayer storage;
@@ -380,14 +379,36 @@ namespace DurableTask.Netherite.EventHubsTransport
             {
                 byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
                 TimeSpan longPollingInterval = TimeSpan.FromMinutes(1);
+                var backoffDelay = TimeSpan.Zero;
 
                 await this.clientConnectionsEstablished[index];
 
                 while (!this.shutdownSource.IsCancellationRequested)
                 {
-                    this.traceHelper.LogTrace("Client{clientId}.ch{index} waiting for new packets", Client.GetShortId(this.ClientId), index);
- 
-                    IEnumerable<EventData> eventData = await receiver.ReceiveAsync(1000, longPollingInterval);
+                    IEnumerable<EventData> eventData;
+
+                    try
+                    {
+                        this.traceHelper.LogTrace("Client{clientId}.ch{index} waiting for new packets", Client.GetShortId(this.ClientId), index);
+
+                        eventData = await receiver.ReceiveAsync(1000, longPollingInterval);
+
+                        backoffDelay = TimeSpan.Zero;
+                    }
+                    catch (Exception exception) when (!this.shutdownSource.IsCancellationRequested)
+                    {
+                        if (backoffDelay < TimeSpan.FromSeconds(30))
+                        {
+                            backoffDelay = backoffDelay + backoffDelay + TimeSpan.FromSeconds(2);
+                        }
+
+                        // if we lose access to storage temporarily, we back off, but don't quit
+                        this.traceHelper.LogError("Client{clientId}.ch{index} backing off for {backoffDelay} after error in receive loop: {exception}", Client.GetShortId(this.ClientId), index, backoffDelay, exception);
+
+                        await Task.Delay(backoffDelay);
+
+                        continue; // retry
+                    }
 
                     if (eventData != null)
                     {
