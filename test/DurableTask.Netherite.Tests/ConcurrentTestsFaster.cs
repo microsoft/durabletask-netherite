@@ -14,7 +14,6 @@ namespace DurableTask.Netherite.Tests
     using System.Threading.Tasks;
     using DurableTask.Core;
     using DurableTask.Core.Exceptions;
-    using Microsoft.Azure.Cosmos.Table;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
     using Xunit;

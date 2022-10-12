@@ -18,7 +18,13 @@ namespace DurableTask.Netherite.Scaling
     {
         readonly string taskHubName;
         readonly CloudBlobContainer blobContainer;
-        
+
+        readonly static JsonSerializerSettings serializerSettings = new JsonSerializerSettings() 
+        {
+            TypeNameHandling = TypeNameHandling.None,
+            MissingMemberHandling = MissingMemberHandling.Ignore,
+        };
+
         int? numPartitions;
 
         public AzureBlobLoadPublisher(string connectionString, string taskHubName)
@@ -32,15 +38,9 @@ namespace DurableTask.Netherite.Scaling
 
         public TimeSpan PublishInterval => TimeSpan.FromSeconds(10);
 
-        public Task DeleteIfExistsAsync(CancellationToken cancellationToken)
-        {
-            // not needed since this blob is stored together with the taskhub storage
-            return Task.CompletedTask;
-        }
-
         public Task CreateIfNotExistsAsync(CancellationToken cancellationToken)
         {
-            // not needed since this blob is stored together with the taskhub storage
+            // not needed since the blobs are stored in the taskhub's container
             return Task.CompletedTask;
         }
 
@@ -50,12 +50,35 @@ namespace DurableTask.Netherite.Scaling
             {
                 var blobDirectory = this.blobContainer.GetDirectoryReference($"p{partitionId:D2}");
                 var blob = blobDirectory.GetBlockBlobReference("loadinfo.json");
-                var json = JsonConvert.SerializeObject(loadInfo, Formatting.Indented);
+                var json = JsonConvert.SerializeObject(loadInfo, Formatting.Indented, serializerSettings);
                 return blob.UploadTextAsync(json, cancellationToken);
             }
 
             List<Task> tasks = info.Select(kvp => UploadPartitionInfo(kvp.Key, kvp.Value)).ToList();
-            return Task.WhenAll(tasks);           
+            return Task.WhenAll(tasks);
+        }
+
+        public async Task<T> ReadJsonBlobAsync<T>(CloudBlockBlob blob, bool throwIfNotFound, bool throwOnParseError, CancellationToken token) where T : class
+        {
+            try
+            {
+                var jsonText = await blob.DownloadTextAsync(token).ConfigureAwait(false);
+                return JsonConvert.DeserializeObject<T>(jsonText);
+            }
+            catch (StorageException e) when (!throwIfNotFound && e.RequestInformation?.HttpStatusCode == 404)
+            {
+                // container or blob does not exist
+            }
+            catch (JsonException) when (!throwOnParseError)
+            {
+                // cannot parse content of blob
+            }
+            catch(StorageException e) when (e.InnerException is OperationCanceledException operationCanceledException)
+            {
+                throw new OperationCanceledException("Blob read was canceled.", operationCanceledException);
+            }
+
+            return null;
         }
 
         public async Task<Dictionary<uint, PartitionLoadInfo>> QueryAsync(CancellationToken cancellationToken)
@@ -63,31 +86,59 @@ namespace DurableTask.Netherite.Scaling
             if (!this.numPartitions.HasValue)
             {
                 // determine number of partitions of taskhub
-                var blob = this.blobContainer.GetBlockBlobReference("taskhubparameters.json");
-                var jsonText = await blob.DownloadTextAsync().ConfigureAwait(false);
+                var info = await this.ReadJsonBlobAsync<Netherite.Abstractions.TaskhubParameters>(
+                    this.blobContainer.GetBlockBlobReference("taskhubparameters.json"),
+                    throwIfNotFound: true,
+                    throwOnParseError: true,
+                    cancellationToken).ConfigureAwait(false);
 
-/* Unmerged change from project 'DurableTask.Netherite (netcoreapp3.1)'
-Before:
-                var info = JsonConvert.DeserializeObject<EventHubs.TaskhubParameters>(jsonText);
-After:
-                var info = JsonConvert.DeserializeObject<TaskhubParameters>(jsonText);
-*/
-                var info = JsonConvert.DeserializeObject<Netherite.Abstractions.TaskhubParameters>(jsonText);
                 this.numPartitions = info.PartitionCount;
             }
 
-            async Task<(uint,PartitionLoadInfo)> DownloadPartitionInfo(uint partitionId)
+            async Task<(uint, PartitionLoadInfo)> DownloadPartitionInfo(uint partitionId)
             {
-                var blobDirectory = this.blobContainer.GetDirectoryReference($"p{partitionId:D2}");
-                var blob = blobDirectory.GetBlockBlobReference("loadinfo.json");
-                string json = await blob.DownloadTextAsync(cancellationToken);
-                PartitionLoadInfo info = JsonConvert.DeserializeObject<PartitionLoadInfo>(json);
+                PartitionLoadInfo info = await this.ReadJsonBlobAsync<PartitionLoadInfo>(
+                    this.blobContainer.GetDirectoryReference($"p{partitionId:D2}").GetBlockBlobReference("loadinfo.json"), 
+                    throwIfNotFound: false, 
+                    throwOnParseError: true,
+                    cancellationToken).ConfigureAwait(false);
                 return (partitionId, info);
             }
 
-            var tasks = Enumerable.Range(0, this.numPartitions.Value).Select(partitionId => DownloadPartitionInfo((uint) partitionId)).ToList();
-            await Task.WhenAll(tasks);
-            return tasks.Select(task => task.Result).ToDictionary(pair => pair.Item1, pair => pair.Item2);
+            var tasks = Enumerable.Range(0, this.numPartitions.Value).Select(partitionId => DownloadPartitionInfo((uint)partitionId)).ToList();
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+            return tasks.Select(task => task.Result).Where(pair => pair.Item2 != null).ToDictionary(pair => pair.Item1, pair => pair.Item2);
+        }
+
+        public async Task DeleteIfExistsAsync(CancellationToken cancellationToken)
+        {
+            if (!this.numPartitions.HasValue)
+            {
+                // determine number of partitions of taskhub
+                var info = await this.ReadJsonBlobAsync<Netherite.Abstractions.TaskhubParameters>(
+                    this.blobContainer.GetBlockBlobReference("taskhubparameters.json"),
+                    throwIfNotFound: false,
+                    throwOnParseError: false,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (info == null)
+                {
+                    return;
+                }
+                else
+                {
+                    this.numPartitions = info.PartitionCount;
+                }
+            }
+
+            async Task DeletePartitionInfo(uint partitionId)
+            {
+                var blob = this.blobContainer.GetDirectoryReference($"p{partitionId:D2}").GetBlockBlobReference("loadinfo.json");
+                await BlobUtils.ForceDeleteAsync(blob).ConfigureAwait(false);
+            }
+
+            var tasks = Enumerable.Range(0, this.numPartitions.Value).Select(partitionId => DeletePartitionInfo((uint)partitionId)).ToList();
+            await Task.WhenAll(tasks).ConfigureAwait(false);
         }
     }
 }

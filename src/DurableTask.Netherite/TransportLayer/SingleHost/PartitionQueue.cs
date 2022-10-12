@@ -7,7 +7,6 @@ namespace DurableTask.Netherite.SingleHostTransport
     using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Azure;
     using Microsoft.Extensions.Logging;
-    using Microsoft.OData.Edm.Vocabularies;
     using System;
     using System.Collections;
     using System.Collections.Generic;

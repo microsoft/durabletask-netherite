@@ -3,8 +3,11 @@
 
 namespace DurableTask.Netherite.Scaling
 {
-    using Microsoft.Azure.Cosmos.Table;
+    using Azure;
+    using Azure.Data.Tables;
+    using Microsoft.Extensions.Azure;
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Linq;
     using System.Text;
@@ -13,13 +16,12 @@ namespace DurableTask.Netherite.Scaling
 
     class AzureTableLoadPublisher : ILoadPublisherService
     {
-        readonly CloudTable table;
+        readonly TableClient table;
         readonly string taskHubName;
 
         public AzureTableLoadPublisher(string connectionString, string tableName, string taskHubName)
         {
-            var account = CloudStorageAccount.Parse(connectionString);
-            this.table = account.CreateCloudTableClient().GetTableReference(tableName);
+            this.table = new TableClient(connectionString, tableName); 
             this.taskHubName = taskHubName;
         }
 
@@ -27,90 +29,78 @@ namespace DurableTask.Netherite.Scaling
 
         public async Task DeleteIfExistsAsync(CancellationToken cancellationToken)
         {
-            if (! await this.table.ExistsAsync().ConfigureAwait(false))
+            try
             {
-                return;
-            }
-
-            var query = new TableQuery<PartitionInfoEntity>().Where(TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.Equal, this.taskHubName));
-            TableContinuationToken continuationToken = null;
-            do
-            {
-                var batch = await this.table.ExecuteQuerySegmentedAsync<PartitionInfoEntity>(query, continuationToken, null, null, cancellationToken).ConfigureAwait(false);
-
-                if (batch.Count() > 0)
+                var tableBatch = new List<TableTransactionAction>();
+                await foreach (var e in this.table.QueryAsync<PartitionInfoEntity>(x => x.PartitionKey == this.taskHubName, cancellationToken: cancellationToken).ConfigureAwait(false))
                 {
-                    // delete all entities in this batch. Max partition number is 32 so it always fits.
-                    TableBatchOperation tableBatch = new TableBatchOperation();
-
-                    foreach (var e in batch)
-                    {
-                        tableBatch.Add(TableOperation.Delete(e));
-                    }
-
-                    await this.table.ExecuteBatchAsync(tableBatch).ConfigureAwait(false);
+                    tableBatch.Add(new TableTransactionAction(TableTransactionActionType.Delete, e));
+                }
+                if (tableBatch.Count > 0)
+                {
+                    await this.table.SubmitTransactionAsync(tableBatch, cancellationToken).ConfigureAwait(false);
                 }
             }
-            while (continuationToken != null);
+            catch(Azure.RequestFailedException e) when (e.Status == 404) // table may not exist
+            {
+            }
         }
 
-        public async Task CreateIfNotExistsAsync(CancellationToken cancellationToken)
+        public Task CreateIfNotExistsAsync(CancellationToken cancellationToken)
         {
-            if (await this.table.ExistsAsync().ConfigureAwait(false))
-            {
-                return;
-            }
-
-            await this.table.CreateAsync().ConfigureAwait(false);
+            return this.table.CreateIfNotExistsAsync(cancellationToken);
         }
 
         public Task PublishAsync(Dictionary<uint, PartitionLoadInfo> info, CancellationToken cancellationToken)
         {
-            TableBatchOperation tableBatch = new TableBatchOperation();
+            var tableBatch = new List<TableTransactionAction>();
             foreach(var kvp in info)
             {
-                tableBatch.Add(TableOperation.InsertOrReplace(new PartitionInfoEntity(this.taskHubName, kvp.Key, kvp.Value)));
+                tableBatch.Add(new TableTransactionAction(TableTransactionActionType.UpsertReplace, new PartitionInfoEntity(this.taskHubName, kvp.Key, kvp.Value)));
             }
-            return this.table.ExecuteBatchAsync(tableBatch, null, null, cancellationToken);
+            if (tableBatch.Count > 0)
+            {
+                return this.table.SubmitTransactionAsync(tableBatch, cancellationToken);
+            }
+            else
+            {
+                return Task.CompletedTask;
+            }
         }
 
         public async Task<Dictionary<uint, PartitionLoadInfo>> QueryAsync(CancellationToken cancellationToken)
         {
-            var query = new TableQuery<PartitionInfoEntity>().Where(TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, this.taskHubName));
-            TableContinuationToken continuationToken = null;
             Dictionary<uint, PartitionLoadInfo> result = new Dictionary<uint, PartitionLoadInfo>();
-            do
+            await foreach (var e in this.table.QueryAsync<PartitionInfoEntity>(x => x.PartitionKey == this.taskHubName, cancellationToken: cancellationToken).ConfigureAwait(false))
             {
-                var batch = await this.table.ExecuteQuerySegmentedAsync<PartitionInfoEntity>(query, continuationToken, null, null, cancellationToken).ConfigureAwait(false);
-                foreach (var e in batch)
+                result.Add(uint.Parse(e.RowKey), new PartitionLoadInfo()
                 {
-                    int.TryParse(e.CachePct, out int cachePct);
-                    double.TryParse(e.MissRate, out double missRatePct);
-                    result.Add(e.PartitionId, new PartitionLoadInfo()
-                    {
-                        WorkItems = e.WorkItems,
-                        Activities = e.Activities,
-                        Timers = e.Timers,
-                        Requests = e.Requests,
-                        Wakeup = e.NextTimer,
-                        Outbox = e.Outbox,
-                        Instances = e.Instances,
-                        InputQueuePosition = e.InputQueuePosition,
-                        CommitLogPosition = e.CommitLogPosition,
-                        WorkerId = e.WorkerId,
-                        LatencyTrend = e.LatencyTrend,
-                        MissRate = missRatePct / 100,
-                        CachePct = cachePct,
-                        CacheMB = e.CacheMB,
-                    });
-                }
+                    WorkItems = e.WorkItems,
+                    Activities = e.Activities,
+                    Timers = e.Timers,
+                    Requests = e.Requests,
+                    Wakeup = e.NextTimer,
+                    Outbox = e.Outbox,
+                    Instances = e.Instances,
+                    InputQueuePosition = e.InputQueuePosition,
+                    CommitLogPosition = e.CommitLogPosition,
+                    WorkerId = e.WorkerId,
+                    LatencyTrend = e.LatencyTrend,
+                    MissRate = double.Parse(e.MissRate.Substring(0, e.MissRate.Length - 1)) / 100,
+                    CachePct = int.Parse(e.CachePct.Substring(0, e.CachePct.Length - 1)),
+                    CacheMB = e.CacheMB,
+                });
             }
-            while (continuationToken != null);
             return result;
         }
 
-        public class PartitionInfoEntity : TableEntity
+        public class PartitionInfoEntity : ITableEntity
         {
+            public string PartitionKey { get; set; } // TaskHub name
+            public string RowKey { get; set; } // partitionId
+            public ETag ETag { get; set; }
+            public DateTimeOffset? Timestamp { get; set; }
+
             public int WorkItems { get; set; }
             public int Activities { get; set; }
             public int Timers { get; set; }
@@ -130,22 +120,21 @@ namespace DurableTask.Netherite.Scaling
             {
             }
 
-            // constructor for creating a deletion query; only the partition and row keys matter
             public PartitionInfoEntity(string taskHubName, uint partitionId)
-                 : base(taskHubName, partitionId.ToString("D2"))
             {
-                this.ETag = "*"; // no conditions when deleting
+                this.PartitionKey = taskHubName;
+                this.RowKey = partitionId.ToString("D2");
+                this.ETag = ETag.All; // no conditions
             }
 
-            // constructor for updating load information
             public PartitionInfoEntity(string taskHubName, uint partitionId, PartitionLoadInfo info)
-                : base(taskHubName, partitionId.ToString("D2"))
+                : this(taskHubName, partitionId)
             {
                 this.WorkItems = info.WorkItems;
                 this.Activities = info.Activities;
                 this.Timers = info.Timers;
                 this.Requests = info.Requests;
-                this.NextTimer = info.Wakeup;
+                this.NextTimer = info.Wakeup.HasValue ? info.Wakeup.Value.ToUniversalTime() : null;
                 this.Outbox = info.Outbox;
                 this.Instances = info.Instances;
                 this.InputQueuePosition = info.InputQueuePosition;
@@ -155,12 +144,7 @@ namespace DurableTask.Netherite.Scaling
                 this.MissRate = $"{info.MissRate*100:f2}%";
                 this.CachePct = $"{info.CachePct}%";
                 this.CacheMB = info.CacheMB;
-
-                this.ETag = "*"; // no conditions when inserting, replace existing
             }
-
-            public string TaskHubName => this.PartitionKey;
-            public uint PartitionId => uint.Parse(this.RowKey);
         }
     }
 }

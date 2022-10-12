@@ -12,8 +12,6 @@ namespace DurableTask.Netherite.Faster
     using DurableTask.Netherite.Abstractions;
     using DurableTask.Netherite.EventHubsTransport;
     using DurableTask.Netherite.Scaling;
-    using Microsoft.Azure.Documents;
-    using Microsoft.Azure.Documents.SystemFunctions;
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
     using Microsoft.Extensions.Logging;
@@ -195,11 +193,11 @@ namespace DurableTask.Netherite.Faster
 
             if (parameters != null)
             {
-                // first, delete the parameters file which deletes the taskhub logically
-                await BlobUtils.ForceDeleteAsync(this.taskhubParameters);
-
                 // delete load information
                 await this.LoadPublisher.DeleteIfExistsAsync(CancellationToken.None).ConfigureAwait(false);
+
+                // delete the parameters file which deletes the taskhub logically
+                await BlobUtils.ForceDeleteAsync(this.taskhubParameters);
 
                 // delete all the files/blobs in the directory/container that represents this taskhub
                 // If this does not complete successfully, some garbage may be left behind.
