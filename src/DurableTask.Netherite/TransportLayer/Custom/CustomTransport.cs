@@ -9,7 +9,6 @@
     using System.Text;
     using System.Threading.Tasks;
     using DurableTask.Netherite.Abstractions;
-    using Microsoft.Azure.Documents.SystemFunctions;
     using Microsoft.Extensions.DependencyInjection;
 
     /// <summary>
