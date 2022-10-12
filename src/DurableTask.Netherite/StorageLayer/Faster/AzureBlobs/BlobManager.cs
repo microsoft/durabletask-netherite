@@ -24,14 +24,15 @@ namespace DurableTask.Netherite.Faster
     /// </summary>
     partial class BlobManager : ICheckpointManager, ILogCommitManager
     {
+        readonly NetheriteOrchestrationServiceSettings settings;
         readonly uint partitionId;
         readonly CancellationTokenSource shutDownOrTermination;
-        readonly CloudStorageAccount cloudStorageAccount;
-        readonly CloudStorageAccount pageBlobAccount;
         readonly string taskHubPrefix;
 
-        readonly CloudBlobContainer blockBlobContainer;
-        readonly CloudBlobContainer pageBlobContainer;
+        CloudStorageAccount cloudStorageAccount;
+        CloudStorageAccount pageBlobAccount;
+        CloudBlobContainer blockBlobContainer;
+        CloudBlobContainer pageBlobContainer;
         CloudBlockBlob eventLogCommitBlob;
         CloudBlobDirectory pageBlobPartitionDirectory;
         CloudBlobDirectory blockBlobPartitionDirectory;
@@ -191,16 +192,16 @@ namespace DurableTask.Netherite.Faster
 
                 if (taskhubFormat.UseAlternateObjectStore != settings.UseAlternateObjectStore)
                 {
-                    throw new InvalidOperationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
+                    throw new NetheriteConfigurationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
                 }
                 if (taskhubFormat.FormatVersion != StorageFormatVersion.Last())
                 {
-                    throw new InvalidOperationException($"The current storage format version (={StorageFormatVersion.Last()}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
+                    throw new NetheriteConfigurationException($"The current storage format version (={StorageFormatVersion.Last()}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
                 }
             }
             catch (Exception e)
             {
-                throw new InvalidOperationException("The taskhub has an incompatible storage format", e);
+                throw new NetheriteConfigurationException("The taskhub has an incompatible storage format", e);
             }
         }
 
@@ -271,9 +272,7 @@ namespace DurableTask.Netherite.Faster
         /// <param name="errorHandler">A handler for errors encountered in this partition</param>
         /// <param name="psfGroupCount">Number of PSF groups to be created in FASTER</param>
         public BlobManager(
-            CloudStorageAccount storageAccount,
-            CloudStorageAccount pageBlobAccount,
-            string localFilePath,
+            NetheriteOrchestrationServiceSettings settings,
             string taskHubName,
             string taskHubPrefix,
             FaultInjector faultInjector,
@@ -284,10 +283,7 @@ namespace DurableTask.Netherite.Faster
             IPartitionErrorHandler errorHandler,
             int psfGroupCount)
         {
-            this.cloudStorageAccount = storageAccount;
-            this.pageBlobAccount = pageBlobAccount;
-            this.UseLocalFiles = (localFilePath != null);
-            this.LocalFileDirectoryForTestingAndDebugging = localFilePath;
+            this.settings = settings;
             this.ContainerName = GetContainerName(taskHubName);
             this.taskHubPrefix = taskHubPrefix;
             this.FaultInjector = faultInjector;
@@ -295,30 +291,20 @@ namespace DurableTask.Netherite.Faster
             this.CheckpointInfo = new CheckpointInfo();
             this.PsfCheckpointInfos = Enumerable.Range(0, psfGroupCount).Select(ii => new CheckpointInfo()).ToArray();
 
-            if (!this.UseLocalFiles)
+            if (!string.IsNullOrEmpty(settings.UseLocalDirectoryForPartitionStorage))
             {
-                CloudBlobClient serviceClient = this.cloudStorageAccount.CreateCloudBlobClient();
-                this.blockBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
-
-                if (pageBlobAccount == storageAccount)
-                {
-                    this.pageBlobContainer = this.BlockBlobContainer;
-                }
-                else
-                {
-                    serviceClient = this.pageBlobAccount.CreateCloudBlobClient();
-                    this.pageBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
-                }
+                this.UseLocalFiles = true;
+                this.LocalFileDirectoryForTestingAndDebugging = settings.UseLocalDirectoryForPartitionStorage;
+                this.LocalCheckpointManager = new LocalFileCheckpointManager(
+                   this.CheckpointInfo,
+                   this.LocalCheckpointDirectoryPath,
+                   this.GetCheckpointCompletedBlobName());
             }
             else
             {
-                this.LocalCheckpointManager = new LocalFileCheckpointManager(
-                    this.CheckpointInfo,
-                    this.LocalCheckpointDirectoryPath,
-                    this.GetCheckpointCompletedBlobName());
+                this.UseLocalFiles = false;
             }
-
-            this.TraceHelper = new FasterTraceHelper(logger, logLevelLimit, performanceLogger, this.partitionId, this.UseLocalFiles ? "none" : this.cloudStorageAccount.Credentials.AccountName, taskHubName);
+            this.TraceHelper = new FasterTraceHelper(logger, logLevelLimit, performanceLogger, this.partitionId, this.UseLocalFiles ? "none" : this.settings.StorageAccountName, taskHubName);
             this.PartitionErrorHandler = errorHandler;
             this.shutDownOrTermination = CancellationTokenSource.CreateLinkedTokenSource(errorHandler.Token);
         }
@@ -328,7 +314,7 @@ namespace DurableTask.Netherite.Faster
 
         // For testing and debugging with local files
         bool UseLocalFiles { get; }
-        LocalFileCheckpointManager LocalCheckpointManager { get; }
+        LocalFileCheckpointManager LocalCheckpointManager { get; set; }
         string LocalFileDirectoryForTestingAndDebugging { get; }
         string LocalDirectoryPath => $"{this.LocalFileDirectoryForTestingAndDebugging}\\{this.ContainerName}";
         string LocalCheckpointDirectoryPath => $"{this.LocalDirectoryPath}\\chkpts{this.partitionId:D2}";
@@ -351,6 +337,11 @@ namespace DurableTask.Netherite.Faster
         {
             if (this.UseLocalFiles)
             {
+                this.LocalCheckpointManager = new LocalFileCheckpointManager(
+                       this.CheckpointInfo,
+                       this.LocalCheckpointDirectoryPath,
+                       this.GetCheckpointCompletedBlobName());
+
                 Directory.CreateDirectory($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}");
 
                 this.EventLogDevice = Devices.CreateLogDevice($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{EventLogBlobName}");
@@ -365,6 +356,30 @@ namespace DurableTask.Netherite.Faster
             }
             else
             {
+                this.cloudStorageAccount = await this.settings.BlobStorageConnection.GetAzureStorageV11AccountAsync();
+
+                if (this.settings.PageBlobStorageConnection != null)
+                {
+                    this.pageBlobAccount = await this.settings.PageBlobStorageConnection.GetAzureStorageV11AccountAsync();
+                }
+                else
+                {
+                    this.pageBlobAccount = this.cloudStorageAccount;
+                }
+
+                CloudBlobClient serviceClient = this.cloudStorageAccount.CreateCloudBlobClient();
+                this.blockBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
+
+                if (this.pageBlobAccount == this.cloudStorageAccount)
+                {
+                    this.pageBlobContainer = this.BlockBlobContainer;
+                }
+                else
+                {
+                    serviceClient = this.pageBlobAccount.CreateCloudBlobClient();
+                    this.pageBlobContainer = serviceClient.GetContainerReference(this.ContainerName);
+                }
+
                 await this.blockBlobContainer.CreateIfNotExistsAsync();
                 this.blockBlobPartitionDirectory = this.blockBlobContainer.GetDirectoryReference(this.PartitionFolderName);
 
@@ -445,13 +460,13 @@ namespace DurableTask.Netherite.Faster
             await this.LeaseMaintenanceLoopTask; // wait for loop to terminate cleanly
         }
 
-        public static async Task DeleteTaskhubStorageAsync(CloudStorageAccount account, CloudStorageAccount pageBlobAccount, string localFileDirectoryPath, string taskHubName, string pathPrefix)
+        public static async Task DeleteTaskhubStorageAsync(NetheriteOrchestrationServiceSettings settings, string pathPrefix)
         {
-            var containerName = GetContainerName(taskHubName);
+            var containerName = GetContainerName(settings.HubName);
 
-            if (!string.IsNullOrEmpty(localFileDirectoryPath))
+            if (!string.IsNullOrEmpty(settings.UseLocalDirectoryForPartitionStorage))
             {
-                DirectoryInfo di = new DirectoryInfo($"{localFileDirectoryPath}\\{containerName}"); //TODO fine-grained deletion
+                DirectoryInfo di = new DirectoryInfo($"{settings.UseLocalDirectoryForPartitionStorage}\\{containerName}"); //TODO fine-grained deletion
                 if (di.Exists)
                 {
                     di.Delete(true);
@@ -459,8 +474,9 @@ namespace DurableTask.Netherite.Faster
             }
             else
             {
-                async Task DeleteContainerContents(CloudStorageAccount account)
+                async Task DeleteContainerContents(ConnectionInfo connectionInfo)
                 {
+                    var account = await connectionInfo.GetAzureStorageV11AccountAsync();
                     CloudBlobClient serviceClient = account.CreateCloudBlobClient();
                     var blobContainer = serviceClient.GetContainerReference(containerName);
 
@@ -495,11 +511,11 @@ namespace DurableTask.Netherite.Faster
                     // the same container.
                 }
 
-                await DeleteContainerContents(account);
+                await DeleteContainerContents(settings.BlobStorageConnection);
 
-                if (pageBlobAccount != account)
+                if (settings.PageBlobStorageConnection != null)
                 {
-                    await DeleteContainerContents(pageBlobAccount);
+                    await DeleteContainerContents(settings.PageBlobStorageConnection);
                 }
             }
         }

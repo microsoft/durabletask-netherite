@@ -21,9 +21,9 @@
 
       // --- the levels below are used to control the Netherite tracing.
       "DurableTask.Netherite": "Information",
-      "DurableTask.Netherite.FasterStorage": "Warning",
+      "DurableTask.Netherite.FasterStorage": "Information",
       "DurableTask.Netherite.FasterStorage.Performance": "Error",
-      "DurableTask.Netherite.EventHubsTransport": "Warning",
+      "DurableTask.Netherite.EventHubsTransport": "Information",
       "DurableTask.Netherite.Events": "Warning",
       "DurableTask.Netherite.WorkItems": "Warning",
       "DurableTask.Netherite.Client": "Warning",

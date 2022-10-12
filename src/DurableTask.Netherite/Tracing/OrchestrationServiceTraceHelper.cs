@@ -29,7 +29,7 @@ namespace DurableTask.Netherite
             this.serviceInstanceId = Guid.NewGuid();
         }
 
-        public void TraceCreated(int processorCount, TransportConnectionString.TransportChoices transport, TransportConnectionString.StorageChoices storage)
+        public void TraceCreated(int processorCount, TransportChoices transport, StorageChoices storage)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
