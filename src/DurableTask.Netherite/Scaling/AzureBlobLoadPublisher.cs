@@ -80,8 +80,7 @@ namespace DurableTask.Netherite.Scaling
             }
             catch(StorageException e) when (e.InnerException is OperationCanceledException operationCanceledException)
             {
-                // unwrap the cancellation exception
-                throw operationCanceledException;
+                throw new OperationCanceledException("Blob read was canceled.", operationCanceledException);
             }
 
             return null;
@@ -96,7 +95,7 @@ namespace DurableTask.Netherite.Scaling
                     (await this.blobContainer).GetBlockBlobReference("taskhubparameters.json"),
                     throwIfNotFound: true,
                     throwOnParseError: true,
-                    cancellationToken);
+                    cancellationToken).ConfigureAwait(false);
 
                 this.numPartitions = info.PartitionCount;
             }
@@ -107,12 +106,12 @@ namespace DurableTask.Netherite.Scaling
                     (await this.blobContainer).GetDirectoryReference($"p{partitionId:D2}").GetBlockBlobReference("loadinfo.json"), 
                     throwIfNotFound: false, 
                     throwOnParseError: true,
-                    cancellationToken);
+                    cancellationToken).ConfigureAwait(false);
                 return (partitionId, info);
             }
 
             var tasks = Enumerable.Range(0, this.numPartitions.Value).Select(partitionId => DownloadPartitionInfo((uint)partitionId)).ToList();
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
             return tasks.Select(task => task.Result).Where(pair => pair.Item2 != null).ToDictionary(pair => pair.Item1, pair => pair.Item2);
         }
 
@@ -125,7 +124,7 @@ namespace DurableTask.Netherite.Scaling
                     (await this.blobContainer).GetBlockBlobReference("taskhubparameters.json"),
                     throwIfNotFound: false,
                     throwOnParseError: false,
-                    cancellationToken);
+                    cancellationToken).ConfigureAwait(false);
 
                 if (info == null)
                 {
@@ -140,11 +139,11 @@ namespace DurableTask.Netherite.Scaling
             async Task DeletePartitionInfo(uint partitionId)
             {
                 var blob = (await this.blobContainer).GetDirectoryReference($"p{partitionId:D2}").GetBlockBlobReference("loadinfo.json");
-                await BlobUtils.ForceDeleteAsync(blob);
+                await BlobUtils.ForceDeleteAsync(blob).ConfigureAwait(false);
             }
 
             var tasks = Enumerable.Range(0, this.numPartitions.Value).Select(partitionId => DeletePartitionInfo((uint)partitionId)).ToList();
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
         }
     }
 }
