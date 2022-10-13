@@ -8,11 +8,13 @@ namespace DurableTask.Netherite.AzureFunctions
     using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Threading;
+    using Azure.Identity;
     using DurableTask.Core;
     using DurableTask.Netherite;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Azure.WebJobs.Host.Executors;
+    using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
     using Microsoft.Extensions.Options;
     using Newtonsoft.Json;
@@ -28,6 +30,7 @@ namespace DurableTask.Netherite.AzureFunctions
         readonly DurableTaskOptions options;
         readonly INameResolver nameResolver;
         readonly IHostIdProvider hostIdProvider;
+        readonly IServiceProvider serviceProvider;
 
         readonly bool inConsumption;
         
@@ -48,6 +51,7 @@ namespace DurableTask.Netherite.AzureFunctions
         public NetheriteProviderFactory(
             IOptions<DurableTaskOptions> extensionOptions,
             ILoggerFactory loggerFactory,
+            IServiceProvider serviceProvider,
 #pragma warning disable CS0618 // Type or member is obsolete
             IConnectionStringResolver connectionStringResolver,
 #pragma warning restore CS0618 // Type or member is obsolete
@@ -61,6 +65,7 @@ namespace DurableTask.Netherite.AzureFunctions
             this.loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
             this.nameResolver = nameResolver ?? throw new ArgumentNullException(nameof(nameResolver));
 
+            this.serviceProvider = serviceProvider;
             this.hostIdProvider = hostIdProvider;
             this.inConsumption = platformInfo.IsInConsumptionPlan();
 
@@ -114,15 +119,31 @@ namespace DurableTask.Netherite.AzureFunctions
                 netheriteSettings.HubName = taskHubNameOverride;
             }
 
+            // connections for Netherite are resolved either via an injected custom resolver, or otherwise by resolving connection names to connection strings
+            var connectionResolver = this.serviceProvider.GetService<DurableTask.Netherite.ConnectionResolver>()
+                ?? new ConnectionNameToConnectionStringResolver((name) => this.nameResolver.Resolve(name));
+
             if (!string.IsNullOrEmpty(connectionName))
             {
-                int pos = connectionName.IndexOf(',');
-                if (pos == -1 || pos == 0 || pos == connectionName.Length - 1 || pos != connectionName.LastIndexOf(','))
+                if (connectionResolver is ConnectionNameToConnectionStringResolver)
                 {
-                    throw new ArgumentException("For Netherite, connection name must contain both StorageConnectionName and EventHubsConnectionName, separated by a comma", "connectionName");
+                    // the application does not define a custom connection resolver.
+                    // We split the connection name into two connection names, one for storage and one for event hubs
+                    int pos = connectionName.IndexOf(',');
+                    if (pos == -1 || pos == 0 || pos == connectionName.Length - 1 || pos != connectionName.LastIndexOf(','))
+                    {
+                        throw new ArgumentException("For Netherite, connection name must contain both StorageConnectionName and EventHubsConnectionName, separated by a comma", "connectionName");
+                    }
+                    netheriteSettings.StorageConnectionName = connectionName.Substring(0, pos).Trim();
+                    netheriteSettings.EventHubsConnectionName = connectionName.Substring(pos + 1).Trim();
                 }
-                netheriteSettings.StorageConnectionName = connectionName.Substring(0, pos).Trim();
-                netheriteSettings.EventHubsConnectionName = connectionName.Substring(pos + 1).Trim();
+                else
+                {
+                    // the application resolves connection names using a custom resolver,
+                    // which can create connections for different resources as needed
+                    netheriteSettings.StorageConnectionName = connectionName;
+                    netheriteSettings.EventHubsConnectionName = connectionName;
+                }
             }
 
             string runtimeLanguage = this.nameResolver.Resolve("FUNCTIONS_WORKER_RUNTIME");
@@ -131,7 +152,8 @@ namespace DurableTask.Netherite.AzureFunctions
                 netheriteSettings.CacheOrchestrationCursors = false; // cannot resume orchestrations in the middle
             }
 
-            netheriteSettings.Validate((name) => this.nameResolver.Resolve(name));
+            // validate the settings and resolve the connections
+            netheriteSettings.Validate(connectionResolver);
 
             int randomProbability = 0;
             bool attachFaultInjector =
@@ -186,11 +208,11 @@ namespace DurableTask.Netherite.AzureFunctions
             {
                 if (this.TraceToBlob && BlobLogger == null)
                 {
-                    BlobLogger = new BlobLogger(settings.ResolvedStorageConnectionString, settings.HubName, settings.WorkerId);
+                    BlobLogger = new BlobLogger(settings.BlobStorageConnection, settings.HubName, settings.WorkerId);
                 }
 
-                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory, this.serviceProvider);
+                  
                 service.OnStopping += () => CachedProviders.TryRemove(key, out var _);
 
                 return new NetheriteProvider(service, settings);

@@ -10,6 +10,7 @@ namespace DurableTask.Netherite
     using DurableTask.Netherite.Faster;
     using DurableTask.Netherite.Scaling;
     using Microsoft.Azure.Storage;
+    using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
     using System;
@@ -29,8 +30,17 @@ namespace DurableTask.Netherite
         DurableTask.Netherite.IOrchestrationServiceQueryClient,
         TransportAbstraction.IHost
     {
-        readonly TransportConnectionString.StorageChoices configuredStorage;
-        readonly TransportConnectionString.TransportChoices configuredTransport;
+        /// <summary>
+        /// The type of transport layer that was configured.
+        /// </summary>
+        public TransportChoices TransportChoice { get; }
+
+        /// <summary>
+        /// The type of storage layer that was configured.
+        /// </summary>
+        public StorageChoices StorageChoice { get; }
+
+
         readonly ITransportLayer transport;
         readonly IStorageLayer storage;
 
@@ -42,6 +52,11 @@ namespace DurableTask.Netherite
         /// The logger category prefix used for all ILoggers in this backend.
         /// </summary>
         public const string LoggerCategoryName = "DurableTask.Netherite";
+
+        public ITransportLayer TransportLayer => this.transport;
+        internal IStorageLayer StorageLayer => this.storage;
+
+        public IServiceProvider ServiceProvider { get; }
 
         CancellationTokenSource serviceShutdownSource;
         Exception startupException;
@@ -88,15 +103,16 @@ namespace DurableTask.Netherite
 #else
             string configuration = "Release";
 #endif
-            return $"NetheriteOrchestrationService on {this.configuredTransport}Transport and {this.configuredStorage}Storage, {configuration} build";
+            return $"NetheriteOrchestrationService on {this.Settings.TransportChoice}Transport and {this.Settings.StorageChoice}Storage, {configuration} build";
         }
 
         /// <summary>
         /// Creates a new instance of the OrchestrationService with default settings
         /// </summary>
-        public NetheriteOrchestrationService(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory)
+        public NetheriteOrchestrationService(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory, IServiceProvider serviceProvider = null)
         {
             this.LoggerFactory = loggerFactory;
+            this.ServiceProvider = serviceProvider;
             this.Settings = settings;
             this.TraceHelper = new OrchestrationServiceTraceHelper(loggerFactory, settings.LogLevelLimit, settings.WorkerId, settings.HubName);
             this.workItemTraceHelper = new WorkItemTraceHelper(loggerFactory, settings.WorkItemLogLevelLimit, settings.HubName);
@@ -104,42 +120,57 @@ namespace DurableTask.Netherite
             try
             {
                 this.TraceHelper.TraceProgress("Reading configuration for transport and storage layers");
-                TransportConnectionString.Parse(this.Settings.ResolvedTransportConnectionString, out this.configuredStorage, out this.configuredTransport);
-                
-                // determine a storage account name to be used for tracing
-                this.StorageAccountName = this.configuredStorage == TransportConnectionString.StorageChoices.Memory
-                    ? "Memory"
-                    : CloudStorageAccount.Parse(this.Settings.ResolvedStorageConnectionString).Credentials.AccountName;
-                this.TraceHelper.StorageAccountName = this.workItemTraceHelper.StorageAccountName = this.StorageAccountName;
 
-                this.TraceHelper.TraceCreated(Environment.ProcessorCount, this.configuredTransport, this.configuredStorage);
-
-                switch (this.configuredStorage)
+                if (!settings.ResolutionComplete)
                 {
-                    case TransportConnectionString.StorageChoices.Memory:
+                    throw new NetheriteConfigurationException("settings must be validated before constructing orchestration service");
+                }
+
+                // determine a storage account name to be used for tracing
+                this.StorageAccountName = this.Settings.StorageAccountName;
+
+                this.TraceHelper.TraceCreated(Environment.ProcessorCount, this.Settings.TransportChoice, this.Settings.StorageChoice);
+
+                // construct the storage layer
+                switch (this.Settings.StorageChoice)
+                {
+                    case StorageChoices.Memory:
                         this.storage = new MemoryStorageLayer(this.Settings, this.TraceHelper.Logger);
                         break;
 
-                    case TransportConnectionString.StorageChoices.Faster:
+                    case StorageChoices.Faster:
                         this.storage = new FasterStorageLayer(this.Settings, this.TraceHelper, this.LoggerFactory);
                         break;
 
-                    default:
-                        throw new NotImplementedException("no such storage choice");
+                    case StorageChoices.Custom:
+                        var storageLayerFactory = this.ServiceProvider?.GetService<IStorageLayerFactory>();
+                        if (storageLayerFactory == null)
+                        {
+                            throw new NetheriteConfigurationException("could not find injected IStorageLayerFactory");
+                        }
+                        this.storage = storageLayerFactory.Create(this);
+                        break;
                 }
-
-                switch (this.configuredTransport)
+          
+                // construct the transport layer
+                switch (this.Settings.TransportChoice)
                 {
-                    case TransportConnectionString.TransportChoices.SingleHost:
+                    case TransportChoices.SingleHost:
                         this.transport = new SingleHostTransport.SingleHostTransportLayer(this, settings, this.storage, this.TraceHelper.Logger);
                         break;
 
-                    case TransportConnectionString.TransportChoices.EventHubs:
+                    case TransportChoices.EventHubs:
                         this.transport = new EventHubsTransport.EventHubsTransport(this, settings, this.storage, loggerFactory);
                         break;
 
-                    default:
-                        throw new NotImplementedException("no such transport choice");
+                    case TransportChoices.Custom:
+                        var transportLayerFactory = this.ServiceProvider?.GetService<ITransportLayerFactory>();
+                        if (transportLayerFactory == null)
+                        {
+                            throw new NetheriteConfigurationException("could not find injected ITransportLayerFactory");
+                        }
+                        this.transport = transportLayerFactory.Create(this);
+                        break;
                 }
 
                 this.workItemStopwatch.Start();
@@ -168,19 +199,24 @@ namespace DurableTask.Netherite
         /// <returns>true if autoscaling is supported, false otherwise</returns>
         public bool TryGetScalingMonitor(out ScalingMonitor monitor)
         {
-            if (this.configuredStorage == TransportConnectionString.StorageChoices.Faster
-                && this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
+            if (this.Settings.StorageChoice == StorageChoices.Faster
+                && this.Settings.TransportChoice == TransportChoices.EventHubs)
             {
                 try
                 {
+                    ILoadPublisherService loadPublisher = string.IsNullOrEmpty(this.Settings.LoadInformationAzureTableName) ?
+                        new AzureBlobLoadPublisher(this.Settings.BlobStorageConnection, this.Settings.HubName)
+                        : new AzureTableLoadPublisher(this.Settings.TableStorageConnection, this.Settings.LoadInformationAzureTableName, this.Settings.HubName);
+
                     monitor = new ScalingMonitor(
-                        this.Settings.ResolvedStorageConnectionString,
-                        this.Settings.ResolvedTransportConnectionString,
+                        loadPublisher,
+                        this.Settings.EventHubsConnection,
                         this.Settings.LoadInformationAzureTableName,
                         this.Settings.HubName,
                         this.TraceHelper.TraceScaleRecommendation,
                         this.TraceHelper.TraceProgress,
                         this.TraceHelper.TraceError);
+
                     return true;
                 }
                 catch (Exception e)

@@ -27,7 +27,7 @@ namespace ScalingTests
                 ClientLogLevelLimit = LogLevel.Trace,
                 LoadMonitorLogLevelLimit = LogLevel.Trace,
             };
-            settings.Validate((string connectionName) => Environment.GetEnvironmentVariable(connectionName));
+            settings.Validate(new ConnectionNameToConnectionStringResolver((string connectionName) => Environment.GetEnvironmentVariable(connectionName)));
             var loggerFactory = new LoggerFactory();
             loggerFactory.AddProvider(new ConsoleLoggerProvider());
             var logger = loggerFactory.CreateLogger("Main");

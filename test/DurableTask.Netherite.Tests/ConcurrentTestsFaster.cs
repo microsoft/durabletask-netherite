@@ -87,8 +87,8 @@ namespace DurableTask.Netherite.Tests
         public async Task EachScenarioOnce(bool restrictMemory)
         {
             var orchestrationTimeout = TimeSpan.FromMinutes(restrictMemory ? 10 : 5);
-            var startupTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsPseudoConnectionString(this.settings.ResolvedTransportConnectionString) ? 1 : 3.5);
-            var shutDownTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsPseudoConnectionString(this.settings.ResolvedTransportConnectionString) ? 0.1 : 3);
+            var startupTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 1 : 3.5);
+            var shutDownTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 0.1 : 3);
             var totalTimeout = startupTimeout + orchestrationTimeout + shutDownTimeout;
 
             using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
@@ -141,9 +141,9 @@ namespace DurableTask.Netherite.Tests
         public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
             var orchestrationTimeout = TimeSpan.FromMinutes((restrictMemory ? 10 : 5) + multiplicity * (restrictMemory ? 0.5 : 0.1));
-            var startupTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsPseudoConnectionString(this.settings.ResolvedTransportConnectionString) ? 1 : 3.5);
+            var startupTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 1 : 3.5);
             var testTimeout = orchestrationTimeout + TimeSpan.FromMinutes(multiplicity * 0.2);
-            var shutDownTimeout = TimeSpan.FromMinutes(TransportConnectionString.IsPseudoConnectionString(this.settings.ResolvedTransportConnectionString) ? 0.1 : 3);
+            var shutDownTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 0.1 : 3);
             var totalTimeout = startupTimeout + testTimeout + shutDownTimeout;
 
             using var _ = TestOrchestrationClient.WithExtraTime(orchestrationTimeout);

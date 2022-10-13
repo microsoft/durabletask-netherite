@@ -15,7 +15,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
     class EventHubsConnections
     {
-        readonly string connectionString;
+        readonly ConnectionInfo connectionInfo;
         readonly string[] clientHubs;
         readonly string partitionHub;
         readonly string loadMonitorHub;
@@ -29,7 +29,6 @@ namespace DurableTask.Netherite.EventHubsTransport
 
         public const int NumClientChannels = 2;
 
-        public string Endpoint { get; private set; }
         public DateTime CreationTimestamp { get; private set; }
 
         public ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>> _partitionSenders = new ConcurrentDictionary<int, EventHubsSender<PartitionUpdateEvent>>();
@@ -42,18 +41,18 @@ namespace DurableTask.Netherite.EventHubsTransport
         int GetClientBucket(Guid clientId, int index) => (int)((Fnv1aHashHelper.ComputeHash(clientId.ToByteArray()) + index) % (uint)this.clientPartitions.Count);
 
         public EventHubsConnections(
-            string connectionString, 
+            ConnectionInfo connectionInfo, 
             string partitionHub,
             string[] clientHubs,
             string loadMonitorHub)
         {
-            this.connectionString = connectionString;
+            this.connectionInfo = connectionInfo;
             this.partitionHub = partitionHub;
             this.clientHubs = clientHubs;
             this.loadMonitorHub = loadMonitorHub;
         }
 
-        public string Fingerprint => $"{this.Endpoint}{this.partitionHub}/{this.CreationTimestamp:o}";
+        public string Fingerprint => $"{this.connectionInfo.HostName}{this.partitionHub}/{this.CreationTimestamp:o}";
 
         public async Task StartAsync(TaskhubParameters parameters)
         {
@@ -94,30 +93,26 @@ namespace DurableTask.Netherite.EventHubsTransport
         async Task EnsureEventHubExistsAsync(string eventHubName, int partitionCount)
         {
             this.TraceHelper.LogDebug("Creating EventHub {name}", eventHubName);
-            bool success = await EventHubsUtil.EnsureEventHubExistsAsync(this.connectionString, eventHubName, partitionCount);
+            bool success = await EventHubsUtil.EnsureEventHubExistsAsync(this.connectionInfo, eventHubName, partitionCount, CancellationToken.None);
             if (success)
             {
-                this.TraceHelper.LogInformation("Created EventHub {name}", eventHubName);
+                this.TraceHelper.LogInformation("Created EventHub {name}", eventHubName, CancellationToken.None);
             }
             else
             {
-                this.TraceHelper.LogDebug("Conflict on EventHub {name}", eventHubName);
+                this.TraceHelper.LogDebug("Conflict on EventHub {name}", eventHubName, CancellationToken.None);
                 await Task.Delay(TimeSpan.FromSeconds(5));
             }
         }
 
         internal async Task DeletePartitions()
         {
-            await EventHubsUtil.DeleteEventHubIfExistsAsync(this.connectionString, this.partitionHub);
+            await EventHubsUtil.DeleteEventHubIfExistsAsync(this.connectionInfo, this.partitionHub, CancellationToken.None);
         }
 
         public async Task EnsurePartitionsAsync(int partitionCount, int retries = EventHubCreationRetries)
         {
-            var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
-            {
-                EntityPath = this.partitionHub
-            };
-            var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+            var client = this.connectionInfo.CreateEventHubClient(this.partitionHub);
             try
             {
                 var runtimeInformation = await client.GetRuntimeInformationAsync();
@@ -126,7 +121,6 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     // we were successful. Record information and create a flat list of partition partitions
                     this.partitionClient = client;
-                    this.Endpoint = connectionStringBuilder.Endpoint.ToString();
                     this.CreationTimestamp = runtimeInformation.CreatedAt;
                     for (int i = 0; i < partitionCount; i++)
                     {
@@ -138,7 +132,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     // we have to create a fresh one
                     this.TraceHelper.LogWarning("Deleting existing partition EventHub because of partition count mismatch.");
-                    await EventHubsUtil.DeleteEventHubIfExistsAsync(this.connectionString, this.partitionHub);
+                    await EventHubsUtil.DeleteEventHubIfExistsAsync(this.connectionInfo, this.partitionHub, CancellationToken.None);
                     await Task.Delay(TimeSpan.FromSeconds(10));
                 }
             }
@@ -183,13 +177,9 @@ namespace DurableTask.Netherite.EventHubsTransport
 
         async Task<(EventHubClient, EventHubRuntimeInformation)> EnsureClientAsync(int i, int retries = EventHubCreationRetries)
         {
-            var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
-            {
-                EntityPath = this.clientHubs[i]
-            };
             try
             {
-                var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+                var client = this.connectionInfo.CreateEventHubClient(this.clientHubs[i]);
                 var runtimeInformation = await client.GetRuntimeInformationAsync();
                 return (client, runtimeInformation);
             }
@@ -205,13 +195,9 @@ namespace DurableTask.Netherite.EventHubsTransport
         async Task EnsureLoadMonitorAsync(int retries = EventHubCreationRetries)
         {
             // create loadmonitor client
-            var connectionStringBuilder = new EventHubsConnectionStringBuilder(this.connectionString)
-            {
-                EntityPath = loadMonitorHub,
-            };
             try
             {
-                this.loadMonitorClient = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+                this.loadMonitorClient = this.connectionInfo.CreateEventHubClient(this.loadMonitorHub);
                 var runtimeInformation = await this.loadMonitorClient.GetRuntimeInformationAsync();
                 return;
             }
@@ -223,13 +209,9 @@ namespace DurableTask.Netherite.EventHubsTransport
             await this.EnsureLoadMonitorAsync(retries - 1);
         }
 
-        public static async Task<List<long>> GetQueuePositionsAsync(string connectionString, string partitionHub)
+        public static async Task<List<long>> GetQueuePositionsAsync(ConnectionInfo connectionInfo, string partitionHub)
         {
-            var connectionStringBuilder = new EventHubsConnectionStringBuilder(connectionString)
-            {
-                EntityPath = partitionHub,
-            };
-            var client = EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+            var client = connectionInfo.CreateEventHubClient(partitionHub);
             try
             {
                 var runtimeInformation = await client.GetRuntimeInformationAsync();
