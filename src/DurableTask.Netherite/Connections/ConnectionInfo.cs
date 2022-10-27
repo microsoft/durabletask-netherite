@@ -4,12 +4,8 @@
 namespace DurableTask.Netherite
 {
     using System;
-    using System.Threading;
     using System.Threading.Tasks;
-    using DurableTask.Netherite.Abstractions;
     using Microsoft.Azure.Storage;
-    using Microsoft.Identity.Client;
-    using Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos;
 
     /// <summary>
     /// Internal abstraction used for capturing connection information and credentials.

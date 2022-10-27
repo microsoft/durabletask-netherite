@@ -8,7 +8,6 @@ namespace DurableTask.Netherite.AzureFunctions
     using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Threading;
-    using Azure.Identity;
     using DurableTask.Core;
     using DurableTask.Netherite;
     using Microsoft.Azure.WebJobs;
@@ -120,7 +119,7 @@ namespace DurableTask.Netherite.AzureFunctions
             }
 
             // connections for Netherite are resolved either via an injected custom resolver, or otherwise by resolving connection names to connection strings
-            var connectionResolver = this.serviceProvider.GetService<DurableTask.Netherite.ConnectionResolver>()
+            var connectionResolver = this.serviceProvider?.GetService<DurableTask.Netherite.ConnectionResolver>()
                 ?? new ConnectionNameToConnectionStringResolver((name) => this.nameResolver.Resolve(name));
 
             if (!string.IsNullOrEmpty(connectionName))
@@ -212,7 +211,7 @@ namespace DurableTask.Netherite.AzureFunctions
                 }
 
                 var service = new NetheriteOrchestrationService(settings, this.loggerFactory, this.serviceProvider);
-                  
+
                 service.OnStopping += () => CachedProviders.TryRemove(key, out var _);
 
                 return new NetheriteProvider(service, settings);

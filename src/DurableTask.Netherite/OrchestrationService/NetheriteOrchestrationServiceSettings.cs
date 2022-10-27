@@ -217,6 +217,58 @@ namespace DurableTask.Netherite
         [JsonConverter(typeof(StringEnumConverter))]
         public LogLevel LogLevelLimit { get; set; } = LogLevel.Debug;
 
+        #region Compatibility Shim
+
+        /// <summary>
+        /// The resolved storage connection string. Is never serialized or deserialized.
+        /// </summary>
+        [JsonIgnore]
+        [Obsolete("connections should be resolved by calling settings.Validate(ConnectionResolver resolver)")]
+        public string ResolvedStorageConnectionString { get; set; }
+
+        /// <summary>
+        /// The resolved event hubs connection string. Is never serialized or deserialized.
+        /// </summary>
+        [JsonIgnore]
+        [Obsolete("connections should be resolved by calling settings.Validate(ConnectionResolver resolver)")]
+        public string ResolvedTransportConnectionString { get; set; }
+
+        /// <summary>
+        /// A name for resolving a storage connection string to be used specifically for the page blobs, or null if page blobs are to be stored in the default account.
+        /// </summary>
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+        [Obsolete("connections should be resolved by calling settings.Validate(ConnectionResolver resolver)")]
+        public string PageBlobStorageConnectionName { get; set; } = null;
+
+        /// <summary>
+        /// The resolved page blob storage connection string, or null if page blobs are to be stored in the default account. Is never serialized or deserialized.
+        /// </summary>
+        [JsonIgnore]
+        [Obsolete("connections should be resolved by calling settings.Validate(ConnectionResolver resolver)")]
+        public string ResolvedPageBlobStorageConnectionString { get; set; }
+
+        class CompatibilityResolver : ConnectionResolver
+        {
+            readonly Func<string, string> nameResolver;
+
+            CompatibilityResolver(Func<string, string> nameResolver)
+            {
+                this.nameResolver = nameResolver;
+            }
+
+            public override ConnectionInfo ResolveConnectionInfo(string taskHub, string connectionName, ResourceType recourceType)
+            {
+                throw new NotImplementedException();
+            }
+
+            public override void ResolveLayerConfiguration(string connectionName, out StorageChoices storageChoice, out TransportChoices transportChoice)
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        #endregion
+
         #region Parameters that are set during resolution
 
         /// <summary>
@@ -276,6 +328,15 @@ namespace DurableTask.Netherite
         public bool ResolutionComplete { get; protected set; }
 
         #endregion
+
+        /// <summary>
+        /// Validates the settings, throwing exceptions if there are issues.
+        /// </summary>
+        /// <param name="nameResolver">Optionally, a resolver for connection names.</param>
+        public void Validate(Func<string, string> connectionNameToConnectionString = null)
+        {
+            this.Validate(new CompatibilityConnectionResolver(this, connectionNameToConnectionString));
+        }
 
         /// <summary>
         /// Validates the settings and resolves the connections, throwing exceptions if there are issues.

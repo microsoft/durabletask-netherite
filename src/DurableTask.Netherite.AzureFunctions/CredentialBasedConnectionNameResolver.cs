@@ -57,7 +57,7 @@ namespace DurableTask.Netherite.AzureFunctions
                     return ConnectionInfo.FromTokenCredential(this.tokenCredential, eventHubsNamespaceName, recourceType);
 
                 default:
-                    throw new NotImplementedException("unknown resource type");
+                    throw new NotSupportedException("unknown resource type");
             }   
         }
 

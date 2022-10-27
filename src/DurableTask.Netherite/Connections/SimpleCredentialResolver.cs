@@ -6,7 +6,7 @@ namespace DurableTask.Netherite
     using System;
     using System.Collections.Generic;
     using System.Text;
-    using Azure.Identity;
+    using Azure.Core;
     using Microsoft.Extensions.Logging.Abstractions;
 
     /// <summary>

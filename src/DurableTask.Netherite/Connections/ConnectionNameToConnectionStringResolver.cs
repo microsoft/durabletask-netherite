@@ -29,7 +29,7 @@ namespace DurableTask.Netherite
         /// <inheritdoc/>
         public override ConnectionInfo ResolveConnectionInfo(string taskHub, string connectionName, ResourceType recourceType)
         {
-            var connectionString = this.connectionStringLookup(connectionName);
+            var connectionString = this.connectionStringLookup?.Invoke(connectionName);
 
             if (connectionString == null)
             {
@@ -58,7 +58,7 @@ namespace DurableTask.Netherite
             }
             else
             {
-                var connectionString = this.connectionStringLookup(connectionName);
+                var connectionString = this.connectionStringLookup?.Invoke(connectionName);
 
                 if (TransportConnectionString.IsPseudoConnectionString(connectionString))
                 {
