@@ -109,7 +109,15 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Creates a new instance of the OrchestrationService with default settings
         /// </summary>
-        public NetheriteOrchestrationService(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory, IServiceProvider serviceProvider = null)
+        public NetheriteOrchestrationService(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory)
+            : this(settings, loggerFactory, null)
+        {
+        }
+        
+        /// <summary>
+        /// Creates a new instance of the OrchestrationService with default settings
+        /// </summary>
+        public NetheriteOrchestrationService(NetheriteOrchestrationServiceSettings settings, ILoggerFactory loggerFactory, IServiceProvider serviceProvider)
         {
             this.LoggerFactory = loggerFactory;
             this.ServiceProvider = serviceProvider;
