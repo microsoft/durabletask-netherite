@@ -16,7 +16,7 @@ namespace DurableTask.Netherite
     /// or an already resolved connection string if specified inside the settings object.
     /// Used for compatibility with old configuration scheme.
     /// </summary>
-    public class CompatibilityConnectionResolver : ConnectionNameToConnectionStringResolver
+    class CompatibilityConnectionResolver : ConnectionNameToConnectionStringResolver
     {
         readonly NetheriteOrchestrationServiceSettings settings;
 

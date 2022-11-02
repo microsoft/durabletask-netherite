@@ -9,6 +9,7 @@ namespace DurableTask.Netherite.AzureFunctions
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Azure.WebJobs.Hosting;
     using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.DependencyInjection.Extensions;
 
     class NetheriteProviderStartup : IWebJobsStartup
     {
@@ -16,6 +17,7 @@ namespace DurableTask.Netherite.AzureFunctions
         {
 #if !NETCOREAPP2_2
             builder.Services.AddSingleton<IDurabilityProviderFactory, NetheriteProviderFactory>();
+            builder.Services.TryAddSingleton<ConnectionResolver, NameResolverBasedConnectionNameResolver>();
 #else
             builder.Services.AddSingleton<IDurabilityProviderFactory, NetheriteProviderPseudoFactory>();
 #endif

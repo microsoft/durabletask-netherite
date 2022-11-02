@@ -15,7 +15,7 @@ namespace DurableTask.Netherite
     /// A utility class for constructing a <see cref="Microsoft.Azure.Storage.Auth.TokenCredential"/> 
     /// from a <see cref="Azure.Core.TokenCredential"/>.
     /// </summary>
-    public static class CredentialShim
+    static class CredentialShim
     {
         /// <summary>
         /// Creates a <see cref="Microsoft.Azure.Storage.Auth.TokenCredential"/> from the connection info. 

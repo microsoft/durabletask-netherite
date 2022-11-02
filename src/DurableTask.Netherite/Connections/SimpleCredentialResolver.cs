@@ -12,7 +12,7 @@ namespace DurableTask.Netherite
     /// <summary>
     /// Resolves connections using a token credential, a storage account name, and an eventhubs namespace name.
     /// </summary>
-    public class SimpleCredentialResolver : ConnectionResolver
+    class SimpleCredentialResolver : ConnectionResolver
     {
         readonly Azure.Core.TokenCredential tokenCredential;
         readonly string storageAccountName;

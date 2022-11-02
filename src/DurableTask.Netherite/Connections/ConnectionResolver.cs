@@ -58,5 +58,26 @@ namespace DurableTask.Netherite
         /// <param name="storageChoice">The storage layer to use.</param>
         /// <param name="transportChoice">The transport layer to use.</param>
         public abstract void ResolveLayerConfiguration(string connectionName, out StorageChoices storageChoice, out TransportChoices transportChoice);
+
+        /// <summary>
+        /// Creates a connection resolver for a given connection string lookup function.
+        /// </summary>
+        /// <param name="connectionStringLookup">A function that maps connection names to connection strings.</param>
+        public static ConnectionResolver FromConnectionNameToConnectionStringResolver(Func<string, string> connectionStringLookup)
+        {
+            return new ConnectionNameToConnectionStringResolver(connectionStringLookup);
+        }
+
+        /// <summary>
+        /// Creates a connection resolver given a token credential, a storage account name, and an event hubs namespace name.
+        /// Applies the default suffixes (*.core.windows.net for storage accounts and *.servicebus.windows.net for event hubs).
+        /// </summary>
+        /// <param name="tokenCredential">The token credential to use.</param>
+        /// <param name="storageAccountName">The name of the storage account, or null if using in-memory emulation.</param>
+        /// <param name="eventHubNamespaceName">The name of the event hub namespace, or null if using the singlehost configuration.</param>   
+        public static ConnectionResolver FromTokenCredentialAndResourceNames(Azure.Core.TokenCredential tokenCredential, string storageAccountName = null, string eventHubNamespaceName = null)
+        {
+            return new SimpleCredentialResolver(tokenCredential, storageAccountName, eventHubNamespaceName);
+        }
     }
 }

@@ -30,6 +30,7 @@ namespace DurableTask.Netherite.AzureFunctions
         readonly INameResolver nameResolver;
         readonly IHostIdProvider hostIdProvider;
         readonly IServiceProvider serviceProvider;
+        readonly DurableTask.Netherite.ConnectionResolver connectionResolver;
 
         readonly bool inConsumption;
         
@@ -46,16 +47,37 @@ namespace DurableTask.Netherite.AzureFunctions
         public const string ProviderName = "Netherite";
         public string Name => ProviderName;
 
-        // Called by the Azure Functions runtime dependency injection infrastructure
+        /// <summary>
+        /// This constructor should not be called directly. It is here only to avoid breaking changes.
+        /// </summary>
+        [Obsolete]
         public NetheriteProviderFactory(
             IOptions<DurableTaskOptions> extensionOptions,
             ILoggerFactory loggerFactory,
-            IServiceProvider serviceProvider,
 #pragma warning disable CS0618 // Type or member is obsolete
             IConnectionStringResolver connectionStringResolver,
 #pragma warning restore CS0618 // Type or member is obsolete
             IHostIdProvider hostIdProvider,
             INameResolver nameResolver,
+#pragma warning disable CS0612 // Type or member is obsolete
+            IPlatformInformation platformInfo)
+#pragma warning restore CS0612 // Type or member is obsolete
+            : this(extensionOptions, loggerFactory, hostIdProvider, nameResolver, serviceProvider:null, ConnectionResolver.FromConnectionNameToConnectionStringResolver((s) => nameResolver.Resolve(s)), platformInfo)
+        {
+        }
+
+        /// <summary>
+        /// This constructor should not be called directly. The DI logic calls this when it constructs all the
+        /// durability provider factories for use by <see cref="Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskExtension"/>.
+        /// </summary>
+        [ActivatorUtilitiesConstructor]
+        public NetheriteProviderFactory(
+            IOptions<DurableTaskOptions> extensionOptions,
+            ILoggerFactory loggerFactory,
+            IHostIdProvider hostIdProvider,
+            INameResolver nameResolver,
+            IServiceProvider serviceProvider,
+            DurableTask.Netherite.ConnectionResolver connectionResolver,
 #pragma warning disable CS0612 // Type or member is obsolete
             IPlatformInformation platformInfo)
 #pragma warning restore CS0612 // Type or member is obsolete
@@ -66,6 +88,7 @@ namespace DurableTask.Netherite.AzureFunctions
 
             this.serviceProvider = serviceProvider;
             this.hostIdProvider = hostIdProvider;
+            this.connectionResolver = connectionResolver;
             this.inConsumption = platformInfo.IsInConsumptionPlan();
 
             bool ReadBooleanSetting(string name) => this.options.StorageProvider.TryGetValue(name, out object objValue)
@@ -119,12 +142,10 @@ namespace DurableTask.Netherite.AzureFunctions
             }
 
             // connections for Netherite are resolved either via an injected custom resolver, or otherwise by resolving connection names to connection strings
-            var connectionResolver = this.serviceProvider?.GetService<DurableTask.Netherite.ConnectionResolver>()
-                ?? new ConnectionNameToConnectionStringResolver((name) => this.nameResolver.Resolve(name));
-
+            
             if (!string.IsNullOrEmpty(connectionName))
             {
-                if (connectionResolver is ConnectionNameToConnectionStringResolver)
+                if (this.connectionResolver is NameResolverBasedConnectionNameResolver)
                 {
                     // the application does not define a custom connection resolver.
                     // We split the connection name into two connection names, one for storage and one for event hubs
@@ -152,7 +173,7 @@ namespace DurableTask.Netherite.AzureFunctions
             }
 
             // validate the settings and resolve the connections
-            netheriteSettings.Validate(connectionResolver);
+            netheriteSettings.Validate(this.connectionResolver);
 
             int randomProbability = 0;
             bool attachFaultInjector =

@@ -24,7 +24,7 @@ namespace DurableTask.Netherite
     /// <summary>
     /// Utilities for constructing various SDK objects from a connection information.
     /// </summary>
-    public static class ConnectionInfoExtensions
+    static class ConnectionInfoExtensions
     {
         /// <summary>
         /// Returns a classic (v11 SDK) storage account object.

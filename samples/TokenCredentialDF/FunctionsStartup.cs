@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 // Reference: https://docs.microsoft.com/en-us/azure/azure-functions/functions-dotnet-dependency-injection
-[assembly: Microsoft.Azure.Functions.Extensions.DependencyInjection.FunctionsStartup(typeof(PerformanceTests.Startup))]
-namespace PerformanceTests
+[assembly: Microsoft.Azure.Functions.Extensions.DependencyInjection.FunctionsStartup(typeof(TokenCredentialDF.Startup))]
+namespace TokenCredentialDF
 {
     using System;
     using Azure.Identity;
@@ -12,6 +12,7 @@ namespace PerformanceTests
     using Microsoft.Azure.Functions.Extensions.DependencyInjection;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.DependencyInjection.Extensions;
     using Microsoft.Extensions.Logging;
 
     public class Startup : FunctionsStartup
@@ -37,8 +38,7 @@ namespace PerformanceTests
 
         public override void Configure(IFunctionsHostBuilder builder)
         {
-            builder.Services.AddSingleton<DurableTask.Netherite.ConnectionResolver>(
-                (IServiceProvider serviceProvider) => new MyConnectionResolver(serviceProvider.GetRequiredService<INameResolver>()));
+            builder.Services.AddSingleton<DurableTask.Netherite.ConnectionResolver, MyConnectionResolver>();
         }
     }
 }

@@ -13,7 +13,7 @@ namespace DurableTask.Netherite
     /// <summary>
     /// Resolves connection names by using a mapping from connection names to connection strings.
     /// </summary>
-    public class ConnectionNameToConnectionStringResolver : ConnectionResolver
+    class ConnectionNameToConnectionStringResolver : ConnectionResolver
     {
         readonly Func<string, string> connectionStringLookup;
 
