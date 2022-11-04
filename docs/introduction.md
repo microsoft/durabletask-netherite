@@ -1,8 +1,9 @@
 # Netherite: Introduction
 
-Netherite is a distributed workflow execution engine for [Durable Functions](https://github.com/Azure/azure-functions-durable-extension) (DF) and the [Durable Task Framework](https://github.com/Azure/durabletask/) (DTFx).
+Netherite is a storage provider for the [Durable Task Framework](https://github.com/Azure/durabletask/) (DTFx), a distributed workflow execution engine, and
+[Durable Functions](https://github.com/Azure/azure-functions-durable-extension) (DF), an extension of Azure Functions that enables serverless execution of workflows.
 
-It is of potential interest to anyone developing applications on those platforms who has an appetite for performance, scalability, and reliability.
+Netherite, DTFx, and DF are of potential interest to anyone who needs to execute workflows in a distributed elastic environment, with an appetite for performance, scalability, and reliability.
 
 ?> Netherite is a drop-in replacement backend. Existing DF and DTFx applications can switch to Netherite with little effort.
 
