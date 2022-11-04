@@ -17,7 +17,7 @@ var netheriteSettings = new NetheriteOrchestrationServiceSettings()
     PartitionCount = 4,
 };
 
-netheriteSettings.Validate(ConnectionResolver.FromTokenCredentialAndResourceNames(
+netheriteSettings.Validate(ConnectionResolver.FromTokenCredential(
     new DefaultAzureCredential(),
     Environment.GetEnvironmentVariable("AccountName") ?? throw new Exception("missing env var: AccountName"),
     Environment.GetEnvironmentVariable("NamespaceName") ?? throw new Exception("missing env var: NamespaceName")

@@ -73,11 +73,19 @@ namespace DurableTask.Netherite
         /// Applies the default suffixes (*.core.windows.net for storage accounts and *.servicebus.windows.net for event hubs).
         /// </summary>
         /// <param name="tokenCredential">The token credential to use.</param>
-        /// <param name="storageAccountName">The name of the storage account, or null if using in-memory emulation.</param>
+        /// <param name="storageAccountName">The name of the storage account.</param>
         /// <param name="eventHubNamespaceName">The name of the event hub namespace, or null if using the singlehost configuration.</param>   
-        public static ConnectionResolver FromTokenCredentialAndResourceNames(Azure.Core.TokenCredential tokenCredential, string storageAccountName = null, string eventHubNamespaceName = null)
+        public static ConnectionResolver FromTokenCredential(Azure.Core.TokenCredential tokenCredential, string storageAccountName, string eventHubNamespaceName = null)
         {
             return new SimpleCredentialResolver(tokenCredential, storageAccountName, eventHubNamespaceName);
+        }
+
+        /// <summary>
+        /// Creates a connection resolver to use exclusively for in-memory emulation.
+        /// </summary>
+        public static ConnectionResolver ForInMemoryEmulation()
+        {
+            return new SimpleCredentialResolver(null, null, null);
         }
     }
 }
