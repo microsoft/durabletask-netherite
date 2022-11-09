@@ -22,15 +22,12 @@ namespace DurableTask.Netherite.Faster
         readonly NetheriteOrchestrationServiceSettings settings;
         readonly OrchestrationServiceTraceHelper traceHelper;
 
-        readonly CloudStorageAccount storageAccount;
-        readonly string localFileDirectory;
-        readonly CloudStorageAccount pageBlobStorageAccount;
-
         readonly ILogger logger;
         readonly ILogger performanceLogger;
         readonly MemoryTracker memoryTracker;
-        readonly CloudBlobContainer cloudBlobContainer;
-        readonly CloudBlockBlob taskhubParameters;
+
+        readonly Task<CloudBlobContainer> cloudBlobContainer;
+        readonly Task<CloudBlockBlob> taskhubParameters;
 
         public ILoadPublisherService LoadPublisher { get;}
 
@@ -52,27 +49,8 @@ namespace DurableTask.Netherite.Faster
             this.settings = settings;
             this.traceHelper = traceHelper;
 
-            string connectionString = settings.ResolvedStorageConnectionString;
-            string pageBlobConnectionString = settings.ResolvedPageBlobStorageConnectionString;
-
             this.TestRuntimeAndLoading();
-
-            if (!string.IsNullOrEmpty(settings.UseLocalDirectoryForPartitionStorage))
-            {
-                this.localFileDirectory = settings.UseLocalDirectoryForPartitionStorage;
-            }
-            else
-            {
-                this.storageAccount = CloudStorageAccount.Parse(connectionString);
-            }
-            if (pageBlobConnectionString != connectionString && !string.IsNullOrEmpty(pageBlobConnectionString))
-            {
-                this.pageBlobStorageAccount = CloudStorageAccount.Parse(pageBlobConnectionString);
-            }
-            else
-            {
-                this.pageBlobStorageAccount = this.storageAccount;
-            }
+            
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage");
             this.performanceLogger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.FasterStorage.Performance");
 
@@ -83,19 +61,29 @@ namespace DurableTask.Netherite.Faster
                 settings.TestHooks.CacheDebugger.MemoryTracker = this.memoryTracker;
             }
 
-            var blobContainerName = GetContainerName(settings.HubName);
-            var cloudBlobClient = this.storageAccount.CreateCloudBlobClient();
-            this.cloudBlobContainer = cloudBlobClient.GetContainerReference(blobContainerName);
-            this.taskhubParameters = this.cloudBlobContainer.GetBlockBlobReference("taskhubparameters.json");
+            this.cloudBlobContainer = GetBlobContainerAsync();
+            async Task<CloudBlobContainer> GetBlobContainerAsync()
+            {
+                var blobContainerName = GetContainerName(settings.HubName);
+                var cloudBlobClient = (await settings.BlobStorageConnection.GetAzureStorageV11AccountAsync()).CreateCloudBlobClient();
+                return cloudBlobClient.GetContainerReference(blobContainerName);
+            }
+
+            this.taskhubParameters = GetTaskhubParametersAsync();
+            async Task<CloudBlockBlob> GetTaskhubParametersAsync()
+            {
+                var cloudBlobContainer = await this.cloudBlobContainer;
+                return cloudBlobContainer.GetBlockBlobReference("taskhubparameters.json");
+            }
 
             this.traceHelper.TraceProgress("Creating LoadMonitor Service");
             if (!string.IsNullOrEmpty(settings.LoadInformationAzureTableName))
             {
-                this.LoadPublisher = new AzureTableLoadPublisher(settings.ResolvedStorageConnectionString, settings.LoadInformationAzureTableName, settings.HubName);
+                this.LoadPublisher = new AzureTableLoadPublisher(settings.TableStorageConnection, settings.LoadInformationAzureTableName, settings.HubName);
             }
             else
             {
-                this.LoadPublisher = new AzureBlobLoadPublisher(settings.ResolvedStorageConnectionString, settings.HubName);
+                this.LoadPublisher = new AzureBlobLoadPublisher(settings.BlobStorageConnection, settings.HubName);
             }
         }
 
@@ -117,14 +105,15 @@ namespace DurableTask.Netherite.Faster
             // try load the taskhub parameters
             try
             {
-                var jsonText = await this.taskhubParameters.DownloadTextAsync();
+                var blob = await this.taskhubParameters;
+                var jsonText = await blob.DownloadTextAsync();
                 return JsonConvert.DeserializeObject<TaskhubParameters>(jsonText);
             }
             catch (StorageException ex) when (ex.RequestInformation.HttpStatusCode == (int)System.Net.HttpStatusCode.NotFound)
             {
                 if (throwIfNotFound)
                 {
-                    throw new InvalidOperationException($"The specified taskhub does not exist (TaskHub={this.settings.HubName}, StorageConnectionName={this.settings.StorageConnectionName}");
+                    throw new NetheriteConfigurationException($"The specified taskhub does not exist (TaskHub={this.settings.HubName}, StorageConnectionName={this.settings.StorageConnectionName}");
                 }
                 else
                 {
@@ -135,14 +124,14 @@ namespace DurableTask.Netherite.Faster
 
         async Task<bool> IStorageLayer.CreateTaskhubIfNotExistsAsync()
         {
-            bool containerCreated = await this.cloudBlobContainer.CreateIfNotExistsAsync();
+            bool containerCreated = await (await this.cloudBlobContainer).CreateIfNotExistsAsync();
             if (containerCreated)
             {
-                this.traceHelper.TraceProgress($"Created new blob container at {this.cloudBlobContainer.Uri}");
+                this.traceHelper.TraceProgress($"Created new blob container at {this.cloudBlobContainer.Result.Uri}");
             }
             else
             {
-                this.traceHelper.TraceProgress($"Using existing blob container at {this.cloudBlobContainer.Uri}");
+                this.traceHelper.TraceProgress($"Using existing blob container at {this.cloudBlobContainer.Result.Uri}");
             }
 
             var taskHubParameters = new TaskhubParameters()
@@ -166,13 +155,13 @@ namespace DurableTask.Netherite.Faster
                     new JsonSerializerSettings() { TypeNameHandling = TypeNameHandling.None });
 
                 var noOverwrite = AccessCondition.GenerateIfNoneMatchCondition("*");
-                await this.taskhubParameters.UploadTextAsync(jsonText, null, noOverwrite, null, null);
+                await (await this.taskhubParameters).UploadTextAsync(jsonText, null, noOverwrite, null, null);
                 this.traceHelper.TraceProgress("Created new taskhub");
 
                 // zap the partition hub so we start from zero queue positions
-                if (!TransportConnectionString.IsPseudoConnectionString(this.settings.ResolvedTransportConnectionString))
+                if (this.settings.TransportChoice == TransportChoices.EventHubs)
                 {
-                    await EventHubsUtil.DeleteEventHubIfExistsAsync(this.settings.ResolvedTransportConnectionString, EventHubsTransport.PartitionHub);
+                    await EventHubsUtil.DeleteEventHubIfExistsAsync(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, CancellationToken.None);
                 }
             }
             catch (StorageException e) when (BlobUtils.BlobAlreadyExists(e))
@@ -197,20 +186,20 @@ namespace DurableTask.Netherite.Faster
                 await this.LoadPublisher.DeleteIfExistsAsync(CancellationToken.None).ConfigureAwait(false);
 
                 // delete the parameters file which deletes the taskhub logically
-                await BlobUtils.ForceDeleteAsync(this.taskhubParameters);
+                await BlobUtils.ForceDeleteAsync(await this.taskhubParameters);
 
                 // delete all the files/blobs in the directory/container that represents this taskhub
                 // If this does not complete successfully, some garbage may be left behind.
-                await BlobManager.DeleteTaskhubStorageAsync(this.storageAccount, this.pageBlobStorageAccount, this.localFileDirectory, parameters.TaskhubName, TaskhubPathPrefix(parameters));
+                await BlobManager.DeleteTaskhubStorageAsync(this.settings, TaskhubPathPrefix(parameters));
             }
         }
 
-        public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, string pathPrefix)
-        {
-            var storageAccount = string.IsNullOrEmpty(connectionString) ? null : CloudStorageAccount.Parse(connectionString);
-            var pageBlobAccount = string.IsNullOrEmpty(pageBlobConnectionString) ? storageAccount : CloudStorageAccount.Parse(pageBlobConnectionString);
-            return BlobManager.DeleteTaskhubStorageAsync(storageAccount, pageBlobAccount, localFileDirectory, taskHubName, pathPrefix);
-        }
+        //public static Task DeleteTaskhubStorageAsync(string connectionString, string pageBlobConnectionString, string localFileDirectory, string taskHubName, string pathPrefix)
+        //{
+        //    var storageAccount = string.IsNullOrEmpty(connectionString) ? null : CloudStorageAccount.Parse(connectionString);
+        //    var pageBlobAccount = string.IsNullOrEmpty(pageBlobConnectionString) ? storageAccount : CloudStorageAccount.Parse(pageBlobConnectionString);
+        //    return BlobManager.DeleteTaskhubStorageAsync(storageAccount, pageBlobAccount, localFileDirectory, taskHubName, pathPrefix);
+        //}
 
         IPartitionState IStorageLayer.CreatePartitionState(TaskhubParameters parameters)
         {

@@ -24,9 +24,9 @@ namespace DurableTask.Netherite
         /// <param name="eventHubName">The name of the event hub.</param>
         /// <param name="partitionCount">The number of partitions to create, if the event hub does not already exist.</param>
         /// <returns>true if the event hub was created.</returns>
-        public static async Task<bool> EnsureEventHubExistsAsync(string connectionString, string eventHubName, int partitionCount)
+        public static async Task<bool> EnsureEventHubExistsAsync(ConnectionInfo info, string eventHubName, int partitionCount, CancellationToken cancellationToken)
         {
-            var response = await SendHttpRequest(connectionString, eventHubName, partitionCount);
+            var response = await SendHttpRequest(info, eventHubName, partitionCount, cancellationToken);
             if (response.StatusCode != System.Net.HttpStatusCode.Conflict)
             {
                 response.EnsureSuccessStatusCode();
@@ -40,9 +40,9 @@ namespace DurableTask.Netherite
         /// <param name="connectionString">The SAS connection string for the namespace.</param>
         /// <param name="eventHubName">The name of the event hub.</param>
         /// <returns>true if the event hub was deleted.</returns>
-        public static async Task<bool> DeleteEventHubIfExistsAsync(string connectionString, string eventHubName)
+        public static async Task<bool> DeleteEventHubIfExistsAsync(ConnectionInfo info, string eventHubName, CancellationToken cancellationToken)
         {
-            var response = await SendHttpRequest(connectionString, eventHubName, null);
+            var response = await SendHttpRequest(info, eventHubName, null, cancellationToken);
             if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
             {
                 response.EnsureSuccessStatusCode();
@@ -50,35 +50,12 @@ namespace DurableTask.Netherite
             return response.StatusCode == System.Net.HttpStatusCode.OK;
         }
 
-        static Task<HttpResponseMessage> SendHttpRequest(string connectionString, string eventHubName, int? partitionCount)
+        static async Task<HttpResponseMessage> SendHttpRequest(ConnectionInfo info, string eventHubName, int? partitionCount, CancellationToken cancellationToken)
         {
-            // parse the eventhubs connection string to extract various parameters
-            var properties = Azure.Messaging.EventHubs.EventHubsConnectionStringProperties.Parse(connectionString);
-            string resource = properties.FullyQualifiedNamespace;
-            string resourceUri = properties.Endpoint.AbsoluteUri;
-            string name = properties.SharedAccessKeyName;
-            string key = properties.SharedAccessKey;
-
-            // create a token that allows us to create an eventhub
-            string sasToken = createToken(resourceUri, name, key);
-
-            // the following token creation code is taken from https://docs.microsoft.com/en-us/rest/api/eventhub/generate-sas-token#c
-            string createToken(string resourceUri, string name, string key)
-            {
-                TimeSpan sinceEpoch = DateTime.UtcNow - new DateTime(1970, 1, 1);
-                var week = 60 * 60 * 24 * 7;
-                var expiry = Convert.ToString((int)sinceEpoch.TotalSeconds + week);
-                string stringToSign = HttpUtility.UrlEncode(resourceUri) + "\n" + expiry;
-                HMACSHA256 hmac = new HMACSHA256(Encoding.UTF8.GetBytes(key));
-                var signature = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(stringToSign)));
-                var sasToken = String.Format(CultureInfo.InvariantCulture, "SharedAccessSignature sr={0}&sig={1}&se={2}&skn={3}", HttpUtility.UrlEncode(resourceUri), HttpUtility.UrlEncode(signature), expiry, name);
-                return sasToken;
-            }
-
             // send an http request to create or delete the eventhub
             HttpClient client = new HttpClient();
             var request = new HttpRequestMessage();
-            request.RequestUri = new Uri($"https://{resource}/{eventHubName}?timeout=60&api-version=2014-01");
+            request.RequestUri = new Uri($"https://{info.HostName}/{eventHubName}?timeout=60&api-version=2014-01");
             request.Method = partitionCount.HasValue ? HttpMethod.Put : HttpMethod.Delete;
             if (partitionCount.HasValue)
             {
@@ -94,10 +71,12 @@ namespace DurableTask.Netherite
                                 Encoding.UTF8,
                                 "application/xml");
             }
-            request.Headers.Add("Authorization", sasToken);
-            request.Headers.Add("Host", resource);
+            request.Headers.Add("Host", info.HostName);
 
-            return client.SendAsync(request);
+            // add an authorization header to the request
+            await info.AuthorizeHttpRequestMessage(request, cancellationToken);
+
+            return await client.SendAsync(request);
         }
     }
 }
