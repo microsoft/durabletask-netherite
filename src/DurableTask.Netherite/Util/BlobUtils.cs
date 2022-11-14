@@ -101,6 +101,12 @@ namespace DurableTask.Netherite
                 return true; // empirically observed
             }
 
+            // Empirically observed transient cancellation exceptions that are not application initiated
+            if (exception is OperationCanceledException && !token.IsCancellationRequested)
+            {
+                return true;
+            }
+
             return false;
         }
 

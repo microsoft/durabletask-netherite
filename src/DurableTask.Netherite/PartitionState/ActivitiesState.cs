@@ -48,7 +48,7 @@ namespace DurableTask.Netherite
 
         public static string GetWorkItemId(uint partition, long activityId) => $"{partition:D2}A{activityId}";
 
-        public override void OnFirstInitialization()
+        public override void OnFirstInitialization(Partition partition)
         {
             this.Pending = new Dictionary<long, ActivityInfo>();
             // Backlog queue for local tasks

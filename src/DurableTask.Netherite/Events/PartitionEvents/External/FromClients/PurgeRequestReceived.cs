@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite
 {
+    using System;
     using System.Collections.Generic;
     using System.Runtime.Serialization;
     using System.Threading.Tasks;
@@ -24,9 +25,10 @@ namespace DurableTask.Netherite
             trackedObject.Process(this, effects);
         }
 
-        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition)
+        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition, DateTime attempt)
         {
             int batchCount = 0;
+            string continuationToken = null;
 
             PurgeBatchIssued makeNewBatchObject()
                 => new PurgeBatchIssued()
@@ -53,12 +55,15 @@ namespace DurableTask.Netherite
 
             await foreach (var orchestrationState in instances)
             {
-                batch.InstanceIds.Add(orchestrationState.OrchestrationInstance.InstanceId);
-
-                if (batch.InstanceIds.Count == MaxBatchSize)
+                if (orchestrationState != null)
                 {
-                    await ExecuteBatch();
-                    batch = makeNewBatchObject();
+                    batch.InstanceIds.Add(orchestrationState.OrchestrationInstance.InstanceId);
+
+                    if (batch.InstanceIds.Count == MaxBatchSize)
+                    {
+                        await ExecuteBatch();
+                        batch = makeNewBatchObject();
+                    }
                 }
             }
 
@@ -72,6 +77,7 @@ namespace DurableTask.Netherite
                 ClientId = this.ClientId,
                 RequestId = this.RequestId,
                 NumberInstancesPurged = this.NumberInstancesPurged,
+                ContinuationToken = continuationToken,
             });
         }
     }

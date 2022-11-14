@@ -6,6 +6,7 @@ namespace DurableTask.Netherite
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.Linq;
     using System.Runtime.Serialization;
 
     [DataContract]
@@ -21,13 +22,47 @@ namespace DurableTask.Netherite
             return $"Reassembly ({this.Fragments.Count} pending)";
         }
 
+        public override void Process(RecoveryCompleted evt, EffectTracker effects)
+        {
+            bool IsExpired(List<PartitionEventFragment> list)
+            {
+                var fragment = list.First();
+                if (fragment.Timeout.HasValue)
+                {
+                    return fragment.Timeout.Value < evt.Timestamp;
+                }
+                else if (fragment.DedupPosition.HasValue)
+                {                  
+                    evt.ReceivePositions.TryGetValue(fragment.DedupPosition.Value.Item1, out (long, int) lastProcessed);
+                    return lastProcessed.CompareTo((fragment.DedupPosition.Value.Item2, fragment.DedupPosition.Value.Item3)) >= 0;
+                }
+                else 
+                {
+                    return false;
+                }
+            }
+
+            var expired = this.Fragments.Where(kvp => IsExpired(kvp.Value)).ToList();
+
+            foreach (var kvp in expired)
+            {
+                this.Fragments.Remove(kvp.Key);
+
+                if (!effects.IsReplaying)
+                {
+                    effects.EventTraceHelper.TraceEventProcessingDetail($"Dropped {kvp.Value.Count()} expired fragments for id={kvp.Value.First().OriginalEventId} during recovery");
+                }
+            }
+        }
+
         public override void Process(PartitionEventFragment evt, EffectTracker effects)
         {
             // stores fragments until the last one is received
             var originalEventString = evt.OriginalEventId.ToString();
+
             if (evt.IsLast)
             {
-                evt.ReassembledEvent =  FragmentationAndReassembly.Reassemble<PartitionEvent>(this.Fragments[originalEventString], evt);
+                evt.ReassembledEvent =  FragmentationAndReassembly.Reassemble<PartitionEvent>(this.Fragments[originalEventString], evt, effects.Partition);
                 
                 effects.EventDetailTracer?.TraceEventProcessingDetail($"Reassembled {evt.ReassembledEvent}");
 
@@ -70,6 +105,6 @@ namespace DurableTask.Netherite
 
                 list.Add(evt);
             }
-        } 
+        }
     }
 }

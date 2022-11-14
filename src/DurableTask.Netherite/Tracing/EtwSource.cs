@@ -229,11 +229,11 @@ namespace DurableTask.Netherite
             this.WriteEvent(242, Account, TaskHub, PartitionId, CommitLogPosition, PartitionEventId, Details, AppName, ExtensionVersion);
         }
 
-        [Event(243, Level = EventLevel.Verbose, Version = 1)]
-        public void ClientReceivedEvent(string Account, string TaskHub, Guid ClientId, string PartitionEventId, string EventInfo, string AppName, string ExtensionVersion)
+        [Event(243, Level = EventLevel.Verbose, Version = 2)]
+        public void ClientReceivedEvent(string Account, string TaskHub, Guid ClientId, string PartitionEventId, string status, string EventInfo, string AppName, string ExtensionVersion)
         {
             SetCurrentThreadActivityId(serviceInstanceId);
-            this.WriteEvent(243, Account, TaskHub, ClientId, PartitionEventId, EventInfo, AppName, ExtensionVersion);
+            this.WriteEvent(243, Account, TaskHub, ClientId, PartitionEventId, status, EventInfo, AppName, ExtensionVersion);
         }
 
         [Event(244, Level = EventLevel.Verbose, Version = 1)]

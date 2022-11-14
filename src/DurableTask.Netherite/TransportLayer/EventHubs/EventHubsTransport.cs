@@ -402,6 +402,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                             {
                                 this.traceHelper.LogDebug("Client{clientId}.ch{index} received packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
                                 Packet.Deserialize(ed.Body, out clientEvent, taskHubGuid);
+                                clientEvent.ReceiveChannel = index;
                                 if (clientEvent != null && clientEvent.ClientId == this.ClientId)
                                 {
                                     this.traceHelper.LogTrace("Client{clientId}.ch{index} receiving event {evt} id={eventId}]", Client.GetShortId(this.ClientId), index, clientEvent, clientEvent.EventIdString);

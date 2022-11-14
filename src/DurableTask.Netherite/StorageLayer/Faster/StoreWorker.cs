@@ -85,7 +85,7 @@ namespace DurableTask.Netherite.Faster
             foreach (var key in TrackedObjectKey.GetSingletons())
             {
                 var target = await this.store.CreateAsync(key);
-                target.OnFirstInitialization();
+                target.OnFirstInitialization(this.partition);
             }
 
             this.lastCheckpointedCommitLogPosition = this.CommitLogPosition;
@@ -582,7 +582,7 @@ namespace DurableTask.Netherite.Faster
             this.traceHelper.FasterLogReplayed(this.CommitLogPosition, this.InputQueuePosition, this.numberEventsSinceLastCheckpoint, this.CommitLogPosition - startPosition, this.store.StoreStats.Get(), stopwatch.ElapsedMilliseconds);
         }
 
-        public void RestartThingsAtEndOfRecovery(string inputQueueFingerprint)
+        public void RestartThingsAtEndOfRecovery(string inputQueueFingerprint, DateTime incarnationTimestamp)
         {
 
             bool queueChange = (this.InputQueueFingerprint != inputQueueFingerprint);
@@ -599,8 +599,9 @@ namespace DurableTask.Netherite.Faster
             {
                 PartitionId = this.partition.PartitionId,
                 RecoveredPosition = this.CommitLogPosition,
-                Timestamp = DateTime.UtcNow,
+                Timestamp = incarnationTimestamp,
                 WorkerId = this.partition.Settings.WorkerId,
+                KeepInstanceIdsInMemory = this.partition.Settings.KeepInstanceIdsInMemory,
                 ChangedFingerprint = queueChange ? inputQueueFingerprint : null,
             };
 

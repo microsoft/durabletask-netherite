@@ -24,24 +24,24 @@ namespace DurableTask.Netherite.SingleHostTransport
         }
 
         protected override Task Process(IList<ClientEvent> batch)
-        {         
-            try
+        {
+            foreach (var evt in batch)
             {
-                foreach (var evt in batch)
+                try
                 {
                     this.Client.Process(evt);
                     DurabilityListeners.ConfirmDurable(evt);
                 }
-            }
-            catch (System.Threading.Tasks.TaskCanceledException)
-            {
-                // this is normal during shutdown
-            }
-            catch (Exception e)
-            {
-                this.Client.ReportTransportError(nameof(ClientQueue), e);
-            }
 
+                catch (System.Threading.Tasks.TaskCanceledException)
+                {
+                    // this is normal during shutdown
+                }
+                catch (Exception e)
+                {
+                    this.Client.ReportTransportError(nameof(ClientQueue), e);
+                }
+            }
             return Task.CompletedTask;
         }
     }

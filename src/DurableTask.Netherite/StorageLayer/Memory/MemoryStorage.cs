@@ -64,7 +64,7 @@ namespace DurableTask.Netherite
 
                 if (trackedObject.Key.IsSingleton)
                 {
-                    trackedObject.OnFirstInitialization();
+                    trackedObject.OnFirstInitialization(partition);
                 }
             }
 
@@ -141,7 +141,7 @@ namespace DurableTask.Netherite
 
                                 case PartitionQueryEvent queryEvent:
                                     var instances = this.QueryOrchestrationStates(queryEvent.InstanceQuery);
-                                    var backgroundTask = Task.Run(() => this.effects.ProcessQueryResultAsync(queryEvent, instances.ToAsyncEnumerable()));
+                                    var backgroundTask = Task.Run(() => this.effects.ProcessQueryResultAsync(queryEvent, instances.ToAsyncEnumerable(), DateTime.UtcNow));
                                     break;
 
                                 default:

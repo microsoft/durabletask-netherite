@@ -33,7 +33,7 @@ namespace DurableTask.Netherite
 
                 if (!effects.IsReplaying)
                 {
-                    effects.EventTraceHelper.TraceEventProcessingWarning($"Dropped query {kvp.Value.EventIdString} because it has timed out");
+                    effects.EventTraceHelper.TraceEventProcessingWarning($"Dropped query {kvp.Value.EventIdString} during recovery because it has timed out");
                 }
             }
 
@@ -108,6 +108,10 @@ namespace DurableTask.Netherite
                 this.request = clientRequest;
             }
 
+            public override string ContinuationToken => this.request.ContinuationToken;
+  
+            public override int PageSize => this.request.PageSize;
+
             protected override void ExtraTraceInformation(StringBuilder s)
             {
                 s.Append(':');
@@ -118,7 +122,7 @@ namespace DurableTask.Netherite
 
             public override Netherite.InstanceQuery InstanceQuery => this.request.InstanceQuery;
 
-            public override async Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition)
+            public override async Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition, DateTime attempt)
             {
                 partition.Assert(this.request.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query, "wrong phase in QueriesState.OnQueryCompleteAsync");
 
@@ -126,18 +130,28 @@ namespace DurableTask.Netherite
 
                 try
                 {
-                    await this.request.OnQueryCompleteAsync(result, partition);
+                    await this.request.OnQueryCompleteAsync(result, partition, attempt);
                     retry = false;
                 }
                 catch (FASTER.core.FasterException exception) when (this.request.PreviousAttempts < 3 && exception.Message.StartsWith("Iterator address is less than log BeginAddress"))
                 {
-                    partition.EventTraceHelper.TraceEventProcessingWarning($"retrying query {this.request.EventId} after internal error, PreviousAttempts={this.request.PreviousAttempts}");
+                    partition.EventTraceHelper.TraceEventProcessingWarning($"retrying query {this.request.EventId} attempt {attempt} after internal error, PreviousAttempts={this.request.PreviousAttempts}");
                     retry = true;
+                }
+                catch (OperationCanceledException)
+                {
+                    partition.EventTraceHelper.TraceEventProcessingWarning($"canceling query {this.request.EventId} attempt {attempt}");
+                    retry = true;
+                }
+                catch (Exception) when (partition.ErrorHandler.IsTerminated)
+                {
+                    partition.EventTraceHelper.TraceEventProcessingWarning($"abandoning query {this.request.EventId} attempt {attempt} as partition is shutting down");
+                    retry = false;
                 }
                 catch (Exception exception) when (!Utils.IsFatal(exception) && !partition.ErrorHandler.IsTerminated)
                 {
                     // unhandled exceptions terminate the query
-                    partition.EventTraceHelper.TraceEventProcessingWarning($"abandoning query {this.request.EventId} after internal error, PreviousAttempts={this.request.PreviousAttempts}");
+                    partition.EventTraceHelper.TraceEventProcessingWarning($"abandoning query {this.request.EventId} attempt {attempt} after internal error: {exception}");
                     retry = false;
                 }
 

@@ -17,10 +17,16 @@ namespace DurableTask.Netherite
         public List<OrchestrationState> OrchestrationStates { get; set; }
 
         [DataMember]
+        public DateTime Attempt { get; set; }
+
+        [DataMember]
         public int? Final { get; set; }
 
         [DataMember]
         byte[] BinaryState { get; set; }
+
+        [DataMember]
+        public string ContinuationToken { get; set; }  // null indicates we have reached the end of all instances in this partition
 
         public void SerializeOrchestrationStates(MemoryStream memoryStream, bool includeInput)
         {

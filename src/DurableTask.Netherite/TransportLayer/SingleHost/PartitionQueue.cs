@@ -82,7 +82,7 @@ namespace DurableTask.Netherite.SingleHostTransport
                 {
                     if (!this.isShuttingDown && this.testHooks?.FaultInjectionActive != true)
                     {
-                        this.testHooks.Error("MemoryTransport", "Unexpected partition termination");
+                        this.testHooks?.Error("MemoryTransport", "Unexpected partition termination");
                     }
                     this.Notify();
                 };

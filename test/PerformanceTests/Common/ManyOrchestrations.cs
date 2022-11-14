@@ -19,6 +19,7 @@ namespace PerformanceTests
     using System.Threading;
     using System.Net.Http;
     using DurableTask.Core.Stats;
+    using System.Diagnostics;
 
     /// <summary>
     /// operations for starting, awaiting, counting, or purging large numbers of orchestration instances
@@ -184,7 +185,7 @@ namespace PerformanceTests
                 int completed = 0;
                 int pending = 0;
                 int running = 0;
-                int other = 0;
+                int notfound = 0;
 
                 long earliestStart = long.MaxValue;
                 long latestUpdate = 0;
@@ -192,8 +193,7 @@ namespace PerformanceTests
 
                 object lockForUpdate = new object();
 
-                var stopwatch = new System.Diagnostics.Stopwatch();
-                stopwatch.Start();
+                var stopwatch = Stopwatch.StartNew();
 
                 var tasks = new List<Task<bool>>();
 
@@ -207,7 +207,7 @@ namespace PerformanceTests
                     {
                         if (status == null)
                         {
-                            other++;
+                            notfound++;
                         }
                         else
                         {
@@ -229,11 +229,14 @@ namespace PerformanceTests
                             }
                             else
                             {
-                                other++;
+                                notfound++;
                             }
                         }
                     }
                 });
+
+                stopwatch.Stop();
+                double querySeconds = stopwatch.ElapsedMilliseconds / 1000.0;
 
                 double elapsedSeconds = 0;
 
@@ -247,7 +250,8 @@ namespace PerformanceTests
                     completed,
                     running,
                     pending,
-                    other,
+                    notfound,
+                    querySeconds,
                     elapsedSeconds,
                 };
 
@@ -275,6 +279,8 @@ namespace PerformanceTests
 
                 long earliestStart = long.MaxValue;
                 long latestUpdate = 0;
+
+                var stopwatch = Stopwatch.StartNew();
 
                 do
                 {
@@ -306,6 +312,9 @@ namespace PerformanceTests
 
                 } while (queryCondition.ContinuationToken != null);
 
+                stopwatch.Stop();
+                double querySeconds = stopwatch.ElapsedMilliseconds / 1000.0;
+
                 double elapsedSeconds = 0;
 
                 if (completed + pending + running + other > 0)
@@ -319,6 +328,7 @@ namespace PerformanceTests
                     running,
                     pending,
                     other,
+                    querySeconds,
                     elapsedSeconds,
                 };
 

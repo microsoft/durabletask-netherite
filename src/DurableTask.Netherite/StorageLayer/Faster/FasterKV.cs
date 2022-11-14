@@ -4,10 +4,12 @@
 namespace DurableTask.Netherite.Faster
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
     using System.Linq;
+    using System.Runtime.CompilerServices;
     using System.Text;
     using System.Threading;
     using System.Threading.Channels;
@@ -30,13 +32,42 @@ namespace DurableTask.Netherite.Faster
         readonly MemoryTracker.CacheTracker cacheTracker;
         readonly LogSettings storelogsettings;
         readonly Stopwatch compactionStopwatch;
-        readonly Dictionary<(PartitionReadEvent,Key), double> pendingReads;
+        readonly Dictionary<(PartitionReadEvent, Key), double> pendingReads;
         readonly List<IDisposable> sessionsToDisposeOnShutdown;
 
         TrackedObject[] singletons;
         Task persistSingletonsTask;
 
         ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> mainSession;
+
+        const int queryParallelism = 100;
+        readonly ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>>[] querySessions
+            = new ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>>[queryParallelism];
+        static readonly SemaphoreSlim availableQuerySessions = new SemaphoreSlim(queryParallelism);
+        readonly ConcurrentBag<int> idleQuerySessions = new ConcurrentBag<int>(Enumerable.Range(0, queryParallelism));
+
+        async ValueTask<FasterKV<Key, Value>.ReadAsyncResult<EffectTracker, Output, object>> ReadOnQuerySessionAsync(string instanceId, CancellationToken cancellationToken)
+        {
+            await availableQuerySessions.WaitAsync();
+            try
+            {
+                bool success = this.idleQuerySessions.TryTake(out var session);
+                this.partition.Assert(success, "available sessions must be larger than or equal to semaphore count");
+                try
+                {
+                    var result = await this.querySessions[session].ReadAsync(TrackedObjectKey.Instance(instanceId), token: cancellationToken).ConfigureAwait(false);
+                    return result;
+                }
+                finally
+                {
+                    this.idleQuerySessions.Add(session);
+                }
+            }
+            finally
+            {
+                availableQuerySessions.Release();
+            }
+        }
 
         double nextHangCheck;
         const int HangCheckPeriod = 30000;
@@ -56,8 +87,8 @@ namespace DurableTask.Netherite.Faster
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
             this.storelogsettings = blobManager.GetDefaultStoreLogSettings(
-                partition.Settings.UseSeparatePageBlobStorage, 
-                memoryTracker.MaxCacheSize, 
+                partition.Settings.UseSeparatePageBlobStorage,
+                memoryTracker.MaxCacheSize,
                 partition.Settings.FasterTuningParameters);
 
             this.fht = new FasterKV<Key, Value>(
@@ -114,6 +145,19 @@ namespace DurableTask.Netherite.Faster
                     // can happen during shutdown
                 }
 
+                this.TraceHelper.FasterProgress("Disposing Query Sessions");
+                foreach (var s in this.querySessions)
+                {
+                    try
+                    {
+                        s?.Dispose();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // can happen during shutdown
+                    }
+                }
+
                 this.TraceHelper.FasterProgress("Disposing FasterKV");
                 this.fht.Dispose();
 
@@ -142,7 +186,7 @@ namespace DurableTask.Netherite.Faster
         ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> CreateASession(string id, bool isScan)
         {
             var functions = new Functions(this.partition, this, this.cacheTracker, isScan);
-            return this.fht.NewSession(functions, id);
+            return this.fht.NewSession(functions, id, readFlags: (isScan ? ReadFlags.None : ReadFlags.CopyReadsToTail));
         }
 
         public IDisposable TrackTemporarySession(ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> session)
@@ -168,14 +212,17 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        string RandomSuffix() => Guid.NewGuid().ToString().Substring(0, 5);
-
         public LogAccessor<Key, Value> Log => this.fht?.Log;
 
         public override void InitMainSession()
         {
             this.singletons = new TrackedObject[TrackedObjectKey.NumberSingletonTypes];
-            this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
+            string suffix = DateTime.UtcNow.ToString("O");
+            this.mainSession = this.CreateASession($"main-{suffix}", false);
+            for (int i = 0; i < this.querySessions.Length; i++)
+            {
+                this.querySessions[i] = this.CreateASession($"query{i:D2}-{suffix}", true);
+            }
             this.cacheTracker.MeasureCacheSize(true);
             this.CheckInvariants();
         }
@@ -200,7 +247,11 @@ namespace DurableTask.Netherite.Faster
                 // recover Faster
                 this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
                 await this.fht.RecoverAsync(this.partition.Settings.FasterTuningParameters?.NumPagesToPreload ?? 1, true, -1, this.terminationToken);
-                this.mainSession = this.CreateASession($"main-{this.RandomSuffix()}", false);
+                this.mainSession = this.CreateASession($"main-{this.blobManager.IncarnationTimestamp:o}", false);
+                for (int i = 0; i < this.querySessions.Length; i++)
+                {
+                    this.querySessions[i] = this.CreateASession($"query{i:D2}-{this.blobManager.IncarnationTimestamp:o}", true);
+                }
                 this.cacheTracker.MeasureCacheSize(true);
                 this.CheckInvariants();
 
@@ -290,7 +341,7 @@ namespace DurableTask.Netherite.Faster
         {
             Task<Task> tasktask = new Task<Task>(() => asyncAction());
             var thread = TrackedThreads.MakeTrackedThread(RunTask, name);
-                       
+
             void RunTask() {
                 try
                 {
@@ -406,18 +457,18 @@ namespace DurableTask.Netherite.Faster
                 return this.fht.Log.BeginAddress + compactionAreaSize;
             }
             else
-            { 
+            {
                 this.TraceHelper.FasterCompactionProgress(
                     FasterTraceHelper.CompactionProgress.Skipped,
-                    "", 
+                    "",
                     this.Log.BeginAddress,
                     this.Log.SafeReadOnlyAddress,
-                    this.Log.TailAddress, 
+                    this.Log.TailAddress,
                     minimalLogSize,
                     compactionAreaSize,
                     this.GetElapsedCompactionMilliseconds());
 
-                return null; 
+                return null;
             }
         }
 
@@ -425,7 +476,7 @@ namespace DurableTask.Netherite.Faster
 
         public override async Task<long> RunCompactionAsync(long target)
         {
-            string id = this.RandomSuffix(); // for tracing purposes
+            string id = DateTime.UtcNow.ToString("O"); // for tracing purposes
             await maxCompactionThreads.WaitAsync();
             try
             {
@@ -442,7 +493,7 @@ namespace DurableTask.Netherite.Faster
                     this.GetElapsedCompactionMilliseconds());
 
                 var tcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
-                var thread = TrackedThreads.MakeTrackedThread(RunCompaction, $"Compaction.{id}"); 
+                var thread = TrackedThreads.MakeTrackedThread(RunCompaction, $"Compaction.{id}");
                 thread.Start();
                 return await tcs.Task;
 
@@ -459,8 +510,8 @@ namespace DurableTask.Netherite.Faster
 
                             this.TraceHelper.FasterCompactionProgress(
                                 FasterTraceHelper.CompactionProgress.Completed,
-                                id, 
-                                compactedUntil, 
+                                id,
+                                compactedUntil,
                                 this.Log.SafeReadOnlyAddress,
                                 this.Log.TailAddress,
                                 this.MinimalLogSize,
@@ -493,8 +544,31 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-                var orchestrationStates = this.ScanOrchestrationStates(effectTracker, queryEvent);
-                await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates);
+                this.terminationToken.ThrowIfCancellationRequested();
+
+                DateTime attempt = DateTime.UtcNow;
+
+                IAsyncEnumerable<OrchestrationState> orchestrationStates;
+
+                var stats = (StatsState)this.singletons[(int)TrackedObjectKey.Stats.ObjectType];
+
+                if (stats.HasInstanceIds)
+                {
+                    orchestrationStates = this.QueryEnumeratedStates(
+                        effectTracker,
+                        queryEvent,
+                        stats.GetEnumerator(queryEvent.InstanceQuery.InstanceIdPrefix, queryEvent.ContinuationToken),
+                        queryEvent.PageSize,
+                        TimeSpan.FromSeconds(15),
+                        attempt);
+                }
+                else
+                {
+                    orchestrationStates = this.ScanOrchestrationStates(effectTracker, queryEvent, attempt);
+                }
+
+                // process the stream of results, and any exceptions or cancellations
+                await effectTracker.ProcessQueryResultAsync(queryEvent, orchestrationStates, attempt);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -523,7 +597,7 @@ namespace DurableTask.Netherite.Faster
                 if (stopwatch.ElapsedMilliseconds - lastReport >= elapsedMillisecondsThreshold)
                 {
                     this.blobManager.TraceHelper.FasterProgress(
-                        $"FasterKV PrefetchSession {sessionId} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s issued={numberIssued} pending={maxConcurrency-prefetchSemaphore.CurrentCount} hits={numberHits} misses={numberMisses}");
+                        $"FasterKV PrefetchSession {sessionId} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s issued={numberIssued} pending={maxConcurrency - prefetchSemaphore.CurrentCount} hits={numberHits} misses={numberMisses}");
                     lastReport = stopwatch.ElapsedMilliseconds;
                 }
             }
@@ -531,7 +605,7 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 // these are disposed after the prefetch thread is done
-                var prefetchSession = this.CreateASession($"prefetch-{this.RandomSuffix()}", false);
+                var prefetchSession = this.CreateASession($"prefetch-{DateTime.UtcNow:O}", false);
 
                 using (this.TrackTemporarySession(prefetchSession))
                 {
@@ -792,18 +866,201 @@ namespace DurableTask.Netherite.Faster
             return default;
         }
 
-        IAsyncEnumerable<OrchestrationState> ScanOrchestrationStates(
+        async IAsyncEnumerable<OrchestrationState> QueryEnumeratedStates(
             EffectTracker effectTracker,
-            PartitionQueryEvent queryEvent)
+            PartitionQueryEvent queryEvent,
+            IEnumerator<string> enumerator,
+            int pageSize,
+            TimeSpan pageTime,
+            DateTime attempt
+           )
         {
             var instanceQuery = queryEvent.InstanceQuery;
             string queryId = queryEvent.EventIdString;
-            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"starting query {queryId}");
+            int? pageLimit = pageSize > 0 ? pageSize : null;
+            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration from {queryEvent.ContinuationToken} with pageLimit={(pageLimit.HasValue ? pageLimit.ToString() : "none")} pageTime={pageTime}");
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            var channel = Channel.CreateBounded<(bool last, ValueTask<FasterKV<Key, Value>.ReadAsyncResult<EffectTracker, Output, object>> responseTask)>(200);
+            using var leftToFill = new SemaphoreSlim(pageLimit.HasValue ? pageLimit.Value : 100);
+            using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(this.partition.ErrorHandler.Token);
+            var cancellationToken = cancellationTokenSource.Token;
+
+            Task readIssueLoop = Task.Run(ReadIssueLoop);
+            async Task ReadIssueLoop()
+            {
+                try
+                {
+                    while (enumerator.MoveNext())
+                    {
+                        if (!string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
+                            && !enumerator.Current.StartsWith(instanceQuery.InstanceIdPrefix))
+                        {
+                            // the instance does not match the prefix
+                            continue;
+                        }
+
+                        while (!await leftToFill.WaitAsync(2000, cancellationToken))
+                        {
+                            if (stopwatch.Elapsed > pageTime)
+                            {
+                                // stop issuing more reads and just finish and return what we have so far
+                                this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration finished because of time limit");
+                                channel.Writer.Complete();
+                                return;
+                            }
+                        }
+
+                        await channel.Writer.WaitToWriteAsync(cancellationToken).ConfigureAwait(false);
+                        var readTask = this.ReadOnQuerySessionAsync(enumerator.Current, cancellationToken);
+                        await channel.Writer.WriteAsync((false, readTask), cancellationToken).ConfigureAwait(false);
+                    }
+
+                    await channel.Writer.WriteAsync((true, default), cancellationToken).ConfigureAwait(false); // marks end of index
+                    channel.Writer.Complete();
+                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration finished because it reached end");
+                }
+                catch (OperationCanceledException)
+                {
+                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration cancelled");
+                    channel.Writer.TryComplete();
+                }
+                catch (Exception exception) when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
+                {
+                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration cancelled due to partition termination");
+                    channel.Writer.TryComplete();
+                }
+                catch (Exception e)
+                {
+                    this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} attempt {attempt:o} enumeration failed with exception {e}");
+                    channel.Writer.TryComplete();
+                }
+            }
+
+            long scanned = 0;
+            long found = 0;
+            long matched = 0;
+            long lastReport;
+            string position = queryEvent.ContinuationToken ?? "";
+
+            void ReportProgress(string status)
+            {
+                this.partition.EventTraceHelper.TraceEventProcessingDetail(
+                $"query {queryId} attempt {attempt:o} {status} position={position} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} found={found} matched={matched}");
+                lastReport = stopwatch.ElapsedMilliseconds;
+            }
+
+            ReportProgress("start");
+
+            while (await channel.Reader.WaitToReadAsync(this.partition.ErrorHandler.Token).ConfigureAwait(false))
+            {
+                while (channel.Reader.TryRead(out var item))
+                {
+                    if (item.last)
+                    {
+                        ReportProgress("completed");
+                        yield return null;
+                        goto done;
+                    }
+
+                    if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
+                    {
+                        ReportProgress("underway");
+                    }
+
+                    OrchestrationState orchestrationState = null;
+
+                    try
+                    {
+                        var response = await item.responseTask.ConfigureAwait(false);
+
+                        (Status status, Output output) = response.Complete();
+
+                        scanned++;
+
+                        if (status.NotFound)
+                        {
+                            // because we are running concurrently, the index can be out of sync with the actual store
+                            leftToFill.Release();
+                            continue;
+                        }
+
+                        this.partition.Assert(status.Found, "FASTER did not complete the read");
+
+                        var instanceState = (InstanceState)output.Read(this, queryId);
+
+                        found++;
+
+                        //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {enumerator.Current}");
+
+                        // reading the orchestrationState may race with updating the orchestration state
+                        // but it is benign because the OrchestrationState object is immutable
+                        orchestrationState = instanceState?.OrchestrationState;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} cancelled");
+                        goto done;
+                    }
+                    catch (Exception exception) when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
+                    {
+                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} cancelled due to partition termination");
+                        cancellationTokenSource.Cancel();
+                        goto done;
+                    }
+                    catch (Exception e)
+                    {
+                        this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} attempt {attempt:o} enumeration failed with exception {e}");
+                        cancellationTokenSource.Cancel();
+                        goto done;
+                    }
+
+                    if (orchestrationState != null && instanceQuery.Matches(orchestrationState))
+                    {
+                        matched++;
+                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {enumerator.Current}");
+                        yield return orchestrationState;
+                        position = orchestrationState.OrchestrationInstance.InstanceId;
+
+                        if (pageLimit.HasValue)
+                        {
+                            if (matched >= pageLimit.Value)
+                            {
+                                cancellationTokenSource.Cancel();
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            leftToFill.Release();
+                        }
+                    }
+                    else
+                    {
+                        leftToFill.Release();
+                    }
+                }
+            }
+            ReportProgress("completed-page");
+
+        done:
+            cancellationTokenSource.Cancel();
+            await readIssueLoop;
+            yield break;
+        }
+
+        IAsyncEnumerable<OrchestrationState> ScanOrchestrationStates(
+            EffectTracker effectTracker,
+            PartitionQueryEvent queryEvent,
+            DateTime attempt)
+        {
+            var instanceQuery = queryEvent.InstanceQuery;
+            string queryId = queryEvent.EventIdString;
 
             // we use a separate thread to iterate, since Faster can iterate synchronously only at the moment
             // and we don't want it to block thread pool worker threads
             var channel = Channel.CreateBounded<OrchestrationState>(500);
-            var scanThread = TrackedThreads.MakeTrackedThread(RunScan, $"QueryScan-{queryId}");
+            var scanThread = TrackedThreads.MakeTrackedThread(RunScan, $"QueryScan-{queryId}-{attempt:o}");
             scanThread.Start();
 
             // read from channel until the channel is completed, or an exception is encountered
@@ -814,7 +1071,7 @@ namespace DurableTask.Netherite.Faster
                 try
                 {
                     using var _ = EventTraceContext.MakeContext(0, queryId);
-                    var session = this.CreateASession($"scan-{queryId}-{this.RandomSuffix()}", true);
+                    var session = this.CreateASession($"scan-{queryId}-{attempt:o}", true);
                     using (this.TrackTemporarySession(session))
                     {
                         // get the unique set of keys appearing in the log and emit them
@@ -826,10 +1083,10 @@ namespace DurableTask.Netherite.Faster
                         long deserialized = 0;
                         long matched = 0;
                         long lastReport;
-                        void ReportProgress()
+                        void ReportProgress(string status)
                         {
-                            this.partition.EventDetailTracer?.TraceEventProcessingDetail(
-                                $"query {queryId} scan position={iter1.CurrentAddress} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} deserialized={deserialized} matched={matched}");
+                            this.partition.EventTraceHelper.TraceEventProcessingWarning(
+                                $"query {queryId} attempt {attempt:o} scan {status} position={iter1.CurrentAddress} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} deserialized={deserialized} matched={matched}");
                             lastReport = stopwatch.ElapsedMilliseconds;
 
                             if (queryEvent.TimeoutUtc.HasValue && DateTime.UtcNow > queryEvent.TimeoutUtc.Value)
@@ -838,13 +1095,13 @@ namespace DurableTask.Netherite.Faster
                             }
                         }
 
-                        ReportProgress();
+                        ReportProgress("starting");
 
                         while (iter1.GetNext(out RecordInfo recordInfo, out Key key, out Value val) && !recordInfo.Tombstone)
                         {
                             if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
                             {
-                                ReportProgress();
+                                ReportProgress("underway");
                             }
 
                             if (key.Val.ObjectType == TrackedObjectKey.TrackedObjectType.Instance)
@@ -880,7 +1137,7 @@ namespace DurableTask.Netherite.Faster
                                     {
                                         matched++;
 
-                                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.Val.InstanceId}");
+                                        //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.Val.InstanceId}");
 
                                         var task = channel.Writer.WriteAsync(orchestrationState);
 
@@ -893,26 +1150,31 @@ namespace DurableTask.Netherite.Faster
                             }
                         }
 
-                        ReportProgress();
+                        ReportProgress("completed");
+
+                        var task1 = channel.Writer.WriteAsync(null);
+                        if (!task1.IsCompleted)
+                        {
+                            task1.AsTask().Wait();
+                        }
+                        
                         channel.Writer.Complete();
                     }
-
-                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"finished query {queryId}");
                 }
                 catch (Exception exception)
                     when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
                 {
-                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"cancelled query {queryId} due to partition termination");
+                    this.partition.EventTraceHelper.TraceEventProcessingWarning($"cancelled query {queryId} attempt {attempt:o} scan due to partition termination");
                     channel.Writer.TryComplete(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
                 }
                 catch (TimeoutException e)
                 {
-                    this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} timed out");
+                    this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} attempt {attempt:o} scan timed out");
                     channel.Writer.TryComplete(e);
                 }
                 catch (Exception e)
                 {
-                    this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} failed with exception {e}");
+                    this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} attempt {attempt:o} scan failed with exception {e}");
                     channel.Writer.TryComplete(e);
                 }
             }
@@ -931,7 +1193,7 @@ namespace DurableTask.Netherite.Faster
                     emitItem(key, singleton);
                 }
 
-                var session = this.CreateASession($"emitCurrentState-{this.RandomSuffix()}", true);
+                var session = this.CreateASession($"emitCurrentState-{DateTime.UtcNow:O}", true);
                 using (this.TrackTemporarySession(session))
                 {
                     // iterate histories
@@ -1000,7 +1262,6 @@ namespace DurableTask.Netherite.Faster
         {
             try
             {
-
                 long trackedSizeBefore = 0;
                 long totalSize = 0;
                 Dictionary<TrackedObjectKey, List<(long delta, long address, string desc)>> perKey = null;
