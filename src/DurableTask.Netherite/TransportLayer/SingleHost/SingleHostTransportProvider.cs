@@ -38,7 +38,6 @@ namespace DurableTask.Netherite.SingleHostTransport
             this.host = host;
             this.settings = settings;
             this.storage = storage;
-            TransportConnectionString.Parse(settings.ResolvedTransportConnectionString, out _, out _);
             this.numberPartitions = (uint) settings.PartitionCount;
             this.logger = logger;
             this.faultInjector = settings.TestHooks?.FaultInjector;

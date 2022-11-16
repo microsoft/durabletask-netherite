@@ -15,47 +15,11 @@ namespace DurableTask.Netherite
     public static class TransportConnectionString
     {
         /// <summary>
-        /// Configuration options for the storage component
-        /// </summary>
-        public enum StorageChoices
-        {
-            /// <summary>
-            /// Does not store any state to durable storage, just keeps it in memory. 
-            /// Intended for testing scenarios.
-            /// </summary>
-            Memory = 0,
-
-            /// <summary>
-            /// Uses the Faster key-value store.
-            /// </summary>
-            Faster = 1,
-        }
-
-        /// <summary>
-        /// Configuration options for the transport component
-        /// </summary>
-        public enum TransportChoices
-        {
-            /// <summary>
-            /// Passes messages through memory and puts all partitions on a single host
-            /// Intended for testing scenarios.
-            /// </summary>
-            SingleHost = 0,
-
-            /// <summary>
-            /// Passes messages through eventhubs; can distribute over multiple machines via
-            /// the eventhubs EventProcessor.
-            /// </summary>
-            EventHubs = 1,
-        }
-
-
-        /// <summary>
         /// Determines the components to use given a transport connection string.
         /// </summary>
         public static bool IsPseudoConnectionString(string connectionString)
         {
-            switch (connectionString.ToLowerInvariant().Trim())
+            switch ((connectionString ?? "").ToLowerInvariant().Trim())
             {
                 case "memory":
                 case "singlehost":

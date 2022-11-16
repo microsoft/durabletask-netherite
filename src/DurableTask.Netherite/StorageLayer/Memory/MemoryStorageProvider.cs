@@ -48,7 +48,7 @@ namespace DurableTask.Netherite
                     TaskhubGuid = Guid.NewGuid(),
                     CreationTimestamp = DateTime.UtcNow,
                     StorageFormat = String.Empty,
-                    PartitionCount = 1,
+                    PartitionCount = this.settings.PartitionCount,
                 };
                 return true;
             }

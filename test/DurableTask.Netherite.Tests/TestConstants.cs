@@ -17,11 +17,11 @@ namespace DurableTask.Netherite.Tests
         {
             if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(StorageConnectionName)))
             {
-                throw new InvalidOperationException($"To run tests, environment must define '{StorageConnectionName}'");
+                throw new NetheriteConfigurationException($"To run tests, environment must define '{StorageConnectionName}'");
             }
             if (requiresTransportSpec && string.IsNullOrEmpty(Environment.GetEnvironmentVariable(EventHubsConnectionName)))
             {
-                throw new InvalidOperationException($"To run tests, environment must define '{EventHubsConnectionName}'");
+                throw new NetheriteConfigurationException($"To run tests, environment must define '{EventHubsConnectionName}'");
             }
         }
 
@@ -54,7 +54,7 @@ namespace DurableTask.Netherite.Tests
             //settings.ResolvedStorageConnectionString = "";
             //settings.UseLocalDirectoryForPartitionStorage = $"{Environment.GetEnvironmentVariable("temp")}\\FasterTestStorage";
 
-            settings.Validate((name) => Environment.GetEnvironmentVariable(name));
+            settings.Validate(new ConnectionNameToConnectionStringResolver((name) => Environment.GetEnvironmentVariable(name)));
             settings.TestHooks = new TestHooks();
 
             return settings;
@@ -68,5 +68,9 @@ namespace DurableTask.Netherite.Tests
         internal static TestOrchestrationHost GetTestOrchestrationHost(ILoggerFactory loggerFactory)
             => new TestOrchestrationHost(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
+        internal static bool UsesEmulation(this NetheriteOrchestrationServiceSettings settings)
+        {
+            return TransportConnectionString.IsPseudoConnectionString(settings.EventHubsConnectionName);
+        }
     }
 }
