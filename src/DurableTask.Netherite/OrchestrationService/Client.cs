@@ -739,7 +739,7 @@ namespace DurableTask.Netherite
             {
                 var stopwatch = Stopwatch.StartNew();
                 var request = requestCreator(partitionId);
-                var response = (TResponse) await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false);
+                var response = (TResponse) await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false).ConfigureAwait(false);
                 this.traceHelper.TraceQueryProgress(clientQueryId, request.EventIdString, partitionId, stopwatch.Elapsed, request.PageSize, response.Count, response.ContinuationToken);
                 return response;
             }
@@ -770,7 +770,7 @@ namespace DurableTask.Netherite
             {
                 tasks[i] = QueryPartition(i);
             }
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(false);
 
             // return the aggregated result
             return currentResult;
@@ -797,7 +797,7 @@ namespace DurableTask.Netherite
 
                 while (hasMore && !cancellationToken.IsCancellationRequested)
                 {
-                    hasMore = await GetNextPageAsync();
+                    hasMore = await GetNextPageAsync().ConfigureAwait(false);
 
                     if (!keepGoingUntilDone)
                     {
@@ -823,7 +823,7 @@ namespace DurableTask.Netherite
                         }
 
                         var stopwatch = Stopwatch.StartNew();
-                        var response = (TResponse)await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false);
+                        var response = (TResponse)await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false).ConfigureAwait(false);
                         this.traceHelper.TraceQueryProgress(clientQueryId, request.EventIdString, partitionId, stopwatch.Elapsed, request.PageSize, response.Count, response.ContinuationToken);
 
                         ResetRetries();
@@ -852,7 +852,7 @@ namespace DurableTask.Netherite
                         }
                         else if (retries > 0)
                         {
-                            await BackOffAsync();
+                            await BackOffAsync().ConfigureAwait(false);
                             return true;
                         }
                         else
@@ -866,7 +866,7 @@ namespace DurableTask.Netherite
                     }
                     catch (Exception) when (retries > 0)
                     {
-                        await BackOffAsync();
+                        await BackOffAsync().ConfigureAwait(false);
                         return true;
                     }
                 }
