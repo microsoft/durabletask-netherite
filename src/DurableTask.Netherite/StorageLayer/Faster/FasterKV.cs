@@ -1085,7 +1085,7 @@ namespace DurableTask.Netherite.Faster
                         long lastReport;
                         void ReportProgress(string status)
                         {
-                            this.partition.EventTraceHelper.TraceEventProcessingWarning(
+                            this.partition.EventTraceHelper.TraceEventProcessingDetail(
                                 $"query {queryId} attempt {attempt:o} scan {status} position={iter1.CurrentAddress} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} deserialized={deserialized} matched={matched}");
                             lastReport = stopwatch.ElapsedMilliseconds;
 

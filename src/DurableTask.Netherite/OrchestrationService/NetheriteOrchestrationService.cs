@@ -267,6 +267,8 @@ namespace DurableTask.Netherite
 
         public async Task TryStartAsync(bool clientOnly)
         {
+            clientOnly = clientOnly || this.Settings.PartitionManagement == PartitionManagementOptions.ClientOnly;
+
             while (true)
             {
                 var currentTransition = this.currentTransition;
@@ -326,6 +328,9 @@ namespace DurableTask.Netherite
                
                 this.checkedClient = this.client;
 
+                this.ActivityWorkItemQueue = new WorkItemQueue<ActivityWorkItem>();
+                this.OrchestrationWorkItemQueue = new WorkItemQueue<OrchestrationWorkItem>();
+
                 this.TraceHelper.TraceProgress($"Started client");
 
                 return ServiceState.Client;
@@ -361,9 +366,6 @@ namespace DurableTask.Netherite
                 System.Diagnostics.Debug.Assert(this.client != null, "transport layer should have added client");
 
                 this.TraceHelper.TraceProgress("Starting Workers");
-
-                this.ActivityWorkItemQueue = new WorkItemQueue<ActivityWorkItem>();
-                this.OrchestrationWorkItemQueue = new WorkItemQueue<OrchestrationWorkItem>();
 
                 LeaseTimer.Instance.DelayWarning = (int delay) =>
                     this.TraceHelper.TraceWarning($"Lease timer is running {delay}s behind schedule");

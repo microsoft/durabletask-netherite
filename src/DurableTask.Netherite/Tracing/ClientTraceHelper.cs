@@ -89,6 +89,22 @@ namespace DurableTask.Netherite
             }
         }
 
+        public void TraceQueryProgress(string clientQueryId, string queryId, uint partitionId, TimeSpan elapsed, int pageSize, int count, string continuationToken)
+        {
+            if (this.logLevelLimit <= LogLevel.Debug)
+            {
+                continuationToken = continuationToken ?? "null";
+                if (this.logger.IsEnabled(LogLevel.Debug))
+                {
+                    this.logger.LogDebug("{client} Query {clientQueryId} received response {queryId} from partition {partitionId:D2} elapsed={elapsedSeconds:F2}s pageSize={pageSize} count={count} continuationToken={continuationToken} ", this.tracePrefix, clientQueryId, queryId, partitionId, elapsed.TotalSeconds, pageSize, count, continuationToken);
+                }
+                if (EtwSource.Log.IsEnabled())
+                {
+                    EtwSource.Log.ClientQueryProgress(this.account, this.taskHub, this.clientId, clientQueryId, queryId, partitionId, elapsed.TotalSeconds, pageSize, count, continuationToken, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                }
+            }
+        }
+
         public void TraceSend(PartitionEvent @event)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
@@ -104,7 +120,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public enum ResponseType {  Fragment, PartialQ, CompleteQ, Response };
+        public enum ResponseType {  Fragment, Partial, Obsolete, Response };
 
         public void TraceReceive(ClientEvent @event, ResponseType status)
         {

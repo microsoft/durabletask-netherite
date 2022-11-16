@@ -41,7 +41,7 @@ namespace DurableTask.Netherite.Tests
                 LoadMonitorLogLevelLimit = LogLevel.Trace,
                 PartitionCount = 6,
                 ThrowExceptionOnInvalidDedupeStatus = true,
-                KeepInstanceIdsInMemory= false,
+                KeepInstanceIdsInMemory = true,
                 TakeStateCheckpointWhenStoppingPartition = true,  // set to false for testing recovery from log
                 UseAlternateObjectStore = false,                  // set to true to bypass FasterKV; default is false
                 IdleCheckpointFrequencyMs = 1000000000,         // set this low for testing frequent checkpointing

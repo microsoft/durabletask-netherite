@@ -282,6 +282,8 @@ namespace PerformanceTests
 
                 var stopwatch = Stopwatch.StartNew();
 
+                var receivedInstanceIds = new HashSet<string>();
+
                 do
                 {
                     OrchestrationStatusQueryResult result = await client.ListInstancesAsync(queryCondition, CancellationToken.None);
@@ -304,6 +306,12 @@ namespace PerformanceTests
                         else
                         {
                             other++;
+                        }
+
+                        bool isFresh = receivedInstanceIds.Add(status.InstanceId);
+                        if (!isFresh)
+                        {
+                            throw new InvalidDataException($"received duplicate instance id: {status.InstanceId}");
                         }
 
                         earliestStart = Math.Min(earliestStart, status.CreatedTime.Ticks);
@@ -343,38 +351,63 @@ namespace PerformanceTests
         public static async Task<IActionResult> Purge(HttpRequest req, IDurableClient client, ILogger log, string prefix)
         {
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            int numberOrchestrations = int.Parse(requestBody);
-            DateTime deadline = DateTime.UtcNow + TimeSpan.FromMinutes(5);
 
-            // wait for the specified number of orchestration instances to complete
-            try
+            if (string.Compare(requestBody.Trim(), "all", true) == 0)
             {
-                log.LogWarning($"Purging {numberOrchestrations} orchestration instances...");
+                 
+                var stopwatch = Stopwatch.StartNew();
+                
+                var all = Enum.GetValues<DurableTask.Core.OrchestrationStatus>().ToArray();
+                PurgeHistoryResult result = await client.PurgeInstanceHistoryAsync(DateTime.MinValue, null, all);
+                int purged = result.InstancesDeleted;
 
-                var stopwatch = new System.Diagnostics.Stopwatch();
-                stopwatch.Start();
+                stopwatch.Stop();
+                double querySec = stopwatch.ElapsedMilliseconds / 1000.0;
 
-                var tasks = new List<Task<bool>>();
-
-                int deleted = 0;
-
-                // start all the orchestrations
-                await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
+                var resultObject = new
                 {
-                    var orchestrationInstanceId = InstanceId(prefix, iteration);
-                    var response = await client.PurgeInstanceHistoryAsync(orchestrationInstanceId);
-                    
-                    Interlocked.Add(ref deleted, response.InstancesDeleted);
-                });
+                    purged,
+                    querySec,
+                    throughput = purged > 0 ? (purged / querySec).ToString("F2") : "n/a",
+                };
 
-                return new OkObjectResult(
-                    deleted == numberOrchestrations
-                    ? $"all {numberOrchestrations} orchestration instances purged.\n"
-                    : $"only {deleted}/{numberOrchestrations} orchestration instances purged.\n");
+                return new OkObjectResult($"{JsonConvert.SerializeObject(resultObject)}\n");
             }
-            catch (Exception e)
+            else
             {
-                return new ObjectResult(new { error = e.ToString() });
+                int numberOrchestrations = int.Parse(requestBody);
+                DateTime deadline = DateTime.UtcNow + TimeSpan.FromMinutes(5);
+
+                // wait for the specified number of orchestration instances to complete
+                try
+                {
+                    log.LogWarning($"Purging {numberOrchestrations} orchestration instances...");
+
+                    var stopwatch = new System.Diagnostics.Stopwatch();
+                    stopwatch.Start();
+
+                    var tasks = new List<Task<bool>>();
+
+                    int deleted = 0;
+
+                    // start all the orchestrations
+                    await Enumerable.Range(0, numberOrchestrations).ParallelForEachAsync(200, true, async (iteration) =>
+                    {
+                        var orchestrationInstanceId = InstanceId(prefix, iteration);
+                        var response = await client.PurgeInstanceHistoryAsync(orchestrationInstanceId);
+
+                        Interlocked.Add(ref deleted, response.InstancesDeleted);
+                    });
+
+                    return new OkObjectResult(
+                        deleted == numberOrchestrations
+                        ? $"all {numberOrchestrations} orchestration instances purged.\n"
+                        : $"only {deleted}/{numberOrchestrations} orchestration instances purged.\n");
+                }
+                catch (Exception e)
+                {
+                    return new ObjectResult(new { error = e.ToString() });
+                }
             }
         }
 

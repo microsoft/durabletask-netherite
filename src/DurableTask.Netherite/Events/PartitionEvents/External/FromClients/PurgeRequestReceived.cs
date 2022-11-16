@@ -18,7 +18,7 @@ namespace DurableTask.Netherite
         [DataMember]
         public int NumberInstancesPurged { get; set; } = 0;
 
-        const int MaxBatchSize = 1000;
+        const int MaxBatchSize = 200;
 
         public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
         {
@@ -43,9 +43,6 @@ namespace DurableTask.Netherite
 
             PurgeBatchIssued batch = makeNewBatchObject();
 
-            // TODO : while the request itself is reliable, the client response is not. 
-            // We should probably fix that by using the ClientState to track progress.
-
             async Task ExecuteBatch()
             {
                 await partition.State.Prefetch(batch.KeysToPrefetch);
@@ -57,13 +54,21 @@ namespace DurableTask.Netherite
             {
                 if (orchestrationState != null)
                 {
-                    batch.InstanceIds.Add(orchestrationState.OrchestrationInstance.InstanceId);
+                    string instanceId = orchestrationState.OrchestrationInstance.InstanceId;
+
+                    batch.InstanceIds.Add(instanceId);
 
                     if (batch.InstanceIds.Count == MaxBatchSize)
                     {
                         await ExecuteBatch();
                         batch = makeNewBatchObject();
                     }
+
+                    continuationToken = instanceId;
+                }
+                else
+                {
+                    continuationToken = null;
                 }
             }
 

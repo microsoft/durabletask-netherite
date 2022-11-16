@@ -62,7 +62,7 @@ namespace DurableTask.Netherite
             response.SerializeOrchestrationStates(memoryStream, this.InstanceQuery.FetchInput);
             partition.Send(response);
 
-            partition.EventTraceHelper.TraceEventProcessingWarning($"query {this.EventId} attempt {attempt:o} responded totalcount={totalcount} continuationToken={response.ContinuationToken ?? "null"}");
+            partition.EventTraceHelper.TraceEventProcessingDetail($"query {this.EventId} attempt {attempt:o} responded totalcount={totalcount} continuationToken={response.ContinuationToken ?? "null"}");
         }
 
         public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)

@@ -134,6 +134,13 @@ namespace DurableTask.Netherite
             this.WriteEvent(217, Account, TaskHub, ClientId, PartitionEventId, PartitionId, AppName, ExtensionVersion);
         }
 
+        [Event(218, Level = EventLevel.Verbose, Version = 2)]
+        public void ClientQueryProgress(string Account, string TaskHub, Guid ClientId, string ClientQueryId, string QueryId, uint PartitionId, double ElapsedSeconds, int PageSize, int Count, string ContinuationToken, string AppName, string ExtensionVersion)
+        {
+            SetCurrentThreadActivityId(serviceInstanceId);
+            this.WriteEvent(218, Account, TaskHub, ClientId, ClientQueryId, QueryId, PartitionId, ElapsedSeconds, PageSize, Count, ContinuationToken, AppName, ExtensionVersion);
+        }
+
         // ----- specific events relating to DurableTask concepts (TaskMessage, OrchestrationWorkItem, Instance)
 
         [Event(220, Level = EventLevel.Verbose, Version = 1)]
