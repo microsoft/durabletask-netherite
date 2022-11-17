@@ -83,5 +83,12 @@ namespace DurableTask.Netherite
                 }
             }
         }
+
+        public override void Process(RecoveryCompleted evt, EffectTracker tracker)
+        {
+            // throw away fragments for which we have already gone past the dedup position
+            evt.ReceivePositions = this.LastProcessed;
+            tracker.Add(TrackedObjectKey.Reassembly);
+        }
     }
 }

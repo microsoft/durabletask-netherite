@@ -146,6 +146,11 @@ namespace DurableTask.Netherite
         public bool UseAlternateObjectStore { get; set; } = false;
 
         /// <summary>
+        /// Whether to keep an in-memory set of all instance ids in memory. This is required for supporting paged queries.
+        /// </summary>
+        public bool KeepInstanceIdsInMemory = true;
+
+        /// <summary>
         /// Forces steps to pe persisted before applying their effects, disabling all pipelining.
         /// </summary>
         public bool PersistStepsFirst { get; set; } = false;

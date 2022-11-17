@@ -311,6 +311,8 @@ namespace DurableTask.Netherite
 
         public async Task TryStartAsync(bool clientOnly)
         {
+            clientOnly = clientOnly || this.Settings.PartitionManagement == PartitionManagementOptions.ClientOnly;
+
             while (true)
             {
                 var currentTransition = this.currentTransition;
@@ -370,6 +372,9 @@ namespace DurableTask.Netherite
                
                 this.checkedClient = this.client;
 
+                this.ActivityWorkItemQueue = new WorkItemQueue<ActivityWorkItem>();
+                this.OrchestrationWorkItemQueue = new WorkItemQueue<OrchestrationWorkItem>();
+
                 this.TraceHelper.TraceProgress($"Started client");
 
                 return ServiceState.Client;
@@ -405,9 +410,6 @@ namespace DurableTask.Netherite
                 System.Diagnostics.Debug.Assert(this.client != null, "transport layer should have added client");
 
                 this.TraceHelper.TraceProgress("Starting Workers");
-
-                this.ActivityWorkItemQueue = new WorkItemQueue<ActivityWorkItem>();
-                this.OrchestrationWorkItemQueue = new WorkItemQueue<OrchestrationWorkItem>();
 
                 LeaseTimer.Instance.DelayWarning = (int delay) =>
                     this.TraceHelper.TraceWarning($"Lease timer is running {delay}s behind schedule");
@@ -561,34 +563,35 @@ namespace DurableTask.Netherite
 
         /// <inheritdoc />
         async Task IOrchestrationServiceClient.CreateTaskOrchestrationAsync(TaskMessage creationMessage)
-            => await (await this.GetClientAsync()).CreateTaskOrchestrationAsync(
+            => await (await this.GetClientAsync().ConfigureAwait(false)).CreateTaskOrchestrationAsync(
                 this.GetPartitionId(creationMessage.OrchestrationInstance.InstanceId),
                 creationMessage,
-                null);
+                null).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task IOrchestrationServiceClient.CreateTaskOrchestrationAsync(TaskMessage creationMessage, OrchestrationStatus[] dedupeStatuses)
-            => await (await this.GetClientAsync()).CreateTaskOrchestrationAsync(
+            => await (await this.GetClientAsync().ConfigureAwait(false)).CreateTaskOrchestrationAsync(
                 this.GetPartitionId(creationMessage.OrchestrationInstance.InstanceId),
                 creationMessage,
-                dedupeStatuses);
+                dedupeStatuses).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task IOrchestrationServiceClient.SendTaskOrchestrationMessageAsync(TaskMessage message)
-            => await (await this.GetClientAsync()).SendTaskOrchestrationMessageBatchAsync(
+            => await (await this.GetClientAsync().ConfigureAwait(false)).SendTaskOrchestrationMessageBatchAsync(
                 this.GetPartitionId(message.OrchestrationInstance.InstanceId),
-                new[] { message });
+                new[] { message }).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task IOrchestrationServiceClient.SendTaskOrchestrationMessageBatchAsync(params TaskMessage[] messages)
         {
-            var client = await this.GetClientAsync();
+            var client = await this.GetClientAsync().ConfigureAwait(false);
             if (messages.Length != 0)
             {
                 await Task.WhenAll(messages
                     .GroupBy(tm => this.GetPartitionId(tm.OrchestrationInstance.InstanceId))
                     .Select(group => client.SendTaskOrchestrationMessageBatchAsync(group.Key, group))
-                    .ToList());
+                    .ToList())
+                    .ConfigureAwait(false);
             }
         }
            
@@ -599,19 +602,19 @@ namespace DurableTask.Netherite
                 string executionId,
                 TimeSpan timeout,
                 CancellationToken cancellationToken) 
-            => await (await this.GetClientAsync()).WaitForOrchestrationAsync(
+            => await (await this.GetClientAsync().ConfigureAwait(false)).WaitForOrchestrationAsync(
                 this.GetPartitionId(instanceId),
                 instanceId,
                 executionId,
                 timeout,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task<OrchestrationState> IOrchestrationServiceClient.GetOrchestrationStateAsync(
             string instanceId, 
             string executionId)
         {
-            var state = await (await this.GetClientAsync()).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, true).ConfigureAwait(false);
+            var state = await (await this.GetClientAsync().ConfigureAwait(false)).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, true).ConfigureAwait(false);
             return state != null && (executionId == null || executionId == state.OrchestrationInstance.ExecutionId)
                 ? state
                 : null;
@@ -623,7 +626,7 @@ namespace DurableTask.Netherite
             bool allExecutions)
         {
             // note: allExecutions is always ignored because storage contains never more than one execution.
-            var state = await (await this.GetClientAsync()).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, true).ConfigureAwait(false);
+            var state = await (await this.GetClientAsync().ConfigureAwait(false)).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, true).ConfigureAwait(false);
             return state != null 
                 ? (new[] { state }) 
                 : (new OrchestrationState[0]);
@@ -633,14 +636,14 @@ namespace DurableTask.Netherite
         async Task IOrchestrationServiceClient.ForceTerminateTaskOrchestrationAsync(
                 string instanceId, 
                 string message)
-            => await (await this.GetClientAsync()).ForceTerminateTaskOrchestrationAsync(this.GetPartitionId(instanceId), instanceId, message);
+            => await (await this.GetClientAsync().ConfigureAwait(false)).ForceTerminateTaskOrchestrationAsync(this.GetPartitionId(instanceId), instanceId, message).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task<string> IOrchestrationServiceClient.GetOrchestrationHistoryAsync(
             string instanceId, 
             string executionId)
         {
-            var client = await this.GetClientAsync();
+            var client = await this.GetClientAsync().ConfigureAwait(false);
             (string actualExecutionId, IList<HistoryEvent> history) = 
                 await client.GetOrchestrationHistoryAsync(this.GetPartitionId(instanceId), instanceId).ConfigureAwait(false);
 
@@ -665,38 +668,38 @@ namespace DurableTask.Netherite
                 throw new NotSupportedException("Purging is supported only for Orchestration created time filter.");
             }
 
-            await (await this.GetClientAsync()).PurgeInstanceHistoryAsync(thresholdDateTimeUtc, null, null);
+            await (await this.GetClientAsync().ConfigureAwait(false)).PurgeInstanceHistoryAsync(thresholdDateTimeUtc, null, null).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
         async Task<OrchestrationState> IOrchestrationServiceQueryClient.GetOrchestrationStateAsync(string instanceId, bool fetchInput, bool fetchOutput)
         {
-            return await (await this.GetClientAsync()).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, fetchInput, fetchOutput);
+            return await (await this.GetClientAsync().ConfigureAwait(false)).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, fetchInput, fetchOutput).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
         async Task<IList<OrchestrationState>> IOrchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken cancellationToken)
-            => await (await this.GetClientAsync()).GetOrchestrationStateAsync(cancellationToken);
+            => await (await this.GetClientAsync().ConfigureAwait(false)).GetOrchestrationStateAsync(cancellationToken).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task<IList<OrchestrationState>> IOrchestrationServiceQueryClient.GetOrchestrationStateAsync(DateTime? CreatedTimeFrom, DateTime? CreatedTimeTo, IEnumerable<OrchestrationStatus> RuntimeStatus, string InstanceIdPrefix, CancellationToken CancellationToken)
-            => await (await this.GetClientAsync()).GetOrchestrationStateAsync(CreatedTimeFrom, CreatedTimeTo, RuntimeStatus, InstanceIdPrefix, CancellationToken);
+            => await (await this.GetClientAsync().ConfigureAwait(false)).GetOrchestrationStateAsync(CreatedTimeFrom, CreatedTimeTo, RuntimeStatus, InstanceIdPrefix, CancellationToken).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task<int> IOrchestrationServiceQueryClient.PurgeInstanceHistoryAsync(string instanceId)
-            => await (await this.GetClientAsync()).DeleteAllDataForOrchestrationInstance(this.GetPartitionId(instanceId), instanceId);
+            => await (await this.GetClientAsync().ConfigureAwait(false)).DeleteAllDataForOrchestrationInstance(this.GetPartitionId(instanceId), instanceId).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task<int> IOrchestrationServiceQueryClient.PurgeInstanceHistoryAsync(DateTime createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus)
-            => await (await this.GetClientAsync()).PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus);
+            => await (await this.GetClientAsync().ConfigureAwait(false)).PurgeInstanceHistoryAsync(createdTimeFrom, createdTimeTo, runtimeStatus).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task<InstanceQueryResult> IOrchestrationServiceQueryClient.QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
-            => await (await this.GetClientAsync()).QueryOrchestrationStatesAsync(instanceQuery, pageSize, continuationToken, cancellationToken);
+            => await (await this.GetClientAsync().ConfigureAwait(false)).QueryOrchestrationStatesAsync(instanceQuery, pageSize, continuationToken, cancellationToken).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task<PurgeResult> IOrchestrationServicePurgeClient.PurgeInstanceStateAsync(string instanceId)
-            => new PurgeResult(await (await this.GetClientAsync()).DeleteAllDataForOrchestrationInstance(this.GetPartitionId(instanceId), instanceId));
+            => new PurgeResult(await (await this.GetClientAsync().ConfigureAwait(false)).DeleteAllDataForOrchestrationInstance(this.GetPartitionId(instanceId), instanceId).ConfigureAwait(false));
 
         /// <inheritdoc />
         async Task<PurgeResult> IOrchestrationServicePurgeClient.PurgeInstanceStateAsync(PurgeInstanceFilter purgeInstanceFilter)
@@ -930,7 +933,7 @@ namespace DurableTask.Netherite
             {
                 if (nextActivityWorkItem.WaitForDequeueCountPersistence != null)
                 {
-                    await nextActivityWorkItem.WaitForDequeueCountPersistence.Task;
+                    await nextActivityWorkItem.WaitForDequeueCountPersistence.Task.ConfigureAwait(false);
                 }
 
                 this.workItemTraceHelper.TraceWorkItemStarted(

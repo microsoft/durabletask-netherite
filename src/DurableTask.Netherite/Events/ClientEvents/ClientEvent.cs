@@ -16,6 +16,9 @@ namespace DurableTask.Netherite
         public long RequestId { get; set; }
 
         [IgnoreDataMember]
+        public int ReceiveChannel { get; set; }
+
+        [IgnoreDataMember]
         public override EventId EventId => EventId.MakeClientResponseEventId(this.ClientId, this.RequestId);
     }
 }

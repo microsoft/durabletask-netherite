@@ -22,14 +22,10 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly string eventHubName;
         readonly string eventHubPartition;
         readonly TimeSpan backoff = TimeSpan.FromSeconds(5);
-        const int maxFragmentSize = 500 * 1024; // account for very non-optimal serialization of event
+        int maxMessageSize = 900 * 1024; // we keep this slightly below the official limit since we have observed exceptions
+        int maxFragmentSize => this.maxMessageSize / 2; // we keep this lower than maxMessageSize because of serialization overhead
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
         readonly Stopwatch stopwatch = new Stopwatch();
-
-
-        // we manually set the max message size to leave extra room as
-        // we have observed exceptions in practice otherwise.
-        readonly BatchOptions batchOptions = new BatchOptions() { MaxMessageSize = 900 * 1024 };
 
         public EventHubsSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, EventHubsTraceHelper traceHelper)
             : base($"EventHubsSender {sender.EventHubClient.EventHubName}/{sender.PartitionId}", false, 2000, CancellationToken.None, traceHelper)
@@ -53,10 +49,12 @@ namespace DurableTask.Netherite.EventHubsTransport
             var sentSuccessfully = -1;
             var maybeSent = -1;
             Exception senderException = null;
-            
+
+            EventDataBatch CreateBatch() => this.sender.CreateBatch(new BatchOptions() { MaxMessageSize = maxMessageSize });
+
             try
             {
-                var batch = this.sender.CreateBatch(this.batchOptions);
+                var batch = CreateBatch();
 
                 async Task SendBatch(int lastPosition)
                 {
@@ -79,7 +77,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     int length = (int)(this.stream.Position - startPos);
                     var arraySegment = new ArraySegment<byte>(this.stream.GetBuffer(), (int)startPos, length);
                     var eventData = new EventData(arraySegment);
-                    bool tooBig = length > maxFragmentSize;
+                    bool tooBig = length > this.maxFragmentSize;
 
                     if (!tooBig && batch.TryAdd(eventData))
                     {
@@ -94,14 +92,14 @@ namespace DurableTask.Netherite.EventHubsTransport
                             await SendBatch(i - 1);
 
                             // create a fresh batch
-                            batch = this.sender.CreateBatch(this.batchOptions);
+                            batch = CreateBatch();
                         }
 
                         if (tooBig)
                         {
                             // the message is too big. Break it into fragments, and send each individually.
                             this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} fragmenting large event ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, length, evt.EventIdString);
-                            var fragments = FragmentationAndReassembly.Fragment(arraySegment, evt, maxFragmentSize);
+                            var fragments = FragmentationAndReassembly.Fragment(arraySegment, evt, this.maxFragmentSize);
                             maybeSent = i;
                             for (int k = 0; k < fragments.Count; k++)
                             {
@@ -134,6 +132,12 @@ namespace DurableTask.Netherite.EventHubsTransport
                     // the buffer can be reused now
                     this.stream.Seek(0, SeekOrigin.Begin);
                 }
+            }
+            catch(Microsoft.Azure.EventHubs.MessageSizeExceededException)
+            {
+                this.maxMessageSize = 200 * 1024;
+                this.traceHelper.LogWarning("EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send due to message size, reducing to {maxMessageSize}kB",
+                    this.eventHubName, this.eventHubPartition, this.maxMessageSize / 1024);
             }
             catch (Exception e)
             {

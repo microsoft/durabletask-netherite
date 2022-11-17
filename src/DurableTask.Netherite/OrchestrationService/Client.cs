@@ -11,8 +11,14 @@ namespace DurableTask.Netherite
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Core;
     using DurableTask.Core;
     using DurableTask.Core.History;
+    using Microsoft.Azure.Storage;
+    using Newtonsoft.Json;
+    using Newtonsoft.Json.Linq;
+    using static DurableTask.Netherite.TransportAbstraction;
+    using static Microsoft.Azure.Amqp.Serialization.SerializableType;
 
     class Client : TransportAbstraction.IClient
     {
@@ -33,7 +39,7 @@ namespace DurableTask.Netherite
 
         readonly BatchTimer<PendingRequest> ResponseTimeouts;
         readonly ConcurrentDictionary<long, PendingRequest> ResponseWaiters;
-        readonly Dictionary<string, MemoryStream> Fragments;
+        readonly Dictionary<(string,int), (MemoryStream, int)> Fragments;
         readonly Dictionary<long, QueryResponseReceived> QueryResponses;
 
         public static string GetShortId(Guid clientId) => clientId.ToString("N").Substring(0, 7);
@@ -56,7 +62,7 @@ namespace DurableTask.Netherite
             this.shutdownToken = shutdownToken;
             this.ResponseTimeouts = new BatchTimer<PendingRequest>(this.shutdownToken, this.Timeout, this.traceHelper.TraceTimerProgress);
             this.ResponseWaiters = new ConcurrentDictionary<long, PendingRequest>();
-            this.Fragments = new Dictionary<string, MemoryStream>();
+            this.Fragments = new Dictionary<(string,int), (MemoryStream, int)>();
             this.QueryResponses = new Dictionary<long, QueryResponseReceived>();
             this.ResponseTimeouts.Start("ClientTimer");
             this.workItemStopwatch = new Stopwatch();
@@ -78,76 +84,122 @@ namespace DurableTask.Netherite
 
         public void Process(ClientEvent clientEvent)
         {
-            if (clientEvent is QueryResponseReceived queryResponseReceived)
+            if (clientEvent is ClientEventFragment fragment)
             {
-                queryResponseReceived.DeserializeOrchestrationStates();
-                bool GotAllResults() => queryResponseReceived.Final == queryResponseReceived.OrchestrationStates.Count;
+                var originalEventString = fragment.OriginalEventId.ToString();
+                var index = (originalEventString, clientEvent.ReceiveChannel);
 
-                if (this.QueryResponses.TryGetValue(queryResponseReceived.RequestId, out QueryResponseReceived prev))
+                if (this.traceHelper.LogLevelLimit == Microsoft.Extensions.Logging.LogLevel.Trace)
                 {
-                    // combine all received states
-                    prev.OrchestrationStates.AddRange(queryResponseReceived.OrchestrationStates);
-                    queryResponseReceived.OrchestrationStates = prev.OrchestrationStates;
+                    this.traceHelper.TraceReceive(fragment, ClientTraceHelper.ResponseType.Fragment);
+                }
 
-                    // keep the final count, if known
-                    if (prev.Final.HasValue)
+                if (fragment.IsLast)
+                {
+                    (MemoryStream stream, int last) = this.Fragments[index];
+
+                    if (last != fragment.Fragment)
                     {
-                        queryResponseReceived.Final = prev.Final;
+                        throw new InvalidDataException($"wrong fragment sequence for event id={originalEventString}");
                     }
 
-                    if (GotAllResults())
-                    {
-                        this.QueryResponses.Remove(queryResponseReceived.RequestId);
-                    }
-                }             
+                    var reassembledEvent = FragmentationAndReassembly.Reassemble<ClientEvent>(stream, fragment);
 
-                if (GotAllResults())
-                {
-                    this.ProcessInternal(queryResponseReceived);
+                    this.Process(reassembledEvent);
                 }
                 else
                 {
-                    this.QueryResponses[queryResponseReceived.RequestId] = queryResponseReceived;
-                }
-            }
-            else if (clientEvent is ClientEventFragment fragment)
-            {
-                var originalEventString = fragment.OriginalEventId.ToString();
-
-                if (!fragment.IsLast)
-                {
-                    MemoryStream stream;
+                    (MemoryStream, int) streamAndPosition;
 
                     if (fragment.Fragment == 0)
                     {
-                        this.Fragments[originalEventString] = stream = new MemoryStream();
+                        this.Fragments[index] = streamAndPosition = (new MemoryStream(), 0);
                     }
                     else
                     {
-                        stream = this.Fragments[originalEventString];
+                        streamAndPosition = this.Fragments[index];
                     }
-                    stream.Write(fragment.Bytes, 0, fragment.Bytes.Length);
-                }
-                else
-                {
-                    var reassembledEvent = FragmentationAndReassembly.Reassemble<ClientEvent>(this.Fragments[originalEventString], fragment);
-                    this.Fragments.Remove(fragment.EventIdString);
+                    
+                    if (streamAndPosition.Item2 != fragment.Fragment)
+                    {
+                        throw new InvalidDataException($"wrong fragment sequence for event id={originalEventString}");
+                    }
 
-                    this.ProcessInternal(reassembledEvent);
+                    streamAndPosition.Item1.Write(fragment.Bytes, 0, fragment.Bytes.Length);
+                    streamAndPosition.Item2++;
+
+                    this.Fragments[index] = streamAndPosition;
                 }
             }
             else
             {
-                this.ProcessInternal(clientEvent);
+                this.Fragments.Remove((clientEvent.EventIdString, clientEvent.ReceiveChannel));
+
+                if (clientEvent is QueryResponseReceived queryResponseReceived)
+                {
+                    queryResponseReceived.DeserializeOrchestrationStates();
+
+                    bool GotAllResults() => queryResponseReceived.Final == queryResponseReceived.OrchestrationStates.Count;
+
+                    if (this.QueryResponses.TryGetValue(queryResponseReceived.RequestId, out QueryResponseReceived prev))
+                    {
+                        if (prev.Attempt < queryResponseReceived.Attempt)
+                        {
+                            // ignore the previous entry since we are processing a new attempt
+                            this.QueryResponses.Remove(queryResponseReceived.RequestId);
+                        }
+                        else if (prev.Attempt > queryResponseReceived.Attempt)
+                        {
+                            // the response we just received is part of a superseded attempt, so we just ignore it altogether.
+                            return;
+                        }
+                        else
+                        {
+                            // combine the previously stored states and the newly received ones
+                            prev.OrchestrationStates.AddRange(queryResponseReceived.OrchestrationStates);
+                            queryResponseReceived.OrchestrationStates = prev.OrchestrationStates;
+
+                            // keep the final count and continuation token, if we received it in the previous message
+                            if (prev.Final.HasValue)
+                            {
+                                queryResponseReceived.Final = prev.Final;
+                                queryResponseReceived.ContinuationToken = prev.ContinuationToken;
+                            }
+                        }
+
+                        if (GotAllResults())
+                        {
+                            this.QueryResponses.Remove(queryResponseReceived.RequestId);
+                        }
+                    }
+
+                    if (GotAllResults())
+                    {
+                        this.ProcessInternal(queryResponseReceived);
+                    }
+                    else
+                    {
+                        this.traceHelper.TraceReceive(queryResponseReceived, ClientTraceHelper.ResponseType.Partial);
+                        this.QueryResponses[queryResponseReceived.RequestId] = queryResponseReceived;
+                    }
+                }
+                else
+                {
+                    this.ProcessInternal(clientEvent);
+                }
             }
         }
 
         void ProcessInternal(ClientEvent clientEvent)
-        {
-            this.traceHelper.TraceReceive(clientEvent);
+        {       
             if (this.ResponseWaiters.TryRemove(clientEvent.RequestId, out var waiter))
             {
+                this.traceHelper.TraceReceive(clientEvent, ClientTraceHelper.ResponseType.Response);
                 waiter.Respond(clientEvent);
+            }
+            else
+            {
+                this.traceHelper.TraceReceive(clientEvent, ClientTraceHelper.ResponseType.Obsolete);
             }
         }
 
@@ -195,8 +247,6 @@ namespace DurableTask.Netherite
 
             public Task<ClientEvent> Task => this.continuation.Task;
             public (DateTime, int) TimeoutKey => this.timeoutKey;
-
-            public string RequestId => $"{Client.GetShortId(this.client.ClientId)}-{this.requestId}"; // matches EventId
 
             public PendingRequest(long requestId, EventId partitionEventId, uint partitionId, Client client, DateTime due, int timeoutId)
             {
@@ -462,26 +512,28 @@ namespace DurableTask.Netherite
             return (response?.ExecutionId, response?.History);
         }
 
-        public Task<IList<OrchestrationState>> GetOrchestrationStateAsync(CancellationToken cancellationToken)
-            => this.RunPartitionQueries<InstanceQueryReceived, QueryResponseReceived, IList<OrchestrationState>>(
-                partitionId => new InstanceQueryReceived() {
-                    PartitionId = partitionId,
-                    ClientId = this.ClientId,
-                    RequestId = Interlocked.Increment(ref this.SequenceNumber),
-                    TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+        public Task<List<OrchestrationState>> GetOrchestrationStateAsync(CancellationToken cancellationToken)
+            => this.RunPartitionQueries(
+                this.GetInitialPositions(), 
+                () => new InstanceQueryReceived() {
                     InstanceQuery = new InstanceQuery(),
                 },
-                (IEnumerable<QueryResponseReceived> responses) => responses.SelectMany(response => response.OrchestrationStates).ToList(),
+                new List<OrchestrationState>(),
+                (List<OrchestrationState> list, QueryResponseReceived response) =>
+                {
+                    list.AddRange(response.OrchestrationStates);
+                    return list;
+                },
+                (QueryResponseReceived response) => response.ContinuationToken,
+                pageSize: 500,
+                keepGoingUntilDone: true,
                 cancellationToken);
 
-        public Task<IList<OrchestrationState>> GetOrchestrationStateAsync(DateTime? createdTimeFrom, DateTime? createdTimeTo,
+        public Task<List<OrchestrationState>> GetOrchestrationStateAsync(DateTime? createdTimeFrom, DateTime? createdTimeTo,
                     IEnumerable<OrchestrationStatus> runtimeStatus, string instanceIdPrefix, CancellationToken cancellationToken = default)
-            => this.RunPartitionQueries<InstanceQueryReceived,QueryResponseReceived,IList<OrchestrationState>>(
-                partitionId => new InstanceQueryReceived() {
-                    PartitionId = partitionId,
-                    ClientId = this.ClientId,
-                    RequestId = Interlocked.Increment(ref this.SequenceNumber),
-                    TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+            => this.RunPartitionQueries(
+                this.GetInitialPositions(), 
+                () => new InstanceQueryReceived() {
                     InstanceQuery = new InstanceQuery(
                         runtimeStatus?.ToArray(), 
                         createdTimeFrom?.ToUniversalTime(),
@@ -489,17 +541,22 @@ namespace DurableTask.Netherite
                         instanceIdPrefix,
                         fetchInput: true),
                 },
-                (IEnumerable<QueryResponseReceived> responses) => responses.SelectMany(response => response.OrchestrationStates).ToList(),
+                new List<OrchestrationState>(),
+                (List<OrchestrationState> list, QueryResponseReceived response) =>
+                {
+                    list.AddRange(response.OrchestrationStates);
+                    return list;
+                },
+                (QueryResponseReceived response) => response.ContinuationToken,
+                pageSize: 500,
+                keepGoingUntilDone: true,
                 cancellationToken);
 
         public Task<int> PurgeInstanceHistoryAsync(DateTime? createdTimeFrom, DateTime? createdTimeTo, IEnumerable<OrchestrationStatus> runtimeStatus, CancellationToken cancellationToken = default)
             => this.RunPartitionQueries(
-                partitionId => new PurgeRequestReceived()
+                this.GetInitialPositions(),
+                () => new PurgeRequestReceived()
                 {
-                    PartitionId = partitionId,
-                    ClientId = this.ClientId,
-                    RequestId = Interlocked.Increment(ref this.SequenceNumber),
-                    TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
                     InstanceQuery = new InstanceQuery(
                         runtimeStatus?.ToArray(),
                         createdTimeFrom?.ToUniversalTime(),
@@ -508,41 +565,312 @@ namespace DurableTask.Netherite
                         fetchInput: false)
                     { PrefetchHistory = true },
                 },
-                (IEnumerable<PurgeResponseReceived> responses) => responses.Sum(response => response.NumberInstancesPurged),
+                0,
+                (int sum, PurgeResponseReceived response) => sum + response.NumberInstancesPurged,
+                (PurgeResponseReceived response) => response.ContinuationToken,
+                pageSize: 500,
+                keepGoingUntilDone: true,
                 cancellationToken);
 
-        public Task<InstanceQueryResult> QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
-            => this.RunPartitionQueries(
-                partitionId => new InstanceQueryReceived()
+        public async Task<InstanceQueryResult> QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
+        {
+            var positions = this.ConvertContinuationTokenToPositions(continuationToken);
+
+            List<OrchestrationState> instances = await this.RunPartitionQueries(
+                positions,
+                () => new InstanceQueryReceived()
                 {
-                    PartitionId = partitionId,
-                    ClientId = this.ClientId,
-                    RequestId = Interlocked.Increment(ref this.SequenceNumber),
-                    TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
                     InstanceQuery = instanceQuery,
                 },
-                (IEnumerable<QueryResponseReceived> responses) => new InstanceQueryResult()
+                new List<OrchestrationState>(),
+                (List<OrchestrationState> list, QueryResponseReceived response) =>
                 {
-                    Instances = responses.SelectMany(response => response.OrchestrationStates),
-                    ContinuationToken = null,
+                    list.AddRange(response.OrchestrationStates);
+                    return list;
                 },
-                cancellationToken);
+                (QueryResponseReceived response) => response.ContinuationToken,
+                pageSize,
+                pageSize == 0,
+                cancellationToken).ConfigureAwait(false);
 
-        async Task<TResult> RunPartitionQueries<TRequest,TResponse,TResult>(
-            Func<uint, TRequest> requestCreator, 
-            Func<IEnumerable<TResponse>,TResult> responseAggregator,
-            CancellationToken cancellationToken)
-            where TRequest: IClientRequestEvent
-        {
-            IEnumerable<Task<ClientEvent>> launchQueries()
+            continuationToken = this.ConvertPositionsToContinuationToken(positions);
+
+            return new InstanceQueryResult()
             {
-                for (uint partitionId = 0; partitionId < this.host.NumberPartitions; ++partitionId)
+                Instances = instances,
+                ContinuationToken = continuationToken,
+            };
+        }
+
+        string[] GetInitialPositions()
+        {
+            string[] positions = new string[this.host.NumberPartitions];
+            for (int i = 0; i < positions.Length; i++)
+            {
+                positions[i] = String.Empty;
+            }
+            return positions;
+        }
+
+        string[] ConvertContinuationTokenToPositions(string continuationToken)
+        {
+            if (string.IsNullOrEmpty(continuationToken))
+            {
+                return this.GetInitialPositions();
+            }
+            else
+            {
+                string[] positions;
+
+                try
                 {
-                    yield return this.PerformRequestWithTimeoutAndCancellation(cancellationToken, requestCreator(partitionId), false);
+                    positions = JsonConvert.DeserializeObject<string[]>(continuationToken);
+                }
+                catch (Exception e)
+                {
+                    throw new ArgumentException("invalid continuation token: failed to parse: ", e);
+                }
+
+                if (positions.Length != this.host.NumberPartitions)
+                {
+                    throw new ArgumentException("invalid continuation token: wrong number of partition");
+                }
+
+                if (positions.Count(s => s != null) == 0)
+                {
+                    throw new ArgumentException("invalid continuation token: no targets");
+                }
+
+                return positions;
+            }
+        }
+
+        string ConvertPositionsToContinuationToken(string[] positions)
+        {
+            return positions.Any(t => t != null) ? JsonConvert.SerializeObject(positions) : null;
+        }
+
+        async Task<TResult> RunPartitionQueries<TRequest, TResponse, TResult>(
+           string[] partitionPositions,
+           Func<TRequest> requestCreator,
+           TResult initialResult,
+           Func<TResult, TResponse, TResult> responseAggregator,
+           Func<TResponse, string> continuationToken,
+           int pageSize,
+           bool keepGoingUntilDone,
+           CancellationToken cancellationToken)
+           where TRequest : ClientRequestEventWithQuery
+           where TResponse : ClientEvent, IPagedResponse
+        {
+            string clientQueryId = $"Q{Interlocked.Increment(ref this.SequenceNumber)}";
+            string PrintPartitionPositions() => string.Join(",", partitionPositions.Select(s => s ?? "null"));
+
+            if (!this.host.Settings.KeepInstanceIdsInMemory)
+            {
+                pageSize = 0; // paging is not supported
+            }
+
+            this.traceHelper.TraceProgress($"Query {clientQueryId} type={typeof(TRequest).Name} paging={pageSize > 0} starting at {PrintPartitionPositions()}");
+
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
+                TResult result;
+
+                if (pageSize > 0)
+                {
+                    result = await this.RunPagedPartitionQueries(
+                        clientQueryId,
+                        partitionPositions,
+                        requestCreator,
+                        initialResult,
+                        responseAggregator,
+                        pageSize,
+                        keepGoingUntilDone,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    result = await this.RunUnpagedPartitionQueries(
+                        clientQueryId,
+                        (uint partitionId) =>
+                        {
+                            var request = requestCreator();
+                            request.PartitionId = partitionId;
+                            request.ClientId = this.ClientId;
+                            request.RequestId = Interlocked.Increment(ref this.SequenceNumber);
+                            request.PageSize = 0;
+                            request.TimeoutUtc = this.GetTimeoutBucket(TimeSpan.FromMinutes(60));
+                            return request;
+                        },
+                        (IEnumerable<TResponse> responses) =>
+                        {
+                            TResult result = initialResult;
+                            int i = 0;
+                            foreach (var response in responses)
+                            {
+                                result = responseAggregator(result, response);
+                                partitionPositions[i++] = continuationToken(response);
+                            }
+                            return result;
+                        },
+                        cancellationToken).ConfigureAwait(false);
+                }
+
+                this.traceHelper.TraceProgress($"Query {clientQueryId} type={typeof(TRequest).Name} completed after {stopwatch.Elapsed.TotalSeconds:F2}s at {PrintPartitionPositions()}");
+                return result;
+            }
+            catch (Exception exception)
+            {
+                this.traceHelper.TraceError("RunPartitionQueries", $"Query {clientQueryId} type={typeof(TRequest).Name} failed after {stopwatch.Elapsed.TotalSeconds:F2}s", exception);
+                throw;
+            }
+        }
+
+        async Task<TResult> RunUnpagedPartitionQueries<TRequest, TResponse, TResult>(
+            string clientQueryId,
+            Func<uint, TRequest> requestCreator,
+            Func<IEnumerable<TResponse>, TResult> responseAggregator,
+            CancellationToken cancellationToken)
+            where TRequest : ClientRequestEventWithQuery
+            where TResponse : ClientEvent, IPagedResponse
+        {           
+            async Task<TResponse> QueryPartition(uint partitionId)
+            {
+                var stopwatch = Stopwatch.StartNew();
+                var request = requestCreator(partitionId);
+                var response = (TResponse) await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false).ConfigureAwait(false);
+                this.traceHelper.TraceQueryProgress(clientQueryId, request.EventIdString, partitionId, stopwatch.Elapsed, request.PageSize, response.Count, response.ContinuationToken);
+                return response;
+            }
+
+            var tasks = Enumerable.Range(0, (int) this.host.NumberPartitions).Select(i => QueryPartition((uint) i)).ToList();
+            ClientEvent[] responses = await Task.WhenAll(tasks).ConfigureAwait(false);
+            return responseAggregator(responses.Cast<TResponse>());
+        }
+
+        public async Task<TResult> RunPagedPartitionQueries<TRequest, TResponse, TResult>(
+            string clientQueryId,
+            string[] partitionPositions,
+            Func<TRequest> requestCreator,
+            TResult initialResult,
+            Func<TResult, TResponse, TResult> responseAggregator,
+            int pageSize,
+            bool keepGoingUntilDone,
+            CancellationToken cancellationToken)
+            where TRequest : ClientRequestEventWithQuery
+            where TResponse: ClientEvent, IPagedResponse
+        {
+            TResult currentResult = initialResult;
+            var aggregationLock = new object();
+
+            // query each partition
+            var tasks = new Task[partitionPositions.Length];
+            for (uint i = 0; i < tasks.Length; i++)
+            {
+                tasks[i] = QueryPartition(i);
+            }
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+
+            // return the aggregated result
+            return currentResult;
+           
+            async Task QueryPartition(uint partitionId)
+            {
+                int retries = 5;
+                TimeSpan retryDelay = TimeSpan.FromSeconds(2);
+
+                Task BackOffAsync()
+                {
+                    retries--;
+                    retryDelay += retryDelay;
+                    return Task.Delay(retryDelay);
+                }
+
+                void ResetRetries()
+                {
+                    retries = 5;
+                    retryDelay = TimeSpan.FromSeconds(2);
+                }
+
+                bool hasMore = (partitionPositions[partitionId] != null);
+
+                while (hasMore && !cancellationToken.IsCancellationRequested)
+                {
+                    hasMore = await GetNextPageAsync().ConfigureAwait(false);
+
+                    if (!keepGoingUntilDone)
+                    {
+                        return; // we take only the first page from each partition
+                    }
+                }
+
+                async Task<bool> GetNextPageAsync()
+                {
+                    var request = requestCreator();
+                    request.PartitionId = partitionId;
+                    request.ClientId = this.ClientId;
+                    request.RequestId = Interlocked.Increment(ref this.SequenceNumber);
+                    request.PageSize = pageSize;
+                    request.TimeoutUtc = this.GetTimeoutBucket(Debugger.IsAttached ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(30));
+                    request.ContinuationToken = partitionPositions[partitionId];
+
+                    try
+                    {
+                        if (request.ContinuationToken == null)
+                        {
+                            throw new InvalidDataException($"query {clientQueryId} is issuing query for already-completed partition id {partitionId}");
+                        }
+
+                        var stopwatch = Stopwatch.StartNew();
+                        var response = (TResponse)await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false).ConfigureAwait(false);
+                        this.traceHelper.TraceQueryProgress(clientQueryId, request.EventIdString, partitionId, stopwatch.Elapsed, request.PageSize, response.Count, response.ContinuationToken);
+
+                        ResetRetries();
+
+                        lock (aggregationLock)
+                        {
+                            currentResult = responseAggregator(currentResult, response);
+                        }
+
+                        if (response.ContinuationToken == null)
+                        {
+                            partitionPositions[partitionId] = null;
+                            return false;
+                        }
+
+                        int progress = response.ContinuationToken.CompareTo(partitionPositions[partitionId]);
+
+                        if (progress > 0)
+                        {
+                            partitionPositions[partitionId] = response.ContinuationToken;
+                            return true;
+                        }
+                        else if (progress < 0)
+                        {
+                            throw new InvalidDataException($"query {clientQueryId} received invalid continuation token for {request.EventId}");
+                        }
+                        else if (retries > 0)
+                        {
+                            await BackOffAsync().ConfigureAwait(false);
+                            return true;
+                        }
+                        else
+                        {
+                            throw new TimeoutException($"query {clientQueryId} did not make progress in time on partition {partitionId}");
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return false;
+                    }
+                    catch (Exception) when (retries > 0)
+                    {
+                        await BackOffAsync().ConfigureAwait(false);
+                        return true;
+                    }
                 }
             }
-            ClientEvent[] responses = await Task.WhenAll(launchQueries().ToList()).ConfigureAwait(false);
-            return responseAggregator(responses.Cast<TResponse>());
         }
 
         public Task ForceTerminateTaskOrchestrationAsync(uint partitionId, string instanceId, string message)

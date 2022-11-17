@@ -64,7 +64,7 @@ namespace DurableTask.Netherite
 
                 if (trackedObject.Key.IsSingleton)
                 {
-                    trackedObject.OnFirstInitialization();
+                    trackedObject.OnFirstInitialization(partition);
                 }
             }
 
@@ -91,15 +91,20 @@ namespace DurableTask.Netherite
             return result;
         }
 
-        IList<OrchestrationState> QueryOrchestrationStates(InstanceQuery query)
+        IList<OrchestrationState> QueryOrchestrationStates(InstanceQuery query, int pageSize, string continuationToken)
         {
             return this.trackedObjects
                 .Values
                 .Select(trackedObject => trackedObject as InstanceState)
                 .Select(instanceState => instanceState?.OrchestrationState)
-                .Where(orchestrationState => orchestrationState != null 
+                .Where(orchestrationState => 
+                    orchestrationState != null
+                    && orchestrationState.OrchestrationInstance.InstanceId.CompareTo(continuationToken) > 0     
                     && (query == null || query.Matches(orchestrationState)))
+                .OrderBy(orchestrationState => orchestrationState.OrchestrationInstance.InstanceId)
                 .Select(orchestrationState => orchestrationState.ClearFieldsImmutably(!query.FetchInput, false))
+                .Append(null)
+                .Take(pageSize == 0 ? int.MaxValue : pageSize)
                 .ToList();
         }
 
@@ -140,8 +145,8 @@ namespace DurableTask.Netherite
                                     break;
 
                                 case PartitionQueryEvent queryEvent:
-                                    var instances = this.QueryOrchestrationStates(queryEvent.InstanceQuery);
-                                    var backgroundTask = Task.Run(() => this.effects.ProcessQueryResultAsync(queryEvent, instances.ToAsyncEnumerable()));
+                                    var instances = this.QueryOrchestrationStates(queryEvent.InstanceQuery, queryEvent.PageSize, queryEvent.ContinuationToken ?? "");
+                                    var backgroundTask = Task.Run(() => this.effects.ProcessQueryResultAsync(queryEvent, instances.ToAsyncEnumerable(), DateTime.UtcNow));
                                     break;
 
                                 default:

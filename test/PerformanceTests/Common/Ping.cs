@@ -32,7 +32,7 @@ namespace PerformanceTests
             ILogger log)
         {
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            log.LogInformation("C# HTTP trigger function processed a request.");
+            log.LogWarning("Received ping {requestBody}", requestBody);
             var is64bit = Environment.Is64BitProcess;
 
             try

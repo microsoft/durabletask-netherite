@@ -193,7 +193,7 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 // restart pending actitivities, timers, work items etc.
-                this.storeWorker.RestartThingsAtEndOfRecovery(inputQueueFingerprint);
+                this.storeWorker.RestartThingsAtEndOfRecovery(inputQueueFingerprint, this.blobManager.IncarnationTimestamp);
 
                 this.TraceHelper.FasterProgress("Recovery complete");
             }
@@ -209,7 +209,7 @@ namespace DurableTask.Netherite.Faster
 
         internal void CheckForStuckWorkers(object _)
         {
-            TimeSpan limit = TimeSpan.FromMinutes(1);
+            TimeSpan limit = Debugger.IsAttached ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(1);
 
             // check if any of the workers got stuck in a processing loop
             Check("StoreWorker", this.storeWorker.ProcessingBatchSince);

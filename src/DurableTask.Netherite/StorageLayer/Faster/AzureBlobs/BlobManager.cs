@@ -51,6 +51,8 @@ namespace DurableTask.Netherite.Faster
         public IDevice HybridLogDevice { get; private set; }
         public IDevice ObjectLogDevice { get; private set; }
 
+        public DateTime IncarnationTimestamp { get; private set; }
+
         IDevice[] PsfLogDevices;
         internal CheckpointInfo[] PsfCheckpointInfos { get; }
         int PsfGroupCount => this.PsfCheckpointInfos.Length;
@@ -137,7 +139,7 @@ namespace DurableTask.Netherite.Faster
                     (useSeparatePageBlobStorage ? 35   // 32 GB
                                                 : 32), // 4 GB
                 PreallocateLog = false,
-                ReadFlags = ReadFlags.CopyReadsToTail,
+                ReadFlags = ReadFlags.None,
                 ReadCacheSettings = null, // no read cache
                 MemorySizeBits = memorybits,
             };
@@ -567,6 +569,7 @@ namespace DurableTask.Netherite.Faster
                         this.TraceHelper.LeaseAcquired();
                     }
 
+                    this.IncarnationTimestamp = DateTime.UtcNow;
                     this.leaseTimer = newLeaseTimer;
                     this.LeaseMaintenanceLoopTask = Task.Run(() => this.MaintenanceLoopAsync());
                     return;

@@ -26,8 +26,14 @@ namespace DurableTask.Netherite
         [DataMember]
         public string ChangedFingerprint { get; set; }
 
+        [DataMember]
+        public bool KeepInstanceIdsInMemory { get; set; }
+
         [IgnoreDataMember]
         public override bool ResetInputQueue => !string.IsNullOrEmpty(this.ChangedFingerprint);
+
+        [IgnoreDataMember]
+        public Dictionary<uint, (long Position, int SubPosition)> ReceivePositions;
 
         public override void ApplyTo(TrackedObject trackedObject, EffectTracker effects)
         {
@@ -64,6 +70,7 @@ namespace DurableTask.Netherite
             effects.Add(TrackedObjectKey.Timers);
             effects.Add(TrackedObjectKey.Prefetch);
             effects.Add(TrackedObjectKey.Queries);
+            effects.Add(TrackedObjectKey.Dedup);
         }
     }
 }

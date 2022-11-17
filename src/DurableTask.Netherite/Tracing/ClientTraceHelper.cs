@@ -17,6 +17,8 @@ namespace DurableTask.Netherite
         readonly LogLevel logLevelLimit;
         readonly string tracePrefix;
 
+        public LogLevel LogLevelLimit => this.logLevelLimit;
+
         public ClientTraceHelper(ILoggerFactory loggerFactory, LogLevel logLevelLimit, string storageAccountName, string taskHubName, Guid clientId)
         {
             this.logger = loggerFactory.CreateLogger($"{NetheriteOrchestrationService.LoggerCategoryName}.Client");
@@ -87,6 +89,22 @@ namespace DurableTask.Netherite
             }
         }
 
+        public void TraceQueryProgress(string clientQueryId, string queryId, uint partitionId, TimeSpan elapsed, int pageSize, int count, string continuationToken)
+        {
+            if (this.logLevelLimit <= LogLevel.Debug)
+            {
+                continuationToken = continuationToken ?? "null";
+                if (this.logger.IsEnabled(LogLevel.Debug))
+                {
+                    this.logger.LogDebug("{client} Query {clientQueryId} received response {queryId} from partition {partitionId:D2} elapsed={elapsedSeconds:F2}s pageSize={pageSize} count={count} continuationToken={continuationToken} ", this.tracePrefix, clientQueryId, queryId, partitionId, elapsed.TotalSeconds, pageSize, count, continuationToken);
+                }
+                if (EtwSource.Log.IsEnabled())
+                {
+                    EtwSource.Log.ClientQueryProgress(this.account, this.taskHub, this.clientId, clientQueryId, queryId, partitionId, elapsed.TotalSeconds, pageSize, count, continuationToken, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                }
+            }
+        }
+
         public void TraceSend(PartitionEvent @event)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
@@ -102,17 +120,19 @@ namespace DurableTask.Netherite
             }
         }
 
-        public void TraceReceive(ClientEvent @event)
+        public enum ResponseType {  Fragment, Partial, Obsolete, Response };
+
+        public void TraceReceive(ClientEvent @event, ResponseType status)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
                 if (this.logger.IsEnabled(LogLevel.Debug))
                 {
-                    this.logger.LogDebug("{client} Processing event {eventId}: {event}", this.tracePrefix, @event.EventIdString, @event);
+                    this.logger.LogDebug("{client} Processing event id={eventId} {status}: {event}", this.tracePrefix, @event.EventIdString, status, @event);
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientReceivedEvent(this.account, this.taskHub, this.clientId, @event.EventIdString, @event.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientReceivedEvent(this.account, this.taskHub, this.clientId, @event.EventIdString, status.ToString(), @event.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }

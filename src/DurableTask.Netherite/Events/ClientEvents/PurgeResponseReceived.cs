@@ -7,10 +7,16 @@ namespace DurableTask.Netherite
     using System.Text;
 
     [DataContract]
-    class PurgeResponseReceived : ClientEvent
+    class PurgeResponseReceived : ClientEvent, IPagedResponse
     {
         [DataMember]
         public int NumberInstancesPurged { get; set; }
+
+        [DataMember]
+        public string ContinuationToken { get; set; }  // null indicates we have reached the end of all instances in this partition
+
+        [IgnoreDataMember]
+        public int Count => this.NumberInstancesPurged;
 
         protected override void ExtraTraceInformation(StringBuilder s)
         {

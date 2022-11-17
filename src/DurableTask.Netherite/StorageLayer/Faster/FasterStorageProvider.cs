@@ -76,7 +76,7 @@ namespace DurableTask.Netherite.Faster
                 return cloudBlobContainer.GetBlockBlobReference("taskhubparameters.json");
             }
 
-            this.traceHelper.TraceProgress("Creating LoadMonitor Service");
+            this.traceHelper.TraceProgress("Creating LoadPublisher Service");
             if (!string.IsNullOrEmpty(settings.LoadInformationAzureTableName))
             {
                 this.LoadPublisher = new AzureTableLoadPublisher(settings.TableStorageConnection, settings.LoadInformationAzureTableName, settings.HubName);

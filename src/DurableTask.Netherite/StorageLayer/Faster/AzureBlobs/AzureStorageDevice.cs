@@ -191,7 +191,7 @@ namespace DurableTask.Netherite.Faster
 
         internal void CheckForHangs(object _)
         {
-            DateTime threshold = DateTime.UtcNow - this.limit;
+            DateTime threshold = DateTime.UtcNow - (Debugger.IsAttached ? TimeSpan.FromMinutes(30) : this.limit);
 
             foreach(var kvp in this.pendingReadWriteOperations)
             {
