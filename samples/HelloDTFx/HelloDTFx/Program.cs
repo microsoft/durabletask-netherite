@@ -16,13 +16,26 @@ var netheriteSettings = new NetheriteOrchestrationServiceSettings()
     HubName = "myhub",
     PartitionCount = 4,
 
-    // we explicitly specify the two required connection strings here.
-    // Another option would be to use a connection name resolver when calling Validate().
-    ResolvedStorageConnectionString = "UseDevelopmentStorage=true;",
-    ResolvedTransportConnectionString = "SingleHost",
+    StorageConnectionName = "MyStorageConnection",
+    EventHubsConnectionName = "MyEventHubsConnection",
 };
 
-netheriteSettings.Validate();
+netheriteSettings.Validate(connectionStringResolver);
+
+// we use pseudo-connection strings here for demonstration purposes.
+// See the sample "TokenCredentialDTFX" if you want to use Azure token credentials instead.
+string connectionStringResolver(string connectionName)
+{
+    switch (connectionName)
+    {
+        case "MyStorageConnection":
+            return "UseDevelopmentStorage=true;"; // use the local storage emulater
+        case "MyEventHubsConnection":
+            return "SingleHost"; // run Netherite in SingleHost mode, which does not require an Azure Event Hubs namespace resource
+        default:
+            throw new ArgumentException("invalid connection name");
+    }
+};
 
 var loggerFactory = LoggerFactory.Create(builder =>
 {
