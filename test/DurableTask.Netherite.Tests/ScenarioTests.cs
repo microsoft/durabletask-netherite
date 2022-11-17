@@ -4,7 +4,9 @@
 namespace DurableTask.Netherite.Tests
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
+    using System.ComponentModel;
     using System.Diagnostics;
     using System.IO;
     using System.Linq;
@@ -12,9 +14,10 @@ namespace DurableTask.Netherite.Tests
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Data.Tables;
+    using Castle.Core.Resource;
     using DurableTask.Core;
     using DurableTask.Core.Exceptions;
-    using Microsoft.Azure.Cosmos.Table;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
     using Xunit;
@@ -24,14 +27,14 @@ namespace DurableTask.Netherite.Tests
 
     [Collection("NetheriteTests")]
     [Trait("AnyTransport", "true")]
-    public partial class ScenarioTests : IClassFixture<SingleHostFixture>, IDisposable
+    public partial class ScenarioTests : IClassFixture<HostFixture>, IDisposable
     {
-        readonly SingleHostFixture fixture;
+        readonly HostFixture fixture;
         readonly TestOrchestrationHost host;
         readonly Action<string> output;
         ITestOutputHelper outputHelper;
 
-        public ScenarioTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
+        public ScenarioTests(HostFixture fixture, ITestOutputHelper outputHelper)
         {
             this.outputHelper = outputHelper;
             this.output = (string message) => this.outputHelper?.WriteLine(message);
@@ -1816,47 +1819,40 @@ namespace DurableTask.Netherite.Tests
 
             internal class WriteTableRow : TaskActivity<Tuple<string, string>, string>
             {
-                static CloudTable cachedTable;
+                static TableClient tableClient;
 
-                internal static CloudTable TestCloudTable
+                internal static TableClient TestCloudTable
                 {
                     get
                     {
-                        if (cachedTable == null)
+                        if (tableClient == null)
                         {
-                            CloudTable table = CloudStorageAccount
-                                .Parse(Environment.GetEnvironmentVariable(TestConstants.StorageConnectionName))
-                                .CreateCloudTableClient()
-                                .GetTableReference("TestTable");
+                            TableClient table = new TableClient(Environment.GetEnvironmentVariable(TestConstants.StorageConnectionName), "TestTable");
                             table.CreateIfNotExistsAsync().Wait();
-                            cachedTable = table;
+                            tableClient = table;
                         }
 
-                        return cachedTable;
+                        return tableClient;
                     }
                 }
 
                 protected override string Execute(TaskContext context, Tuple<string, string> rowData)
                 {
-                    var entity = new DynamicTableEntity(
-                        partitionKey: rowData.Item1,
-                        rowKey: $"{rowData.Item2}.{Guid.NewGuid():N}");
-                    TestCloudTable.ExecuteAsync(TableOperation.Insert(entity)).Wait();
+                    var entity = new TableEntity(rowData.Item1, $"{rowData.Item2}.{Guid.NewGuid():N}");
+                    WriteTableRow.TestCloudTable.AddEntity(entity);
                     return null;
                 }
             }
+
+            
 
             internal class CountTableRows : TaskActivity<string, int>
             {
                 protected override int Execute(TaskContext context, string partitionKey)
                 {
-                    var query = new TableQuery<DynamicTableEntity>().Where(
-                        TableQuery.GenerateFilterCondition(
-                            "PartitionKey",
-                            QueryComparisons.Equal,
-                            partitionKey));
-
-                    return WriteTableRow.TestCloudTable.ExecuteQuerySegmentedAsync(query, null).GetAwaiter().GetResult().Count();
+                    var asyncPageable =  WriteTableRow.TestCloudTable.QueryAsync<TableEntity>($"PartitionKey eq '{partitionKey}'");
+                    var count = asyncPageable.CountAsync().GetAwaiter().GetResult();
+                    return count;
                 }
             }
 

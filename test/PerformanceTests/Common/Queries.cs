@@ -23,17 +23,14 @@ namespace PerformanceTests
     public static class Queries
     {
         [FunctionName(nameof(PagedQuery))]
-        public static async Task<JsonResult> PagedQuery(
+        public static async Task<IActionResult> PagedQuery(
           [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "pagedquery")] HttpRequest req,
           [DurableClient] IDurableClient client,
           ILogger log)
         {
             try
             {
-                var queryCondition = new OrchestrationStatusQueryCondition()
-                {                   
-                    PageSize = 100,
-                };
+                var queryCondition = new OrchestrationStatusQueryCondition();
 
                 try
                 {
@@ -104,6 +101,8 @@ namespace PerformanceTests
                 int inputchars = 0;
                 int pages = 0;
 
+                var receivedInstanceIds = new HashSet<string>();
+
                 log.LogWarning($"Querying orchestration instances...");
 
                 var stopwatch = Stopwatch.StartNew();
@@ -127,6 +126,12 @@ namespace PerformanceTests
                         {
                             inputchars += status.Input.ToString().Length;
                         }
+
+                        bool isFresh = receivedInstanceIds.Add(status.InstanceId);
+                        if (!isFresh)
+                        {
+                            throw new InvalidDataException($"received duplicate instance id: {status.InstanceId}");
+                        }
                     }
 
                 } while (queryCondition.ContinuationToken != null);
@@ -134,7 +139,7 @@ namespace PerformanceTests
                 stopwatch.Stop();
                 double querySec = stopwatch.ElapsedMilliseconds / 1000.0;
 
-                return new JsonResult(new
+                var resultObject = new
                 { 
                     records,
                     completed,
@@ -142,7 +147,9 @@ namespace PerformanceTests
                     pages,
                     querySec,
                     throughput = records > 0 ? (records/querySec).ToString("F2") : "n/a",
-                });   
+                };
+
+                return new OkObjectResult($"{JsonConvert.SerializeObject(resultObject)}\n");
             }
             catch (Exception e)
             {

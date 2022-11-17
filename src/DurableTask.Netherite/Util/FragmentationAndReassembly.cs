@@ -20,6 +20,8 @@ namespace DurableTask.Netherite
             byte[] Bytes { get; }
 
             bool IsLast { get; }
+
+            int Fragment { get; }
         }
 
         public static List<IEventFragment> Fragment(ArraySegment<byte> segment, Event original, int maxFragmentSize)
@@ -52,6 +54,8 @@ namespace DurableTask.Netherite
                     {
                         PartitionId = partitionEvent.PartitionId,
                         OriginalEventId = original.EventId,
+                        Timeout = (partitionEvent as ClientRequestEvent)?.TimeoutUtc,
+                        DedupPosition = (partitionEvent as PartitionMessageEvent)?.DedupPositionForFragments,
                         Bytes = new ArraySegment<byte>(segment.Array, offset, portion).ToArray(),
                         Fragment = count++,
                         IsLast = (portion == length),
@@ -72,13 +76,16 @@ namespace DurableTask.Netherite
             return evt;
         }
 
-        public static TEvent Reassemble<TEvent>(IEnumerable<IEventFragment> earlierFragments, IEventFragment lastFragment) where TEvent: Event
+        public static TEvent Reassemble<TEvent>(IEnumerable<IEventFragment> earlierFragments, IEventFragment lastFragment, Partition partition) where TEvent: Event
         {
             using (var stream = new MemoryStream())
             {
+                int position = 0;
                 foreach (var x in earlierFragments)
                 {
+                    partition.Assert(position == x.Fragment, "bad fragment sequence: position");
                     stream.Write(x.Bytes, 0, x.Bytes.Length);
+                    position++;
                 }
                 stream.Write(lastFragment.Bytes, 0, lastFragment.Bytes.Length);
                 stream.Seek(0, SeekOrigin.Begin);

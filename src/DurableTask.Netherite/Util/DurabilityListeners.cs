@@ -100,19 +100,24 @@ namespace DurableTask.Netherite
 
             if (listeners != null)
             {
-                if (listeners is TransportAbstraction.IDurabilityListener listener)
+                if (listeners is TransportAbstraction.IDurabilityOrExceptionListener listener)
                 {
-                    listener.ConfirmDurable(evt);
+                    listener.ReportException(evt, e);
                 }
                 else if (listeners is List<TransportAbstraction.IDurabilityListener> list)
                 {
                     foreach (var l in list)
                     {
-                        l.ConfirmDurable(evt);
+                        if (l is TransportAbstraction.IDurabilityOrExceptionListener listener2)
+                        {
+                            listener2.ReportException(evt, e);
+                        }
                     }
                 }
             }
         }
+
+        public bool IsDone(Event evt) => evt.DurabilityListeners.status == MarkAsSuccessfullyCompleted;
 
         public void Clear()
         {

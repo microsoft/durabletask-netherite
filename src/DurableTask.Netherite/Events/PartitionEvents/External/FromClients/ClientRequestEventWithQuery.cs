@@ -22,6 +22,12 @@ namespace DurableTask.Netherite
         [DataMember]
         public int PreviousAttempts { get; set; }
 
+        [DataMember]
+        public string ContinuationToken { get; set; }
+
+        [DataMember]
+        public int PageSize { get; set; }
+
         [IgnoreDataMember]
         public override EventId EventId => EventId.MakeClientRequestEventId(this.ClientId, this.RequestId);
 
@@ -33,7 +39,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        public abstract Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition);
+        public abstract Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition, DateTime attempt);
 
         public sealed override void DetermineEffects(EffectTracker effects)
         {

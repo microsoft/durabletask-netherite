@@ -26,7 +26,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{D33AB157-04B
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hello", "samples\Hello_Netherite_with_DotNetCore\Hello.csproj", "{654DA6B4-2E2F-4386-BB9F-7CE5A13998DE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HelloDF", "samples\Hello_Netherite_with_DotNetCore\HelloDF.csproj", "{654DA6B4-2E2F-4386-BB9F-7CE5A13998DE}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{AB958467-9236-402E-833C-B8DE4841AB9F}"
 EndProject
@@ -34,7 +34,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ScaleMonitor", "test\ScaleM
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LoadGeneratorApp", "test\LoadGeneratorApp\LoadGeneratorApp.csproj", "{78B360B8-3A41-4DC0-A300-94A0FABC1FB0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HelloDTFx", "samples\HelloDTFx\HelloDTFx\HelloDTFx.csproj", "{EC293D85-91E3-4F78-8B1E-2C691315CE96}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HelloDTFx", "samples\HelloDTFx\HelloDTFx\HelloDTFx.csproj", "{EC293D85-91E3-4F78-8B1E-2C691315CE96}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TokenCredentialDF", "samples\TokenCredentialDF\TokenCredentialDF.csproj", "{B99AB043-47DC-467C-93CB-D6C69D3B1AD4}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TokenCredentialDTFx", "samples\TokenCredentialDTFx\TokenCredentialDTFx.csproj", "{FBFF0814-E6C0-489A-ACCF-9D0699219621}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -78,6 +82,14 @@ Global
 		{EC293D85-91E3-4F78-8B1E-2C691315CE96}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EC293D85-91E3-4F78-8B1E-2C691315CE96}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EC293D85-91E3-4F78-8B1E-2C691315CE96}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FBFF0814-E6C0-489A-ACCF-9D0699219621}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FBFF0814-E6C0-489A-ACCF-9D0699219621}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FBFF0814-E6C0-489A-ACCF-9D0699219621}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FBFF0814-E6C0-489A-ACCF-9D0699219621}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -92,6 +104,8 @@ Global
 		{2F4D331C-62E4-47E8-852E-163166944DF8} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
 		{78B360B8-3A41-4DC0-A300-94A0FABC1FB0} = {4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}
 		{EC293D85-91E3-4F78-8B1E-2C691315CE96} = {AB958467-9236-402E-833C-B8DE4841AB9F}
+		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4} = {AB958467-9236-402E-833C-B8DE4841AB9F}
+		{FBFF0814-E6C0-489A-ACCF-9D0699219621} = {AB958467-9236-402E-833C-B8DE4841AB9F}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {238A9613-5411-41CF-BDEC-168CCD5C03FB}

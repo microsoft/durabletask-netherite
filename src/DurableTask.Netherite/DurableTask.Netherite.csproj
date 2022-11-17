@@ -25,8 +25,8 @@
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
   <PropertyGroup>
     <MajorVersion>1</MajorVersion>
-	<MinorVersion>1</MinorVersion>
-	<PatchVersion>1</PatchVersion>
+	<MinorVersion>2</MinorVersion>
+	<PatchVersion>0</PatchVersion>
 	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
     <VersionSuffix></VersionSuffix>
     <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
@@ -50,12 +50,13 @@
   </ItemGroup>
   
   <ItemGroup>
-    <PackageReference Include="Azure.Messaging.EventHubs" Version="5.7.0" />
-    <PackageReference Include="Microsoft.Azure.Cosmos.Table" Version="1.0.8" />
+    <PackageReference Include="Azure.Core" Version="1.25.0" />
+    <PackageReference Include="Azure.Data.Tables" Version="12.6.1" />
+    <PackageReference Include="Azure.Messaging.EventHubs" Version="5.7.2" />
     <PackageReference Include="Microsoft.Azure.EventHubs.Processor" Version="4.3.2" />
     <PackageReference Include="Microsoft.Azure.Storage.Blob" Version="11.2.3" />
-    <PackageReference Include="Microsoft.FASTER.Core" Version="2.0.14" />
-    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.10.0" />
+    <PackageReference Include="Microsoft.FASTER.Core" Version="2.0.16" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.11.1" />
 	<PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
     <PackageReference Include="System.Threading.Channels" Version="4.7.1" />

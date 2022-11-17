@@ -8,19 +8,42 @@ namespace DurableTask.Netherite
     using System.IO;
     using DurableTask.Core;
     using System;
+    using System.Text;
 
     [DataContract]
-    class QueryResponseReceived : ClientEvent
+    class QueryResponseReceived : ClientEvent, IPagedResponse
     {
         // for efficiency, we use a binary representation with custom serialization and deserialization (see below)
         [IgnoreDataMember]
         public List<OrchestrationState> OrchestrationStates { get; set; }
 
         [DataMember]
+        public DateTime Attempt { get; set; }
+
+        [DataMember]
         public int? Final { get; set; }
 
         [DataMember]
         byte[] BinaryState { get; set; }
+
+        [DataMember]
+        public string ContinuationToken { get; set; }  // null indicates we have reached the end of all instances in this partition
+
+        [IgnoreDataMember]
+        public int Count => this.OrchestrationStates.Count;
+
+        protected override void ExtraTraceInformation(StringBuilder s)
+        {
+            s.Append(" attempt=");
+            s.Append(this.Attempt.ToString("o"));
+            if (this.Final.HasValue)
+            {
+                s.Append( " final ");
+                s.Append(this.Final.Value);
+                s.Append(' ');
+                s.Append(this.ContinuationToken ?? "null");
+            }
+        }
 
         public void SerializeOrchestrationStates(MemoryStream memoryStream, bool includeInput)
         {

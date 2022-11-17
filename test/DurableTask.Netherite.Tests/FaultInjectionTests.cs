@@ -22,8 +22,8 @@ namespace DurableTask.Netherite.Tests
         {
             this.outputHelper = outputHelper;
             this.faultInjector = new Faster.FaultInjector();
-            this.settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
-            this.settings.ResolvedTransportConnectionString = "MemoryF";
+            TestConstants.ValidateEnvironment(requiresTransportSpec: false);
+            this.settings = TestConstants.GetNetheriteOrchestrationServiceSettings(emulationSpec: "SingleHost");
             this.settings.TestHooks.FaultInjector = this.faultInjector;
             this.settings.PartitionCount = 1; // default, used by most tests
             this.DisableCheckpoints();
@@ -45,12 +45,12 @@ namespace DurableTask.Netherite.Tests
         [Fact]
         public async Task InjectStartup()
         {
-            SingleHostFixture fixture = null;
+            HostFixture fixture = null;
 
             // inject faults with growing success runs until the partition has successfully started
             using (this.faultInjector.WithMode(Faster.FaultInjector.InjectionMode.IncrementSuccessRuns, injectDuringStartup: true))
             {
-                fixture = await SingleHostFixture.StartNew(this.settings, true, true, null, TimeSpan.FromMinutes(2), (msg) => this.outputHelper.WriteLine(msg));
+                fixture = await HostFixture.StartNew(this.settings, true, true, null, TimeSpan.FromMinutes(2), (msg) => this.outputHelper.WriteLine(msg));
                 await this.faultInjector.WaitForStartup(this.settings.PartitionCount, TimeSpan.FromMinutes(2));
             }
 
@@ -67,7 +67,7 @@ namespace DurableTask.Netherite.Tests
         [Fact]
         public async Task InjectHelloCreation()
         {
-            using (var fixture = await SingleHostFixture.StartNew(this.settings, true, true, null, TimeSpan.FromMinutes(1), (msg) => this.outputHelper?.WriteLine(msg)))
+            using (var fixture = await HostFixture.StartNew(this.settings, true, true, null, TimeSpan.FromMinutes(1), (msg) => this.outputHelper?.WriteLine(msg)))
             {
                 await this.faultInjector.WaitForStartup(this.settings.PartitionCount, TimeSpan.FromSeconds(30));
 
@@ -91,7 +91,7 @@ namespace DurableTask.Netherite.Tests
         [Fact]
         public async Task InjectHelloCompletion()
         {
-            using (var fixture = await SingleHostFixture.StartNew(this.settings, true, true, null, TimeSpan.FromMinutes(1), (msg) => this.outputHelper.WriteLine(msg)))
+            using (var fixture = await HostFixture.StartNew(this.settings, true, true, null, TimeSpan.FromMinutes(1), (msg) => this.outputHelper.WriteLine(msg)))
             {
                 // do not start injecting until all partitions have started
                 await this.faultInjector.WaitForStartup(this.settings.PartitionCount, TimeSpan.FromSeconds(30));

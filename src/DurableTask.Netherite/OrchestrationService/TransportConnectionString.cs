@@ -15,64 +15,45 @@ namespace DurableTask.Netherite
     public static class TransportConnectionString
     {
         /// <summary>
-        /// Configuration options for the storage component
-        /// </summary>
-        public enum StorageChoices
-        {
-            /// <summary>
-            /// Does not store any state to durable storage, just keeps it in memory. 
-            /// Intended for testing scenarios.
-            /// </summary>
-            Memory = 0,
-
-            /// <summary>
-            /// Uses the Faster key-value store.
-            /// </summary>
-            Faster = 1,
-        }
-
-        /// <summary>
-        /// Configuration options for the transport component
-        /// </summary>
-        public enum TransportChoices
-        {
-            /// <summary>
-            /// Passes messages through memory and puts all partitions on a single host
-            /// Intended for testing scenarios.
-            /// </summary>
-            Memory = 0,
-
-            /// <summary>
-            /// Passes messages through eventhubs; can distribute over multiple machines via
-            /// the eventhubs EventProcessor.
-            /// </summary>
-            EventHubs = 1,
-        }
-
-
-        /// <summary>
         /// Determines the components to use given a transport connection string.
         /// </summary>
-        public static bool IsEmulatorSpecification(string specification)
+        public static bool IsPseudoConnectionString(string connectionString)
         {
-            return specification == "Memory" || specification == "MemoryF";         
-        }
-
-        /// <summary>
-        /// Determines the components to use given a transport connection string.
-        /// </summary>
-        public static void Parse(string specification, out StorageChoices storage, out TransportChoices transport)
-        {
-            if (IsEmulatorSpecification(specification))
+            switch ((connectionString ?? "").ToLowerInvariant().Trim())
             {
-                transport = TransportChoices.Memory;
-                storage = specification == "MemoryF" ? StorageChoices.Faster : StorageChoices.Memory;
+                case "memory":
+                case "singlehost":
+                case "memoryf": // for backwards compatibility
+                    return true;
+
+                default:
+                    return false;
             }
-            else
+        }
+
+        /// <summary>
+        /// Determines the components to use given a transport connection string.
+        /// </summary>
+        public static void Parse(string transportConnectionString, out StorageChoices storage, out TransportChoices transport)
+        {
+            switch (transportConnectionString.ToLowerInvariant().Trim())
             {
-                transport = TransportChoices.EventHubs;
-                storage = StorageChoices.Faster;
-            }            
+                case "memory":
+                    transport = TransportChoices.SingleHost;
+                    storage = StorageChoices.Memory;
+                    return;
+
+                case "singlehost":
+                case "memoryf": // for backwards compatibility
+                    transport = TransportChoices.SingleHost;
+                    storage = StorageChoices.Faster;
+                    return;
+
+                default:
+                    transport = TransportChoices.EventHubs;
+                    storage = StorageChoices.Faster;
+                    return;
+            }
         }
  
         /// <summary>

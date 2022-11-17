@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite
 {
+    using System;
     using System.Runtime.Serialization;
     using System.Text;
 
@@ -22,6 +23,12 @@ namespace DurableTask.Netherite
 
         [DataMember]
         public bool IsLast { get; set; }
+
+        [DataMember]
+        public DateTime? Timeout { get; set; } // so we can remove incomplete fragments from client requests after they time out
+
+        [DataMember]
+        public (uint,long,int)? DedupPosition { get; set; } // so we can remove incomplete fragments from other partitions
 
         [IgnoreDataMember]
         public PartitionEvent ReassembledEvent;

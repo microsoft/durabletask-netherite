@@ -22,6 +22,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public abstract IEnumerable<(TaskMessage message, string workItemId)> TracedTaskMessages { get; }
       
+        [IgnoreDataMember]
+        public (uint,long,int) DedupPositionForFragments => (this.OriginPartition, this.DedupPosition.Item1, this.DedupPosition.Item2); 
+        
         public override void DetermineEffects(EffectTracker effects)
         {
             effects.Add(TrackedObjectKey.Dedup);

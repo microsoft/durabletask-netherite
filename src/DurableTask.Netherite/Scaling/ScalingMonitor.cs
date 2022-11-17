@@ -11,25 +11,22 @@ namespace DurableTask.Netherite.Scaling
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
-    using DurableTask.Netherite.EventHubs;
+    using DurableTask.Netherite.EventHubsTransport;
 
     /// <summary>
     /// Monitors the performance of the Netherite backend and makes scaling decisions.
     /// </summary>
     public class ScalingMonitor
     {
-        readonly string storageConnectionString;
-        readonly string eventHubsConnectionString;
+        readonly ConnectionInfo eventHubsConnection;
         readonly string partitionLoadTableName;
         readonly string taskHubName;
-        readonly TransportConnectionString.TransportChoices configuredTransport;
+        readonly ILoadPublisherService loadPublisher;
 
         // public logging actions to enable collection of scale-monitor-related logging within the Netherite infrastructure
         public Action<string, int, string> RecommendationTracer { get; }
         public Action<string> InformationTracer { get; }
         public Action<string, Exception> ErrorTracer { get; }
-
-        readonly ILoadMonitorService loadMonitor;
 
         /// <summary>
         /// The name of the taskhub.
@@ -39,13 +36,13 @@ namespace DurableTask.Netherite.Scaling
         /// <summary>
         /// Creates an instance of the scaling monitor, with the given parameters.
         /// </summary>
-        /// <param name="storageConnectionString">The storage connection string.</param>
-        /// <param name="eventHubsConnectionString">The connection string for the transport layer.</param>
+        /// <param name="storageConnection">The storage connection info.</param>
+        /// <param name="eventHubsConnection">The connection info for event hubs.</param>
         /// <param name="partitionLoadTableName">The name of the storage table with the partition load information.</param>
         /// <param name="taskHubName">The name of the taskhub.</param>
         public ScalingMonitor(
-            string storageConnectionString,
-            string eventHubsConnectionString,
+            ILoadPublisherService loadPublisher,
+            ConnectionInfo eventHubsConnection,
             string partitionLoadTableName,
             string taskHubName,
             Action<string, int, string> recommendationTracer,
@@ -56,21 +53,10 @@ namespace DurableTask.Netherite.Scaling
             this.InformationTracer = informationTracer;
             this.ErrorTracer = errorTracer;
 
-            this.storageConnectionString = storageConnectionString;
-            this.eventHubsConnectionString = eventHubsConnectionString;
+            this.loadPublisher = loadPublisher;
+            this.eventHubsConnection = eventHubsConnection;
             this.partitionLoadTableName = partitionLoadTableName;
             this.taskHubName = taskHubName;
-
-            TransportConnectionString.Parse(eventHubsConnectionString, out _, out this.configuredTransport);
-
-            if (!string.IsNullOrEmpty(partitionLoadTableName))
-            {
-                this.loadMonitor = new AzureTableLoadMonitor(storageConnectionString, partitionLoadTableName, taskHubName);
-            }
-            else
-            {
-                this.loadMonitor = new AzureBlobLoadMonitor(storageConnectionString, taskHubName);
-            }
         }
 
         /// <summary>
@@ -111,7 +97,7 @@ namespace DurableTask.Netherite.Scaling
         public async Task<Metrics> CollectMetrics()
         {
             DateTime now = DateTime.UtcNow;
-            var loadInformation = await this.loadMonitor.QueryAsync(CancellationToken.None).ConfigureAwait(false);
+            var loadInformation = await this.loadPublisher.QueryAsync(CancellationToken.None).ConfigureAwait(false);
             var busy = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
 
             return new Metrics()
@@ -230,25 +216,23 @@ namespace DurableTask.Netherite.Scaling
             // next, check if any of the entries are not current, in the sense that their input queue position
             // does not match the latest queue position
 
-            if (this.configuredTransport == TransportConnectionString.TransportChoices.EventHubs)
+           
+            List<long> positions = await Netherite.EventHubsTransport.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnection, EventHubsTransport.PartitionHub).ConfigureAwait(false);
+
+            if (positions == null)
             {
-                List<long> positions = await EventHubs.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnectionString, EventHubsTransport.PartitionHub).ConfigureAwait(false);
+                return "eventhubs is missing";
+            }
 
-                if (positions == null)
+            for (int i = 0; i < positions.Count; i++)
+            {
+                if (!loadInformation.TryGetValue((uint) i, out var loadInfo))
                 {
-                    return "eventhubs is missing";
+                    return $"P{i:D2} has no load information published yet";
                 }
-
-                for (int i = 0; i < positions.Count; i++)
+                if (positions[i] > loadInfo.InputQueuePosition)
                 {
-                    if (!loadInformation.TryGetValue((uint) i, out var loadInfo))
-                    {
-                        return $"P{i:D2} has no load information published yet";
-                    }
-                    if (positions[i] > loadInfo.InputQueuePosition)
-                    {
-                        return $"P{i:D2} has input queue position {loadInfo.InputQueuePosition} which is {positions[(int)i] - loadInfo.InputQueuePosition} behind latest position {positions[i]}";
-                    }
+                    return $"P{i:D2} has input queue position {loadInfo.InputQueuePosition} which is {positions[(int)i] - loadInfo.InputQueuePosition} behind latest position {positions[i]}";
                 }
             }
 

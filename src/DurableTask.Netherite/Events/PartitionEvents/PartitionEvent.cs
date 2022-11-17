@@ -15,9 +15,6 @@ namespace DurableTask.Netherite
         [DataMember]
         public uint PartitionId { get; set; }
 
-        [IgnoreDataMember]
-        public ArraySegment<byte> Serialized;
-
         /// <summary>
         /// For events coming from the input queue, the next input queue position after this event. For internal events, zero.
         /// </summary>
@@ -52,7 +49,6 @@ namespace DurableTask.Netherite
 
             // clear all the non-data fields
             evt.DurabilityListeners.Clear();
-            evt.Serialized = default;
             evt.NextInputQueuePosition = 0;
 
             // clear the timestamp

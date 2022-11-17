@@ -1,0 +1,29 @@
+{
+  "version": "2.0",
+  "logging": {
+    "logLevel": {
+      "DurableTask.Netherite": "Information",
+      "DurableTask.Netherite.FasterStorage": "Information",
+      "DurableTask.Netherite.EventHubsTransport": "Information"
+    },
+    "applicationInsights": {
+      "sampling": {
+        "isEnabled": false
+      }
+    }
+  },
+  "extensions": {
+    "http": {
+      "routePrefix": ""
+    },
+    "durableTask": {
+      "hubName": "tokencredentialsample",
+      "UseGracefulShutdown": true,
+      "storageProvider": {
+        "type": "Netherite",
+        "StorageConnectionName": "MyConnection",
+        "EventHubsConnectionName": "MyConnection"
+      }
+    }
+  }
+}

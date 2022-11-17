@@ -55,6 +55,17 @@ namespace DurableTask.Netherite
 
         public override void Process(BatchProcessed evt, EffectTracker effects)
         {
+            if (evt.DeleteInstance) // this instance is an entity that was implicitly deleted
+            {        
+                this.ExecutionId = null;
+                this.History = null;
+                this.CustomStatus = null;
+                this.Episode = 0;
+                this.HistorySize = 0;
+                effects.AddDeletion(this.Key);
+                return;
+            }
+
             // can add events to the history, or replace it with a new history
 
             // update the stored history
@@ -67,7 +78,7 @@ namespace DurableTask.Netherite
                 this.HistorySize = 0;
             }
 
-            this.Partition.Assert(!string.IsNullOrEmpty(this.InstanceId) || string.IsNullOrEmpty(this.ExecutionId), "null ids in HistoryState.Process(BatchProcessed)");
+            this.Partition.Assert(!(string.IsNullOrEmpty(this.InstanceId) || string.IsNullOrEmpty(this.ExecutionId)), "null ids in HistoryState.Process(BatchProcessed)");
 
             // add all the new events to the history, and update episode number
             if (evt.NewEvents != null)

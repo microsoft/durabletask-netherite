@@ -95,6 +95,9 @@
         // options: "Local", "Static", "Locavore"
         "ActivityScheduler": "Locavore",
 
+        // controls whether the instance ids are kept in memory. If false, paged queries are not supported.
+        "KeepInstanceIdsInMemory": true,
+
         // The log level limits below control the production of log events by the various components.
         // it limits production, not just consumption, of the events, so it can be used to prevent overheads.
         // "Debug" is a reasonable setting, as it allows troubleshooting without impacting perf too much.

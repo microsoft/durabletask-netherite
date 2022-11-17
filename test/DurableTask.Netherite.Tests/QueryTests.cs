@@ -12,7 +12,7 @@ namespace DurableTask.Netherite.Tests
     using System.Linq;
     using System.Collections.Generic;
 
-    using TestTraceListener = DurableTask.Netherite.Tests.SingleHostFixture.TestTraceListener;
+    using TestTraceListener = DurableTask.Netherite.Tests.HostFixture.TestTraceListener;
     using Orchestrations = DurableTask.Netherite.Tests.ScenarioTests.Orchestrations;
     using Microsoft.Extensions.Logging;
     using DurableTask.Netherite;
@@ -21,14 +21,14 @@ namespace DurableTask.Netherite.Tests
     // These tests are copied from AzureStorageScenarioTests
     [Collection("NetheriteTests")]
     [Trait("AnyTransport", "true")]
-    public partial class QueryTests : IClassFixture<SingleHostFixture>, IDisposable
+    public partial class QueryTests : IClassFixture<HostFixture>, IDisposable
     {
-        readonly SingleHostFixture fixture;
+        readonly HostFixture fixture;
         readonly TestOrchestrationHost host;
         readonly Action<string> output;
         ITestOutputHelper outputHelper;
 
-        public QueryTests(SingleHostFixture fixture, ITestOutputHelper outputHelper)
+        public QueryTests(HostFixture fixture, ITestOutputHelper outputHelper)
         {
             this.fixture = fixture;
             this.host = fixture.Host;
@@ -245,12 +245,12 @@ namespace DurableTask.Netherite.Tests
             this.outputHelper = outputHelper;
             Action<string> output = (string message) => this.outputHelper?.WriteLine(message);
            
-            TestConstants.ValidateEnvironment();
             this.traceListener = new TestTraceListener() { Output = output };
             this.loggerFactory = new LoggerFactory();
             this.provider = new XunitLoggerProvider();
             this.loggerFactory.AddProvider(this.provider);
             Trace.Listeners.Add(this.traceListener);
+            TestConstants.ValidateEnvironment(requiresTransportSpec: false);
         }
 
         public void Dispose()
@@ -266,7 +266,7 @@ namespace DurableTask.Netherite.Tests
         public async void SingleServiceQuery()
         {
             Trace.WriteLine("Starting the orchestration service...");
-            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings();
+            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings(emulationSpec: "SingleHost");
             var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
             var orchestrationService = (IOrchestrationService)service;
             await orchestrationService.CreateAsync(true);

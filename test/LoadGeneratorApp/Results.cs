@@ -45,6 +45,7 @@ namespace LoadGeneratorApp
         }
 
         static readonly string RESULTS_CONNECTION = "ResultsConnection";
+        static readonly string RESULTS_CONNECTION_DEFAULT = "AzureWebJobsStorage";
         static readonly string RESULTFILE_CONTAINER = "results";
 
         public static string MakeTestName(string benchmarkname)
@@ -55,6 +56,10 @@ namespace LoadGeneratorApp
         public static async Task<CloudBlobDirectory> GetOrCreateResultFileDirectory(string testname)
         {
             string connectionString = Environment.GetEnvironmentVariable(RESULTS_CONNECTION);
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                connectionString = Environment.GetEnvironmentVariable(RESULTS_CONNECTION_DEFAULT);
+            }
             CloudStorageAccount account = CloudStorageAccount.Parse(connectionString);
             CloudBlobClient blobclient = account.CreateCloudBlobClient();
             CloudBlobContainer container = blobclient.GetContainerReference(RESULTFILE_CONTAINER);
