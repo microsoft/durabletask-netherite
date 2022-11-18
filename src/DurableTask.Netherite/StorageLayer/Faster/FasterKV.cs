@@ -548,18 +548,21 @@ namespace DurableTask.Netherite.Faster
 
                 DateTime attempt = DateTime.UtcNow;
 
-                IAsyncEnumerable<OrchestrationState> orchestrationStates;
+
+                IAsyncEnumerable<(string, OrchestrationState)> orchestrationStates;
 
                 var stats = (StatsState)this.singletons[(int)TrackedObjectKey.Stats.ObjectType];
 
                 if (stats.HasInstanceIds)
                 {
+                    TimeSpan timeBudget = queryEvent.TimeoutUtc.HasValue ? (queryEvent.TimeoutUtc.Value - attempt) - TimeSpan.FromSeconds(10) : TimeSpan.FromSeconds(15);
+
                     orchestrationStates = this.QueryEnumeratedStates(
                         effectTracker,
                         queryEvent,
                         stats.GetEnumerator(queryEvent.InstanceQuery.InstanceIdPrefix, queryEvent.ContinuationToken),
                         queryEvent.PageSize,
-                        TimeSpan.FromSeconds(15),
+                        timeBudget,
                         attempt);
                 }
                 else
@@ -866,19 +869,19 @@ namespace DurableTask.Netherite.Faster
             return default;
         }
 
-        async IAsyncEnumerable<OrchestrationState> QueryEnumeratedStates(
+        async IAsyncEnumerable<(string,OrchestrationState)> QueryEnumeratedStates(
             EffectTracker effectTracker,
             PartitionQueryEvent queryEvent,
             IEnumerator<string> enumerator,
             int pageSize,
-            TimeSpan pageTime,
+            TimeSpan timeBudget,
             DateTime attempt
            )
         {
             var instanceQuery = queryEvent.InstanceQuery;
             string queryId = queryEvent.EventIdString;
             int? pageLimit = pageSize > 0 ? pageSize : null;
-            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration from {queryEvent.ContinuationToken} with pageLimit={(pageLimit.HasValue ? pageLimit.ToString() : "none")} pageTime={pageTime}");
+            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration from {queryEvent.ContinuationToken} with pageLimit={(pageLimit.HasValue ? pageLimit.ToString() : "none")} timeBudget={timeBudget}");
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             var channel = Channel.CreateBounded<(bool last, ValueTask<FasterKV<Key, Value>.ReadAsyncResult<EffectTracker, Output, object>> responseTask)>(200);
@@ -900,17 +903,7 @@ namespace DurableTask.Netherite.Faster
                             continue;
                         }
 
-                        while (!await leftToFill.WaitAsync(2000, cancellationToken))
-                        {
-                            if (stopwatch.Elapsed > pageTime)
-                            {
-                                // stop issuing more reads and just finish and return what we have so far
-                                this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration finished because of time limit");
-                                channel.Writer.Complete();
-                                return;
-                            }
-                        }
-
+                        await leftToFill.WaitAsync(cancellationToken);
                         await channel.Writer.WaitToWriteAsync(cancellationToken).ConfigureAwait(false);
                         var readTask = this.ReadOnQuerySessionAsync(enumerator.Current, cancellationToken);
                         await channel.Writer.WriteAsync((false, readTask), cancellationToken).ConfigureAwait(false);
@@ -959,8 +952,15 @@ namespace DurableTask.Netherite.Faster
                     if (item.last)
                     {
                         ReportProgress("completed");
-                        yield return null;
+                        yield return (null, null);
                         goto done;
+                    }
+
+                    if (stopwatch.Elapsed > timeBudget)
+                    {
+                        // stop querying and just return what we have so far
+                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration finished because of time limit");
+                        goto pageDone;
                     }
 
                     if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
@@ -996,6 +996,10 @@ namespace DurableTask.Netherite.Faster
                         // reading the orchestrationState may race with updating the orchestration state
                         // but it is benign because the OrchestrationState object is immutable
                         orchestrationState = instanceState?.OrchestrationState;
+
+                        position = instanceState.InstanceId;
+
+                        this.partition.Assert(orchestrationState == null || orchestrationState.OrchestrationInstance.InstanceId == instanceState.InstanceId, "wrong instance id");
                     }
                     catch (OperationCanceledException)
                     {
@@ -1019,8 +1023,7 @@ namespace DurableTask.Netherite.Faster
                     {
                         matched++;
                         this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {enumerator.Current}");
-                        yield return orchestrationState;
-                        position = orchestrationState.OrchestrationInstance.InstanceId;
+                        yield return (position, orchestrationState);
 
                         if (pageLimit.HasValue)
                         {
@@ -1041,6 +1044,9 @@ namespace DurableTask.Netherite.Faster
                     }
                 }
             }
+
+        pageDone:
+            yield return (position, null);
             ReportProgress("completed-page");
 
         done:
@@ -1049,7 +1055,7 @@ namespace DurableTask.Netherite.Faster
             yield break;
         }
 
-        IAsyncEnumerable<OrchestrationState> ScanOrchestrationStates(
+        IAsyncEnumerable<(string,OrchestrationState)> ScanOrchestrationStates(
             EffectTracker effectTracker,
             PartitionQueryEvent queryEvent,
             DateTime attempt)
@@ -1059,7 +1065,7 @@ namespace DurableTask.Netherite.Faster
 
             // we use a separate thread to iterate, since Faster can iterate synchronously only at the moment
             // and we don't want it to block thread pool worker threads
-            var channel = Channel.CreateBounded<OrchestrationState>(500);
+            var channel = Channel.CreateBounded<(string,OrchestrationState)>(500);
             var scanThread = TrackedThreads.MakeTrackedThread(RunScan, $"QueryScan-{queryId}-{attempt:o}");
             scanThread.Start();
 
@@ -1071,6 +1077,7 @@ namespace DurableTask.Netherite.Faster
                 try
                 {
                     using var _ = EventTraceContext.MakeContext(0, queryId);
+                    string startAt = queryEvent.ContinuationToken ?? "";
                     var session = this.CreateASession($"scan-{queryId}-{attempt:o}", true);
                     using (this.TrackTemporarySession(session))
                     {
@@ -1103,7 +1110,7 @@ namespace DurableTask.Netherite.Faster
                             {
                                 ReportProgress("underway");
                             }
-
+                                
                             if (key.Val.ObjectType == TrackedObjectKey.TrackedObjectType.Instance)
                             {
                                 scanned++;
@@ -1131,15 +1138,16 @@ namespace DurableTask.Netherite.Faster
                                     // reading the orchestrationState may race with updating the orchestration state
                                     // but it is benign because the OrchestrationState object is immutable
                                     var orchestrationState = instanceState?.OrchestrationState;
-
+                                    string instanceId = orchestrationState.OrchestrationInstance.InstanceId;
                                     if (orchestrationState != null
+                                        && startAt.CompareTo(instanceId) < 0
                                         && instanceQuery.Matches(orchestrationState))
                                     {
                                         matched++;
 
                                         //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {key.Val.InstanceId}");
 
-                                        var task = channel.Writer.WriteAsync(orchestrationState);
+                                        var task = channel.Writer.WriteAsync((instanceId, orchestrationState));
 
                                         if (!task.IsCompleted)
                                         {
@@ -1152,7 +1160,7 @@ namespace DurableTask.Netherite.Faster
 
                         ReportProgress("completed");
 
-                        var task1 = channel.Writer.WriteAsync(null);
+                        var task1 = channel.Writer.WriteAsync((null, null));
                         if (!task1.IsCompleted)
                         {
                             task1.AsTask().Wait();

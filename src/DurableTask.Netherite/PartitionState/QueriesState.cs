@@ -122,7 +122,7 @@ namespace DurableTask.Netherite
 
             public override Netherite.InstanceQuery InstanceQuery => this.request.InstanceQuery;
 
-            public override async Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition, DateTime attempt)
+            public override async Task OnQueryCompleteAsync(IAsyncEnumerable<(string, OrchestrationState)> result, Partition partition, DateTime attempt)
             {
                 partition.Assert(this.request.Phase == ClientRequestEventWithQuery.ProcessingPhase.Query, "wrong phase in QueriesState.OnQueryCompleteAsync");
 

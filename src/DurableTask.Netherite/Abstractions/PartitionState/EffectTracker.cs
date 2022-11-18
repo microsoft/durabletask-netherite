@@ -222,7 +222,7 @@ namespace DurableTask.Netherite
             }
         }
         
-        public async Task ProcessQueryResultAsync(PartitionQueryEvent queryEvent, IAsyncEnumerable<OrchestrationState> instances, DateTime attempt)
+        public async Task ProcessQueryResultAsync(PartitionQueryEvent queryEvent, IAsyncEnumerable<(string, OrchestrationState)> instances, DateTime attempt)
         {
             (long commitLogPosition, long inputQueuePosition) = this.GetPositions();
             this.Assert(!this.IsReplaying, "query events are never part of the replay");
