@@ -15,7 +15,7 @@ namespace DurableTask.Netherite
     {
         const int batchsize = 11;
 
-        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition, DateTime attempt)
+        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<(string,OrchestrationState)> instances, Partition partition, DateTime attempt)
         {
             int totalcount = 0;
             string continuationToken = this.ContinuationToken ?? "";
@@ -30,12 +30,12 @@ namespace DurableTask.Netherite
 
             using var memoryStream = new MemoryStream();
 
-            await foreach (var orchestrationState in instances)
+            await foreach (var (position, instance) in instances)
             {
                 // a null is used to indicate that we have read the last instance
-                if (orchestrationState == null)
+                if (instance == null)
                 {
-                    continuationToken = null; // indicates completion
+                    continuationToken = position;
                     break;
                 }
 
@@ -52,8 +52,8 @@ namespace DurableTask.Netherite
                     };
                 }
 
-                response.OrchestrationStates.Add(orchestrationState);
-                continuationToken = orchestrationState.OrchestrationInstance.InstanceId;
+                response.OrchestrationStates.Add(instance);
+                continuationToken = position;
                 totalcount++;
             }
 

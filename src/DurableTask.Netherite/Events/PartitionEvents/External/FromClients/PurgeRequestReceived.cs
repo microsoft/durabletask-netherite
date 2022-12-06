@@ -25,7 +25,7 @@ namespace DurableTask.Netherite
             trackedObject.Process(this, effects);
         }
 
-        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> instances, Partition partition, DateTime attempt)
+        public async override Task OnQueryCompleteAsync(IAsyncEnumerable<(string,OrchestrationState)> instances, Partition partition, DateTime attempt)
         {
             int batchCount = 0;
             string continuationToken = null;
@@ -50,11 +50,11 @@ namespace DurableTask.Netherite
                 await batch.WhenProcessed.Task;
             }
 
-            await foreach (var orchestrationState in instances)
+            await foreach (var (position, instance) in instances)
             {
-                if (orchestrationState != null)
+                if (instance != null)
                 {
-                    string instanceId = orchestrationState.OrchestrationInstance.InstanceId;
+                    string instanceId = instance.OrchestrationInstance.InstanceId;
 
                     batch.InstanceIds.Add(instanceId);
 
@@ -64,11 +64,11 @@ namespace DurableTask.Netherite
                         batch = makeNewBatchObject();
                     }
 
-                    continuationToken = instanceId;
+                    continuationToken = position;
                 }
                 else
                 {
-                    continuationToken = null;
+                    continuationToken = position;
                 }
             }
 

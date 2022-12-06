@@ -39,6 +39,6 @@ namespace DurableTask.Netherite
         /// <param name="exceptionTask">A task that throws an exception if the enumeration fails</param>
         /// <param name="partition">The partition</param>
         /// <param name="attempt">The timestamp for this query attempt</param>
-        public abstract Task OnQueryCompleteAsync(IAsyncEnumerable<OrchestrationState> result, Partition partition, DateTime attempt);
+        public abstract Task OnQueryCompleteAsync(IAsyncEnumerable<(string,OrchestrationState)> result, Partition partition, DateTime attempt);
     }
 }

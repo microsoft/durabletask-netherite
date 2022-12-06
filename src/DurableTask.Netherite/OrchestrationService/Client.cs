@@ -693,6 +693,7 @@ namespace DurableTask.Netherite
                 {
                     result = await this.RunUnpagedPartitionQueries(
                         clientQueryId,
+                        partitionPositions,
                         (uint partitionId) =>
                         {
                             var request = requestCreator();
@@ -729,6 +730,7 @@ namespace DurableTask.Netherite
 
         async Task<TResult> RunUnpagedPartitionQueries<TRequest, TResponse, TResult>(
             string clientQueryId,
+            string[] partitionPositions, 
             Func<uint, TRequest> requestCreator,
             Func<IEnumerable<TResponse>, TResult> responseAggregator,
             CancellationToken cancellationToken)
@@ -738,15 +740,25 @@ namespace DurableTask.Netherite
             async Task<TResponse> QueryPartition(uint partitionId)
             {
                 var stopwatch = Stopwatch.StartNew();
-                var request = requestCreator(partitionId);
-                var response = (TResponse) await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false).ConfigureAwait(false);
-                this.traceHelper.TraceQueryProgress(clientQueryId, request.EventIdString, partitionId, stopwatch.Elapsed, request.PageSize, response.Count, response.ContinuationToken);
-                return response;
+                if (partitionPositions[partitionId] != null)
+                {
+                    var request = requestCreator(partitionId);
+                    request.ContinuationToken = partitionPositions[partitionId];
+                    var response = (TResponse)await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false).ConfigureAwait(false);
+                    partitionPositions[partitionId] = response.ContinuationToken;
+                    this.traceHelper.TraceQueryProgress(clientQueryId, request.EventIdString, partitionId, stopwatch.Elapsed, request.PageSize, response.Count, response.ContinuationToken);
+                    return response;
+                }
+                else
+                {
+                    // we have already reached the end of this partition
+                    return null;
+                }
             }
 
             var tasks = Enumerable.Range(0, (int) this.host.NumberPartitions).Select(i => QueryPartition((uint) i)).ToList();
             ClientEvent[] responses = await Task.WhenAll(tasks).ConfigureAwait(false);
-            return responseAggregator(responses.Cast<TResponse>());
+            return responseAggregator(responses.Where(r => r != null).Cast<TResponse>());
         }
 
         public async Task<TResult> RunPagedPartitionQueries<TRequest, TResponse, TResult>(

@@ -31,6 +31,7 @@ namespace PerformanceTests
             try
             {
                 var queryCondition = new OrchestrationStatusQueryCondition();
+                bool keepGoingUntilDone = true;
 
                 try
                 {
@@ -67,10 +68,24 @@ namespace PerformanceTests
                         }
                     }
                     {
+                        if (parameters.TryGetValue("keepGoingUntilDone", out string val))
+                        {
+                            parameters.Remove("keepGoingUntilDone");
+                            keepGoingUntilDone = bool.Parse(val);
+                        }
+                    }
+                    {
                         if (parameters.TryGetValue("instanceIdPrefix", out string val))
                         {
                             parameters.Remove("instanceIdPrefix");
                             queryCondition.InstanceIdPrefix = val;
+                        }
+                    }
+                    {
+                        if (parameters.TryGetValue("continuationToken", out string val))
+                        {
+                            parameters.Remove("continuationToken");
+                            queryCondition.ContinuationToken = val;
                         }
                     }
                     {
@@ -134,10 +149,11 @@ namespace PerformanceTests
                         }
                     }
 
-                } while (queryCondition.ContinuationToken != null);
+                } while (keepGoingUntilDone && queryCondition.ContinuationToken != null);
 
                 stopwatch.Stop();
                 double querySec = stopwatch.ElapsedMilliseconds / 1000.0;
+                string continuationToken = queryCondition.ContinuationToken;
 
                 var resultObject = new
                 { 
@@ -146,6 +162,7 @@ namespace PerformanceTests
                     inputchars,
                     pages,
                     querySec,
+                    continuationToken,
                     throughput = records > 0 ? (records/querySec).ToString("F2") : "n/a",
                 };
 
