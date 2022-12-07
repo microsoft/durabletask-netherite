@@ -9,9 +9,9 @@ namespace PerformanceTests.WordCount
     using System.Net;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Storage.Blobs.Models;
+    using Azure.Storage.Blobs;
     using DurableTask.Netherite.Faster;
-    using Microsoft.Azure.Storage;
-    using Microsoft.Azure.Storage.Blob;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Extensions.Logging;
@@ -60,14 +60,13 @@ namespace PerformanceTests.WordCount
                         Stopwatch s = new Stopwatch();
                         s.Start();
 
-                        // setup connection to the corpus with the text files 
-                        CloudBlobClient serviceClient = new CloudBlobClient(new Uri(@"https://gutenbergcorpus.blob.core.windows.net"));
-
-                        // download the book from blob storage
                         string book = context.GetInput<string>();
-                        CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
-                        CloudBlockBlob blob = blobContainer.GetBlockBlobReference(book);
-                        string doc = await blob.DownloadTextAsync();
+
+                        // download the book content from the corpus
+                        var storageConnectionString = Environment.GetEnvironmentVariable("CorpusConnection");
+                        var blobClient = new BlobClient(storageConnectionString, blobContainerName: "gutenberg", blobName: book);
+                        BlobDownloadResult result = await blobClient.DownloadContentAsync();
+                        string doc = result.Content.ToString();
 
                         string[] words = doc.Split(separators, StringSplitOptions.RemoveEmptyEntries);
 
