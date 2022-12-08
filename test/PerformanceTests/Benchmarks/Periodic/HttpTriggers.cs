@@ -20,15 +20,16 @@ namespace PerformanceTests.Periodic
     {
         [FunctionName(nameof(Periodic))]
         public static async Task<IActionResult> Run(
-           [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequest req,
+           [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "periodic/{iterations}/{minutes}/")] HttpRequest req,
            [DurableClient] IDurableClient client,
+           int iterations,
+           double minutes,
            ILogger log)
         {
             // start the orchestration
-            string orchestrationInstanceId = await client.StartNewAsync(nameof(PeriodicOrchestration));
+            string orchestrationInstanceId = await client.StartNewAsync(nameof(PeriodicOrchestration), null, (iterations, minutes));
 
-            // wait for it to complete and return the result
-            return await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(200));
-        }   
+            return client.CreateCheckStatusResponse(req, orchestrationInstanceId, false);
+        }
     }
 }

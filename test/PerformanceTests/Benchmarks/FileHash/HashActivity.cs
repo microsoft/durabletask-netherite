@@ -10,6 +10,8 @@ namespace PerformanceTests.FileHash
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
     using System.Linq;
+    using Azure.Storage.Blobs;
+    using Azure.Storage.Blobs.Models;
 
     /// <summary>
     /// An activity that 
@@ -19,16 +21,13 @@ namespace PerformanceTests.FileHash
         [FunctionName(nameof(HashActivity))]
         public static async Task<long> Run([ActivityTrigger] IDurableActivityContext context)
         {
-            char[] separators = { ' ', '\n', '<', '>', '=', '\"', '\'', '/', '\\', '(', ')', '\t', '{', '}', '[', ']', ',', '.', ':', ';' };
-
-            // setup connection to the corpus with the text files 
-            CloudBlobClient serviceClient = new CloudBlobClient(new Uri(@"https://gutenbergcorpus.blob.core.windows.net"));
-
-            // download the book from blob storage
             var input = context.GetInput<(string book, int multiplier)>();
-            CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
-            CloudBlockBlob blob = blobContainer.GetBlockBlobReference(input.book);
-            string doc = await blob.DownloadTextAsync();
+
+            // download the book content from the corpus
+            var storageConnectionString = Environment.GetEnvironmentVariable("CorpusConnection");
+            var blobClient = new BlobClient(storageConnectionString, blobContainerName: "gutenberg", blobName: input.book);
+            BlobDownloadResult result = await blobClient.DownloadContentAsync();
+            string doc = result.Content.ToString();
 
             long wordCount = 0;
             string[] words = doc.Split(separators, StringSplitOptions.RemoveEmptyEntries);
@@ -46,5 +45,7 @@ namespace PerformanceTests.FileHash
             // return the number of words hashed
             return wordCount;
         }
+
+        static readonly char[] separators = { ' ', '\n', '<', '>', '=', '\"', '\'', '/', '\\', '(', ')', '\t', '{', '}', '[', ']', ',', '.', ':', ';' };
     }
 }
