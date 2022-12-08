@@ -1243,13 +1243,20 @@ namespace DurableTask.Netherite.Faster
         public long MemoryUsedWithoutObjects => this.fht.IndexSize * 64 + this.fht.Log.MemorySizeBytes + this.fht.OverflowBucketCount * 64;
 
         public override (double totalSizeMB, int fillPercentage) CacheSizeInfo {
-            get 
+            get
             {
-                double totalSize = (double)(this.cacheTracker.TrackedObjectSize + this.MemoryUsedWithoutObjects);
-                double targetSize = (double) this.cacheTracker.TargetSize;
-                int fillPercentage = (int) Math.Round(100 * (totalSize / targetSize));
+                double totalSize = (double)(Math.Min(0, this.cacheTracker.TrackedObjectSize) + this.MemoryUsedWithoutObjects);
                 double totalSizeMB = Math.Round(100 * totalSize / (1024 * 1024)) / 100;
-                return (totalSizeMB, fillPercentage);
+                if (this.cacheTracker.TargetSize == 0)
+                {
+                    return (totalSizeMB, 100);
+                }
+                else
+                {
+                    double targetSize = (double)this.cacheTracker.TargetSize;
+                    int fillPercentage = (int)Math.Round(100 * (totalSize / targetSize));
+                    return (totalSizeMB, fillPercentage);
+                }
             }
         }
 
