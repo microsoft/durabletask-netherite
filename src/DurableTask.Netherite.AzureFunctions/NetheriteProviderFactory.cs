@@ -141,6 +141,12 @@ namespace DurableTask.Netherite.AzureFunctions
                 netheriteSettings.HubName = taskHubNameOverride;
             }
 
+            // blob load published is currently disabled for consumption plan
+            if (netheriteSettings.LoadInformationAzureTableName == null && this.inConsumption)
+            {
+                throw new NotSupportedException("The Netherite setting LoadInformationAzureTableName must not be null when running on a consumption plan");
+            }
+
             // connections for Netherite are resolved either via an injected custom resolver, or otherwise by resolving connection names to connection strings
             
             if (!string.IsNullOrEmpty(connectionName))
