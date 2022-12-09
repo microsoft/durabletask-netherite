@@ -419,7 +419,7 @@ namespace DurableTask.Netherite
                 }
             }
 
-            if (this.StorageChoice == StorageChoices.Faster && this.LoadInformationAzureTableName != null)
+            if (this.StorageChoice == StorageChoices.Faster && !string.IsNullOrEmpty(this.LoadInformationAzureTableName))
             {
                 // we need a valid table storage connection
                 try

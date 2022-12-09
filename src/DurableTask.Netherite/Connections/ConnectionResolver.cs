@@ -31,7 +31,7 @@ namespace DurableTask.Netherite
 
             /// <summary>
             /// The table storage account, used for publishing load information. 
-            /// Not required if <see cref="NetheriteOrchestrationServiceSettings.LoadInformationAzureTableName"/> is set to null, or if
+            /// Not required if <see cref="NetheriteOrchestrationServiceSettings.LoadInformationAzureTableName"/> is set to null or empty, or if
             /// the layer configuration uses <see cref="StorageChoices.Memory"/>.
             /// </summary>
             TableStorage,
