@@ -36,11 +36,21 @@ if (-not ((az functionapp list -g $groupName --query "[].name"| ConvertFrom-Json
 {
 	# look up connection strings
 	$eventHubsConnectionString = (az eventhubs namespace authorization-rule keys list --resource-group $groupName --namespace-name $namespaceName --name RootManageSharedAccessKey | ConvertFrom-Json).primaryConnectionString
+	$corpusConnectionString = (az storage account show-connection-string --name gutenbergcorpus | ConvertFrom-Json).connectionString
 
 	Write-Host "Creating $Plan Function App..."
-	az functionapp plan create --resource-group  $groupName --name  $functionAppName --location $location --sku $Plan
-	az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 4
-    az functionapp config set -n $functionAppName -g $groupName --use-32bit-worker-process false
+
+    if ($Plan -eq "Consumption")
+    {
+        az functionapp create --name  $functionAppName --storage-account $storageName --consumption-plan-location $location --resource-group  $groupName --functions-version 4
+    }
+    else
+    {
+        az functionapp plan create --resource-group  $groupName --name  $functionAppName --location $location --sku $Plan
+        az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 4
+    }
+
+	az functionapp config set -n $functionAppName -g $groupName --use-32bit-worker-process false
     az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EventHubsConnection=$eventHubsConnectionString
     az functionapp config appsettings set -n $functionAppName -g  $groupName --settings CorpusConnection=$corpusConnectionString
 }
@@ -49,16 +59,20 @@ else
 	Write-Host "Function app already exists."
 }
 
-Write-Host "Configuring Function App Scale=$MinNodes-$MaxNodes"
-az functionapp plan update -g $groupName -n $functionAppName --max-burst $MaxNodes --number-of-workers $MinNodes --min-instances $MinNodes 
-az resource update -n $functionAppName/config/web -g $groupName --set properties.minimumElasticInstanceCount=$MinNodes --resource-type Microsoft.Web/sites
-if ($MinNode -eq $MaxNodes)
+
+if (-not ($Plan -eq "Consumption"))
 {
-	az resource update -n $functionAppName/config/web -g $groupName --set properties.functionsRuntimeScaleMonitoringEnabled=0 --resource-type Microsoft.Web/sites
-}
-else
-{
-	az resource update -n $functionAppName/config/web -g $groupName --set properties.functionsRuntimeScaleMonitoringEnabled=1 --resource-type Microsoft.Web/sites
+	Write-Host "Configuring Function App Scale=$MinNodes-$MaxNodes"
+	az functionapp plan update -g $groupName -n $functionAppName --max-burst $MaxNodes --number-of-workers $MinNodes --min-instances $MinNodes 
+	az resource update -n $functionAppName/config/web -g $groupName --set properties.minimumElasticInstanceCount=$MinNodes --resource-type Microsoft.Web/sites
+	if ($MinNode -eq $MaxNodes)
+	{
+		az resource update -n $functionAppName/config/web -g $groupName --set properties.functionsRuntimeScaleMonitoringEnabled=0 --resource-type Microsoft.Web/sites
+	}
+	else
+	{
+		az resource update -n $functionAppName/config/web -g $groupName --set properties.functionsRuntimeScaleMonitoringEnabled=1 --resource-type Microsoft.Web/sites
+	}
 }
 
 if ($DeployCode)
