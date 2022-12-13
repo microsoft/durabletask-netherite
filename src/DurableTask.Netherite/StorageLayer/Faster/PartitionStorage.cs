@@ -78,8 +78,6 @@ namespace DurableTask.Netherite.Faster
             this.terminationToken = errorHandler.Token;
             this.terminationTokenTask = Task.Delay(-1, errorHandler.Token);
 
-            int psfCount = 0;
-
             this.blobManager = new BlobManager(
                 this.settings,
                 this.taskHubName,
@@ -89,8 +87,7 @@ namespace DurableTask.Netherite.Faster
                 this.performanceLogger,
                 this.partition.Settings.StorageLogLevelLimit,
                 partition.PartitionId,
-                errorHandler,
-                psfCount);
+                errorHandler);
 
             this.TraceHelper = this.blobManager.TraceHelper;
             this.blobManager.FaultInjector?.Starting(this.blobManager);
@@ -209,7 +206,7 @@ namespace DurableTask.Netherite.Faster
 
         internal void CheckForStuckWorkers(object _)
         {
-            TimeSpan limit = Debugger.IsAttached ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(1);
+            TimeSpan limit = Debugger.IsAttached ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(3);
 
             // check if any of the workers got stuck in a processing loop
             Check("StoreWorker", this.storeWorker.ProcessingBatchSince);
@@ -220,7 +217,7 @@ namespace DurableTask.Netherite.Faster
             {
                 if (busySince.HasValue && busySince.Value > limit)
                 {
-                    this.blobManager.PartitionErrorHandler.HandleError("CheckForHungWorkers", $"batch worker {workerName} has been processing for {busySince.Value}, which exceeds the limit {limit}", null, true, false);
+                    this.blobManager.PartitionErrorHandler.HandleError("CheckForStuckWorkers", $"batch worker {workerName} has been processing for {busySince.Value}, which exceeds the limit {limit}", null, true, false);
                 }
             }
         }

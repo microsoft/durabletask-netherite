@@ -76,7 +76,7 @@ namespace DurableTask.Netherite.Faster
                         this.StorageTracer?.FasterStorageProgress(message);
                         throw new OperationCanceledException(message, e);
                     }
-                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
+                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e) && numAttempts < BlobManager.MaxRetries)
                     {
                         stopwatch.Stop();
 
@@ -171,8 +171,7 @@ namespace DurableTask.Netherite.Faster
                     this.StorageTracer?.FasterStorageProgress(message);
                     throw new OperationCanceledException(message, e);  
                 }
-                catch (Exception e) when (numAttempts < BlobManager.MaxRetries
-                    && BlobUtils.IsTransientStorageError(e, this.PartitionErrorHandler.Token))
+                catch (Exception e) when (numAttempts < BlobManager.MaxRetries && BlobUtils.IsTransientStorageError(e))
                 {
                     stopwatch.Stop();
                     if (BlobUtils.IsTimeout(e))
