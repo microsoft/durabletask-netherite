@@ -463,7 +463,7 @@ namespace DurableTask.Netherite.Faster
                         }
 
                         return (long)length;
-                    });
+                    }).ConfigureAwait(false);
             }
         }
 
@@ -542,10 +542,6 @@ namespace DurableTask.Netherite.Faster
             this.WriteToBlobAsync(blobEntry, sourceAddress, (long)destinationAddress, numBytesToWrite, id)
                 .ContinueWith((Task t) =>
                     {
-                        if (this.underLease)
-                        {
-                            this.SingleWriterSemaphore.Release();
-                        }
                         if (this.pendingReadWriteOperations.TryRemove(id, out ReadWriteRequestInfo request))
                         {
                             if (t.IsFaulted)
@@ -559,7 +555,13 @@ namespace DurableTask.Netherite.Faster
                                 request.Callback(0, request.NumBytes, request.Context);
                             }
                         }
-                    });
+
+                        if (this.underLease)
+                        {
+                            this.SingleWriterSemaphore.Release();
+                        }
+
+                    }, TaskContinuationOptions.ExecuteSynchronously);
         }
 
         async Task WriteToBlobAsync(BlobEntry blobEntry, IntPtr sourceAddress, long destinationAddress, uint numBytesToWrite, long id)
@@ -573,7 +575,7 @@ namespace DurableTask.Netherite.Faster
             while (numBytesToWrite > 0)
             {
                 var length = Math.Min(numBytesToWrite, MAX_UPLOAD_SIZE);
-                await this.WritePortionToBlobUnsafeAsync(blobEntry, sourceAddress, destinationAddress, offset, length, id);
+                await this.WritePortionToBlobUnsafeAsync(blobEntry, sourceAddress, destinationAddress, offset, length, id).ConfigureAwait(false);
                 numBytesToWrite -= length;
                 offset += length;
             }
