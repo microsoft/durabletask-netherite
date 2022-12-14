@@ -29,7 +29,7 @@ namespace DurableTask.Netherite
             {
                 if (this.logger.IsEnabled(LogLevel.Debug))
                 {
-                    this.logger.LogInformation("LoadMonitor {details}", details);
+                    this.logger.LogDebug("LoadMonitor {details}", details);
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
