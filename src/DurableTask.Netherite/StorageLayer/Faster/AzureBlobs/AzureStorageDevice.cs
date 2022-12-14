@@ -29,6 +29,7 @@ namespace DurableTask.Netherite.Faster
         readonly ConcurrentDictionary<long, ReadWriteRequestInfo> pendingReadWriteOperations;
         readonly ConcurrentDictionary<long, RemoveRequestInfo> pendingRemoveOperations;
         readonly Timer hangCheckTimer;
+        readonly SemaphoreSlim singleWriterSemaphore;
         readonly TimeSpan limit;
 
         static long sequenceNumber;
@@ -48,6 +49,8 @@ namespace DurableTask.Netherite.Faster
             public IAsyncResult Result;
             public DateTime TimeStamp;
         }
+
+        public SemaphoreSlim SingleWriterSemaphore => this.singleWriterSemaphore;
 
         internal IPartitionErrorHandler PartitionErrorHandler { get; private set; }
 
@@ -83,6 +86,7 @@ namespace DurableTask.Netherite.Faster
             this.BlobManager = blobManager;
             this.underLease = underLease;
             this.hangCheckTimer = new Timer(this.DetectHangs, null, 0, 20000);
+            this.singleWriterSemaphore = underLease ? new SemaphoreSlim(1) : null;
             this.limit = TimeSpan.FromSeconds(90);
         }
 
@@ -136,7 +140,7 @@ namespace DurableTask.Netherite.Faster
                         {
                             this.BlobManager?.StorageTracer?.FasterStorageProgress($"AzureStorageDevice.StartAsync found segment={item.Name}");
 
-                            bool ret = this.blobs.TryAdd(segmentId, new BlobEntry(BlobUtilsV12.GetPageBlobClients(this.pageBlobDirectory.Client, item.Name), this));
+                            bool ret = this.blobs.TryAdd(segmentId, new BlobEntry(BlobUtilsV12.GetPageBlobClients(this.pageBlobDirectory.Client, item.Name), item.Properties.ETag.Value, this));
 
                             if (!ret)
                             {
@@ -197,7 +201,7 @@ namespace DurableTask.Netherite.Faster
         {
             DateTime threshold = DateTime.UtcNow - (Debugger.IsAttached ? TimeSpan.FromMinutes(30) : this.limit);
 
-            foreach(var kvp in this.pendingReadWriteOperations)
+            foreach (var kvp in this.pendingReadWriteOperations)
             {
                 if (kvp.Value.TimeStamp < threshold)
                 {
@@ -250,8 +254,9 @@ namespace DurableTask.Netherite.Faster
         public override void Dispose()
         {
             this.hangCheckTimer.Dispose();
+            this.singleWriterSemaphore?.Dispose();
         }
- 
+
         /// <summary>
         /// <see cref="IDevice.RemoveSegmentAsync(int, AsyncCallback, IAsyncResult)"/>
         /// </summary>
@@ -327,7 +332,7 @@ namespace DurableTask.Netherite.Faster
                     });
             }
 
-           return Task.WhenAll(this.blobs.Values.Select(Delete).ToList());
+            return Task.WhenAll(this.blobs.Values.Select(Delete).ToList());
         }
 
         /// <summary>
@@ -416,12 +421,12 @@ namespace DurableTask.Netherite.Faster
 
         //---- The actual read and write accesses to the page blobs
 
-        unsafe Task WritePortionToBlobUnsafeAsync(BlobUtilsV12.PageBlobClients blob, IntPtr sourceAddress, long destinationAddress, long offset, uint length, long id)
+        unsafe Task WritePortionToBlobUnsafeAsync(BlobEntry blobEntry, IntPtr sourceAddress, long destinationAddress, long offset, uint length, long id)
         {
-            return this.WritePortionToBlobAsync(new UnmanagedMemoryStream((byte*)sourceAddress + offset, length), blob, sourceAddress, destinationAddress, offset, length, id);
+            return this.WritePortionToBlobAsync(new UnmanagedMemoryStream((byte*)sourceAddress + offset, length), blobEntry, sourceAddress, destinationAddress, offset, length, id);
         }
 
-        async Task WritePortionToBlobAsync(UnmanagedMemoryStream stream, BlobUtilsV12.PageBlobClients blob, IntPtr sourceAddress, long destinationAddress, long offset, uint length, long id)
+        async Task WritePortionToBlobAsync(UnmanagedMemoryStream stream, BlobEntry blobEntry, IntPtr sourceAddress, long destinationAddress, long offset, uint length, long id)
         {
             using (stream)
             {
@@ -432,7 +437,7 @@ namespace DurableTask.Netherite.Faster
                     "PageBlobClient.UploadPagesAsync",
                     "WriteToDevice",
                     $"id={id} length={length} destinationAddress={destinationAddress + offset}",
-                    blob.Default.Name,
+                    blobEntry.PageBlob.Default.Name,
                     1000 + (int)length / 1000,
                     true,
                     async (numAttempts) =>
@@ -444,15 +449,17 @@ namespace DurableTask.Netherite.Faster
 
                         if (length > 0)
                         {
-                            var client = numAttempts > 2 ? blob.Default : blob.Aggressive;
+                            var client = numAttempts > 2 ? blobEntry.PageBlob.Default : blobEntry.PageBlob.Aggressive;
 
-                            await client.UploadPagesAsync(
-                                content: stream,
-                                offset: destinationAddress + offset,
-                                transactionalContentHash: null,
-                                conditions: null,
-                                progressHandler: null,
-                                cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
+                            var response = await client.UploadPagesAsync(
+                                 content: stream,
+                                 offset: destinationAddress + offset,
+                                 transactionalContentHash: null,
+                                 conditions: this.underLease ? new PageBlobRequestConditions() { IfMatch = blobEntry.ETag } : null,
+                                 progressHandler: null,
+                                 cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
+
+                            blobEntry.ETag = response.Value.ETag;
                         }
 
                         return (long)length;
@@ -522,19 +529,23 @@ namespace DurableTask.Netherite.Faster
         {
             // If pageBlob is null, it is being created. Attempt to queue the write for the creator to complete after it is done
             if (blobEntry.PageBlob.Default == null
-                && blobEntry.TryQueueAction(p => this.WriteToBlobAsync(p, sourceAddress, destinationAddress, numBytesToWrite, id)))
+                && blobEntry.TryQueueAction(() => this.WriteToBlobAsync(blobEntry, sourceAddress, destinationAddress, numBytesToWrite, id)))
             {
                 return;
             }
             // Otherwise, invoke directly.
-            this.WriteToBlobAsync(blobEntry.PageBlob, sourceAddress, destinationAddress, numBytesToWrite, id);
+            this.WriteToBlobAsync(blobEntry, sourceAddress, destinationAddress, numBytesToWrite, id);
         }
 
-        unsafe void WriteToBlobAsync(BlobUtilsV12.PageBlobClients blob, IntPtr sourceAddress, ulong destinationAddress, uint numBytesToWrite, long id)
+        unsafe void WriteToBlobAsync(BlobEntry blobEntry, IntPtr sourceAddress, ulong destinationAddress, uint numBytesToWrite, long id)
         {
-            this.WriteToBlobAsync(blob, sourceAddress, (long)destinationAddress, numBytesToWrite, id)
+            this.WriteToBlobAsync(blobEntry, sourceAddress, (long)destinationAddress, numBytesToWrite, id)
                 .ContinueWith((Task t) =>
                     {
+                        if (this.underLease)
+                        {
+                            this.SingleWriterSemaphore.Release();
+                        }
                         if (this.pendingReadWriteOperations.TryRemove(id, out ReadWriteRequestInfo request))
                         {
                             if (t.IsFaulted)
@@ -551,13 +562,18 @@ namespace DurableTask.Netherite.Faster
                     });
         }
 
-        async Task WriteToBlobAsync(BlobUtilsV12.PageBlobClients blob, IntPtr sourceAddress, long destinationAddress, uint numBytesToWrite, long id)
+        async Task WriteToBlobAsync(BlobEntry blobEntry, IntPtr sourceAddress, long destinationAddress, uint numBytesToWrite, long id)
         {
+            if (this.underLease)
+            {
+                await this.SingleWriterSemaphore.WaitAsync();
+            }
+
             long offset = 0;
             while (numBytesToWrite > 0)
             {
                 var length = Math.Min(numBytesToWrite, MAX_UPLOAD_SIZE);
-                await this.WritePortionToBlobUnsafeAsync(blob, sourceAddress, destinationAddress, offset, length, id);
+                await this.WritePortionToBlobUnsafeAsync(blobEntry, sourceAddress, destinationAddress, offset, length, id);
                 numBytesToWrite -= length;
                 offset += length;
             }

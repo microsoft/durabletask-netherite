@@ -92,6 +92,11 @@ namespace DurableTask.Netherite.Faster
                         }
                         continue;
                     }
+                    catch (Azure.RequestFailedException ex) when (BlobUtilsV12.PreconditionFailed(ex))
+                    {
+                        // precondition failed, which indicates we are observing a rare partition race
+                        this.HandleStorageError(name, $"storage operation {name} ({intent}) failed precondition on attempt {numAttempts}", target, ex, true, true);
+                    }
                     catch (Exception exception)
                     {
                         this.HandleStorageError(name, $"storage operation {name} ({intent}) failed on attempt {numAttempts}", target, exception, isCritical, this.PartitionErrorHandler.IsTerminated);
@@ -185,6 +190,11 @@ namespace DurableTask.Netherite.Faster
                         Thread.Sleep(nextRetryIn);
                     }
                     continue;
+                }
+                catch (Azure.RequestFailedException ex) when (BlobUtilsV12.PreconditionFailed(ex))
+                {
+                    // precondition failed, which indicates we are observing a rare partition race
+                    this.HandleStorageError(name, $"storage operation {name} ({intent}) failed precondition on attempt {numAttempts}", target, ex, true, true);
                 }
                 catch (Exception exception)
                 {
