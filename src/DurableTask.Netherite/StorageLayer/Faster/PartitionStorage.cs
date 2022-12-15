@@ -125,9 +125,29 @@ namespace DurableTask.Netherite.Faster
                 errorHandler.OnShutdown += () => this.hangCheckTimer.Dispose();
             }
 
-            if (this.log.TailAddress == this.log.BeginAddress)
+            bool hasCheckpoint = false;
+
+            try
             {
-                // take an (empty) checkpoint immediately to ensure the paths are working
+                // determine if there is a checkpoint we can load from
+                hasCheckpoint = await this.store.FindCheckpointAsync(logIsEmpty: this.log.TailAddress == this.log.BeginAddress);
+            }
+            catch (OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
+            {
+                throw; // normal if canceled
+            }
+            catch (Exception e)
+            {
+                this.TraceHelper.FasterStorageError("looking for checkpoint", e);
+                throw;
+            }
+
+            if (!hasCheckpoint)
+            {
+                // we are in a situation where either this is a completely fresh partition, or it has only been partially initialized
+                // without going all the way to the first checkpoint.
+                //
+                // we take an (empty) checkpoint immediately (before committing anything to the log), so we can recover from it next time
                 try
                 {
                     this.TraceHelper.FasterProgress("Creating store");
@@ -137,6 +157,10 @@ namespace DurableTask.Netherite.Faster
 
                     await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("initial checkpoint").AsTask());
                     this.TraceHelper.FasterStoreCreated(this.storeWorker.InputQueuePosition, stopwatch.ElapsedMilliseconds);
+                }
+                catch (OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
+                {
+                    throw; // normal if canceled
                 }
                 catch (Exception e)
                 {

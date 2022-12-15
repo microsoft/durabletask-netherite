@@ -98,6 +98,11 @@ namespace DurableTask.Netherite.Faster
         {
         }
 
+        public override Task<bool> FindCheckpointAsync(bool logIsEmpty)
+        {
+            return Task.FromResult(!logIsEmpty);
+        }
+
         public override Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
         {
             foreach (var guid in this.ReadCheckpointIntentions())

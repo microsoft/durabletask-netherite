@@ -48,6 +48,7 @@ namespace DurableTask.Netherite.Faster
         readonly TimeSpan LeaseSafetyBuffer = TimeSpan.FromSeconds(10); // how much time we want left on the lease before issuing a protected access
 
         internal CheckpointInfo CheckpointInfo { get; }
+        Azure.ETag? CheckpointInfoETag { get; set; }
 
         internal FasterTraceHelper TraceHelper { get; private set; }
         internal FasterTraceHelper StorageTracer => this.TraceHelper.IsTracingAtMostDetailedLevel ? this.TraceHelper : null;
@@ -265,6 +266,7 @@ namespace DurableTask.Netherite.Faster
             this.FaultInjector = faultInjector;
             this.partitionId = partitionId;
             this.CheckpointInfo = new CheckpointInfo();
+            this.CheckpointInfoETag = default;
 
             if (!string.IsNullOrEmpty(settings.UseLocalDirectoryForPartitionStorage))
             {
@@ -972,47 +974,70 @@ namespace DurableTask.Netherite.Faster
             yield return logToken;
         }
 
-        internal Task FindCheckpointsAsync()
+        internal async Task<bool> FindCheckpointsAsync(bool logIsEmpty)
         {
-            var tasks = new List<Task>();
-            tasks.Add(FindCheckpoint());
-            return Task.WhenAll(tasks);
-
-            async Task FindCheckpoint()
+            BlobUtilsV12.BlockBlobClients checkpointCompletedBlob = default;
+            try
             {
-                BlobUtilsV12.BlockBlobClients checkpointCompletedBlob = default;
-                try
+                string jsonString = null;
+
+                if (this.UseLocalFiles)
                 {
-                    string jsonString;
-                    if (this.UseLocalFiles)
+                    try
                     {
                         jsonString = this.LocalCheckpointManager.GetLatestCheckpointJson();
                     }
-                    else
+                    catch (FileNotFoundException) when (logIsEmpty)
                     {
-                        var partDir = this.blockBlobPartitionDirectory;
-                        checkpointCompletedBlob = partDir.GetBlockBlobClient(this.GetCheckpointCompletedBlobName());
-                        try
-                        {
-                            Interlocked.Increment(ref this.LeaseUsers);
-                            await this.ConfirmLeaseIsGoodForAWhileAsync();
-                            Azure.Response<BlobDownloadResult> downloadResult = await checkpointCompletedBlob.WithRetries.DownloadContentAsync();
-                            jsonString = downloadResult.Value.Content.ToString();
-                        }
-                        finally
-                        {
-                            Interlocked.Decrement(ref this.LeaseUsers);
-                        }
+                        // ok to not have a checkpoint yet
                     }
+                }
+                else
+                {
+                    var partDir = this.blockBlobPartitionDirectory;
+                    checkpointCompletedBlob = partDir.GetBlockBlobClient(this.GetCheckpointCompletedBlobName());
 
+                    await this.PerformWithRetriesAsync(
+                        semaphore: null,
+                        requireLease: true,
+                        "BlockBlobClient.DownloadContentAsync",
+                        "FindCheckpointsAsync",
+                        "",
+                        checkpointCompletedBlob.Name,
+                        1000,
+                        true,
+                        async (numAttempts) =>
+                        {
+                            try
+                            {
+                                Azure.Response<BlobDownloadResult> downloadResult = await checkpointCompletedBlob.WithRetries.DownloadContentAsync();
+                                jsonString = downloadResult.Value.Content.ToString();
+                                this.CheckpointInfoETag = downloadResult.Value.Details.ETag;
+                                return 1;
+                            }
+                            catch (Azure.RequestFailedException e) when (BlobUtilsV12.BlobDoesNotExist(e) && logIsEmpty)
+                            {
+                                // ok to not have a checkpoint yet
+                                return 0;
+                            }
+                        });
+                }
+
+                if (jsonString == null)
+                {
+                    return false;
+                }
+                else
+                {
                     // read the fields from the json to update the checkpoint info
                     JsonConvert.PopulateObject(jsonString, this.CheckpointInfo);
+                    return true;
                 }
-                catch (Exception e)
-                {
-                    this.HandleStorageError(nameof(FindCheckpoint), "could not determine latest checkpoint", checkpointCompletedBlob.Name, e, true, this.PartitionErrorHandler.IsTerminated);
-                    throw;
-                }
+            }
+            catch (Exception e)
+            {
+                this.HandleStorageError(nameof(FindCheckpointsAsync), "could not find any checkpoint", checkpointCompletedBlob.Name, e, true, this.PartitionErrorHandler.IsTerminated);
+                throw;
             }
         }
 
@@ -1325,13 +1350,14 @@ namespace DurableTask.Netherite.Faster
 
         internal async Task FinalizeCheckpointCompletedAsync()
         {
-            // write the final file that has all the checkpoint info
-            void writeLocal(string path, string text)
-                => File.WriteAllText(Path.Combine(path, this.GetCheckpointCompletedBlobName()), text);
-
-            async Task writeBlob(BlobUtilsV12.BlobDirectory partDir, string text)
+            var jsonText = JsonConvert.SerializeObject(this.CheckpointInfo, Formatting.Indented);
+            if (this.UseLocalFiles)
             {
-                var checkpointCompletedBlob = partDir.GetBlockBlobClient(this.GetCheckpointCompletedBlobName());
+                File.WriteAllText(Path.Combine(this.LocalCheckpointDirectoryPath, this.GetCheckpointCompletedBlobName()), jsonText);
+            }
+            else
+            {
+                var checkpointCompletedBlob = this.blockBlobPartitionDirectory.GetBlockBlobClient(this.GetCheckpointCompletedBlobName());
                 await this.PerformWithRetriesAsync(
                     BlobManager.AsynchronousStorageWriteMaxConcurrency,
                     true,
@@ -1345,25 +1371,22 @@ namespace DurableTask.Netherite.Faster
                     {
                         var client = numAttempts > 1 ? checkpointCompletedBlob.Default : checkpointCompletedBlob.Aggressive;
 
-                        await client.UploadAsync(
-                            new MemoryStream(Encoding.UTF8.GetBytes(text)),
+                        var azureResponse = await client.UploadAsync(
+                            new MemoryStream(Encoding.UTF8.GetBytes(jsonText)),
                             new BlobUploadOptions()
                             {
-                                HttpHeaders = new BlobHttpHeaders()
-                                {
-                                    ContentType = "application/json"
-                                }
+                                Conditions = this.CheckpointInfoETag.HasValue ?
+                                    new BlobRequestConditions() { IfMatch = this.CheckpointInfoETag.Value }
+                                    : new BlobRequestConditions() { IfNoneMatch = Azure.ETag.All },
+                                HttpHeaders = new BlobHttpHeaders() { ContentType = "application/json" },
                             },
                             this.PartitionErrorHandler.Token);
-                        return text.Length;
+
+                        this.CheckpointInfoETag = azureResponse.Value.ETag;
+
+                        return jsonText.Length;
                     });
             }
-
-            var jsonText = JsonConvert.SerializeObject(this.CheckpointInfo, Formatting.Indented);
-            if (this.UseLocalFiles)
-                writeLocal(this.LocalCheckpointDirectoryPath, jsonText);
-            else
-                await writeBlob(this.blockBlobPartitionDirectory, jsonText);
         }
     }
 }

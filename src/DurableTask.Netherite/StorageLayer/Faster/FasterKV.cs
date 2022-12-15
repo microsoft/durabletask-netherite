@@ -227,12 +227,15 @@ namespace DurableTask.Netherite.Faster
             this.CheckInvariants();
         }
 
+        public override Task<bool> FindCheckpointAsync(bool logIsEmpty)
+        {
+            return this.blobManager.FindCheckpointsAsync(logIsEmpty);
+        }
+
         public override async Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
         {
             try
             {
-                await this.blobManager.FindCheckpointsAsync();
-
                 // recover singletons
                 this.blobManager.TraceHelper.FasterProgress($"Recovering Singletons");
                 using (var stream = await this.blobManager.RecoverSingletonsAsync())
