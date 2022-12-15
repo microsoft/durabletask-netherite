@@ -304,7 +304,7 @@ namespace DurableTask.Netherite.Faster
                     this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.RemoveSegmentAsync id={id}");
                     request.Callback(request.Result);
                 }
-            });
+            }, TaskContinuationOptions.ExecuteSynchronously);
         }
 
         /// <summary>
@@ -378,7 +378,7 @@ namespace DurableTask.Netherite.Faster
                               request.Callback(0, request.NumBytes, request.Context);
                           }
                       }
-                  });
+                  }, TaskContinuationOptions.ExecuteSynchronously);
         }
 
         /// <summary>
