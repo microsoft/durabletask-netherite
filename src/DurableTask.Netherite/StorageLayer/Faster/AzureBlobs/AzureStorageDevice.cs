@@ -463,6 +463,12 @@ namespace DurableTask.Netherite.Faster
                         }
 
                         return (long)length;
+                    },
+                    async () =>
+                    {
+                        var response = await blobEntry.PageBlob.Default.GetPropertiesAsync();
+                        blobEntry.ETag = response.Value.ETag;
+
                     }).ConfigureAwait(false);
             }
         }

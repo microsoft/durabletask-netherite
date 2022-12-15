@@ -1385,6 +1385,11 @@ namespace DurableTask.Netherite.Faster
                         this.CheckpointInfoETag = azureResponse.Value.ETag;
 
                         return jsonText.Length;
+                    },
+                    async () =>
+                    {
+                        var response = await checkpointCompletedBlob.Default.GetPropertiesAsync();
+                        this.CheckpointInfoETag = response.Value.ETag;
                     });
             }
         }

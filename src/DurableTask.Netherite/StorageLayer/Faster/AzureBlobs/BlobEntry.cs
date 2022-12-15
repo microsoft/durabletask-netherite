@@ -82,6 +82,11 @@ namespace DurableTask.Netherite.Faster
 
                     this.ETag = response.Value.ETag;
                     return 1;
+                },
+                async () =>
+                {
+                    var response = await pageBlob.Default.GetPropertiesAsync();
+                    this.ETag = response.Value.ETag;
                 });
 
             // At this point the blob is fully created. After this line all consequent writers will write immediately. We just

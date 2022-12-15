@@ -25,7 +25,8 @@ namespace DurableTask.Netherite.Faster
             string target,
             int expectedLatencyBound,
             bool isCritical,
-            Func<int, Task<long>> operation)
+            Func<int, Task<long>> operationAsync,
+            Func<Task> readETagAsync = null)
         {
             try
             {
@@ -36,6 +37,7 @@ namespace DurableTask.Netherite.Faster
 
                 Stopwatch stopwatch = new Stopwatch();
                 int numAttempts = 0;
+                bool mustReadETagFirst = false;
 
                 while (true) // retry loop
                 {
@@ -44,6 +46,13 @@ namespace DurableTask.Netherite.Faster
                     {
                         if (requireLease)
                         {
+                            // we can re-establish the e-tag here because we check the lease afterwards
+                            if (mustReadETagFirst)
+                            {
+                                await readETagAsync().ConfigureAwait(false);
+                                mustReadETagFirst = false;
+                            }
+
                             Interlocked.Increment(ref this.LeaseUsers);
                             await this.ConfirmLeaseIsGoodForAWhileAsync();
                         }
@@ -56,10 +65,10 @@ namespace DurableTask.Netherite.Faster
 
                         this.FaultInjector?.StorageAccess(this, name, intent, target);
 
-                        long size = await operation(numAttempts).ConfigureAwait(false);
+                        long size = await operationAsync(numAttempts).ConfigureAwait(false);
 
                         stopwatch.Stop();
-                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) succeeded on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} {data} ");
+                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) succeeded on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} {data}");
 
                         if (stopwatch.ElapsedMilliseconds > expectedLatencyBound)
                         {
@@ -92,10 +101,11 @@ namespace DurableTask.Netherite.Faster
                         }
                         continue;
                     }
-                    catch (Azure.RequestFailedException ex) when (BlobUtilsV12.PreconditionFailed(ex))
+                    catch (Azure.RequestFailedException ex) when (BlobUtilsV12.PreconditionFailed(ex) && readETagAsync != null)
                     {
-                        // precondition failed, which indicates we are observing a rare partition race
-                        this.HandleStorageError(name, $"storage operation {name} ({intent}) failed precondition on attempt {numAttempts}", target, ex, true, true);
+                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) failed precondition on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} {data}");
+                        mustReadETagFirst = true;
+                        continue;
                     }
                     catch (Exception exception)
                     {
