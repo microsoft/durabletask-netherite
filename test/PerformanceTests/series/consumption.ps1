@@ -18,5 +18,5 @@ if ($PrintColumnNames)
 ./series/runmany -Tag neth   -HubName CX2 -Plan Consumption -NumReps 4 -Orchestration FanOutFanInOrchestration -Data "/1000" -NumOrchestrations 200 -PortionSize 0 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu
 ./series/runmany -Tag neth   -HubName CX3 -Plan Consumption -NumReps 4 -Orchestration HelloSequence5 -NumOrchestrations 10000 -PortionSize 200 -DelayAfterRun 50 -ResultsFile $ResultsFile -ThroughputUnits $tu
 ./series/runsingle -Tag neth -HubName CX4 -Plan Consumption -NumReps 4 -Orchestration WordCount -Data "15x40" -ResultsFile $ResultsFile -ThroughputUnits $tu
-./series/runsingle -Tag neth -HubName CX5 -Plan Consumption -NumReps 4 -Orchestration CollisionSearch/divide-and-conquer -Data 400 -DelayAfterRun 40 -ResultsFile $ResultsFile -ThroughputUnits $tu
-./series/runsingle -Tag neth -HubName CX6 -Plan Consumption -NumReps 4 -Orchestration CollisionSearch/flat-parallel -Data 400 -DelayAfterRun 40 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
+./series/runsingle -Tag neth -HubName CX5 -Plan Consumption -NumReps 4 -Orchestration CollisionSearch/divide-and-conquer -Data 400 -DelayAfterRun 40 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits $tu
+./series/runsingle -Tag neth -HubName CX6 -Plan Consumption -NumReps 4 -Orchestration CollisionSearch/flat-parallel -Data 400 -DelayAfterRun 40 -ResultsFile $ResultsFile -MaxA 10 -ThroughputUnits $tu -DeleteAfterTests $true
