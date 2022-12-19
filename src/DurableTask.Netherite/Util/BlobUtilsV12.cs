@@ -232,7 +232,7 @@ namespace DurableTask.Netherite
 
         public static bool PreconditionFailed(Azure.RequestFailedException e)
         {
-            return e.Status == 412;
+            return e.Status == 409 || e.Status == 412;
         }
 
         public static bool BlobDoesNotExist(Azure.RequestFailedException e)
