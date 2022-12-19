@@ -15,6 +15,8 @@ namespace DurableTask.Netherite.Faster
     {
         public abstract void InitMainSession();
 
+        public abstract Task<bool> FindCheckpointAsync(bool logIsEmpty);
+
         public abstract Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync();
 
         public abstract bool CompletePending();

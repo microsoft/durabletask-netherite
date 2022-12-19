@@ -20,6 +20,7 @@ namespace DurableTask.Netherite
     using Microsoft.Azure.EventHubs.Processor;
     using Newtonsoft.Json.Serialization;
     using DurableTask.Netherite.Faster;
+    using Azure.Storage.Blobs;
 
     /// <summary>
     /// Utilities for constructing various SDK objects from a connection information.
@@ -74,9 +75,8 @@ namespace DurableTask.Netherite
         /// </summary>
         /// <param name="connectionInfo">The connection info.</param>
         /// <param name="tableName">The table name.</param>
-        /// <param name="cancellationToken">A cancellation token.</param>
         /// <returns></returns>
-        public static Azure.Data.Tables.TableClient GetAzureStorageV12TableClientAsync(this ConnectionInfo connectionInfo, string tableName, CancellationToken cancellationToken = default)
+        public static Azure.Data.Tables.TableClient GetAzureStorageV12TableClient(this ConnectionInfo connectionInfo, string tableName)
         {
             if (connectionInfo.ConnectionString != null)
             {
@@ -87,6 +87,25 @@ namespace DurableTask.Netherite
                 return new Azure.Data.Tables.TableClient(new Uri($"https://{connectionInfo.HostName}/"), tableName, connectionInfo.TokenCredential);
             }
         }
+
+        /// <summary>
+        /// Creates an Azure Storage blob client for the v12 SDK.
+        /// </summary>
+        /// <param name="connectionInfo">The connection info.</param>
+        /// <param name="blobClientOptions">The blob client options.</param>
+        /// <returns></returns>
+        public static Azure.Storage.Blobs.BlobServiceClient GetAzureStorageV12BlobServiceClient(this ConnectionInfo connectionInfo, BlobClientOptions blobClientOptions)
+        {
+            if (connectionInfo.ConnectionString != null)
+            {
+                return new Azure.Storage.Blobs.BlobServiceClient(connectionInfo.ConnectionString, blobClientOptions);
+            }
+            else
+            {
+                return new Azure.Storage.Blobs.BlobServiceClient(new Uri($"https://{connectionInfo.HostName}/"), connectionInfo.TokenCredential, blobClientOptions);
+            }
+        }
+
 
         /// <summary>
         /// Creates an Event Hub client for the given connection info.

@@ -4,8 +4,10 @@
 namespace DurableTask.Netherite
 {
     using System;
+    using System.Net.Http;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Storage.Blobs.Models;
     using DurableTask.Core.Common;
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
@@ -60,51 +62,42 @@ namespace DurableTask.Netherite
         /// <param name="e">The storage exception.</param>
         /// <param name="token">The cancellation token that was passed to the storage request.</param>
         /// <returns>Whether this is a transient storage exception.</returns>
-        public static bool IsTransientStorageError(Exception exception, CancellationToken token)
-        {
-            if (exception is StorageException e)
-            {
-                // Transient error codes as documented at https://docs.microsoft.com/en-us/azure/architecture/best-practices/retry-service-specific#azure-storage
-                if ((e.RequestInformation.HttpStatusCode == 408)    //408 Request Timeout
-                    || (e.RequestInformation.HttpStatusCode == 429)  //429 Too Many Requests
-                    || (e.RequestInformation.HttpStatusCode == 500)  //500 Internal Server Error
-                    || (e.RequestInformation.HttpStatusCode == 502)  //502 Bad Gateway
-                    || (e.RequestInformation.HttpStatusCode == 503)  //503 Service Unavailable
-                    || (e.RequestInformation.HttpStatusCode == 504)) //504 Gateway Timeout
-                {
-                    return true;
-                }
-
-                // Empirically observed transient cancellation exceptions that are not application initiated
-                if (e.InnerException is OperationCanceledException && !token.IsCancellationRequested)
-                {
-                    return true;
-                }
-
-                // Empirically observed timeouts on synchronous calls
-                if (e.InnerException is TimeoutException)
-                {
-                    return true;
-                }
-
-                // Empirically observed transient exception 
-                // ('An existing connection was forcibly closed by the remote host')
-                if (e.InnerException is System.Net.Http.HttpRequestException
-                    && e.InnerException?.InnerException is System.IO.IOException)
-                {
-                    return true;
-                }
-            }
-
-            if (exception is System.IO.IOException && exception.InnerException is System.Net.Sockets.SocketException)
-            {
-                return true; // empirically observed
-            }
-
-            // Empirically observed transient cancellation exceptions that are not application initiated
-            if (exception is OperationCanceledException && !token.IsCancellationRequested)
+        public static bool IsTransientStorageError(Exception exception)
+        {           
+            // handle Azure V11 SDK exceptions
+            if (exception is StorageException e && httpStatusIndicatesTransientError(e.RequestInformation?.HttpStatusCode))
             {
                 return true;
+            }
+
+            // handle Azure V12 SDK exceptions
+            if (exception is Azure.RequestFailedException e1 && httpStatusIndicatesTransientError(e1.Status))
+            {
+                return true;
+            }
+
+            // Empirically observed: timeouts on synchronous calls
+            if (exception.InnerException is TimeoutException)
+            {
+                return true;
+            }
+
+            // Empirically observed: transient cancellation exceptions that are not application initiated
+            if (exception is OperationCanceledException || exception.InnerException is OperationCanceledException)
+            {
+                return true;
+            }
+
+            // Empirically observed: transient exception ('An existing connection was forcibly closed by the remote host')
+            if (exception.InnerException is System.Net.Http.HttpRequestException && exception.InnerException?.InnerException is System.IO.IOException)
+            {
+                return true;
+            }
+
+            // Empirically observed: transient socket exceptions
+            if (exception is System.IO.IOException && exception.InnerException is System.Net.Sockets.SocketException)
+            {
+                return true; 
             }
 
             return false;
@@ -117,9 +110,21 @@ namespace DurableTask.Netherite
         /// <returns>Whether this is a timeout storage exception.</returns>
         public static bool IsTimeout(Exception exception)
         {
-            return exception is System.TimeoutException 
-                || (exception is StorageException e && e.RequestInformation?.HttpStatusCode == 408);  //408 Request Timeout
+            return exception is System.TimeoutException
+                || (exception is StorageException e && e.RequestInformation?.HttpStatusCode == 408)  //408 Request Timeout
+                || (exception is Azure.RequestFailedException e1 && (e1.Status == 408 || e1.ErrorCode == "OperationTimedOut"))
+                || (exception is TaskCanceledException & exception.Message.StartsWith("The operation was cancelled because it exceeded the configured timeout"));
         }
+
+        // Transient http status codes as documented at https://docs.microsoft.com/en-us/azure/architecture/best-practices/retry-service-specific#azure-storage
+        static bool httpStatusIndicatesTransientError(int? statusCode) =>
+            (statusCode == 408    //408 Request Timeout
+            || statusCode == 429  //429 Too Many Requests
+            || statusCode == 500  //500 Internal Server Error
+            || statusCode == 502  //502 Bad Gateway
+            || statusCode == 503  //503 Service Unavailable
+            || statusCode == 504); //504 Gateway Timeout
+
 
         // Lease error codes are documented at https://docs.microsoft.com/en-us/rest/api/storageservices/lease-blob
 
