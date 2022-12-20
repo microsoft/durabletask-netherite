@@ -419,7 +419,7 @@ namespace DurableTask.Netherite.Faster
             else
             {
                 var blockBlobAccount = BlobUtilsV12.GetServiceClients(settings.BlobStorageConnection);
-                await DeleteContainerContents(blockBlobAccount.Default);
+                await DeleteContainerContents(blockBlobAccount.WithRetries);
 
                 if (settings.PageBlobStorageConnection != null)
                 {
