@@ -21,7 +21,7 @@ namespace DurableTask.Netherite.Scaling
 
         public AzureTableLoadPublisher(ConnectionInfo connectionInfo, string tableName, string taskHubName)
         {
-            this.table = connectionInfo.GetAzureStorageV12TableClientAsync(tableName, CancellationToken.None); 
+            this.table = connectionInfo.GetAzureStorageV12TableClient(tableName); 
             this.taskHubName = taskHubName;
         }
 

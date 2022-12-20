@@ -3,9 +3,9 @@
 
 namespace DurableTask.Netherite.Faster
 {
+    using Azure.Storage.Blobs.Models;
+    using Azure.Storage.Blobs.Specialized;
     using DurableTask.Core.Common;
-    using Microsoft.Azure.Storage;
-    using Microsoft.Azure.Storage.Blob;
     using System;
     using System.Collections.Generic;
     using System.IO;
@@ -96,6 +96,11 @@ namespace DurableTask.Netherite.Faster
 
         public override void AdjustCacheSize()
         {
+        }
+
+        public override Task<bool> FindCheckpointAsync(bool logIsEmpty)
+        {
+            return Task.FromResult(!logIsEmpty);
         }
 
         public override Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
@@ -399,7 +404,7 @@ namespace DurableTask.Netherite.Faster
 
         #region storage access operation
 
-        CloudBlockBlob GetBlob(TrackedObjectKey key)
+        BlobUtilsV12.BlockBlobClients GetBlob(TrackedObjectKey key)
         {
             StringBuilder blobName = new StringBuilder(this.prefix);
             blobName.Append(key.ObjectType.ToString());
@@ -409,7 +414,7 @@ namespace DurableTask.Netherite.Faster
                 blobName.Append(key.InstanceId);
             }
             // TODO validate blob name and handle problems (too long, too many slashes)
-            return this.blobManager.BlockBlobContainer.GetBlockBlobReference(blobName.ToString());
+            return BlobUtilsV12.GetBlockBlobClients(this.blobManager.BlockBlobContainer, blobName.ToString());
         }
 
         async Task<ToRead> LoadAsync(TrackedObjectKey key)
@@ -433,7 +438,7 @@ namespace DurableTask.Netherite.Faster
 
                         using var stream = new MemoryStream();
                         this.detailTracer?.FasterStorageProgress($"starting download target={blob.Name} attempt={numAttempts}");
-                        await blob.DownloadRangeToStreamAsync(stream, null, null, this.blobManager.PartitionErrorHandler.Token).ConfigureAwait(false);
+                        await blob.WithRetries.DownloadToAsync(stream, cancellationToken: this.blobManager.PartitionErrorHandler.Token).ConfigureAwait(false);
                         this.detailTracer?.FasterStorageProgress($"finished download target={blob.Name} readLength={stream.Position}");
 
                         // parse the content and return it
@@ -449,16 +454,18 @@ namespace DurableTask.Netherite.Faster
                         this.detailTracer?.FasterStorageProgress($"StorageOpReturned FasterAlt.LoadAsync key={key}");
                         return toRead;
                     }
-                    catch (StorageException) when (this.terminationToken.IsCancellationRequested)
+                    catch (Azure.RequestFailedException) when (this.terminationToken.IsCancellationRequested)
                     {
                         throw new OperationCanceledException("Partition was terminated.", this.terminationToken);
                     }
-                    catch (StorageException ex) when (BlobUtils.BlobDoesNotExist(ex))
+                    catch (Azure.RequestFailedException e) when (BlobUtils.IsTransientStorageError(e) && !this.terminationToken.IsCancellationRequested && numAttempts < BlobManager.MaxRetries)
                     {
-                        this.detailTracer?.FasterStorageProgress($"StorageOpReturned FasterAlt.LoadAsync got 404 key={key}");
-                        return default;
+                        TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
+                        this.blobManager?.HandleStorageError(nameof(LoadAsync), $"Could not read object from storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
+                        await Task.Delay(nextRetryIn);
+                        continue;
                     }
-                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e, this.terminationToken) && numAttempts < BlobManager.MaxRetries)
+                    catch (TaskCanceledException e) when (BlobUtils.IsTimeout(e) && numAttempts < BlobManager.MaxRetries)
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
                         this.blobManager?.HandleStorageError(nameof(LoadAsync), $"Could not read object from storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
@@ -530,16 +537,25 @@ namespace DurableTask.Netherite.Faster
 
                         this.detailTracer?.FasterStorageProgress($"starting upload target={blob.Name} length={length} attempt={numAttempts}");
 
-                        await blob.UploadFromStreamAsync(stream, this.blobManager.PartitionErrorHandler.Token).ConfigureAwait(false);
+                        var client = numAttempts > 1 ? blob.Default : blob.Aggressive;
+
+                        await client.UploadAsync(stream, cancellationToken: this.blobManager.PartitionErrorHandler.Token).ConfigureAwait(false);
 
                         this.detailTracer?.FasterStorageProgress($"finished upload target={blob.Name} length={length}");
                         return;
                     }
-                    catch (StorageException) when (this.terminationToken.IsCancellationRequested)
+                    catch (Azure.RequestFailedException) when (this.terminationToken.IsCancellationRequested)
                     {
                         throw new OperationCanceledException("Partition was terminated.", this.terminationToken);
                     }
-                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e, this.blobManager.PartitionErrorHandler.Token) && numAttempts < BlobManager.MaxRetries)
+                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e) && !this.terminationToken.IsCancellationRequested && numAttempts < BlobManager.MaxRetries)
+                    {
+                        TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
+                        this.blobManager?.HandleStorageError(nameof(StoreAsync), $"could not write object to storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
+                        await Task.Delay(nextRetryIn);
+                        continue;
+                    }
+                    catch (TaskCanceledException e) when (BlobUtils.IsTimeout(e) && numAttempts < BlobManager.MaxRetries)
                     {
                         TimeSpan nextRetryIn = BlobManager.GetDelayBetweenRetries(numAttempts);
                         this.blobManager?.HandleStorageError(nameof(StoreAsync), $"could not write object to storage, will retry in {nextRetryIn}s, numAttempts={numAttempts}", blob.Name, e, false, true);
@@ -548,7 +564,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     catch (Exception exception) when (!Utils.IsFatal(exception))
                     {
-                        this.blobManager?.HandleStorageError(nameof(StoreAsync), "could not write object to storage", blob?.Name, exception, true, this.blobManager.PartitionErrorHandler.IsTerminated);
+                        this.blobManager?.HandleStorageError(nameof(StoreAsync), "could not write object to storage", blob.Name, exception, true, this.blobManager.PartitionErrorHandler.IsTerminated);
                         throw;
                     }
                     finally
@@ -568,11 +584,11 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 Interlocked.Increment(ref this.blobManager.LeaseUsers);
-                var blob = this.blobManager.BlockBlobContainer.GetBlockBlobReference($"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{guid}");
+                var blob = BlobUtilsV12.GetBlockBlobClients(this.blobManager.BlockBlobContainer, $"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{guid}");
                 await this.blobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
-                await blob.UploadTextAsync("", this.blobManager.PartitionErrorHandler.Token);
+                await blob.WithRetries.DeleteAsync(cancellationToken: this.blobManager.PartitionErrorHandler.Token);
             }
-            catch (StorageException) when (this.terminationToken.IsCancellationRequested)
+            catch (Azure.RequestFailedException) when (this.terminationToken.IsCancellationRequested)
             {
                 throw new OperationCanceledException("Partition was terminated.", this.terminationToken);
             }
@@ -592,11 +608,11 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 Interlocked.Increment(ref this.blobManager.LeaseUsers);
-                var blob = this.blobManager.BlockBlobContainer.GetBlockBlobReference($"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{guid}");
+                var blob = BlobUtilsV12.GetBlockBlobClients(this.blobManager.BlockBlobContainer, $"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{guid}");
                 await this.blobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
-                await blob.DeleteAsync(this.blobManager.PartitionErrorHandler.Token);
+                await blob.WithRetries.DeleteAsync(cancellationToken: this.blobManager.PartitionErrorHandler.Token);
             }
-            catch (StorageException) when (this.terminationToken.IsCancellationRequested)
+            catch (Azure.RequestFailedException) when (this.terminationToken.IsCancellationRequested)
             {
                 throw new OperationCanceledException("Partition was terminated.", this.terminationToken);
             }
@@ -611,21 +627,24 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        static readonly int guidLength = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".Length;
+
+
         IEnumerable<Guid> ReadCheckpointIntentions()
         {
             try
             {
-                var directory = this.blobManager.BlockBlobContainer.GetDirectoryReference($"p{this.partition.PartitionId:D2}/incomplete-checkpoints/");
-                var checkPoints = directory.ListBlobs().ToList();
+                string prefix = $"p{this.partition.PartitionId:D2}/incomplete-checkpoints/";
+                var checkPoints = this.blobManager.BlockBlobContainer.WithRetries.GetBlobs(prefix: prefix, cancellationToken: this.blobManager.PartitionErrorHandler.Token);
                 this.blobManager.PartitionErrorHandler.Token.ThrowIfCancellationRequested();
-                return checkPoints.Select((item) =>
+                return checkPoints.Select((BlobItem item) =>
                 {
-                    var segments = item.Uri.Segments;
-                    var guid = Guid.Parse(segments[segments.Length - 1]);
+                    var guidstring = item.Name.Substring(item.Name.Length - guidLength);
+                    var guid = Guid.Parse(guidstring);
                     return guid;
                 });
             }
-            catch (StorageException) when (this.terminationToken.IsCancellationRequested)
+            catch (Azure.RequestFailedException) when (this.terminationToken.IsCancellationRequested)
             {
                 throw new OperationCanceledException("Partition was terminated.", this.terminationToken);
             }

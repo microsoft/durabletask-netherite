@@ -19,20 +19,22 @@ namespace PerformanceTests.Periodic
         [FunctionName(nameof(PeriodicOrchestration))]
         public static async Task Run([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
         {
-            for (int i = 0; i < 5; i++)
+            (int iterations, double minutes) = context.GetInput<(int,double)>();
+            
+            for (int i = 0; i < iterations; i++)
             {
-                DateTime fireAt = context.CurrentUtcDateTime + TimeSpan.FromSeconds(60);
+                DateTime fireAt = context.CurrentUtcDateTime + TimeSpan.FromMinutes(minutes);
 
                 if (!context.IsReplaying)
                 {
-                    log.LogWarning($"{context.InstanceId}: starting timer for iteration {i}, to fire at {fireAt}");
+                    log.LogWarning("{instanceId}: periodic timer: starting iteration {iteration}, to fire at {fireAt}", context.InstanceId, i, fireAt);
                 }
 
                 await context.CreateTimer(fireAt, CancellationToken.None);
 
                 if (!context.IsReplaying)
                 {
-                    log.LogWarning($"{context.InstanceId}: timer for iteration {i} fired at {(UtcNowWithNoWarning() - fireAt).TotalMilliseconds:F2}ms relative to deadline");
+                    log.LogWarning("{instanceId}: periodic timer: iteration {iteration} fired at {accuracyMs:F2}ms relative to deadline", context.InstanceId, i, (UtcNowWithNoWarning() - fireAt).TotalMilliseconds);
                 }
             };
         }

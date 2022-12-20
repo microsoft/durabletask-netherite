@@ -15,10 +15,10 @@ namespace PerformanceTests.WordCount
     using Microsoft.Azure.Storage;
     using System.Collections.Generic;
     using System.Text;
-    using Microsoft.Azure.Storage.Blob;
     using DurableTask.Netherite.Faster;
     using System.Net.Http;
     using System.Net;
+    using Azure.Storage.Blobs;
 
     /// <summary>
     /// Defines the REST operations for the word count test.
@@ -36,14 +36,6 @@ namespace PerformanceTests.WordCount
             string[] counts = shape.Split('x');
             int mapperCount, reducerCount;
 
-            // setup connection to the corpus with the text files 
-            CloudBlobClient serviceClient = new CloudBlobClient(new Uri(@"https://gutenbergcorpus.blob.core.windows.net"));       
-            CloudBlobContainer blobContainer = serviceClient.GetContainerReference("gutenberg");
-            CloudBlobDirectory blobDirectory = blobContainer.GetDirectoryReference($"Gutenberg/txt");
-
-            // get the list of files(books) from blob storage
-            IEnumerable<IListBlobItem> books = blobDirectory.ListBlobs();
-
             if (!(counts.Length == 2 && int.TryParse(counts[0], out mapperCount) && int.TryParse(counts[1], out reducerCount)))
             {
                 return new JsonResult(new { message = "Please specify the mapper count and reducer count in the query parameters,  e.g. &shape=10x10" })
@@ -51,6 +43,21 @@ namespace PerformanceTests.WordCount
                     StatusCode = (int)HttpStatusCode.BadRequest
                 };
             }
+
+            // get a book name for each mapper from the corpus
+            var storageConnectionString = Environment.GetEnvironmentVariable("CorpusConnection");
+            var blobContainerClient = new BlobContainerClient(storageConnectionString, blobContainerName: "gutenberg");
+            List<string> bookNames = new List<string>();
+            await foreach (var blob in blobContainerClient.GetBlobsAsync(prefix: "Gutenberg/txt"))
+            {
+                if (bookNames.Count == mapperCount)
+                {
+                    break; // we send only one book to each mapper
+                }
+
+                bookNames.Add(blob.Name);
+            }       
+            int bookCount = bookNames.Count;
 
             // ----- PHASE 1 ----------
             // initialize all three types of entities prior to running the mapreduce
@@ -70,19 +77,11 @@ namespace PerformanceTests.WordCount
             // ----- PHASE 2 ----------
             // send work to the mappers
 
-            int bookCount = 0;
-
-            foreach (var book in books)
+            for (int mapper = 0; mapper < bookCount; mapper++)
             {
-                log.LogWarning($"The book name is {((CloudBlockBlob)book).Name}");
-                int mapper = bookCount++;
-                var _ = client.SignalEntityAsync(Mapper.GetEntityId(mapper), nameof(Mapper.Ops.Item), ((CloudBlockBlob)book).Name);
-                
-                if (bookCount == mapperCount)
-                {
-                    log.LogWarning($"Processed {bookCount} books, exiting");
-                    break;
-                }
+                string book = bookNames[mapper];
+                log.LogWarning($"The book name is {book}");
+                var _ = client.SignalEntityAsync(Mapper.GetEntityId(mapper), nameof(Mapper.Ops.Item), book);
             }
 
             // ----- PHASE 3 ----------

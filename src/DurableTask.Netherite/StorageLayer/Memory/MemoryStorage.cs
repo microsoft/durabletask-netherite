@@ -91,21 +91,38 @@ namespace DurableTask.Netherite
             return result;
         }
 
-        IList<OrchestrationState> QueryOrchestrationStates(InstanceQuery query, int pageSize, string continuationToken)
+        IEnumerable<(string, OrchestrationState)> QueryOrchestrationStates(InstanceQuery query, int pageSize, string continuationToken)
         {
-            return this.trackedObjects
+            var instances = this.trackedObjects
                 .Values
                 .Select(trackedObject => trackedObject as InstanceState)
                 .Select(instanceState => instanceState?.OrchestrationState)
-                .Where(orchestrationState => 
+                .Where(orchestrationState =>
                     orchestrationState != null
-                    && orchestrationState.OrchestrationInstance.InstanceId.CompareTo(continuationToken) > 0     
+                    && orchestrationState.OrchestrationInstance.InstanceId.CompareTo(continuationToken) > 0
                     && (query == null || query.Matches(orchestrationState)))
                 .OrderBy(orchestrationState => orchestrationState.OrchestrationInstance.InstanceId)
                 .Select(orchestrationState => orchestrationState.ClearFieldsImmutably(!query.FetchInput, false))
                 .Append(null)
-                .Take(pageSize == 0 ? int.MaxValue : pageSize)
-                .ToList();
+                .Take(pageSize == 0 ? int.MaxValue : pageSize);
+
+            string last = "";
+
+            foreach (OrchestrationState instance in instances)
+            {
+                if (instance != null)
+                {
+                    last = instance.OrchestrationInstance.InstanceId;
+                    yield return (last, instance);
+                }
+                else
+                {
+                    yield return (null, null);
+                    yield break;
+                }
+            }
+
+            yield return (last, null);
         }
 
         protected override async Task Process(IList<PartitionEvent> batch)
@@ -146,6 +163,7 @@ namespace DurableTask.Netherite
 
                                 case PartitionQueryEvent queryEvent:
                                     var instances = this.QueryOrchestrationStates(queryEvent.InstanceQuery, queryEvent.PageSize, queryEvent.ContinuationToken ?? "");
+
                                     var backgroundTask = Task.Run(() => this.effects.ProcessQueryResultAsync(queryEvent, instances.ToAsyncEnumerable(), DateTime.UtcNow));
                                     break;
 

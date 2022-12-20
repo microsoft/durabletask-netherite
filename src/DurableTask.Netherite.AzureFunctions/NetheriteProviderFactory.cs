@@ -175,6 +175,12 @@ namespace DurableTask.Netherite.AzureFunctions
             // validate the settings and resolve the connections
             netheriteSettings.Validate(this.connectionResolver);
 
+            // must always use AzureTableLoadPublisher on consumption plans
+            if (string.IsNullOrEmpty(netheriteSettings.LoadInformationAzureTableName) && this.inConsumption)
+            {
+                throw new NetheriteConfigurationException("The Netherite setting LoadInformationAzureTableName must not be null or empty when running on a consumption plan");
+            }
+
             int randomProbability = 0;
             bool attachFaultInjector =
                 (this.options.StorageProvider.TryGetValue("FaultInjectionProbability", out object value)

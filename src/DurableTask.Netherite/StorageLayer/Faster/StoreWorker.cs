@@ -198,7 +198,7 @@ namespace DurableTask.Netherite.Faster
                         {
                             this.partition.Send(positionsReceived);
                         }
-                    });
+                    }, TaskContinuationOptions.ExecuteSynchronously);
             }
         }
 
@@ -502,7 +502,7 @@ namespace DurableTask.Netherite.Faster
                 if (!allRequestsCompleted)
                 {
                     this.ioCompletionNotificationCancellation = CancellationTokenSource.CreateLinkedTokenSource(this.cancellationToken);
-                    var _ = this.store.ReadyToCompletePendingAsync(this.ioCompletionNotificationCancellation.Token).AsTask().ContinueWith(x => this.Notify());
+                    var _ = this.store.ReadyToCompletePendingAsync(this.ioCompletionNotificationCancellation.Token).AsTask().ContinueWith(x => this.Notify(), TaskContinuationOptions.ExecuteSynchronously);
                 }
 
                 // during testing, this is a good time to check invariants in the store

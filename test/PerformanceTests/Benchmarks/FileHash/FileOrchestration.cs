@@ -17,7 +17,6 @@ namespace PerformanceTests.FileHash
     /// </summary>
     public static class FileOrchestration
     {
-
         [FunctionName(nameof(FileOrchestration))]
         public static async Task<double> Run([OrchestrationTrigger] IDurableOrchestrationContext context, ILogger log)
         {

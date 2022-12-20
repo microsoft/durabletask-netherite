@@ -78,8 +78,6 @@ namespace DurableTask.Netherite.Faster
             this.terminationToken = errorHandler.Token;
             this.terminationTokenTask = Task.Delay(-1, errorHandler.Token);
 
-            int psfCount = 0;
-
             this.blobManager = new BlobManager(
                 this.settings,
                 this.taskHubName,
@@ -89,8 +87,7 @@ namespace DurableTask.Netherite.Faster
                 this.performanceLogger,
                 this.partition.Settings.StorageLogLevelLimit,
                 partition.PartitionId,
-                errorHandler,
-                psfCount);
+                errorHandler);
 
             this.TraceHelper = this.blobManager.TraceHelper;
             this.blobManager.FaultInjector?.Starting(this.blobManager);
@@ -128,9 +125,29 @@ namespace DurableTask.Netherite.Faster
                 errorHandler.OnShutdown += () => this.hangCheckTimer.Dispose();
             }
 
-            if (this.log.TailAddress == this.log.BeginAddress)
+            bool hasCheckpoint = false;
+
+            try
             {
-                // take an (empty) checkpoint immediately to ensure the paths are working
+                // determine if there is a checkpoint we can load from
+                hasCheckpoint = await this.store.FindCheckpointAsync(logIsEmpty: this.log.TailAddress == this.log.BeginAddress);
+            }
+            catch (OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
+            {
+                throw; // normal if canceled
+            }
+            catch (Exception e)
+            {
+                this.TraceHelper.FasterStorageError("looking for checkpoint", e);
+                throw;
+            }
+
+            if (!hasCheckpoint)
+            {
+                // we are in a situation where either this is a completely fresh partition, or it has only been partially initialized
+                // without going all the way to the first checkpoint.
+                //
+                // we take an (empty) checkpoint immediately (before committing anything to the log), so we can recover from it next time
                 try
                 {
                     this.TraceHelper.FasterProgress("Creating store");
@@ -140,6 +157,10 @@ namespace DurableTask.Netherite.Faster
 
                     await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("initial checkpoint").AsTask());
                     this.TraceHelper.FasterStoreCreated(this.storeWorker.InputQueuePosition, stopwatch.ElapsedMilliseconds);
+                }
+                catch (OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
+                {
+                    throw; // normal if canceled
                 }
                 catch (Exception e)
                 {
@@ -209,7 +230,7 @@ namespace DurableTask.Netherite.Faster
 
         internal void CheckForStuckWorkers(object _)
         {
-            TimeSpan limit = Debugger.IsAttached ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(1);
+            TimeSpan limit = Debugger.IsAttached ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(3);
 
             // check if any of the workers got stuck in a processing loop
             Check("StoreWorker", this.storeWorker.ProcessingBatchSince);
@@ -220,7 +241,7 @@ namespace DurableTask.Netherite.Faster
             {
                 if (busySince.HasValue && busySince.Value > limit)
                 {
-                    this.blobManager.PartitionErrorHandler.HandleError("CheckForHungWorkers", $"batch worker {workerName} has been processing for {busySince.Value}, which exceeds the limit {limit}", null, true, false);
+                    this.blobManager.PartitionErrorHandler.HandleError("CheckForStuckWorkers", $"batch worker {workerName} has been processing for {busySince.Value}, which exceeds the limit {limit}", null, true, false);
                 }
             }
         }

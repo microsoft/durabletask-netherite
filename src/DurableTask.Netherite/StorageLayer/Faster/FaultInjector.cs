@@ -9,6 +9,7 @@ namespace DurableTask.Netherite.Faster
     using System.Linq;
     using System.Text;
     using System.Threading.Tasks;
+    using Azure.Storage.Blobs.Specialized;
     using FASTER.core;
     using Microsoft.Azure.Storage;
 
@@ -100,6 +101,11 @@ namespace DurableTask.Netherite.Faster
         public async Task BreakLease(Microsoft.Azure.Storage.Blob.CloudBlockBlob blob)
         {
             await blob.BreakLeaseAsync(TimeSpan.Zero);
+        }
+
+        internal async Task BreakLease(BlobUtilsV12.BlockBlobClients blob)
+        {
+            await blob.Default.GetBlobLeaseClient().BreakAsync(TimeSpan.Zero);
         }
 
         public void Starting(BlobManager blobManager)

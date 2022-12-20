@@ -87,6 +87,9 @@
         // set this to true to attach replay checker
         //"AttachCacheDebugger": true,
 
+        // can change this to use a different table, or blobs
+        //"LoadInformationAzureTableName": "",
+
         // set this to "Scripted" to control the scenario with a partition script
         // or to "ClientOnly" to run only the client
         "PartitionManagement": "EventProcessorHost",

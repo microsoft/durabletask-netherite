@@ -8,9 +8,8 @@ namespace DurableTask.Netherite.Faster
     using System.Diagnostics;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Storage.Blobs.Specialized;
     using DurableTask.Core.Common;
-    using Microsoft.Azure.Storage;
-    using Microsoft.Azure.Storage.Blob;
 
     // This class bundles a page blob object with a queue and a counter to ensure 
     // 1) BeginCreate is not called more than once
@@ -20,35 +19,35 @@ namespace DurableTask.Netherite.Faster
     // In-progress creation is denoted by a null value on the underlying page blob
     class BlobEntry
     {
-        public CloudPageBlob PageBlob { get; private set; }
+        public BlobUtilsV12.PageBlobClients PageBlob { get; private set; }
+        public Azure.ETag ETag { get; set; }
         
-        ConcurrentQueue<Action<CloudPageBlob>> pendingWrites;
+        ConcurrentQueue<Action> pendingWrites;
         readonly AzureStorageDevice azureStorageDevice;
         int waitingCount;
 
+
+
         /// <summary>
-        /// Creates a new BlobEntry to hold the given pageBlob. The pageBlob must already be created.
+        /// Creates a new BlobEntry to represent a page blob that already exists in storage.
         /// </summary>
         /// <param name="pageBlob"></param>
         /// <param name="azureStorageDevice"></param>
-        public BlobEntry(CloudPageBlob pageBlob, AzureStorageDevice azureStorageDevice)
+        public BlobEntry(BlobUtilsV12.PageBlobClients pageBlob, Azure.ETag eTag, AzureStorageDevice azureStorageDevice)
         {
             this.PageBlob = pageBlob;
             this.azureStorageDevice = azureStorageDevice;
-            if (pageBlob == null)
-            {
-                // Only need to allocate a queue when we potentially need to asynchronously create a blob
-                this.pendingWrites = new ConcurrentQueue<Action<CloudPageBlob>>();
-                this.waitingCount = 0;
-            }
+            this.ETag = eTag;
         }
 
         /// <summary>
-        /// Creates a new BlobEntry, does not initialize a page blob. Use <see cref="CreateAsync(long, CloudPageBlob)"/>
-        /// for actual creation.
+        /// Creates a new BlobEntry to represent a page blob that will be created by <see cref="CreateAsync(long, CloudPageBlob)"/>.
         /// </summary>
-        public BlobEntry(AzureStorageDevice azureStorageDevice) : this(null, azureStorageDevice)
+        public BlobEntry(AzureStorageDevice azureStorageDevice)
         {
+            this.azureStorageDevice = azureStorageDevice;
+            this.pendingWrites = new ConcurrentQueue<Action>();
+            this.waitingCount = 0;
         }
 
         /// <summary>
@@ -56,32 +55,38 @@ namespace DurableTask.Netherite.Faster
         /// </summary>
         /// <param name="size">maximum size of the blob</param>
         /// <param name="pageBlob">The page blob to create</param>
-        public async Task CreateAsync(long size, CloudPageBlob pageBlob)
+        public async Task CreateAsync(long size, BlobUtilsV12.PageBlobClients pageBlob)
         {
             if (this.waitingCount != 0)
             {
-                this.azureStorageDevice.BlobManager?.HandleStorageError(nameof(CreateAsync), "expect to be called on blobs that don't already exist and exactly once", pageBlob?.Name, null, false, false);
+                this.azureStorageDevice.BlobManager?.HandleStorageError(nameof(CreateAsync), "expect to be called on blobs that don't already exist and exactly once", pageBlob.Default?.Name, null, false, false);
             }
 
             await this.azureStorageDevice.BlobManager.PerformWithRetriesAsync(
                 BlobManager.AsynchronousStorageReadMaxConcurrency,
                 true,
-                "CloudPageBlob.CreateAsync",
+                "PageBlobClient.CreateAsync",
                 "CreateDevice",
                 "",
-                pageBlob.Name,
+                pageBlob.Default.Name,
                 3000,
                 true,
                 async (numAttempts) =>
                 {
-                    await pageBlob.CreateAsync(
-                        size,
-                        accessCondition: null,
-                        options: BlobManager.BlobRequestOptionsDefault,
-                        operationContext: null,
-                        this.azureStorageDevice.PartitionErrorHandler.Token);
+                    var client = (numAttempts > 1) ? pageBlob.Default : pageBlob.Aggressive;
 
+                    var response = await client.CreateAsync(
+                    size: size,
+                    conditions: new Azure.Storage.Blobs.Models.PageBlobRequestConditions() { IfNoneMatch = Azure.ETag.All },
+                    cancellationToken: this.azureStorageDevice.PartitionErrorHandler.Token);
+
+                    this.ETag = response.Value.ETag;
                     return 1;
+                },
+                async () =>
+                {
+                    var response = await pageBlob.Default.GetPropertiesAsync();
+                    this.ETag = response.Value.ETag;
                 });
 
             // At this point the blob is fully created. After this line all consequent writers will write immediately. We just
@@ -91,14 +96,15 @@ namespace DurableTask.Netherite.Faster
             // Take a snapshot of the current waiting count. Exactly this many actions will be cleared.
             // Swapping in -1 will inform any stragglers that we are not taking their actions and prompt them to retry (and call write directly)
             int waitingCountSnapshot = Interlocked.Exchange(ref this.waitingCount, -1);
-            Action<CloudPageBlob> action;
+            Action action;
+
             // Clear actions
             for (int i = 0; i < waitingCountSnapshot; i++)
             {
                 // inserts into the queue may lag behind the creation thread. We have to wait until that happens.
                 // This is so rare, that we are probably okay with a busy wait.
                 while (!this.pendingWrites.TryDequeue(out action)) { }
-                action(pageBlob);
+                action();
             }
 
             // Mark for deallocation for the GC
@@ -112,7 +118,7 @@ namespace DurableTask.Netherite.Faster
         /// </summary>
         /// <param name="writeAction">The write action to perform</param>
         /// <returns>Whether the action was successfully enqueued</returns>
-        public bool TryQueueAction(Action<CloudPageBlob> writeAction)
+        public bool TryQueueAction(Action writeAction)
         {
             int currentCount;
             do

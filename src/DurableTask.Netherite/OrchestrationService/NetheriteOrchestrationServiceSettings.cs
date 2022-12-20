@@ -47,7 +47,7 @@ namespace DurableTask.Netherite
 
         /// <summary>
         /// Optionally, a name for an Azure Table to use for publishing load information. If set to null or empty,
-        /// then Azure blobs are used instead.
+        /// then Azure blobs are used instead. The use of Azure blobs is currently not supported on consumption plans, or on elastic premium plans without runtime scaling.
         /// </summary>
         public string LoadInformationAzureTableName { get; set; } = "DurableTaskPartitions";
 
@@ -419,7 +419,7 @@ namespace DurableTask.Netherite
                 }
             }
 
-            if (this.StorageChoice == StorageChoices.Faster && this.LoadInformationAzureTableName != null)
+            if (this.StorageChoice == StorageChoices.Faster && !string.IsNullOrEmpty(this.LoadInformationAzureTableName))
             {
                 // we need a valid table storage connection
                 try
