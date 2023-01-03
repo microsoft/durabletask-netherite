@@ -12,6 +12,12 @@ pool:
     - ImageOverride -equals MMS2022TLS
 
 steps:
+
+# Install old .NET framework because it is used by the signing tasks
+- uses: actions/setup-dotnet@v1
+  with:
+    dotnet-version: '2.1.x'
+
 # Start by restoring all the dependencies.
 - task: DotNetCoreCLI@2
   displayName: 'Restore nuget dependencies'
