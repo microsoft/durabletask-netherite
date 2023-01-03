@@ -3,4 +3,4 @@
 # Manually managing azure-functions-worker may cause unexpected issues
 
 azure-functions
-azure-functions-durable
+azure-functions-durable == 1.1.5

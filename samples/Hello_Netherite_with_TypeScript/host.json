@@ -15,8 +15,7 @@
       "storageProvider": {
         "type": "Netherite",
         "StorageConnectionName": "AzureWebJobsStorage",
-        "EventHubsConnectionName": "EventHubsConnection",
-        "CacheOrchestrationCursors": "false"
+        "EventHubsConnectionName": "EventHubsConnection"
       }
     }
   }
