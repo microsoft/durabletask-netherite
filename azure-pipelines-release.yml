@@ -13,10 +13,11 @@ pool:
 
 steps:
 
-# Install old .NET framework because it is used by the signing tasks
-- uses: actions/setup-dotnet@v1
-  with:
-    dotnet-version: '2.1.x'
+# Install specific .NET sdk required by the signing tasks
+- task: DotNetCoreInstaller@1
+  inputs:
+    packageType: 'sdk'
+    version: '2.1.x' 
 
 # Start by restoring all the dependencies.
 - task: DotNetCoreCLI@2
