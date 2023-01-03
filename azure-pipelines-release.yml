@@ -13,12 +13,6 @@ pool:
 
 steps:
 
-# Install specific .NET sdk required by the signing tasks
-- task: DotNetCoreInstaller@1
-  inputs:
-    packageType: 'sdk'
-    version: '2.1.x' 
-
 # Start by restoring all the dependencies.
 - task: DotNetCoreCLI@2
   displayName: 'Restore nuget dependencies'
@@ -47,6 +41,13 @@ steps:
     logFileVerbosity: minimal
     configuration: Release
     msbuildArgs: /p:GITHUB_RUN_NUMBER=$(Build.BuildId) /p:ContinuousIntegrationBuild=true
+
+# Install specific .NET sdk required by the signing tasks
+- task: UseDotNet@2
+  displayName: 'Use the .NET Core 2.1 SDK (required for build signing)'
+  inputs:
+    packageType: 'sdk'
+    version: '2.1.x'
 
 # Manifest Generator Task
 - task: AzureArtifacts.manifest-generator-task.manifest-generator-task.ManifestGeneratorTask@0
