@@ -41,6 +41,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TokenCredentialDF", "sample
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TokenCredentialDTFx", "samples\TokenCredentialDTFx\TokenCredentialDTFx.csproj", "{FBFF0814-E6C0-489A-ACCF-9D0699219621}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Functions.Worker.Extensions.Netherite", "src\Functions.Worker.Extensions.Netherite\Functions.Worker.Extensions.Netherite.csproj", "{3E17402B-3F65-4E5B-B752-48AD56B81208}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -91,6 +93,10 @@ Global
 		{FBFF0814-E6C0-489A-ACCF-9D0699219621}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FBFF0814-E6C0-489A-ACCF-9D0699219621}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FBFF0814-E6C0-489A-ACCF-9D0699219621}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E17402B-3F65-4E5B-B752-48AD56B81208}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E17402B-3F65-4E5B-B752-48AD56B81208}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E17402B-3F65-4E5B-B752-48AD56B81208}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E17402B-3F65-4E5B-B752-48AD56B81208}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -107,6 +113,7 @@ Global
 		{EC293D85-91E3-4F78-8B1E-2C691315CE96} = {AB958467-9236-402E-833C-B8DE4841AB9F}
 		{B99AB043-47DC-467C-93CB-D6C69D3B1AD4} = {AB958467-9236-402E-833C-B8DE4841AB9F}
 		{FBFF0814-E6C0-489A-ACCF-9D0699219621} = {AB958467-9236-402E-833C-B8DE4841AB9F}
+		{3E17402B-3F65-4E5B-B752-48AD56B81208} = {D33AB157-04B9-4BAD-B580-C3C87C17828C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {238A9613-5411-41CF-BDEC-168CCD5C03FB}
