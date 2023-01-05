@@ -17,7 +17,7 @@
     <AssemblyOriginatorKeyFile>..\..\sign.snk</AssemblyOriginatorKeyFile>
     <Description>Netherite durability provider extension for Azure Durable Functions.</Description>
     <PackageTags>Azure Task Durable Orchestration Workflow Activity Reliable EventHubs</PackageTags>
-    <PackageId>Microsoft.Azure.Functions.Worker.Extensions.Netherite</PackageId>
+    <PackageId>Microsoft.Azure.Functions.Worker.Extensions.DurableTask.Netherite</PackageId>
     <PackageIcon>icon.png</PackageIcon>
   </PropertyGroup>
 

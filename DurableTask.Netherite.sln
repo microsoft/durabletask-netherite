@@ -41,7 +41,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TokenCredentialDF", "sample
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TokenCredentialDTFx", "samples\TokenCredentialDTFx\TokenCredentialDTFx.csproj", "{FBFF0814-E6C0-489A-ACCF-9D0699219621}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Functions.Worker.Extensions.Netherite", "src\Functions.Worker.Extensions.Netherite\Functions.Worker.Extensions.Netherite.csproj", "{3E17402B-3F65-4E5B-B752-48AD56B81208}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Functions.Worker.Extensions.DurableTask.Netherite", "src\Functions.Worker.Extensions.DurableTask.Netherite\Functions.Worker.Extensions.DurableTask.Netherite.csproj", "{3E17402B-3F65-4E5B-B752-48AD56B81208}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
