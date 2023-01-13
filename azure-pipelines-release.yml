@@ -46,28 +46,15 @@ steps:
   inputs:
     command: restore
     verbosityRestore: Minimal
-    projects: |
-      src/DurableTask.Netherite/DurableTask.Netherite.csproj
-      src/DurableTask.Netherite.AzureFunctions/DurableTask.Netherite.AzureFunctions.csproj
+    projects: 'src/dirs.proj'
 
 # Build the filtered solution in release mode, specifying the continuous integration flag.
-- task: VSBuild@1
-  displayName: 'Build (Netherite)'
+- task: DotNetCoreCLI@2
+  displayName: 'Build'
   inputs:
-    solution: 'src/DurableTask.Netherite/DurableTask.Netherite.csproj'
-    vsVersion: '16.0'
-    logFileVerbosity: minimal
-    configuration: Release
-    msbuildArgs: /p:GITHUB_RUN_NUMBER=$(Build.BuildId) /p:ContinuousIntegrationBuild=true
-
-- task: VSBuild@1
-  displayName: 'Build (Netherite Azure Functions)'
-  inputs:
-    solution: 'src/DurableTask.Netherite.AzureFunctions/DurableTask.Netherite.AzureFunctions.csproj'
-    vsVersion: '16.0'
-    logFileVerbosity: minimal
-    configuration: Release
-    msbuildArgs: /p:GITHUB_RUN_NUMBER=$(Build.BuildId) /p:ContinuousIntegrationBuild=true
+    command: build
+    arguments: --no-restore -c release -p:GITHUB_RUN_NUMBER=$(Build.BuildId) -p:ContinuousIntegrationBuild=true
+    projects: 'src/dirs.proj'
 
 # Manifest Generator Task
 - task: AzureArtifacts.manifest-generator-task.manifest-generator-task.ManifestGeneratorTask@0
@@ -119,17 +106,7 @@ steps:
     configuration: Release
     nobuild: true
     packDirectory: $(build.artifactStagingDirectory)
-    packagesToPack: 'src/DurableTask.Netherite/DurableTask.Netherite.csproj'
-
-- task: DotNetCoreCLI@2
-  displayName: Generate nuget packages
-  inputs:
-    command: pack
-    verbosityPack: Minimal
-    configuration: Release
-    nobuild: true
-    packDirectory: $(build.artifactStagingDirectory)
-    packagesToPack: 'src/DurableTask.Netherite.AzureFunctions/DurableTask.Netherite.AzureFunctions.csproj'
+    packagesToPack: 'src/dirs.proj'
 
 # Digitally sign all the nuget packages with the Microsoft certificate.
 # This appears to be an in-place signing job, which is convenient.
