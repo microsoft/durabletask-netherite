@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>Microsoft.Azure.Functions.Worker.Extensions.DurableTask.Netherite</AssemblyName>
     <LangVersion>latest</LangVersion>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeSymbols>true</IncludeSymbols>
@@ -17,7 +18,7 @@
     <AssemblyOriginatorKeyFile>..\..\sign.snk</AssemblyOriginatorKeyFile>
     <Description>Netherite durability provider extension for Azure Durable Functions.</Description>
     <PackageTags>Azure Task Durable Orchestration Workflow Activity Reliable EventHubs</PackageTags>
-    <PackageId>Microsoft.Azure.Functions.Worker.Extensions.DurableTask.Netherite</PackageId>
+    <PackageId>$(AssemblyName)</PackageId>
     <PackageIcon>icon.png</PackageIcon>
   </PropertyGroup>
 
