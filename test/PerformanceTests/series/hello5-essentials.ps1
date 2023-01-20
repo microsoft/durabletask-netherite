@@ -1,0 +1,52 @@
+﻿#!/usr/bin/pwsh
+param (
+	$ResultsFile="./results.csv",
+	$PrintColumnNames=$true,
+    $RunEP1=$false,
+	$RunEP2=$false,
+	$RunEP3=$true,
+	$DelayAfterDelete=200,
+	$tu=5
+)
+
+# read the settings that are common to all scripts
+. ./settings.ps1
+
+if ($PrintColumnNames)
+{
+	Add-Content -path $ResultsFile -value "plan,nodes,tag,test,tu,starttime,iteration,size,duration"
+}
+
+
+if ($RunEP1)
+{
+	./series/runmany -Tag azst-12    -HubName A11 -Plan EP1 -NumNodes 1 -WaitForDeploy 15 -Orchestration HelloSequence5 -NumOrchestrations 1000 -NumReps 8 -PortionSize 0 -DelayAfterRun 120 -ResultsFile $ResultsFile -ThroughputUnits 1
+ 	./series/runmany -Tag neth       -HubName L11 -Plan EP1 -NumNodes 1 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 1000 -NumReps 8 -PortionSize 0 -DelayAfterRun 30 -ResultsFile $ResultsFile -ThroughputUnits $tu
+
+	./series/runmany -Tag azst-12    -HubName A14 -Plan EP1 -NumNodes 12 -WaitForDeploy 80 -Orchestration HelloSequence5 -NumOrchestrations 5000 -NumReps 8 -PortionSize 200 -DelayAfterRun 150 -ResultsFile $ResultsFile -ThroughputUnits 1
+	./series/runmany -Tag neth       -HubName L14 -Plan EP1 -NumNodes 12 -WaitForDeploy 80 -Orchestration HelloSequence5 -NumOrchestrations 5000 -NumReps 8 -PortionSize 200 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
+
+	Start-Sleep -Seconds $DelayAfterDelete
+}
+
+if ($RunEP2)
+{
+	./series/runmany -Tag azst-12    -HubName A21 -Plan EP2 -NumNodes 1 -WaitForDeploy 15 -Orchestration HelloSequence5 -NumOrchestrations 1000 -NumReps 8 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits 1
+ 	./series/runmany -Tag neth       -HubName L21 -Plan EP2 -NumNodes 1 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 1000 -NumReps 8 -PortionSize 0 -DelayAfterRun 30 -ResultsFile $ResultsFile -ThroughputUnits $tu
+
+	./series/runmany -Tag azst-12    -HubName A24 -Plan EP2 -NumNodes 12 -WaitForDeploy 80 -Orchestration HelloSequence5 -NumOrchestrations 5000 -NumReps 8 -PortionSize 200 -DelayAfterRun 150 -ResultsFile $ResultsFile -ThroughputUnits 1
+	./series/runmany -Tag neth       -HubName L24 -Plan EP2 -NumNodes 12 -WaitForDeploy 80 -Orchestration HelloSequence5 -NumOrchestrations 5000 -NumReps 8 -PortionSize 200 -DelayAfterRun 60 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
+
+	Start-Sleep -Seconds $DelayAfterDelete
+}
+
+if ($RunEP3)
+{
+	./series/runmany -Tag azst-12    -HubName A31 -Plan EP3 -NumNodes 1 -WaitForDeploy 15 -Orchestration HelloSequence5 -NumOrchestrations 1000 -NumReps 8 -PortionSize 0 -DelayAfterRun 100 -ResultsFile $ResultsFile -ThroughputUnits 1
+ 	./series/runmany -Tag neth       -HubName L31 -Plan EP3 -NumNodes 1 -WaitForDeploy 50 -Orchestration HelloSequence5 -NumOrchestrations 1000 -NumReps 8 -PortionSize 0 -DelayAfterRun 20 -ResultsFile $ResultsFile -ThroughputUnits $tu
+
+	./series/runmany -Tag azst-12    -HubName A34 -Plan EP3 -NumNodes 12 -WaitForDeploy 80 -Orchestration HelloSequence5 -NumOrchestrations 5000 -NumReps 8 -PortionSize 200 -DelayAfterRun 120 -ResultsFile $ResultsFile -ThroughputUnits 1 
+	./series/runmany -Tag neth       -HubName L34 -Plan EP3 -NumNodes 12 -WaitForDeploy 80 -Orchestration HelloSequence5 -NumOrchestrations 5000 -NumReps 8 -PortionSize 200 -DelayAfterRun 40 -ResultsFile $ResultsFile -ThroughputUnits $tu -DeleteAfterTests $true
+
+	Start-Sleep -Seconds $DelayAfterDelete
+}
