@@ -85,7 +85,7 @@ namespace DurableTask.Netherite
 
             if (this.InstanceIds != null)
             {
-                lock (this)
+                lock (this.InstanceIds)
                 {
                     if (!evt.DeleteInstance)
                     {
@@ -105,7 +105,7 @@ namespace DurableTask.Netherite
 
             if (this.InstanceIds != null)
             {
-                lock (this)
+                lock (this.InstanceIds)
                 {
                     foreach (var key in evt.Purged)
                     {
