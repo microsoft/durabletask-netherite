@@ -44,7 +44,7 @@ for($i = 0; $i -lt $NumReps; $i++)
 
 	$starttime = (Get-Date).ToUniversalTime().ToString("o")
 
-	if ($StarterEntities -eq 0)
+	if ($PortionSize -eq 0)
 	{
 		$arg = $Orchestration + "." + $NumOrchestrations + $Data
 	}
