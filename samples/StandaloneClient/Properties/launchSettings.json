@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "ExternalClient": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 7135",
+      "launchBrowser": false
+    }
+  }
+}
