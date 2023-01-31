@@ -6,6 +6,7 @@ Netherite is a storage provider for the [Durable Task Framework](https://github.
 Netherite, DTFx, and DF are of potential interest to anyone who needs to execute workflows in a distributed elastic environment, with an appetite for performance, scalability, and reliability.
 
 ?> Netherite is a drop-in replacement backend. Existing DF and DTFx applications can switch to Netherite with little effort.
+However, we do not support migrating existing [task hub contents](https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-task-hubs) between different backends.
 
 ## Getting Started
 
@@ -67,12 +68,13 @@ In the future, we plan to support alternatives for these components. For example
 
 ## Status
 
-The current version of Netherite is *1.3.0*. Netherite supports almost all of the DT and DF APIs. 
+The current version of Netherite is *1.3.1*. Netherite supports almost all of the DT and DF APIs.
 
 Some notable differences to the default Azure Table storage provider include:
-- Instance queries and purge requests are not issued directly against Azure Storage, but are processed by the function app. Thus, the performance (latency and throughput) of queries heavily depends on 
+
+- Instance queries and purge requests are not issued directly against Azure Storage, but are processed by the function app. Thus, the performance (latency and throughput) of queries heavily depends on
 the current scale status and load of the function app. In particular, queries do not work if the function app is stopped, and may experience cold start symptoms on consumption plans.
-- Scale out of activities (not just orchestrations) is limited by the [partition count configuration setting](https://microsoft.github.io/durabletask-netherite/#/settings?id=partition-count-considerations), 
+- Scale out of activities (not just orchestrations) is limited by the [partition count configuration setting](https://microsoft.github.io/durabletask-netherite/#/settings?id=partition-count-considerations),
   which defaults to 12. If you need to scale out beyond 12 workers, you should increase it prior to starting you application (it cannot be changed after the task hub has been created).
 - The [rewind feature](https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-http-api#rewind-instance-preview) is not available on Netherite.
 

@@ -9,7 +9,7 @@
   * [Which engine to choose?](engine.md)
   * [Build](build.md)
   * [Storage Resources](storage.md)
-  * [Emulation Mode](emulation.md)
+  * [Emulation Modes](emulation.md)
   * [Caching](caching.md)
   * [Placement](placement.md)
   
