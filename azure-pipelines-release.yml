@@ -68,11 +68,11 @@ steps:
   displayName: 'ESRP CodeSigning: Authenticode'
   inputs:
     ConnectedServiceName: 'ESRP Service'
-    FolderPath: 'src'
+    FolderPath: 'out/bin'
     Pattern: 'DurableTask.*.dll'
     signConfigType: inlineSignParams
     inlineOperation: |
-     [    
+     [
         {
             "KeyCode": "CP-230012",
             "OperationCode": "SigntoolSign",

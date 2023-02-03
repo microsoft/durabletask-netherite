@@ -1,0 +1,48 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory)../, $(_DirectoryBuildPropsFile)))/$(_DirectoryBuildPropsFile)"
+    Condition=" '$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory)../, $(_DirectoryBuildPropsFile)))' != '' " />
+
+  <!-- Common build settings -->
+  <PropertyGroup>
+    <Company>Microsoft Corporation</Company>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <RepositoryUrl>https://github.com/microsoft/durabletask-netherite</RepositoryUrl>
+    <SharedRoot>$(SrcRoot)Shared/</SharedRoot>
+  </PropertyGroup>
+
+  <!-- Analyzers and Documentation -->
+  <!-- Enable this when we have time to address all the warnings -->
+  <!-- <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>recommended</AnalysisMode>
+  </PropertyGroup> -->
+
+  <!-- Common NuGet settings -->
+  <PropertyGroup>
+    <Authors>Microsoft</Authors>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
+    <PackageReleaseNotes>$(RepositoryUrl)/releases/</PackageReleaseNotes>
+    <PackageTags>Azure Task Durable Orchestration Workflow Activity Reliable EventHubs</PackageTags>
+    <PackageId>Microsoft.Azure.$(MSBuildProjectName)</PackageId>
+    <PackageIcon>icon.png</PackageIcon>
+  </PropertyGroup>
+
+  <!-- Embed the SBOM manifest, which is generated as part of the "official" build -->
+  <ItemGroup Condition="'$(Configuration)'=='Release'">
+    <Content Include="..\..\_manifest\**">
+      <Pack>true</Pack>
+      <PackagePath>content/SBOM</PackagePath>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(EngRoot)icon.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

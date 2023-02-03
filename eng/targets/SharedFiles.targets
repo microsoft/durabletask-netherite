@@ -1,0 +1,19 @@
+<Project>
+
+  <Target Name="IncludeSharedItems" BeforeTargets="BeforeCompile"
+    Condition="'$(IncludeShared)' != 'false' And '$(SharedRoot)' != '' And '@(SharedSection)' != ''">
+    <PropertyGroup>
+      <SharedRoot>$([MSBuild]::EnsureTrailingSlash($(SharedRoot)))</SharedRoot>
+      <_SharedSectionCompileIncludes>@(SharedSection->'$(SharedRoot)%(Identity)/**/*.cs')</_SharedSectionCompileIncludes>
+      <_SharedSectionEmbeddedResourceIncludes>@(SharedSection->'$(SharedRoot)%(Identity)/**/*.resx')</_SharedSectionEmbeddedResourceIncludes>
+    </PropertyGroup>
+    <ItemGroup>
+      <Compile Include="$(_SharedSectionCompileIncludes)" LinkBase="Shared" Visible="false" />
+      <EmbeddedResource Include="$(_SharedSectionEmbeddedResourceIncludes)" LinkBase="Shared" Visible="false">
+        <RecursiveNamespace>$([System.String]::Copy('%(RecursiveDir)').Replace($([System.IO.Path]::DirectorySeparatorChar.ToString()), '.'))</RecursiveNamespace>
+        <LogicalName>Shared.%(RecursiveNamespace)%(Filename).resources</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+
+</Project>

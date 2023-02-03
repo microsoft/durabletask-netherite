@@ -1,0 +1,26 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory)../, $(_DirectoryBuildTargetsFile)))/$(_DirectoryBuildTargetsFile)"
+    Condition=" '$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory)../, $(_DirectoryBuildTargetsFile)))' != '' " />
+
+  <PropertyGroup Condition="'$(IsRoslynComponent)' != 'true'">
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <IncludeSymbols>true</IncludeSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
+    <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.*" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="$(AssemblyName).Tests" Key="$(StrongNamePublicKey)" />
+  </ItemGroup>
+
+  <Import Project="$(EngRoot)targets/SharedFiles.targets" />
+
+</Project>

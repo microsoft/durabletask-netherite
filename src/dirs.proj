@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.Build.Traversal/3.2.0">
+<Project Sdk="Microsoft.Build.Traversal">
 
   <ItemGroup>
     <ProjectReference Include="**/*.csproj" />
