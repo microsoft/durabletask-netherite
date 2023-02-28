@@ -2,52 +2,15 @@
 
   <PropertyGroup>
     <TargetFrameworks>netstandard2.1;netstandard2.0;netcoreapp3.1;net5.0</TargetFrameworks>
-    <LangVersion>latest</LangVersion>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <IncludeSymbols>true</IncludeSymbols>
-    <DebugType>embedded</DebugType>
-    <RepositoryUrl>https://github.com/microsoft/durabletask-netherite</RepositoryUrl>
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <Authors>Microsoft</Authors>
-    <PackageProjectUrl>https://github.com/microsoft/durabletask-netherite</PackageProjectUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
-    <SignAssembly>true</SignAssembly>
-    <AssemblyOriginatorKeyFile>..\..\sign.snk</AssemblyOriginatorKeyFile>
     <Description>Netherite orchestration service provider for the Durable Task Framework.</Description>
-    <PackageTags>Azure Task Durable Orchestration Workflow Activity Reliable EventHubs</PackageTags>
-    <PackageId>Microsoft.Azure.DurableTask.Netherite</PackageId>
-    <PackageIcon>icon.png</PackageIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
   <PropertyGroup>
-    <MajorVersion>1</MajorVersion>
-	<MinorVersion>3</MinorVersion>
-	<PatchVersion>1</PatchVersion>
-	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
+    <VersionPrefix>1.3.1</VersionPrefix>
     <VersionSuffix></VersionSuffix>
-    <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
-    <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
-    <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
   </PropertyGroup>
-  
-  <ItemGroup>
-    <None Include="icon.png" Pack="true" PackagePath="\" />
-  </ItemGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <NoWarn>NU5125;NU5048</NoWarn>
-  </PropertyGroup>
-	
-  <ItemGroup Condition="'$(Configuration)'=='Release'">
-    <Content Include="..\..\_manifest\**">
-      <Pack>true</Pack>
-      <PackagePath>content/SBOM</PackagePath>
-    </Content>
-  </ItemGroup>
   
   <ItemGroup>
     <PackageReference Include="Azure.Core" Version="1.25.0" />
@@ -56,11 +19,14 @@
     <PackageReference Include="Microsoft.Azure.EventHubs.Processor" Version="4.3.2" />
     <PackageReference Include="Microsoft.Azure.Storage.Blob" Version="11.2.3" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.13.0" />
-	<PackageReference Include="Microsoft.FASTER.Core" Version="2.0.16" />
+    <PackageReference Include="Microsoft.FASTER.Core" Version="2.0.16" />
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.11.1" />
-	<PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <PackageReference Include="System.Threading.Channels" Version="4.7.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DurableTask.Netherite.AzureFunctions" Key="$(StrongNamePublicKey)" />
   </ItemGroup>
 
 </Project>

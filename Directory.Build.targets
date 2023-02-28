@@ -1,0 +1,19 @@
+<Project>
+
+  <ItemGroup>
+    <None Update="**/appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="**/appsettings.*.json">
+      <DependentUpon>appsettings.json</DependentUpon>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="$(RepoRoot)stylecop.json" Visible="false" />
+  </ItemGroup>
+
+  <Import Project="$(EngRoot)targets/InternalsVisibleTo.targets" />
+
+</Project>

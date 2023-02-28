@@ -1,0 +1,30 @@
+<Project>
+
+  <!-- Common build settings -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">AnyCPU</Platform>
+    <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>
+    <OutRoot>$(RepoRoot)$([MSBuild]::EnsureTrailingSlash(out/$(SubOutRoot)))</OutRoot>
+    <EngRoot>$(RepoRoot)eng/</EngRoot>
+    <SrcRoot>$(RepoRoot)src/</SrcRoot>
+    <BaseOutputPath>$(OutRoot)bin/</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(OutRoot)obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)/</IntermediateOutputPath>
+    <SubOutputPath Condition="'$(SubOutputPath)' == ''">$(MSBuildProjectName)/</SubOutputPath>
+    <OutputPath>$(BaseOutputPath)$(Configuration)/$([MSBuild]::EnsureTrailingSlash($(SubOutputPath)))</OutputPath>
+    <PackageOutputPath>$(OutRoot)pkg/</PackageOutputPath>
+  </PropertyGroup>
+
+  <!-- Signing -->
+  <PropertyGroup>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(EngRoot)key.snk</AssemblyOriginatorKeyFile>
+    <StrongNamePublicKey>0024000004800000940000000602000000240000525341310004000001000100e93024fd5f6737b5f408b39a97e746f673e7c62d690716c6022ee8871b2bc5efcbd8015dd02253302196ded0d9fc0c6bc0e84740f74ca828fed9aebf15272867019cf991484c06b00c7d7aacb34b40ed0ae633f0432df41db65caa4b03f9a0e6974c15aeaa7db2acd902914c0628f0b77d9b7839f530ba04584aed9287159ebd</StrongNamePublicKey>
+  </PropertyGroup>
+
+</Project>
