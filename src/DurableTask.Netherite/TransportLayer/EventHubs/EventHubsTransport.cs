@@ -99,8 +99,8 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.cloudBlobContainer = cloudBlobClient.GetContainerReference(containerName);
             this.partitionScript = this.cloudBlobContainer.GetBlockBlobReference("partitionscript.json");
 
-            // check that the storage format is supported
-            BlobManager.CheckStorageFormat(this.parameters.StorageFormat, this.settings);
+            // check that the storage format is supported, and load immutable FASTER parameters
+            BlobManager.CheckAndLoadStorageFormat(this.parameters.StorageFormat, this.settings);
 
             this.connections = new EventHubsConnections(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub)
             {

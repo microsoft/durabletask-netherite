@@ -86,7 +86,7 @@ namespace DurableTask.Netherite.Faster
 
             partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
-            this.storelogsettings = blobManager.GetDefaultStoreLogSettings(
+            this.storelogsettings = blobManager.GetStoreLogSettings(
                 partition.Settings.UseSeparatePageBlobStorage,
                 memoryTracker.MaxCacheSize,
                 partition.Settings.FasterTuningParameters);

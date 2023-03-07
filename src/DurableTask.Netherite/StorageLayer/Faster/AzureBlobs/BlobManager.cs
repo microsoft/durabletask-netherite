@@ -91,25 +91,26 @@ namespace DurableTask.Netherite.Faster
             public int? NumPagesToPreload;
         }
 
-        public FasterLogSettings GetDefaultEventLogSettings(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters) => new FasterLogSettings
+        public FasterLogSettings GetEventLogSettings(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters)
         {
-            LogDevice = this.EventLogDevice,
-            LogCommitManager = this.UseLocalFiles
-                ? null // TODO: fix this: new LocalLogCommitManager($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{CommitBlobName}")
-                : (ILogCommitManager)this,
-            PageSizeBits = tuningParameters?.EventLogPageSizeBits ?? 21, // 2MB
-            SegmentSizeBits = tuningParameters?.EventLogSegmentSizeBits ??
-                (useSeparatePageBlobStorage ? 35  // 32 GB
-                                            : 26), // 64 MB
-            MemorySizeBits = tuningParameters?.EventLogMemorySizeBits ?? 22, // 2MB
-        };
+            (int pageSizeBits, int segmentSizeBits) = BlobManager.GetImmutableEventLogParameters(useSeparatePageBlobStorage, tuningParameters);
 
-        public LogSettings GetDefaultStoreLogSettings(
-            bool useSeparatePageBlobStorage, 
-            long upperBoundOnAvailable, 
-            FasterTuningParameters tuningParameters)
+            return new FasterLogSettings
+            {
+                PageSizeBits = pageSizeBits,
+                SegmentSizeBits = segmentSizeBits,
+                 LogDevice = this.EventLogDevice,
+                LogCommitManager = this.UseLocalFiles
+                    ? null // TODO: fix this: new LocalLogCommitManager($"{this.LocalDirectoryPath}\\{this.PartitionFolderName}\\{CommitBlobName}")
+                    : (ILogCommitManager)this,
+                MemorySizeBits = tuningParameters?.EventLogMemorySizeBits ?? 22, // 2MB
+            };
+        }
+
+        public LogSettings GetStoreLogSettings(bool useSeparatePageBlobStorage, long upperBoundOnAvailable, FasterTuningParameters tuningParameters) 
         {
-            int pageSizeBits = tuningParameters?.StoreLogPageSizeBits ?? 10; // default page size is 1k
+            // start with page and segment sizes
+            (int pageSizeBits, int segmentSizeBits) = BlobManager.GetImmutableStoreLogParameters(useSeparatePageBlobStorage, tuningParameters);
 
             // compute a reasonable memory size for the log considering maximally available memory, and expansion factor
             int memorybits = 0;
@@ -134,11 +135,9 @@ namespace DurableTask.Netherite.Faster
             {
                 LogDevice = this.HybridLogDevice,
                 ObjectLogDevice = this.ObjectLogDevice,
-                PageSizeBits = pageSizeBits,  
+                PageSizeBits = pageSizeBits,
                 MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
-                SegmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ??
-                    (useSeparatePageBlobStorage ? 35   // 32 GB
-                                                : 32), // 4 GB
+                SegmentSizeBits = segmentSizeBits,
                 PreallocateLog = false,
                 ReadFlags = ReadFlags.None,
                 ReadCacheSettings = null, // no read cache
@@ -146,6 +145,24 @@ namespace DurableTask.Netherite.Faster
             };
         }
 
+        public static (int pageSizeBits, int segmentSizeBits) GetImmutableEventLogParameters(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters)
+        {
+            int pageSizeBits = tuningParameters?.EventLogPageSizeBits ?? 21; // 2MB
+
+            int segmentSizeBits = tuningParameters?.EventLogSegmentSizeBits ??
+                (useSeparatePageBlobStorage ? 35  // 32 GB
+                                            : 26); // 64 MB
+
+            return (pageSizeBits, segmentSizeBits);
+        }
+
+        public static (int pageSizeBits, int segmentSizeBits) GetImmutableStoreLogParameters(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters)
+        {
+            int pageSizeBits =    tuningParameters?.StoreLogPageSizeBits    ?? 10; // 1kB
+            int segmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ?? 19; // 512 kB
+             
+            return (pageSizeBits, segmentSizeBits);
+        }
 
         static readonly int[] StorageFormatVersion = new int[] {
             1, //initial version
@@ -157,10 +174,21 @@ namespace DurableTask.Netherite.Faster
 
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
         {
+            var eventLogSettings = BlobManager.GetImmutableEventLogParameters(settings.UseSeparatePageBlobStorage, settings.FasterTuningParameters);
+            var storeLogSettings = BlobManager.GetImmutableStoreLogParameters(settings.UseSeparatePageBlobStorage, settings.FasterTuningParameters);
+            int[] pageAndSegmentSizes = new int[4]
+            { 
+                eventLogSettings.pageSizeBits, 
+                eventLogSettings.segmentSizeBits, 
+                storeLogSettings.pageSizeBits, 
+                storeLogSettings.segmentSizeBits 
+            };
+
             return JsonConvert.SerializeObject(new StorageFormatSettings()
                 {
                     UseAlternateObjectStore = settings.UseAlternateObjectStore,
                     FormatVersion = StorageFormatVersion.Last(),
+                    PageAndSegmentSizes = pageAndSegmentSizes,
                 },
                 serializerSettings);
         }
@@ -177,6 +205,9 @@ namespace DurableTask.Netherite.Faster
 
             [JsonProperty("UseAlternateObjectStore", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool? UseAlternateObjectStore { get; set; }
+
+            [JsonProperty("PageAndSegmentSizes", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public int[] PageAndSegmentSizes { get; set; }
         }
 
         static readonly JsonSerializerSettings serializerSettings = new JsonSerializerSettings()
@@ -187,7 +218,7 @@ namespace DurableTask.Netherite.Faster
             Formatting = Formatting.None,
         };
 
-        public static void CheckStorageFormat(string format, NetheriteOrchestrationServiceSettings settings)
+        public static void CheckAndLoadStorageFormat(string format, NetheriteOrchestrationServiceSettings settings)
         {
             try
             {
@@ -200,6 +231,28 @@ namespace DurableTask.Netherite.Faster
                 if (taskhubFormat.FormatVersion != StorageFormatVersion.Last())
                 {
                     throw new NetheriteConfigurationException($"The current storage format version (={StorageFormatVersion.Last()}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
+                }
+
+                // read the immutable log parameters from storage, and keep them as a tuning parameter
+                // (which may override any tuning parameters set by the user; that is what we want since they cannot be honored)
+                if (settings.FasterTuningParameters == null)
+                {
+                    settings.FasterTuningParameters = new FasterTuningParameters();
+                }
+                if (taskhubFormat.PageAndSegmentSizes == null)
+                {
+                    // for backward compatibility, use the defaults that were in place before we started recording page and segment sizes 
+                    settings.FasterTuningParameters.EventLogPageSizeBits =  21;
+                    settings.FasterTuningParameters.EventLogSegmentSizeBits = 26;
+                    settings.FasterTuningParameters.StoreLogPageSizeBits = 10;
+                    settings.FasterTuningParameters.StoreLogSegmentSizeBits = 32;
+                }
+                else
+                {
+                    settings.FasterTuningParameters.EventLogPageSizeBits = taskhubFormat.PageAndSegmentSizes[0];
+                    settings.FasterTuningParameters.EventLogSegmentSizeBits = taskhubFormat.PageAndSegmentSizes[1];
+                    settings.FasterTuningParameters.StoreLogPageSizeBits = taskhubFormat.PageAndSegmentSizes[2];
+                    settings.FasterTuningParameters.StoreLogSegmentSizeBits = taskhubFormat.PageAndSegmentSizes[3];
                 }
             }
             catch (Exception e)
