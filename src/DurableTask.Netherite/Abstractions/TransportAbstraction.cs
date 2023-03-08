@@ -56,6 +56,12 @@ namespace DurableTask.Netherite
             /// </summary>
             /// <param name="partitionId">The partition id.</param>
             IPartitionErrorHandler CreateErrorHandler(uint partitionId);
+
+            /// <summary>
+            /// Trace a warning to the host logs
+            /// </summary>
+            /// <param name="message"></param>
+            void TraceWarning(string message);
         }
 
         /// <summary>

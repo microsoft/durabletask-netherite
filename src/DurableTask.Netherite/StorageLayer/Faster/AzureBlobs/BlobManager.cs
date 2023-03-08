@@ -20,6 +20,7 @@ namespace DurableTask.Netherite.Faster
     using Azure.Storage.Blobs.Models;
     using System.Net;
     using System.Text;
+    using DurableTask.Netherite.Abstractions;
 
     /// <summary>
     /// Provides management of blobs and blob names associated with a partition, and logic for partition lease maintenance and termination.
@@ -110,7 +111,7 @@ namespace DurableTask.Netherite.Faster
         public LogSettings GetStoreLogSettings(bool useSeparatePageBlobStorage, long upperBoundOnAvailable, FasterTuningParameters tuningParameters) 
         {
             // start with page and segment sizes
-            (int pageSizeBits, int segmentSizeBits) = BlobManager.GetImmutableStoreLogParameters(useSeparatePageBlobStorage, tuningParameters);
+            (int pageSizeBits, int segmentSizeBits) = BlobManager.GetImmutableStoreLogParameters(tuningParameters);
 
             // compute a reasonable memory size for the log considering maximally available memory, and expansion factor
             int memorybits = 0;
@@ -156,7 +157,7 @@ namespace DurableTask.Netherite.Faster
             return (pageSizeBits, segmentSizeBits);
         }
 
-        public static (int pageSizeBits, int segmentSizeBits) GetImmutableStoreLogParameters(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters)
+        public static (int pageSizeBits, int segmentSizeBits) GetImmutableStoreLogParameters(FasterTuningParameters tuningParameters)
         {
             int pageSizeBits =    tuningParameters?.StoreLogPageSizeBits    ?? 10; // 1kB
             int segmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ?? 19; // 512 kB
@@ -175,7 +176,7 @@ namespace DurableTask.Netherite.Faster
         public static string GetStorageFormat(NetheriteOrchestrationServiceSettings settings)
         {
             var eventLogSettings = BlobManager.GetImmutableEventLogParameters(settings.UseSeparatePageBlobStorage, settings.FasterTuningParameters);
-            var storeLogSettings = BlobManager.GetImmutableStoreLogParameters(settings.UseSeparatePageBlobStorage, settings.FasterTuningParameters);
+            var storeLogSettings = BlobManager.GetImmutableStoreLogParameters(settings.FasterTuningParameters);
             int[] pageAndSegmentSizes = new int[4]
             { 
                 eventLogSettings.pageSizeBits, 
@@ -218,7 +219,7 @@ namespace DurableTask.Netherite.Faster
             Formatting = Formatting.None,
         };
 
-        public static void CheckAndLoadStorageFormat(string format, NetheriteOrchestrationServiceSettings settings)
+        public static void LoadAndCheckStorageFormat(string format, NetheriteOrchestrationServiceSettings settings, Action<string> traceWarning)
         {
             try
             {
@@ -233,27 +234,33 @@ namespace DurableTask.Netherite.Faster
                     throw new NetheriteConfigurationException($"The current storage format version (={StorageFormatVersion.Last()}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
                 }
 
-                // read the immutable log parameters from storage, and keep them as a tuning parameter
-                // (which may override any tuning parameters set by the user; that is what we want since they cannot be honored)
-                if (settings.FasterTuningParameters == null)
+                // take the parameters we loaded from storage, and use them as a tuning parameter for FASTER
+                settings.FasterTuningParameters ??= new FasterTuningParameters();
+                
+                Set(nameof(FasterTuningParameters.EventLogPageSizeBits), ref settings.FasterTuningParameters.EventLogPageSizeBits, taskhubFormat.PageAndSegmentSizes?[0], 21);
+                Set(nameof(FasterTuningParameters.EventLogSegmentSizeBits), ref settings.FasterTuningParameters.EventLogSegmentSizeBits, taskhubFormat.PageAndSegmentSizes?[1], 26);
+                Set(nameof(FasterTuningParameters.StoreLogPageSizeBits), ref settings.FasterTuningParameters.StoreLogPageSizeBits, taskhubFormat.PageAndSegmentSizes?[2], 10);
+                Set(nameof(FasterTuningParameters.StoreLogSegmentSizeBits), ref settings.FasterTuningParameters.StoreLogSegmentSizeBits, taskhubFormat.PageAndSegmentSizes?[3], 32);
+
+                void Set(string name, ref int? specified, int? loaded, int oldDefault)
                 {
-                    settings.FasterTuningParameters = new FasterTuningParameters();
+                    if (specified.HasValue)
+                    {
+                        if (loaded.HasValue && loaded.Value != specified.Value)
+                        {
+                            // we ignore the user-specified setting because this parameter cannot be changed after a task hub is created
+                            traceWarning($"Ignoring configuration setting FasterTuningParameters.{name}={specified.Value} because existing TaskHub uses value {loaded.Value}.");
+                            specified = loaded;
+                        }
+                    }
+                    else
+                    {
+                        // we use the loaded value, but if there is none, for backward compatibility, use the default that
+                        // was in place before we started storing this parameter inside the taskhubFormat record
+                        specified = loaded ?? oldDefault;
+                    }
                 }
-                if (taskhubFormat.PageAndSegmentSizes == null)
-                {
-                    // for backward compatibility, use the defaults that were in place before we started recording page and segment sizes 
-                    settings.FasterTuningParameters.EventLogPageSizeBits =  21;
-                    settings.FasterTuningParameters.EventLogSegmentSizeBits = 26;
-                    settings.FasterTuningParameters.StoreLogPageSizeBits = 10;
-                    settings.FasterTuningParameters.StoreLogSegmentSizeBits = 32;
-                }
-                else
-                {
-                    settings.FasterTuningParameters.EventLogPageSizeBits = taskhubFormat.PageAndSegmentSizes[0];
-                    settings.FasterTuningParameters.EventLogSegmentSizeBits = taskhubFormat.PageAndSegmentSizes[1];
-                    settings.FasterTuningParameters.StoreLogPageSizeBits = taskhubFormat.PageAndSegmentSizes[2];
-                    settings.FasterTuningParameters.StoreLogSegmentSizeBits = taskhubFormat.PageAndSegmentSizes[3];
-                }
+
             }
             catch (Exception e)
             {

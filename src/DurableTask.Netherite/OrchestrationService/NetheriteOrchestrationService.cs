@@ -557,6 +557,11 @@ namespace DurableTask.Netherite
             return new PartitionErrorHandler((int) partitionId, this.TraceHelper.Logger, this.Settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName);
         }
 
+        void TransportAbstraction.IHost.TraceWarning(string message)
+        {
+            this.TraceHelper.TraceWarning(message);
+        }
+
         /******************************/
         // client methods
         /******************************/
