@@ -366,6 +366,11 @@ namespace DurableTask.Netherite
                 (this.ContainerName, this.PathPrefix) = this.storage.GetTaskhubPathPrefix(this.TaskhubParameters);
                 this.NumberPartitions = (uint) this.TaskhubParameters.PartitionCount;
 
+                if (this.Settings.PartitionCount != this.NumberPartitions)
+                {
+                    this.TraceHelper.TraceWarning($"Ignoring configuration setting partitionCount={this.Settings.PartitionCount} because existing TaskHub has {this.NumberPartitions} partitions");
+                }
+
                 await this.transport.StartClientAsync();
 
                 System.Diagnostics.Debug.Assert(this.client != null, "transport layer should have added client");
@@ -421,11 +426,6 @@ namespace DurableTask.Netherite
                 }
 
                 await this.transport.StartWorkersAsync();
-
-                if (this.Settings.PartitionCount != this.NumberPartitions)
-                {
-                    this.TraceHelper.TraceWarning($"Ignoring configuration setting partitionCount={this.Settings.PartitionCount} because existing TaskHub has {this.NumberPartitions} partitions");
-                }
 
                 if (this.threadWatcher == null)
                 {
