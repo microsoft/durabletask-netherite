@@ -7,6 +7,7 @@ Netherite is a distributed workflow execution engine for [Durable Functions](htt
 It is of potential interest to anyone developing applications on those platforms who has an appetite for performance, scalability, and reliability.
 
 As Netherite is intended to be a drop-in backend replacement, it does not modify the application API. Existing DF and DTFx applications can switch to this backend with little effort.
+However, we do not support migrating existing task hub contents between different backends.
 
 ## Getting Started
 
@@ -62,7 +63,7 @@ For some other considerations about how to choose the engine, see [the documenta
 
 ## Status
 
-The current version of Netherite is *1.3.1*. Netherite supports almost all of the DT and DF APIs. 
+The current version of Netherite is *1.3.2*. Netherite supports almost all of the DT and DF APIs. 
 
 Some notable differences to the default Azure Table storage provider include:
 - Instance queries and purge requests are not issued directly against Azure Storage, but are processed by the function app. Thus, the performance (latency and throughput) of queries heavily depends on 
