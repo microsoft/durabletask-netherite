@@ -90,7 +90,7 @@ namespace DurableTask.Netherite
             while (!this.cancellationToken.IsCancellationRequested)
             {
                 // wait for the next expiration time or cleanup, but cut the wait short if notified
-                if (this.RequiresDelay(out var delay, out var due))
+                if (this.RequiresDelay(out int delay, out var due))
                 {
                     var startWait = DateTime.UtcNow;
                     this.notify.Wait(delay); // blocks thread until delay is over, or until notified                 
@@ -140,13 +140,15 @@ namespace DurableTask.Netherite
             }
         }
 
-        bool RequiresDelay(out TimeSpan delay, out DateTime due)
+        static readonly TimeSpan MaxDelay = TimeSpan.FromDays(1); // we cap delays at 1 day, so we will never exceed int.MaxValue milliseconds
+
+        bool RequiresDelay(out int delay, out DateTime due)
         {
             lock (this.thisLock)
             {
                 if (this.schedule.Count == 0)
                 {
-                    delay = TimeSpan.FromMilliseconds(-1); // represents infinite delay
+                    delay = -1; // represents infinite delay
                     due = DateTime.MaxValue;
                     return true;
                 }
@@ -157,7 +159,13 @@ namespace DurableTask.Netherite
                 if (next.Key.due > now)
                 {
                     due = next.Key.due;
-                    delay = due - now;
+
+                    if (due - now > MaxDelay)
+                    {
+                        due = now + MaxDelay;
+                    }
+
+                    delay = (int) (due - now).TotalMilliseconds;
                     return true;
                 }
                 else
