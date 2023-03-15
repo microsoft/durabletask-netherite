@@ -87,10 +87,9 @@ namespace DurableTask.Netherite
             if (clientEvent is ClientEventFragment fragment)
             {
                 var originalEventString = fragment.OriginalEventId.ToString();
-
                 var group = fragment.GroupId.HasValue
                   ? fragment.GroupId.Value.ToString()       // groups are now the way we track fragments
-                  : $"{fragment.OriginalEventId}-{fragment.ReceiveChannel}";  // prior to introducing groups, we used event id and channel, which is not always good enough
+                  : $"{originalEventString}-{fragment.ReceiveChannel}";  // prior to introducing groups, we used event id and channel, which is not always good enough
 
                 if (this.traceHelper.LogLevelLimit == Microsoft.Extensions.Logging.LogLevel.Trace)
                 {
