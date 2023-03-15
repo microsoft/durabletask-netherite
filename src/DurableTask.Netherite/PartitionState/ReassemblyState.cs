@@ -58,15 +58,17 @@ namespace DurableTask.Netherite
         public override void Process(PartitionEventFragment evt, EffectTracker effects)
         {
             // stores fragments until the last one is received
-            var originalEventString = evt.OriginalEventId.ToString();
+            var group = evt.GroupId.HasValue 
+                ? evt.GroupId.Value.ToString()       // groups are now the way we track fragments
+                : evt.OriginalEventId.ToString();  // prior to introducing groups, we used just the event id, which is not correct under interleavings
 
             if (evt.IsLast)
             {
-                evt.ReassembledEvent =  FragmentationAndReassembly.Reassemble<PartitionEvent>(this.Fragments[originalEventString], evt, effects.Partition);
+                evt.ReassembledEvent =  FragmentationAndReassembly.Reassemble<PartitionEvent>(this.Fragments[group], evt, effects.Partition);
                 
                 effects.EventDetailTracer?.TraceEventProcessingDetail($"Reassembled {evt.ReassembledEvent}");
 
-                this.Fragments.Remove(originalEventString);
+                this.Fragments.Remove(group);
 
                 switch (evt.ReassembledEvent)
                 {
@@ -96,11 +98,11 @@ namespace DurableTask.Netherite
 
                 if (evt.Fragment == 0)
                 {
-                    this.Fragments[originalEventString] = list = new List<PartitionEventFragment>();
+                    this.Fragments[group] = list = new List<PartitionEventFragment>();
                 }
                 else
                 {
-                    list = this.Fragments[originalEventString];
+                    list = this.Fragments[group];
                 }
 
                 list.Add(evt);

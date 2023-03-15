@@ -16,6 +16,9 @@ namespace DurableTask.Netherite
         public EventId OriginalEventId { get; set; }
 
         [DataMember]
+        public Guid? GroupId { get; set; } // we now use a group id for tracking fragments, to fix issue #231
+
+        [DataMember]
         public byte[] Bytes { get; set; }
 
         [DataMember]
@@ -38,6 +41,11 @@ namespace DurableTask.Netherite
         protected override void ExtraTraceInformation(StringBuilder s)
         {
             s.Append(' ');
+            if (this.GroupId.HasValue)
+            {
+                s.Append(this.GroupId.Value.ToString("N"));
+                s.Append(' ');
+            }
             s.Append(this.Bytes.Length);
             if (this.IsLast)
             {

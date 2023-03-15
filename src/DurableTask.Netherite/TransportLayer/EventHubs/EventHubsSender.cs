@@ -98,8 +98,9 @@ namespace DurableTask.Netherite.EventHubsTransport
                         if (tooBig)
                         {
                             // the message is too big. Break it into fragments, and send each individually.
-                            this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} fragmenting large event ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, length, evt.EventIdString);
-                            var fragments = FragmentationAndReassembly.Fragment(arraySegment, evt, this.maxFragmentSize);
+                            Guid groupId = Guid.NewGuid();
+                            this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} fragmenting large event ({size} bytes) id={eventId} groupId={group:N}", this.eventHubName, this.eventHubPartition, length, evt.EventIdString, groupId);
+                            var fragments = FragmentationAndReassembly.Fragment(arraySegment, evt, groupId, this.maxFragmentSize);
                             maybeSent = i;
                             for (int k = 0; k < fragments.Count; k++)
                             {
