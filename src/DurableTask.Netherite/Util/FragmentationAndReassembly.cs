@@ -24,7 +24,7 @@ namespace DurableTask.Netherite
             int Fragment { get; }
         }
 
-        public static List<IEventFragment> Fragment(ArraySegment<byte> segment, Event original, int maxFragmentSize)
+        public static List<IEventFragment> Fragment(ArraySegment<byte> segment, Event original, Guid groupId, int maxFragmentSize)
         {
             if (segment.Count <= maxFragmentSize)
                 throw new ArgumentException(nameof(segment), "segment must be larger than max fragment size");
@@ -40,6 +40,7 @@ namespace DurableTask.Netherite
                 {
                     list.Add(new ClientEventFragment()
                     {
+                        GroupId = groupId,
                         ClientId = clientEvent.ClientId,
                         RequestId = clientEvent.RequestId,
                         OriginalEventId = original.EventId,
@@ -52,6 +53,7 @@ namespace DurableTask.Netherite
                 {
                     list.Add(new PartitionEventFragment()
                     {
+                        GroupId = groupId,
                         PartitionId = partitionEvent.PartitionId,
                         OriginalEventId = original.EventId,
                         Timeout = (partitionEvent as ClientRequestEvent)?.TimeoutUtc,

@@ -39,7 +39,7 @@ namespace DurableTask.Netherite
 
         readonly BatchTimer<PendingRequest> ResponseTimeouts;
         readonly ConcurrentDictionary<long, PendingRequest> ResponseWaiters;
-        readonly Dictionary<(string,int), (MemoryStream, int)> Fragments;
+        readonly Dictionary<string, (MemoryStream, int)> Fragments;
         readonly Dictionary<long, QueryResponseReceived> QueryResponses;
 
         public static string GetShortId(Guid clientId) => clientId.ToString("N").Substring(0, 7);
@@ -62,7 +62,7 @@ namespace DurableTask.Netherite
             this.shutdownToken = shutdownToken;
             this.ResponseTimeouts = new BatchTimer<PendingRequest>(this.shutdownToken, this.Timeout, this.traceHelper.TraceTimerProgress);
             this.ResponseWaiters = new ConcurrentDictionary<long, PendingRequest>();
-            this.Fragments = new Dictionary<(string,int), (MemoryStream, int)>();
+            this.Fragments = new Dictionary<string, (MemoryStream, int)>();
             this.QueryResponses = new Dictionary<long, QueryResponseReceived>();
             this.ResponseTimeouts.Start("ClientTimer");
             this.workItemStopwatch = new Stopwatch();
@@ -87,7 +87,9 @@ namespace DurableTask.Netherite
             if (clientEvent is ClientEventFragment fragment)
             {
                 var originalEventString = fragment.OriginalEventId.ToString();
-                var index = (originalEventString, clientEvent.ReceiveChannel);
+                var group = fragment.GroupId.HasValue
+                  ? fragment.GroupId.Value.ToString()       // groups are now the way we track fragments
+                  : $"{originalEventString}-{fragment.ReceiveChannel}";  // prior to introducing groups, we used event id and channel, which is not always good enough
 
                 if (this.traceHelper.LogLevelLimit == Microsoft.Extensions.Logging.LogLevel.Trace)
                 {
@@ -96,7 +98,7 @@ namespace DurableTask.Netherite
 
                 if (fragment.IsLast)
                 {
-                    (MemoryStream stream, int last) = this.Fragments[index];
+                    (MemoryStream stream, int last) = this.Fragments[group];
 
                     if (last != fragment.Fragment)
                     {
@@ -104,6 +106,8 @@ namespace DurableTask.Netherite
                     }
 
                     var reassembledEvent = FragmentationAndReassembly.Reassemble<ClientEvent>(stream, fragment);
+
+                    this.Fragments.Remove(group);
 
                     this.Process(reassembledEvent);
                 }
@@ -113,11 +117,11 @@ namespace DurableTask.Netherite
 
                     if (fragment.Fragment == 0)
                     {
-                        this.Fragments[index] = streamAndPosition = (new MemoryStream(), 0);
+                        this.Fragments[group] = streamAndPosition = (new MemoryStream(), 0);
                     }
                     else
                     {
-                        streamAndPosition = this.Fragments[index];
+                        streamAndPosition = this.Fragments[group];
                     }
                     
                     if (streamAndPosition.Item2 != fragment.Fragment)
@@ -128,13 +132,11 @@ namespace DurableTask.Netherite
                     streamAndPosition.Item1.Write(fragment.Bytes, 0, fragment.Bytes.Length);
                     streamAndPosition.Item2++;
 
-                    this.Fragments[index] = streamAndPosition;
+                    this.Fragments[group] = streamAndPosition;
                 }
             }
             else
             {
-                this.Fragments.Remove((clientEvent.EventIdString, clientEvent.ReceiveChannel));
-
                 if (clientEvent is QueryResponseReceived queryResponseReceived)
                 {
                     queryResponseReceived.DeserializeOrchestrationStates();

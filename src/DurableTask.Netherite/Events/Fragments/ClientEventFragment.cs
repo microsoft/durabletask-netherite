@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite
 {
+    using System;
     using System.Runtime.Serialization;
 
     [DataContract]
@@ -10,6 +11,9 @@ namespace DurableTask.Netherite
     {
         [DataMember]
         public EventId OriginalEventId {  get; set; }
+
+        [DataMember]
+        public Guid? GroupId { get; set; } // we now use a group id for tracking fragments, to fix issue #231
 
         [DataMember]
         public byte[] Bytes { get; set; }
