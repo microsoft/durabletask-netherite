@@ -7,14 +7,16 @@ namespace DurableTask.Netherite
     using System.Collections.Generic;
     using System.Linq;
     using System.Threading;
+    using System.Threading.Tasks;
 
     class BatchTimer<T>
     {
-        readonly CancellationToken cancellationToken;
+        readonly CancellationTokenSource cts;
         readonly Action<List<T>> handler;
         readonly SortedList<(DateTime due, int id), T> schedule;
         readonly SemaphoreSlim notify;
         readonly Action<string> tracer;
+        readonly TaskCompletionSource<bool> shutdownComplete;
         readonly object thisLock; //TODO replace this class with a lock-free implementation
         string name;
 
@@ -22,21 +24,43 @@ namespace DurableTask.Netherite
 
         public BatchTimer(CancellationToken token, Action<List<T>> handler, Action<string> tracer = null)
         {
-            this.cancellationToken = token;
+            this.cts = CancellationTokenSource.CreateLinkedTokenSource(token);
             this.handler = handler;
             this.tracer = tracer;
             this.schedule = new SortedList<(DateTime due, int id), T>();
             this.notify = new SemaphoreSlim(0, int.MaxValue);
             this.thisLock = new object();
-
-            token.Register(() => this.notify.Release());
+            this.shutdownComplete = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
         public void Start(string name)
         {
-            var thread = TrackedThreads.MakeTrackedThread(this.ExpirationCheckLoop, name);
+            var thread = TrackedThreads.MakeTrackedThread(() => 
+            { 
+                try
+                {
+                    this.ExpirationCheckLoop();
+                    this.shutdownComplete.TrySetResult(true);
+                }
+                catch (OperationCanceledException)
+                {
+                    // normal during shutdown
+                    this.shutdownComplete.TrySetResult(true);
+                }
+                catch (Exception ex)
+                {
+                    this.shutdownComplete.TrySetException(ex);
+                }
+            }, name);
             this.name = name;
             thread.Start();
+        }
+
+        public async Task StopAsync()
+        {
+            this.cts.Cancel();
+            await this.shutdownComplete.Task.ConfigureAwait(false);
+            this.notify.Dispose();
         }
 
         public int GetFreshId()
@@ -87,13 +111,14 @@ namespace DurableTask.Netherite
             (DateTime due, int id) firstInBatch = default;
             (DateTime due, int id) nextAfterBatch = default;
 
-            while (!this.cancellationToken.IsCancellationRequested)
+            while (!this.cts.Token.IsCancellationRequested)
             {
                 // wait for the next expiration time or cleanup, but cut the wait short if notified
                 if (this.RequiresDelay(out int delay, out var due))
                 {
                     var startWait = DateTime.UtcNow;
-                    this.notify.Wait(delay); // blocks thread until delay is over, or until notified                 
+                    this.notify.Wait(delay, this.cts.Token); // blocks thread until delay is over, or until notified
+                    
                     this.tracer?.Invoke($"{this.name} is awakening at {(DateTime.UtcNow - due).TotalSeconds}s");
                 }
 
@@ -103,7 +128,7 @@ namespace DurableTask.Netherite
 
                     while (this.schedule.Count > 0
                         && next.Key.due <= DateTime.UtcNow
-                        && !this.cancellationToken.IsCancellationRequested)
+                        && !this.cts.Token.IsCancellationRequested)
                     {
                         this.schedule.RemoveAt(0);
                         batch.Add(next.Value);

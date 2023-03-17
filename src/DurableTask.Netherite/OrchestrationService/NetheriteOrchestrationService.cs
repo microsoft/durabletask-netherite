@@ -466,9 +466,6 @@ namespace DurableTask.Netherite
 
                 this.OnStopping?.Invoke();
 
-                this.checkedClient = null;
-                this.client = null;
-
                 if (this.serviceShutdownSource != null)
                 {
                     this.serviceShutdownSource.Cancel();
