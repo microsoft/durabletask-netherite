@@ -292,9 +292,6 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.traceHelper.LogInformation("Shutting down EventHubsBackend");
             this.shutdownSource.Cancel(); // initiates shutdown of client and of all partitions
 
-            this.traceHelper.LogDebug("Stopping client");
-            await this.client.StopAsync();
-
             if (this.hasWorkers)
             {
                 this.traceHelper.LogDebug("Stopping partition and loadmonitor hosts");
@@ -305,6 +302,9 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             this.traceHelper.LogDebug("Stopping client process loop");
             await this.clientProcessTask;
+
+            this.traceHelper.LogDebug("Stopping client");
+            await this.client.StopAsync();
 
             this.traceHelper.LogDebug("Closing connections");
             await this.connections.StopAsync();

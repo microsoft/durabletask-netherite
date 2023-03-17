@@ -175,6 +175,9 @@ namespace DurableTask.Netherite
 
                 bool takeCheckpoint = this.Settings.TakeStateCheckpointWhenStoppingPartition && !quickly;
 
+                // wait for the timer loop to be stopped so we don't have timers firing during shutdown
+                await this.PendingTimers.StopAsync();
+
                 // for a clean shutdown we try to save some of the latest progress to storage and then release the lease
                 bool clean = true;
                 try
