@@ -23,12 +23,12 @@ namespace DurableTask.Netherite
     class Client : TransportAbstraction.IClient
     {
         readonly NetheriteOrchestrationService host;
-        readonly CancellationToken shutdownToken;
         readonly ClientTraceHelper traceHelper;
         readonly string account;
         readonly Guid taskHubGuid;
         readonly WorkItemTraceHelper workItemTraceHelper;
         readonly Stopwatch workItemStopwatch;
+        readonly CancellationTokenSource cts;
 
         static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
 
@@ -36,6 +36,8 @@ namespace DurableTask.Netherite
         TransportAbstraction.ISender BatchSender { get; set; }
 
         long SequenceNumber; // for numbering requests that enter on this client
+
+        volatile bool allRemainingRequestsAreNowBeingCancelled = false; // set when entering the final stage of shutdown
 
         readonly BatchTimer<PendingRequest> ResponseTimeouts;
         readonly ConcurrentDictionary<long, PendingRequest> ResponseWaiters;
@@ -59,8 +61,8 @@ namespace DurableTask.Netherite
             this.workItemTraceHelper = workItemTraceHelper;
             this.account = host.StorageAccountName;
             this.BatchSender = batchSender;
-            this.shutdownToken = shutdownToken;
-            this.ResponseTimeouts = new BatchTimer<PendingRequest>(this.shutdownToken, this.Timeout, this.traceHelper.TraceTimerProgress);
+            this.cts = CancellationTokenSource.CreateLinkedTokenSource(shutdownToken);
+            this.ResponseTimeouts = new BatchTimer<PendingRequest>(this.cts.Token, this.Timeout, this.traceHelper.TraceTimerProgress);
             this.ResponseWaiters = new ConcurrentDictionary<long, PendingRequest>();
             this.Fragments = new Dictionary<string, (MemoryStream, int)>();
             this.QueryResponses = new Dictionary<long, QueryResponseReceived>();
@@ -71,10 +73,35 @@ namespace DurableTask.Netherite
             this.traceHelper.TraceProgress("Started");
         }
 
-        public Task StopAsync()
+        public async Task StopAsync()
         {
-            this.traceHelper.TraceProgress("Stopped");
-            return Task.CompletedTask;
+            this.traceHelper.TraceProgress("Stopping");
+
+            // cancel the token, if not already cancelled.
+            this.cts.Cancel();
+
+            await this.ResponseTimeouts.StopAsync();
+
+            // We now enter the final stage of client shutdown, where we forcefully cancel
+            // all requests that have not completed yet. We do this as late as possible in the shutdown
+            // process, so that requests still have a chance to successfully complete as long as possible.
+            this.allRemainingRequestsAreNowBeingCancelled = true;
+            while (true)
+            {
+                var entry = this.ResponseWaiters.GetEnumerator();
+                if (entry.MoveNext())
+                {
+                    entry.Current.Value.TryCancel(shutdownException);
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            this.cts.Dispose();
+
+            this.traceHelper.TraceProgress("Stopped");     
         }
 
         public void ReportTransportError(string message, Exception e)
@@ -220,7 +247,7 @@ namespace DurableTask.Netherite
         const long ticksPerBucket = 2 * TimeSpan.TicksPerSecond;
         DateTime GetTimeoutBucket(TimeSpan timeout) => new DateTime((((DateTime.UtcNow + timeout).Ticks / ticksPerBucket) * ticksPerBucket), DateTimeKind.Utc);
 
-        Task<ClientEvent> PerformRequestWithTimeoutAndCancellation(CancellationToken token, IClientRequestEvent request, bool doneWhenSent)
+        Task<ClientEvent> PerformRequestWithTimeout(IClientRequestEvent request)
         {
             var partitionEvent = (PartitionEvent)request;
             int timeoutId = this.ResponseTimeouts.GetFreshId();
@@ -228,12 +255,51 @@ namespace DurableTask.Netherite
             this.ResponseWaiters.TryAdd(request.RequestId, pendingRequest);
             this.ResponseTimeouts.Schedule(request.TimeoutUtc, pendingRequest, timeoutId);
 
+            if (this.allRemainingRequestsAreNowBeingCancelled)
+            {
+                throw shutdownException;
+            }
+
             DurabilityListeners.Register((Event)request, pendingRequest);
 
             this.Send(partitionEvent);
 
             return pendingRequest.Task;
         }
+
+        async Task<ClientEvent> PerformRequestWithTimeoutAndCancellation(IClientRequestEvent request, CancellationToken token)
+        {
+            long requestId = request.RequestId;
+
+            using CancellationTokenRegistration _ = token.Register(() =>
+            {
+                if (this.ResponseWaiters.TryGetValue(requestId, out PendingRequest request))
+                {
+                    var exception = new OperationCanceledException("Client request was cancelled by the application-provided cancellation token", token);
+                    request.TryCancel(exception);
+                }
+            });
+
+            var partitionEvent = (PartitionEvent)request;
+            int timeoutId = this.ResponseTimeouts.GetFreshId();
+            var pendingRequest = new PendingRequest(requestId, request.EventId, partitionEvent.PartitionId, this, request.TimeoutUtc, timeoutId);
+            this.ResponseWaiters.TryAdd(requestId, pendingRequest);
+            this.ResponseTimeouts.Schedule(request.TimeoutUtc, pendingRequest, timeoutId);
+
+            if (this.allRemainingRequestsAreNowBeingCancelled)
+            {
+                throw shutdownException;
+            }
+
+            DurabilityListeners.Register((Event)request, pendingRequest);
+
+            this.Send(partitionEvent);
+
+            return await pendingRequest.Task.ConfigureAwait(false);
+        }
+
+        static readonly TimeoutException timeoutException = new TimeoutException("Client request timed out.");
+        static readonly OperationCanceledException shutdownException = new OperationCanceledException("Client request was cancelled because host is shutting down.");
 
         internal class PendingRequest : TransportAbstraction.IDurabilityOrExceptionListener
         {
@@ -245,7 +311,6 @@ namespace DurableTask.Netherite
             readonly TaskCompletionSource<ClientEvent> continuation;
             readonly double startTime;
 
-            static readonly TimeoutException timeoutException = new TimeoutException("Client request timed out.");
 
             public Task<ClientEvent> Task => this.continuation.Task;
             public (DateTime, int) TimeoutKey => this.timeoutKey;
@@ -361,6 +426,15 @@ namespace DurableTask.Netherite
                     this.continuation.TrySetException(timeoutException);
                 }
             }
+
+            public void TryCancel(OperationCanceledException exception)
+            {
+                if (this.client.ResponseWaiters.TryRemove(this.requestId, out var pendingRequest))
+                {
+                    this.client.traceHelper.TraceTimerProgress($"cancelling ({this.timeoutKey.due:o},{this.timeoutKey.id})");
+                    this.continuation.TrySetException(exception);
+                }
+            }
         }
 
         /******************************/
@@ -393,7 +467,7 @@ namespace DurableTask.Netherite
                 "CreateOrchestration",
                 WorkItemTraceHelper.FormatEmptyMessageIdList());
 
-            var response = await this.PerformRequestWithTimeoutAndCancellation(this.shutdownToken, request, false).ConfigureAwait(false);
+            var response = await this.PerformRequestWithTimeout(request).ConfigureAwait(false);
             var creationResponseReceived = (CreationResponseReceived)response;
             if (!creationResponseReceived.Succeeded)
             {
@@ -435,7 +509,7 @@ namespace DurableTask.Netherite
                     WorkItemTraceHelper.FormatEmptyMessageIdList());
             }
 
-            return this.PerformRequestWithTimeoutAndCancellation(this.shutdownToken, request, true);
+            return this.PerformRequestWithTimeout(request);
         }
 
         public async Task<OrchestrationState> WaitForOrchestrationAsync(
@@ -463,7 +537,7 @@ namespace DurableTask.Netherite
 
             try
             {
-                var response = await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false).ConfigureAwait(false);
+                var response = await this.PerformRequestWithTimeout(request).ConfigureAwait(false);
                 return ((WaitResponseReceived)response)?.OrchestrationState;
             }
             catch (TimeoutException)
@@ -490,7 +564,7 @@ namespace DurableTask.Netherite
                 TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
             };
 
-            var response = await this.PerformRequestWithTimeoutAndCancellation(this.shutdownToken, request, false).ConfigureAwait(false);
+            var response = await this.PerformRequestWithTimeout(request).ConfigureAwait(false);
             return ((StateResponseReceived)response)?.OrchestrationState;
         }
 
@@ -510,7 +584,7 @@ namespace DurableTask.Netherite
                 TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
             };
 
-            var response = (HistoryResponseReceived)await this.PerformRequestWithTimeoutAndCancellation(this.shutdownToken, request, false).ConfigureAwait(false);
+            var response = (HistoryResponseReceived)await this.PerformRequestWithTimeout(request).ConfigureAwait(false);
             return (response?.ExecutionId, response?.History);
         }
 
@@ -746,7 +820,7 @@ namespace DurableTask.Netherite
                 {
                     var request = requestCreator(partitionId);
                     request.ContinuationToken = partitionPositions[partitionId];
-                    var response = (TResponse)await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false).ConfigureAwait(false);
+                    var response = (TResponse)await this.PerformRequestWithTimeoutAndCancellation(request, cancellationToken).ConfigureAwait(false);
                     partitionPositions[partitionId] = response.ContinuationToken;
                     this.traceHelper.TraceQueryProgress(clientQueryId, request.EventIdString, partitionId, stopwatch.Elapsed, request.PageSize, response.Count, response.ContinuationToken);
                     return response;
@@ -837,7 +911,7 @@ namespace DurableTask.Netherite
                         }
 
                         var stopwatch = Stopwatch.StartNew();
-                        var response = (TResponse)await this.PerformRequestWithTimeoutAndCancellation(cancellationToken, request, false).ConfigureAwait(false);
+                        var response = (TResponse)await this.PerformRequestWithTimeoutAndCancellation(request, cancellationToken).ConfigureAwait(false);
                         this.traceHelper.TraceQueryProgress(clientQueryId, request.EventIdString, partitionId, stopwatch.Elapsed, request.PageSize, response.Count, response.ContinuationToken);
 
                         ResetRetries();
@@ -904,7 +978,7 @@ namespace DurableTask.Netherite
                 TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
             };
 
-            return this.PerformRequestWithTimeoutAndCancellation(CancellationToken.None, request, true);
+            return this.PerformRequestWithTimeout(request);
         }
 
         public async Task<int> DeleteAllDataForOrchestrationInstance(uint partitionId, string instanceId)
@@ -923,7 +997,7 @@ namespace DurableTask.Netherite
                 TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
             };
 
-            var response = await this.PerformRequestWithTimeoutAndCancellation(this.shutdownToken, request, false).ConfigureAwait(false);
+            var response = await this.PerformRequestWithTimeout(request).ConfigureAwait(false);
             return ((DeletionResponseReceived)response).NumberInstancesDeleted;
         }
     }
