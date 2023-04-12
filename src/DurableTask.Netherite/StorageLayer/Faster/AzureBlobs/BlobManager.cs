@@ -21,6 +21,7 @@ namespace DurableTask.Netherite.Faster
     using System.Net;
     using System.Text;
     using DurableTask.Netherite.Abstractions;
+    using System.Collections.Concurrent;
 
     /// <summary>
     /// Provides management of blobs and blob names associated with a partition, and logic for partition lease maintenance and termination.
@@ -779,24 +780,54 @@ namespace DurableTask.Netherite.Faster
                 string token1 = this.CheckpointInfo.LogToken.ToString();
                 string token2 = this.CheckpointInfo.IndexToken.ToString();
 
-                this.TraceHelper.FasterProgress($"Removing obsolete checkpoints, keeping only {token1} and {token2}");
+                this.TraceHelper.FasterProgress($"RemoveObsoleteCheckpoints: keeping only {token1} and {token2}");
 
-                var tasks = new List<Task<(int, int)>>();
+                var preparationTasks = new List<Task<(int, int)>>();
+                var deletionTasks = new ConcurrentQueue<(BlobContainerClient,string)>();
 
-                tasks.Add(RemoveObsoleteCheckpoints(this.blockBlobPartitionDirectory.GetSubDirectory(cprCheckpointPrefix)));
-                tasks.Add(RemoveObsoleteCheckpoints(this.blockBlobPartitionDirectory.GetSubDirectory(indexCheckpointPrefix)));
+                preparationTasks.Add(FindObsoleteCheckpointBlobs(this.blockBlobPartitionDirectory.GetSubDirectory(cprCheckpointPrefix)));
+                preparationTasks.Add(FindObsoleteCheckpointBlobs(this.blockBlobPartitionDirectory.GetSubDirectory(indexCheckpointPrefix)));
 
                 if (this.settings.PageBlobStorageConnection != null)
                 {
-                    tasks.Add(RemoveObsoleteCheckpoints(this.pageBlobPartitionDirectory.GetSubDirectory(cprCheckpointPrefix)));
-                    tasks.Add(RemoveObsoleteCheckpoints(this.pageBlobPartitionDirectory.GetSubDirectory(indexCheckpointPrefix)));
+                    preparationTasks.Add(FindObsoleteCheckpointBlobs(this.pageBlobPartitionDirectory.GetSubDirectory(cprCheckpointPrefix)));
+                    preparationTasks.Add(FindObsoleteCheckpointBlobs(this.pageBlobPartitionDirectory.GetSubDirectory(indexCheckpointPrefix)));
                 }
 
-                await Task.WhenAll(tasks);
+                // we have to wait for the preparation tasks to complete 
+                // so that we are not deleting future checkpoints created by the next lease holder
+                await Task.WhenAll(preparationTasks);
 
-                this.TraceHelper.FasterProgress($"Removed {tasks.Select(t => t.Result.Item1).Sum()} checkpoint directories containing {tasks.Select(t => t.Result.Item2).Sum()} blobs");
+                if (deletionTasks.Count > 0)
+                {
+                    // we are using a detached task on the thread pool for deleting the blobs leisurely, one at a time.
+                    // This is fine since there is no urgency to this operation - it happens in background
+                    // and there is no problem if it does not finish before the node shuts down.
 
-                async Task<(int, int)> RemoveObsoleteCheckpoints(BlobUtilsV12.BlobDirectory directory)
+                    var detachedTask = Task.Run(async () =>
+                    {
+                        foreach (var (client, blobName) in deletionTasks)
+                        {
+                            await this.PerformWithRetriesAsync(
+                                  BlobManager.AsynchronousStorageWriteMaxConcurrency,
+                                  false,
+                                  "BlobUtils.ForceDeleteAsync",
+                                  "DeleteCheckpointDirectory",
+                                  "",
+                                  blobName,
+                                  1000,
+                                  false,
+                                  async (numAttempts) => (await BlobUtilsV12.ForceDeleteAsync(client, blobName) ? 1 : 0));
+                        }
+                 
+                        this.TraceHelper.FasterProgress($"RemoveObsoleteCheckpoints: Removed {preparationTasks.Select(t => t.Result.Item1).Sum()} checkpoint directories containing {preparationTasks.Select(t => t.Result.Item2).Sum()} blobs");
+                    });
+                }
+
+                // we do not wait for the actual deletion operations to complete, so we can release the lease sooner.
+                return; 
+
+                async Task<(int, int)> FindObsoleteCheckpointBlobs(BlobUtilsV12.BlobDirectory directory)
                 {
                     List<string> results = null;
 
@@ -820,36 +851,16 @@ namespace DurableTask.Netherite.Faster
                         .GroupBy((s) => s.Split('/')[3])
                         .Where(g => g.Key != token1 && g.Key != token2)
                         .ToList();
-
-                    var deletionTasks = new List<Task>();
-
+                     
                     foreach (var folder in checkpointFoldersToDelete)
                     {
-                        deletionTasks.Add(DeleteCheckpointDirectory(folder));
-                    }
-
-                    await Task.WhenAll(deletionTasks);
-                    return (checkpointFoldersToDelete.Count, results.Count);
-
-                    async Task DeleteCheckpointDirectory(IEnumerable<string> blobsToDelete)
-                    {
-                        var deletionTasks = new List<Task>();
-                        foreach (var blobName in blobsToDelete)
+                        foreach (var blobName in folder)
                         {
-                            deletionTasks.Add(
-                                this.PerformWithRetriesAsync(
-                                    BlobManager.AsynchronousStorageWriteMaxConcurrency,
-                                    false,
-                                    "BlobUtils.ForceDeleteAsync",
-                                    "DeleteCheckpointDirectory",
-                                    "",
-                                    blobName,
-                                    1000,
-                                    false,
-                                    async (numAttempts) => (await BlobUtilsV12.ForceDeleteAsync(directory.Client.Default, blobName) ? 1 : 0)));
+                            deletionTasks.Enqueue((directory.Client.Default, blobName));                 
                         }
-                        await Task.WhenAll(deletionTasks);
-                    }
+                    }   
+
+                    return (checkpointFoldersToDelete.Count, results.Count);
                 }
             }
         }
