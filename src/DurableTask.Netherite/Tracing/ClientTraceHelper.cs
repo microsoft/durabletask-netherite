@@ -111,11 +111,11 @@ namespace DurableTask.Netherite
             {
                 if (this.logger.IsEnabled(LogLevel.Debug))
                 {
-                    this.logger.LogDebug("{client} Sending event {eventId}: {event}", this.tracePrefix, @event.EventIdString, @event);
+                    this.logger.LogDebug("{client} Sending event {eventId} to partition {partitionId}: {event}", this.tracePrefix, @event.EventIdString, @event.PartitionId, @event);
                 }
                 if (EtwSource.Log.IsEnabled())
                 {
-                    EtwSource.Log.ClientSentEvent(this.account, this.taskHub, this.clientId, @event.EventIdString, @event.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                    EtwSource.Log.ClientSentEvent(this.account, this.taskHub, this.clientId, (int) @event.PartitionId, @event.EventIdString, @event.ToString(), TraceUtils.AppName, TraceUtils.ExtensionVersion);
                 }
             }
         }
