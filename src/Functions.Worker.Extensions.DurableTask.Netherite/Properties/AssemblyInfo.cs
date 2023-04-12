@@ -4,4 +4,4 @@
 using Microsoft.Azure.Functions.Worker.Extensions.Abstractions;
 
 // This must be updated when updating the version of the package
-[assembly: ExtensionInformation("Microsoft.Azure.DurableTask.Netherite.AzureFunctions", "1.3.3", true)]
+[assembly: ExtensionInformation("Microsoft.Azure.DurableTask.Netherite.AzureFunctions", "1.3.4", true)]
