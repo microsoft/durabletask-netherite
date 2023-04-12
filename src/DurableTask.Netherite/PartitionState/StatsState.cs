@@ -35,7 +35,24 @@ namespace DurableTask.Netherite
         public override void UpdateLoadInfo(PartitionLoadInfo info)
         {
             info.Instances = this.InstanceCount;
-            this.Partition.Assert(!this.HasInstanceIds || this.InstanceCount == this.InstanceIds.Count, "instance count does not match index size");
+        }
+
+        void ValidateInvariant(Partition partition, PartitionUpdateEvent evt = null)
+        {
+            if (this.InstanceIds != null && this.InstanceCount != this.InstanceIds.Count)
+            {
+                // this should not happen, but we have seen it happen. To help fix it, we generate
+                // a warning here, and keep going.
+
+                partition.ErrorHandler.HandleError(
+                    "StatsState", 
+                    $"Invariant violated: InstanceCount={this.InstanceCount} InstanceIds.Count={this.InstanceIds.Count} Position={evt?.NextCommitLogPosition ?? 0}", 
+                    null, 
+                    terminatePartition: false, 
+                    reportAsWarning: true);
+
+                this.InstanceCount = this.InstanceIds.Count; // use the set of instance ids as the authoritative source
+            }
         }
 
         public override void OnFirstInitialization(Partition partition)
@@ -45,6 +62,8 @@ namespace DurableTask.Netherite
             {
                 this.InstanceIds = new SortedSet<string>();
             }
+
+            this.ValidateInvariant(partition);
         }
 
         public override void Process(RecoveryCompleted evt, EffectTracker effects)
@@ -57,6 +76,8 @@ namespace DurableTask.Netherite
             {
                 // TODO: kick off a background task to rebuild the index
             }
+
+            this.ValidateInvariant(effects.Partition, evt);
         }
 
         public override void Process(CreationRequestReceived evt, EffectTracker effects)
@@ -70,6 +91,8 @@ namespace DurableTask.Netherite
                     this.InstanceIds.Add(evt.InstanceId);
                 }
             }
+
+            this.ValidateInvariant(effects.Partition, evt);
         }
 
         public override void Process(BatchProcessed evt, EffectTracker effects)
@@ -97,6 +120,8 @@ namespace DurableTask.Netherite
                     }
                 }
             }
+
+            this.ValidateInvariant(effects.Partition, evt);
         }
 
         public override void Process(PurgeBatchIssued evt, EffectTracker effects)
@@ -113,6 +138,8 @@ namespace DurableTask.Netherite
                     }
                 }
             }
+
+            this.ValidateInvariant(effects.Partition, evt);
         }
 
         public override void Process(DeletionRequestReceived evt, EffectTracker effects)
@@ -126,6 +153,8 @@ namespace DurableTask.Netherite
                     this.InstanceIds.Remove(evt.InstanceId);
                 }
             }
+
+            this.ValidateInvariant(effects.Partition, evt);
         }
 
         // called by query
