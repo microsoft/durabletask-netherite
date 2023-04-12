@@ -159,7 +159,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             {
                 if (this.settings.PartitionManagement != PartitionManagementOptions.Scripted)
                 {
-                    this.traceHelper.LogInformation($"Registering Partition Host with EventHubs");
+                    this.traceHelper.LogInformation($"EventHubsTransport is registering PartitionHost");
 
                     string formattedCreationDate = this.connections.CreationTimestamp.ToString("o").Replace("/", "-");
 
@@ -181,11 +181,11 @@ namespace DurableTask.Netherite.EventHubsTransport
                         new PartitionEventProcessorFactory(this), 
                         processorOptions);
 
-                    this.traceHelper.LogInformation($"Partition Host started");
+                    this.traceHelper.LogInformation($"EventHubsTransport started PartitionHost");
                 }
                 else
                 {
-                    this.traceHelper.LogInformation($"Starting scripted partition host");
+                    this.traceHelper.LogInformation($"EventHubsTransport is starting scripted partition host");
                     this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
                             EventHubsTransport.PartitionHub,
                             EventHubsTransport.PartitionConsumerGroup,
@@ -207,7 +207,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             async Task StartLoadMonitorHost()
             {
-                this.traceHelper.LogInformation("Registering LoadMonitor Host with EventHubs");
+                this.traceHelper.LogInformation("EventHubsTransport is registering LoadMonitorHost");
 
                 this.loadMonitorHost = await this.settings.EventHubsConnection.GetEventProcessorHostAsync(
                         Guid.NewGuid().ToString(),
@@ -237,7 +237,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 await this.connections.DeletePartitions();
             }
 
-            this.traceHelper.LogError("Killing process in 10 seconds");
+            this.traceHelper.LogError("EventHubsTransport is killing process in 10 seconds");
             await Task.Delay(TimeSpan.FromSeconds(10));
             System.Environment.Exit(222);
         }
@@ -289,39 +289,53 @@ namespace DurableTask.Netherite.EventHubsTransport
 
         async Task ITransportLayer.StopAsync()
         {
-            this.traceHelper.LogInformation("Shutting down EventHubsBackend");
-            this.shutdownSource.Cancel(); // initiates shutdown of client and of all partitions
+            this.traceHelper.LogInformation("EventHubsTransport is shutting down");
+            this.shutdownSource.Cancel(); // immediately initiates shutdown of client and of all partitions
 
-            if (this.hasWorkers)
-            {
-                this.traceHelper.LogDebug("Stopping partition and loadmonitor hosts");
-                await Task.WhenAll(
-                  this.StopPartitionHost(),
-                  this.loadMonitorHost.UnregisterEventProcessorAsync());
-            }
+            await Task.WhenAll(
+                 this.hasWorkers ? this.StopWorkersAsync() : Task.CompletedTask,
+                 this.StopClientsAndConnectionsAsync());
 
-            this.traceHelper.LogDebug("Stopping client process loop");
-            await this.clientProcessTask;
-
-            this.traceHelper.LogDebug("Stopping client");
-            await this.client.StopAsync();
-
-            this.traceHelper.LogDebug("Closing connections");
-            await this.connections.StopAsync();
-
-            this.traceHelper.LogInformation("EventHubsBackend shutdown completed");
+            this.traceHelper.LogInformation("EventHubsTransport is shut down");
         }
 
-        Task StopPartitionHost()
+        async Task StopWorkersAsync()
+        {
+            this.traceHelper.LogDebug("EventHubsTransport is stopping partition and loadmonitor hosts");
+            await Task.WhenAll(
+              this.StopPartitionHostAsync(),
+              this.StopLoadMonitorHostAsync());
+        }
+
+        async Task StopClientsAndConnectionsAsync()
+        {
+            this.traceHelper.LogDebug("EventHubsTransport is stopping client process loop");
+            await this.clientProcessTask;
+
+            this.traceHelper.LogDebug("EventHubsTransport is closing connections");
+            await this.connections.StopAsync();
+
+            this.traceHelper.LogDebug("EventHubsTransport is stopping client");
+            await this.client.StopAsync();
+        }
+
+        async Task StopPartitionHostAsync()
         {
             if (this.settings.PartitionManagement != PartitionManagementOptions.Scripted)
             {
-                return this.eventProcessorHost.UnregisterEventProcessorAsync();
+                await this.eventProcessorHost.UnregisterEventProcessorAsync();
             }
             else
             {
-                return this.scriptedEventProcessorHost.StopAsync();
-            }   
+                await this.scriptedEventProcessorHost.StopAsync();
+            }
+            this.traceHelper.LogDebug("EventHubsTransport stopped partition host");
+        }
+
+        async Task StopLoadMonitorHostAsync()
+        {
+            await this.loadMonitorHost.UnregisterEventProcessorAsync();
+            this.traceHelper.LogDebug("EventHubsTransport stopped loadmonitor host");
         }
 
         IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
