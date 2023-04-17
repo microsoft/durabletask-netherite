@@ -317,6 +317,8 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             this.traceHelper.LogDebug("EventHubsTransport is stopping client");
             await this.client.StopAsync();
+
+            this.traceHelper.LogDebug("EventHubsTransport stopped clients");
         }
 
         async Task StopPartitionHostAsync()
