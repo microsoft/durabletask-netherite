@@ -108,7 +108,8 @@ namespace DurableTask.Netherite
 
             if (batch.OutgoingResponses.Count > 0)
             {
-                foreach (var outresponse in batch.OutgoingResponses.ToArray())
+                var outgoingResponses = batch.OutgoingResponses.ToArray(); //copy for safe iteration
+                foreach (var outresponse in outgoingResponses )
                 {
                     DurabilityListeners.Register(outresponse, batch);
                     this.Partition.Send(outresponse);
@@ -116,7 +117,8 @@ namespace DurableTask.Netherite
             }
             if (batch.OutgoingMessages.Count > 0)
             {
-                foreach (var outmessage in batch.OutgoingMessages.ToArray())
+                var outgoingMessages =  batch.OutgoingMessages.ToArray(); // copy for safe iteration
+                foreach (var outmessage in outgoingMessages)
                 {
                     DurabilityListeners.Register(outmessage, batch);
                     this.Partition.Send(outmessage);
