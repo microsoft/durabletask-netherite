@@ -118,16 +118,22 @@ namespace DurableTask.Netherite
                 this.workItem.EventCount = historyState.History?.Count ?? 0;
             }
 
-            if (!this.IsExecutableInstance(this.workItem, out var reason))
+            if (!this.IsExecutableInstance(this.workItem, out var reason, out bool traceWarningEvenForTimers))
             {
                 // this instance cannot be executed, so we are discarding the messages
                 for (int i = 0; i < this.workItem.MessageBatch.MessagesToProcess.Count; i++)
                 {
-                    partition.WorkItemTraceHelper.TraceTaskMessageDiscarded(
-                        this.PartitionId,
-                        this.workItem.MessageBatch.MessagesToProcess[i],
-                        this.workItem.MessageBatch.MessagesToProcessOrigin[i],
-                        reason);
+                    TaskMessage message = this.workItem.MessageBatch.MessagesToProcess[i];
+
+                    // since this can happen by design for canceled timers, we are not always creating warnings
+                    if (traceWarningEvenForTimers || ! (message.Event is TimerFiredEvent))
+                    {
+                        partition.WorkItemTraceHelper.TraceTaskMessageDiscarded(
+                            this.PartitionId,
+                            message,
+                            this.workItem.MessageBatch.MessagesToProcessOrigin[i],
+                            reason);
+                    }
                 }
 
                 // we issue a batch processed event which will remove the messages without updating the instance state
@@ -162,20 +168,36 @@ namespace DurableTask.Netherite
             this.workItem.Partition.EnqueueOrchestrationWorkItem(this.workItem);
         }
 
-        bool IsExecutableInstance(TaskOrchestrationWorkItem workItem, out string message)
+        bool IsExecutableInstance(TaskOrchestrationWorkItem workItem, out string message, out bool traceWarningEvenForTimers)
         {
+            message = default;
+            traceWarningEvenForTimers = default;
+
             if (workItem.OrchestrationRuntimeState.ExecutionStartedEvent == null
                 && !this.MessagesToProcess.Any(msg => msg.Event is ExecutionStartedEvent))
             {
                 if (DurableTask.Core.Common.Entities.AutoStart(this.InstanceId, this.MessagesToProcess))
                 {
-                    message = default;
                     return true;
                 }
                 else
                 {
-                    message = workItem.NewMessages.Count == 0 ? "No such instance" : "Instance is corrupted";
-                    return false;
+                    if (DurableTask.Core.Common.Entities.IsEntityInstance(this.InstanceId))
+                    {
+                        message = "Instance is an entity that cannot process this type of message";
+                        traceWarningEvenForTimers = true;
+                    }
+                    else if (workItem.OrchestrationRuntimeState.Events.Count == 0)
+                    {
+                        message = "Instance does not exist (it may have been purged)";
+                        traceWarningEvenForTimers = false;
+                    }
+                    else
+                    {
+                        message = $"Instance has an invalid history ({workItem.OrchestrationRuntimeState.Events} events)";
+                        traceWarningEvenForTimers = true;
+                    }
+                    return false;                   
                 }
             }
 
@@ -184,10 +206,10 @@ namespace DurableTask.Netherite
                 workItem.OrchestrationRuntimeState.OrchestrationStatus != OrchestrationStatus.Pending)
             {
                 message = $"Instance is {workItem.OrchestrationRuntimeState.OrchestrationStatus}";
+                traceWarningEvenForTimers = false;
                 return false;
             }
 
-            message = null;
             return true;
         }
     }
