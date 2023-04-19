@@ -15,6 +15,15 @@ namespace DurableTask.Netherite
         [DataMember]
         public Dictionary<string, List<PartitionEventFragment>> Fragments { get; private set; } = new Dictionary<string, List<PartitionEventFragment>>();
 
+        [DataMember]
+        public bool UseExpirationHorizon { get; set; } 
+
+        [DataMember]
+        public DateTime TimeoutHorizon { get; set; }
+
+        [DataMember]
+        public Dictionary<uint, (long Position, int SubPosition)> DedupHorizon { get; set; } = new Dictionary<uint, (long Position, int SubPosition)>();
+
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Reassembly);
         public override string ToString()
@@ -22,27 +31,35 @@ namespace DurableTask.Netherite
             return $"Reassembly ({this.Fragments.Count} pending)";
         }
 
+        bool IsExpired(PartitionEventFragment fragment)
+        {
+            if (fragment.Timeout.HasValue)
+            {
+                return fragment.Timeout.Value < this.TimeoutHorizon;
+            }
+            else if (fragment.DedupPosition.HasValue)
+            {
+                this.DedupHorizon.TryGetValue(fragment.DedupPosition.Value.Item1, out (long, int) lastProcessed);
+                return lastProcessed.CompareTo((fragment.DedupPosition.Value.Item2, fragment.DedupPosition.Value.Item3)) >= 0;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
         public override void Process(RecoveryCompleted evt, EffectTracker effects)
         {
-            bool IsExpired(List<PartitionEventFragment> list)
+            // set expiration horizon, i.e. a lower limit for the timeout value and receive position of retained fragments
+            this.UseExpirationHorizon = evt.UseExpirationHorizonForFragments;
+            this.TimeoutHorizon = evt.Timestamp;
+            foreach (var kvp in evt.ReceivePositions)
             {
-                var fragment = list.First();
-                if (fragment.Timeout.HasValue)
-                {
-                    return fragment.Timeout.Value < evt.Timestamp;
-                }
-                else if (fragment.DedupPosition.HasValue)
-                {                  
-                    evt.ReceivePositions.TryGetValue(fragment.DedupPosition.Value.Item1, out (long, int) lastProcessed);
-                    return lastProcessed.CompareTo((fragment.DedupPosition.Value.Item2, fragment.DedupPosition.Value.Item3)) >= 0;
-                }
-                else 
-                {
-                    return false;
-                }
+                this.DedupHorizon[kvp.Key] = kvp.Value;
             }
-
-            var expired = this.Fragments.Where(kvp => IsExpired(kvp.Value)).ToList();
+           
+            // remove expired fragments
+            var expired = this.Fragments.Where(kvp => this.IsExpired(kvp.Value.First())).ToList();
 
             foreach (var kvp in expired)
             {
@@ -52,11 +69,16 @@ namespace DurableTask.Netherite
                 {
                     effects.EventTraceHelper.TraceEventProcessingDetail($"Dropped {kvp.Value.Count()} expired fragments for id={kvp.Value.First().OriginalEventId} during recovery");
                 }
-            }
+            } 
         }
 
         public override void Process(PartitionEventFragment evt, EffectTracker effects)
-        {
+        {            
+            if (this.UseExpirationHorizon && this.IsExpired(evt))
+            {
+                return; // we now entirely ignore expired fragments (fixes issue)
+            }
+
             // stores fragments until the last one is received
             var group = evt.GroupId.HasValue 
                 ? evt.GroupId.Value.ToString()       // groups are now the way we track fragments

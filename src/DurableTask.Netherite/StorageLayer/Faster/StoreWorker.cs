@@ -602,6 +602,7 @@ namespace DurableTask.Netherite.Faster
                 Timestamp = incarnationTimestamp,
                 WorkerId = this.partition.Settings.WorkerId,
                 KeepInstanceIdsInMemory = this.partition.Settings.KeepInstanceIdsInMemory,
+                UseExpirationHorizonForFragments = true,
                 ChangedFingerprint = queueChange ? inputQueueFingerprint : null,
             };
 

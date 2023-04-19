@@ -29,6 +29,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public bool KeepInstanceIdsInMemory { get; set; }
 
+        [DataMember]
+        public bool UseExpirationHorizonForFragments { get; set; }
+
         [IgnoreDataMember]
         public override bool ResetInputQueue => !string.IsNullOrEmpty(this.ChangedFingerprint);
 
