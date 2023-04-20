@@ -26,8 +26,8 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
         readonly Stopwatch stopwatch = new Stopwatch();
 
-        public LoadMonitorSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, EventHubsTraceHelper traceHelper)
-            : base($"EventHubsSender {sender.EventHubClient.EventHubName}/{sender.PartitionId}", false, 2000, CancellationToken.None, traceHelper)
+        public LoadMonitorSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper)
+            : base($"EventHubsSender {sender.EventHubClient.EventHubName}/{sender.PartitionId}", false, 2000, shutdownToken, traceHelper)
         {
             this.host = host;
             this.taskHubGuid = taskHubGuid;
@@ -89,6 +89,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     int length = (int)(this.stream.Position);
                     var arraySegment = new ArraySegment<byte>(this.stream.GetBuffer(), 0, length);
                     var eventData = new EventData(arraySegment);
+                    this.cancellationToken.ThrowIfCancellationRequested();
                     await this.sender.SendAsync(eventData);
                     this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} sent packet ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, length, evt.EventIdString);
                     this.stream.Seek(0, SeekOrigin.Begin);
@@ -105,6 +106,12 @@ namespace DurableTask.Netherite.EventHubsTransport
                     await Task.Delay(TimeSpan.FromMilliseconds(toSpare));
                     this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} iteration padded to latencyMs={latencyMs}", this.eventHubName, this.eventHubPartition, this.stopwatch.ElapsedMilliseconds);
                 }
+            }
+            catch (OperationCanceledException) when (this.cancellationToken.IsCancellationRequested)
+            {
+                // normal during shutdown
+                this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} was cancelled", this.eventHubName, this.eventHubPartition);
+                return;
             }
             catch (Exception e)
             {
