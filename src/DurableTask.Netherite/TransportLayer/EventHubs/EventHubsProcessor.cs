@@ -266,14 +266,15 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             using (await this.deliveryLock.LockAsync())
             {
-                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} starting shutdown task", this.eventHubName, this.eventHubPartition);
-
                 if (this.shutdownTask == null)
                 {
+                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} starting shutdown task", this.eventHubName, this.eventHubPartition);
                     this.shutdownTask = Task.Run(() => ShutdownAsync());
                 }
-
-                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} started shutdown task", this.eventHubName, this.eventHubPartition);
+                else
+                {
+                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} shutdown task already started", this.eventHubName, this.eventHubPartition);
+                }
             }
 
             await this.shutdownTask;
