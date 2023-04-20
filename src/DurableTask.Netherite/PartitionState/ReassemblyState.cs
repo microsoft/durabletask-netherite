@@ -22,7 +22,7 @@ namespace DurableTask.Netherite
         public DateTime TimeoutHorizon { get; set; }
 
         [DataMember]
-        public Dictionary<uint, (long Position, int SubPosition)> DedupHorizon { get; set; } = new Dictionary<uint, (long Position, int SubPosition)>();
+        public Dictionary<uint, (long Position, int SubPosition)> DedupHorizon { get; set; }
 
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Reassembly);
@@ -53,6 +53,7 @@ namespace DurableTask.Netherite
             // set expiration horizon, i.e. a lower limit for the timeout value and receive position of retained fragments
             this.UseExpirationHorizon = evt.UseExpirationHorizonForFragments;
             this.TimeoutHorizon = evt.Timestamp;
+            this.DedupHorizon ??= new Dictionary<uint, (long Position, int SubPosition)>();
             foreach (var kvp in evt.ReceivePositions)
             {
                 this.DedupHorizon[kvp.Key] = kvp.Value;
@@ -76,7 +77,7 @@ namespace DurableTask.Netherite
         {            
             if (this.UseExpirationHorizon && this.IsExpired(evt))
             {
-                return; // we now entirely ignore expired fragments (fixes issue)
+                return; // we now entirely ignore expired fragments (fixes issue described in #253)
             }
 
             // stores fragments until the last one is received
@@ -84,50 +85,62 @@ namespace DurableTask.Netherite
                 ? evt.GroupId.Value.ToString()       // groups are now the way we track fragments
                 : evt.OriginalEventId.ToString();  // prior to introducing groups, we used just the event id, which is not correct under interleavings
 
-            if (evt.IsLast)
+            try
             {
-                evt.ReassembledEvent =  FragmentationAndReassembly.Reassemble<PartitionEvent>(this.Fragments[group], evt, effects.Partition);
-                
-                effects.EventDetailTracer?.TraceEventProcessingDetail($"Reassembled {evt.ReassembledEvent}");
-
-                this.Fragments.Remove(group);
-
-                switch (evt.ReassembledEvent)
+                if (evt.IsLast)
                 {
-                    case PartitionUpdateEvent updateEvent:
-                        if (!effects.IsReplaying)
-                        {
-                            updateEvent.OnSubmit(this.Partition);
-                        }
-                        updateEvent.DetermineEffects(effects);
-                        break;
+                    evt.ReassembledEvent = FragmentationAndReassembly.Reassemble<PartitionEvent>(this.Fragments[group], evt, effects.Partition);
 
-                    case PartitionReadEvent readEvent:
-                        this.Partition.SubmitEvent(readEvent);
-                        break;
+                    effects.EventDetailTracer?.TraceEventProcessingDetail($"Reassembled {evt.ReassembledEvent}");
 
-                    case PartitionQueryEvent queryEvent:
-                        this.Partition.SubmitParallelEvent(queryEvent);
-                        break;
+                    this.Fragments.Remove(group);
 
-                    default:
-                        throw new InvalidCastException("Could not cast to neither PartitionReadEvent nor PartitionUpdateEvent");
-                }
-            }
-            else
-            {
-                List<PartitionEventFragment> list;
+                    switch (evt.ReassembledEvent)
+                    {
+                        case PartitionUpdateEvent updateEvent:
+                            if (!effects.IsReplaying)
+                            {
+                                updateEvent.OnSubmit(this.Partition);
+                            }
+                            updateEvent.DetermineEffects(effects);
+                            break;
 
-                if (evt.Fragment == 0)
-                {
-                    this.Fragments[group] = list = new List<PartitionEventFragment>();
+                        case PartitionReadEvent readEvent:
+                            this.Partition.SubmitEvent(readEvent);
+                            break;
+
+                        case PartitionQueryEvent queryEvent:
+                            this.Partition.SubmitParallelEvent(queryEvent);
+                            break;
+
+                        default:
+                            throw new InvalidCastException("Could not cast to neither PartitionReadEvent nor PartitionUpdateEvent");
+                    }
                 }
                 else
                 {
-                    list = this.Fragments[group];
-                }
+                    List<PartitionEventFragment> list;
 
-                list.Add(evt);
+                    if (evt.Fragment == 0)
+                    {
+                        this.Fragments[group] = list = new List<PartitionEventFragment>();
+                    }
+                    else
+                    {
+                        list = this.Fragments[group];
+                    }
+
+                    list.Add(evt);
+                }
+            }
+            catch (System.NullReferenceException e) when (!this.UseExpirationHorizon)
+            {
+                // An earlier version of this code was throwing NullReferenceException (see #235).
+                // This was fixed by introducing the expiration horizon. However, when replaying event
+                // logs from before this check was introduced, that feature does not take effect yet
+                // (it is activated only after the log is replayed, when processing RecoveryCompletedEvent) and
+                // the exception is still thrown. To allow recovery of task hubs stuck in this situation, we catch it.
+                effects.EventTraceHelper.TraceEventProcessingWarning($"Ignored NullReferenceException while processing {evt} id={evt.EventIdString} : {e}");
             }
         }
     }
