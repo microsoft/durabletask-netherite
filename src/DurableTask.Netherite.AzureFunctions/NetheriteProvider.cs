@@ -205,14 +205,16 @@ namespace DurableTask.Netherite.AzureFunctions
             {
                 ScaleRecommendation recommendation;               
                 try
-                { 
-                    if (metrics == null || metrics.Length == 0)
+                {
+                    var lastMetric = metrics?.LastOrDefault(m => m?.Metrics != null);
+
+                    if (lastMetric == null)
                     {
                         recommendation = new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: "missing metrics");
                     }
                     else
                     {
-                        var stream = new MemoryStream(metrics[metrics.Length - 1].Metrics);
+                        var stream = new MemoryStream(lastMetric.Metrics);
                         var collectedMetrics = (ScalingMonitor.Metrics) this.serializer.ReadObject(stream);                 
                         recommendation = this.scalingMonitor.GetScaleRecommendation(workerCount, collectedMetrics);
                     }
