@@ -41,6 +41,7 @@ namespace DurableTask.Netherite.Faster
 
         public void UpdateTargetSizes()
         {
+            // store count to avoid race condition where count goes to zero and causes divide-by-zero error
             int numberOfStores = this.stores.Count;
             if (numberOfStores > 0)
             {
