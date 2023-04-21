@@ -77,8 +77,12 @@ namespace DurableTask.Netherite
         {
             try
             {
-                this.currentUpdate.ApplyTo(trackedObject, this);
-                trackedObject.Version++;
+                if (trackedObject.LastUpdate < this.currentUpdate.NextCommitLogPosition)
+                {
+                    this.currentUpdate.ApplyTo(trackedObject, this);
+                    trackedObject.Version++;
+                    trackedObject.LastUpdate = this.currentUpdate.NextCommitLogPosition;
+                }
             }
             catch (Exception exception) when (!Utils.IsFatal(exception))
             {
