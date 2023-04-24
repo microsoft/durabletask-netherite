@@ -232,6 +232,17 @@ namespace DurableTask.Netherite.Faster
         {
             TimeSpan limit = Debugger.IsAttached ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(3);
 
+            if (this.blobManager.PartitionErrorHandler.IsTerminated)
+            {
+                return; // partition is already terminated, no point in checking for hangs
+            }
+
+            // check if a store worker is stuck in a specific place. 
+            if (this.storeWorker.WatchdogSeesExpiredDeadline())
+            {
+                this.blobManager.PartitionErrorHandler.HandleError("CheckForStuckWorkers", $"store worker deemed stuck by watchdog", null, true, false);
+            }
+
             // check if any of the workers got stuck in a processing loop
             Check("StoreWorker", this.storeWorker.ProcessingBatchSince);
             Check("LogWorker", this.logWorker.ProcessingBatchSince);
