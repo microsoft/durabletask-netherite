@@ -294,7 +294,7 @@ namespace DurableTask.Netherite.Faster
                         var client = (numAttempts > 1) ? entry.PageBlob.Default : entry.PageBlob.Aggressive;
                         try
                         {
-                            await client.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
+                            using var response = await client.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
                             return 1;
                         }
                         catch (Azure.RequestFailedException ex) when (numAttempts > 1 && BlobUtilsV12.BlobDoesNotExist(ex))
@@ -337,7 +337,7 @@ namespace DurableTask.Netherite.Faster
                         var client = (numAttempts > 1) ? entry.PageBlob.Default : entry.PageBlob.Aggressive;
                         try
                         {
-                            await client.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
+                            using var response = await client.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
                             return 1;
                         }
                         catch (Azure.RequestFailedException ex) when (numAttempts > 1 && BlobUtilsV12.BlobDoesNotExist(ex))
@@ -530,7 +530,10 @@ namespace DurableTask.Netherite.Faster
                                     cancellationToken: this.PartitionErrorHandler.Token)
                                     .ConfigureAwait(false);
 
-                                await response.Value.Content.CopyToAsync(stream).ConfigureAwait(false);
+                                using (var streamingResult = response.Value)
+                                {
+                                    await streamingResult.Content.CopyToAsync(stream).ConfigureAwait(false);
+                                }
                             }
 
                             if (stream.Position != offset + length)

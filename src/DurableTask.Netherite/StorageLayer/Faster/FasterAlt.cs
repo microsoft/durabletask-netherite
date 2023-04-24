@@ -438,7 +438,7 @@ namespace DurableTask.Netherite.Faster
 
                         using var stream = new MemoryStream();
                         this.detailTracer?.FasterStorageProgress($"starting download target={blob.Name} attempt={numAttempts}");
-                        await blob.WithRetries.DownloadToAsync(stream, cancellationToken: this.blobManager.PartitionErrorHandler.Token).ConfigureAwait(false);
+                        using var response = await blob.WithRetries.DownloadToAsync(stream, cancellationToken: this.blobManager.PartitionErrorHandler.Token).ConfigureAwait(false);
                         this.detailTracer?.FasterStorageProgress($"finished download target={blob.Name} readLength={stream.Position}");
 
                         // parse the content and return it
@@ -586,7 +586,7 @@ namespace DurableTask.Netherite.Faster
                 Interlocked.Increment(ref this.blobManager.LeaseUsers);
                 var blob = BlobUtilsV12.GetBlockBlobClients(this.blobManager.BlockBlobContainer, $"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{guid}");
                 await this.blobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
-                await blob.WithRetries.DeleteAsync(cancellationToken: this.blobManager.PartitionErrorHandler.Token);
+                using var response = await blob.WithRetries.DeleteAsync(cancellationToken: this.blobManager.PartitionErrorHandler.Token);
             }
             catch (Azure.RequestFailedException) when (this.terminationToken.IsCancellationRequested)
             {
@@ -610,7 +610,7 @@ namespace DurableTask.Netherite.Faster
                 Interlocked.Increment(ref this.blobManager.LeaseUsers);
                 var blob = BlobUtilsV12.GetBlockBlobClients(this.blobManager.BlockBlobContainer, $"p{this.partition.PartitionId:D2}/incomplete-checkpoints/{guid}");
                 await this.blobManager.ConfirmLeaseIsGoodForAWhileAsync().ConfigureAwait(false);
-                await blob.WithRetries.DeleteAsync(cancellationToken: this.blobManager.PartitionErrorHandler.Token);
+                using var response = await blob.WithRetries.DeleteAsync(cancellationToken: this.blobManager.PartitionErrorHandler.Token);
             }
             catch (Azure.RequestFailedException) when (this.terminationToken.IsCancellationRequested)
             {
