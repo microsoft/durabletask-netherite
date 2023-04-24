@@ -45,7 +45,7 @@ namespace DurableTask.Netherite.Faster
             int numberOfStores = this.stores.Count;
             if (numberOfStores > 0)
             {
-                long targetSize = this.maxCacheSize / this.stores.Count;
+                long targetSize = this.maxCacheSize / numberOfStores;
                 foreach (var s in this.stores.Keys)
                 {
                     s.SetTargetSize(targetSize);
