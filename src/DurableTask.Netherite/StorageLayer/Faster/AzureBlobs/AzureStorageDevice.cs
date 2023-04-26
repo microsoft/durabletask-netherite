@@ -106,7 +106,7 @@ namespace DurableTask.Netherite.Faster
                 var prefix = $"{this.blockBlobDirectory}{this.blobName}.";
 
                 string continuationToken = null;
-                IReadOnlyList<BlobItem> pageResults = null;
+                IEnumerable<BlobItem> pageResults = null;
 
                 do
                 {
@@ -123,15 +123,25 @@ namespace DurableTask.Netherite.Faster
                         {
                             var client = this.pageBlobDirectory.Client.WithRetries;
 
-                            var page = await client.GetBlobsAsync(
+                            var enumerator = client.GetBlobsAsync(
                                 prefix: prefix,
                                 cancellationToken: this.PartitionErrorHandler.Token)
                                 .AsPages(continuationToken, 100)
-                                .FirstAsync();
+                                .GetAsyncEnumerator(cancellationToken: this.PartitionErrorHandler.Token);
 
-                            pageResults = page.Values;
-                            continuationToken = page.ContinuationToken;
-                            return page.Values.Count; // not accurate, in terms of bytes, but still useful for tracing purposes
+                            if (await enumerator.MoveNextAsync())
+                            {
+                                var page = enumerator.Current;
+                                pageResults = page.Values;
+                                continuationToken = page.ContinuationToken;
+                                return page.Values.Count; // not accurate, in terms of bytes, but still useful for tracing purposes
+                            }
+                            else
+                            {
+                                pageResults = Enumerable.Empty<BlobItem>();
+                                continuationToken = null;
+                                return 0;
+                            };
                         });
 
                     foreach (var item in pageResults)
