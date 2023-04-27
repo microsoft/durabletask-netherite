@@ -84,11 +84,20 @@ namespace DurableTask.Netherite
                     trackedObject.LastUpdate = this.currentUpdate.NextCommitLogPosition;
                 }
             }
-            catch (Exception exception) when (!Utils.IsFatal(exception))
+            catch (Exception exception)
             {
-                // for robustness, we swallow exceptions inside event processing.
-                // It does not mean they are not serious. We still report them as errors.
-                this.HandleError(nameof(ProcessUpdate), $"Encountered exception on {trackedObject} when applying update event {this.currentUpdate} eventId={this.currentUpdate?.EventId}", exception, false, false);
+                if (!Utils.IsFatal(exception))
+                {
+                    // for robustness, we swallow non-fatal exceptions inside event processing
+                    // It does not mean they are not serious. We still report them as errors.
+                    // (an incorrectly functioning partition is still better than a permanently dead one)
+                    this.HandleError(nameof(ProcessEffectOn), $"Encountered exception on {trackedObject} when applying update event {this.currentUpdate} eventId={this.currentUpdate?.EventId}", exception, false, false);
+                }
+                else
+                {
+                    // since fatal exeptions are transient, we terminate the partition immediately, so the next incarnation can continue correctly
+                    this.HandleError(nameof(ProcessEffectOn), $"Encountered fatal exception while applying update event eventId={this.currentUpdate?.EventId}", exception, true, false);
+                }
             }
         }
 
@@ -153,11 +162,20 @@ namespace DurableTask.Netherite
                 {
                     // o.k. during termination
                 }
-                catch (Exception exception) when (!Utils.IsFatal(exception))
+                catch (Exception exception)
                 {
-                    // for robustness, we swallow exceptions inside event processing.
-                    // It does not mean they are not serious. We still report them as errors.
-                    this.HandleError(nameof(ProcessUpdate), $"Encountered exception while processing update event {updateEvent} eventId={updateEvent?.EventId}", exception, false, false);
+                    if (!Utils.IsFatal(exception))
+                    {
+                        // for robustness, we swallow non-fatal exceptions inside event processing
+                        // It does not mean they are not serious. We still report them as errors.
+                        // (an incorrectly functioning partition is still better than a permanently dead one)
+                        this.HandleError(nameof(ProcessUpdate), $"Encountered exception while processing update event {updateEvent} eventId={updateEvent?.EventId}", exception, false, false);
+                    }
+                    else
+                    {
+                        // since fatal exeptions are transient, we terminate the partition immediately, so the next incarnation can continue correctly
+                        this.HandleError(nameof(ProcessUpdate), $"Encountered fatal exception while processing update event eventId={this.currentUpdate?.EventId}", exception, true, false);
+                    }
                 }
                 finally
                 {
@@ -212,11 +230,19 @@ namespace DurableTask.Netherite
                 {
                     // o.k. during termination
                 }
-                catch (Exception exception) when (!Utils.IsFatal(exception))
+                catch (Exception exception)
                 {
-                    // for robustness, we swallow exceptions inside event processing.
-                    // It does not mean they are not serious. We still report them as errors.
-                    this.HandleError(nameof(ProcessReadResult), $"Encountered exception while processing read event {readEvent} eventId={readEvent?.EventId}", exception, false, false);
+                    if (!Utils.IsFatal(exception))
+                    {
+                        // for robustness, we swallow non-fatal exceptions inside event processing
+                        // It does not mean they are not serious. We still report them as errors.
+                        this.HandleError(nameof(ProcessReadResult), $"Encountered exception while processing read event {readEvent} eventId={readEvent?.EventId}", exception, false, false);
+                    }
+                    else
+                    {
+                        // since fatal exeptions are transient, we terminate the partition immediately, so the next incarnation can continue correctly
+                        this.HandleError(nameof(ProcessReadResult), $"Encountered fatal exception while processing read event eventId={readEvent?.EventId}", exception, true, false);
+                    }
                 }
                 finally
                 {
@@ -243,11 +269,19 @@ namespace DurableTask.Netherite
                 {
                     // o.k. during termination
                 }
-                catch (Exception exception) when (!Utils.IsFatal(exception))
+                catch (Exception exception)
                 {
-                    // for robustness, we swallow exceptions inside event processing.
-                    // It does not mean they are not serious. We still report them as errors.
-                    this.HandleError(nameof(ProcessQueryResultAsync), $"Encountered exception while processing query event {queryEvent} eventId={queryEvent?.EventId}", exception, false, false);
+                    if (!Utils.IsFatal(exception))
+                    {
+                        // for robustness, we swallow non-fatal exceptions inside event processing
+                        // It does not mean they are not serious. We still report them as errors.
+                        this.HandleError(nameof(ProcessQueryResultAsync), $"Encountered exception while processing query event {queryEvent} eventId={queryEvent?.EventId}", exception, false, false);
+                    }
+                    else
+                    {
+                        // since fatal exeptions are transient, we terminate the partition immediately, so the next incarnation can continue correctly
+                        this.HandleError(nameof(ProcessQueryResultAsync), $"Encountered fatal exception while processing query event eventId={queryEvent?.EventId}", exception, true, false);
+                    }
                 }
                 finally
                 {

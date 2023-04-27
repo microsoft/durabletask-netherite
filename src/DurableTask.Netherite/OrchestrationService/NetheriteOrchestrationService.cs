@@ -193,7 +193,7 @@ namespace DurableTask.Netherite
                     this.Settings.TestHooks.OnError += (string message) => this.TraceHelper.TraceError("TestHook error", message);
                 }
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.TraceHelper.TraceError("Could not create NetheriteOrchestrationService", e);
                 throw;
@@ -384,7 +384,7 @@ namespace DurableTask.Netherite
 
                 return ServiceState.Client;
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.startupException = e;
 
@@ -436,7 +436,7 @@ namespace DurableTask.Netherite
 
                 return ServiceState.Full;
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.startupException = e;
 
@@ -485,7 +485,7 @@ namespace DurableTask.Netherite
 
                 return ServiceState.None;
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.TraceHelper.TraceError($"Failed to stop cleanly: {e.Message}", e);
                 throw;

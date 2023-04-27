@@ -137,7 +137,7 @@ namespace DurableTask.Netherite
                 // this happens when startup is canceled
                 throw;
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.ErrorHandler.HandleError(nameof(CreateOrRestoreAsync), "Could not start partition", e, true, false);
                 throw;
