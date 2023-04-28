@@ -480,6 +480,7 @@ namespace DurableTask.Netherite.Faster
         public override async Task<long> RunCompactionAsync(long target)
         {
             string id = DateTime.UtcNow.ToString("O"); // for tracing purposes
+            target = Math.Min(target, this.Log.BeginAddress + 50000); // never compact more than 50k worth of entries at a time
             await maxCompactionThreads.WaitAsync();
             try
             {
