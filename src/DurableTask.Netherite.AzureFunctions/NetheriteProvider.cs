@@ -130,6 +130,23 @@ namespace DurableTask.Netherite.AzureFunctions
             }
         }
 
+#if !NETSTANDARD
+        public override bool TryGetTargetScaler(
+            string functionId,
+            string functionName,
+            string hubName,
+            string connectionName,
+            out ITargetScaler targetScaler)
+        {
+            ILoadPublisherService loadPublisher = this.Service.GetLoadPublisher();
+            NetheriteMetricsProvider metricsProvider = this.Service.GetNetheriteMetricsProvider(loadPublisher, this.Settings.EventHubsConnection);
+            
+            targetScaler = new NetheriteTargetScaler(functionId, metricsProvider, this);
+
+            return true;
+        }
+#endif
+
         public class NetheriteScaleMetrics : ScaleMetrics
         {
             public byte[] Metrics { get; set; }
