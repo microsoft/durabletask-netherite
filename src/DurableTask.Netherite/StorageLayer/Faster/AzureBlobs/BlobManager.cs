@@ -144,7 +144,7 @@ namespace DurableTask.Netherite.Faster
         {
             int pageSizeBits =    tuningParameters?.StoreLogPageSizeBits    ?? 10; // 1kB
             int segmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ?? 19; // 512 kB
-            int memorySizeBits = tuningParameters?.StoreLogMemorySizeBits ?? 29; // 512 MB - that is just the max, not what we actually use
+            int memorySizeBits = tuningParameters?.StoreLogMemorySizeBits ?? 20; // 1 MB max. Holds 88k records.
 
             return (pageSizeBits, segmentSizeBits, memorySizeBits);
         }
