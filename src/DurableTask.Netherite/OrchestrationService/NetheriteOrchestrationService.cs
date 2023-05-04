@@ -422,7 +422,7 @@ namespace DurableTask.Netherite
                 if (this.storage.LoadPublisher != null)
                 {
                     this.TraceHelper.TraceProgress("Starting Load Publisher");
-                    this.LoadPublisher = new LoadPublishWorker(this.storage.LoadPublisher, CancellationToken.None, this.TraceHelper);
+                    this.LoadPublisher = new LoadPublishWorker(this.storage.LoadPublisher, this.TraceHelper);
                 }
 
                 await this.transport.StartWorkersAsync();
