@@ -64,13 +64,7 @@ namespace DurableTask.Netherite.Scaling
                 }
             }
 
-            try
-            {
-                await Task.WhenAny(Task.Delay(AggregatePublishInterval), this.cancelWait.Task).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
+            await Task.WhenAny(Task.Delay(AggregatePublishInterval), this.cancelWait.Task).ConfigureAwait(false);
         }
     }
 }
