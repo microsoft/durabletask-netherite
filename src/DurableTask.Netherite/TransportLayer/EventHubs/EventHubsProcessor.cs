@@ -244,7 +244,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 // the partition startup was canceled
                 this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} canceled partition startup (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, c.Incarnation);
             }
-            catch (Exception e)
+            catch (Exception e) when (!Utils.IsFatal(e))
             {
                 c.SuccessiveStartupFailures = 1 + (prior?.SuccessiveStartupFailures ?? 0);
                 c.ErrorHandler.HandleError("EventHubsProcessor.StartPartitionAsync", "failed to start partition", e, true, false);
