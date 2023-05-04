@@ -26,6 +26,8 @@ namespace DurableTask.Netherite.Scaling
 
         public Task FlushAsync()
         {
+            // wait for the worker to complete, but cancel the timed wait so it goes quicker
+            // correct order of these two is important, see discussion at https://github.com/microsoft/durabletask-netherite/pull/262#discussion_r1185209501// 
             var task = this.WaitForCompletionAsync();
             this.CancelCurrentWait();
             return task;
