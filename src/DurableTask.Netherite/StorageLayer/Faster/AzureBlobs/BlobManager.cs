@@ -983,7 +983,7 @@ namespace DurableTask.Netherite.Faster
                        {
                            var client = numAttempts > 2 ? this.eventLogCommitBlob.Default : this.eventLogCommitBlob.Aggressive;
 
-                           client.DownloadTo(
+                           using var response = client.DownloadTo(
                                destination: stream,
                                conditions: new BlobRequestConditions() { LeaseId = this.leaseClient.LeaseId },
                                cancellationToken: this.PartitionErrorHandler.Token);

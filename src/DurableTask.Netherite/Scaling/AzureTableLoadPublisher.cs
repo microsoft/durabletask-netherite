@@ -38,7 +38,12 @@ namespace DurableTask.Netherite.Scaling
                 }
                 if (tableBatch.Count > 0)
                 {
-                    await this.table.SubmitTransactionAsync(tableBatch, cancellationToken).ConfigureAwait(false);
+                    var response = await this.table.SubmitTransactionAsync(tableBatch, cancellationToken).ConfigureAwait(false);
+
+                    foreach(var responseItem in response.Value)
+                    {
+                        responseItem.Dispose();
+                    }
                 }
             }
             catch(Azure.RequestFailedException e) when (e.Status == 404) // table may not exist
@@ -51,7 +56,7 @@ namespace DurableTask.Netherite.Scaling
             return this.table.CreateIfNotExistsAsync(cancellationToken);
         }
 
-        public Task PublishAsync(Dictionary<uint, PartitionLoadInfo> info, CancellationToken cancellationToken)
+        public async Task PublishAsync(Dictionary<uint, PartitionLoadInfo> info, CancellationToken cancellationToken)
         {
             var tableBatch = new List<TableTransactionAction>();
             foreach(var kvp in info)
@@ -60,11 +65,11 @@ namespace DurableTask.Netherite.Scaling
             }
             if (tableBatch.Count > 0)
             {
-                return this.table.SubmitTransactionAsync(tableBatch, cancellationToken);
-            }
-            else
-            {
-                return Task.CompletedTask;
+                var response = await this.table.SubmitTransactionAsync(tableBatch, cancellationToken);
+                foreach(var responseItem in response.Value)
+                {
+                    responseItem.Dispose();
+                }
             }
         }
 

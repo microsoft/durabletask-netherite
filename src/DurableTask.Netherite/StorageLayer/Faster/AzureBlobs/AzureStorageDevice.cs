@@ -106,7 +106,7 @@ namespace DurableTask.Netherite.Faster
                 var prefix = $"{this.blockBlobDirectory}{this.blobName}.";
 
                 string continuationToken = null;
-                IReadOnlyList<BlobItem> pageResults = null;
+                IEnumerable<BlobItem> pageResults = null;
 
                 do
                 {
@@ -123,15 +123,25 @@ namespace DurableTask.Netherite.Faster
                         {
                             var client = this.pageBlobDirectory.Client.WithRetries;
 
-                            var page = await client.GetBlobsAsync(
+                            var enumerator = client.GetBlobsAsync(
                                 prefix: prefix,
                                 cancellationToken: this.PartitionErrorHandler.Token)
                                 .AsPages(continuationToken, 100)
-                                .FirstAsync();
+                                .GetAsyncEnumerator(cancellationToken: this.PartitionErrorHandler.Token);
 
-                            pageResults = page.Values;
-                            continuationToken = page.ContinuationToken;
-                            return page.Values.Count; // not accurate, in terms of bytes, but still useful for tracing purposes
+                            if (await enumerator.MoveNextAsync())
+                            {
+                                var page = enumerator.Current;
+                                pageResults = page.Values;
+                                continuationToken = page.ContinuationToken;
+                                return page.Values.Count; // not accurate, in terms of bytes, but still useful for tracing purposes
+                            }
+                            else
+                            {
+                                pageResults = Enumerable.Empty<BlobItem>();
+                                continuationToken = null;
+                                return 0;
+                            };
                         });
 
                     foreach (var item in pageResults)
@@ -292,8 +302,8 @@ namespace DurableTask.Netherite.Faster
                     async (numAttempts) =>
                     {
                         var client = (numAttempts > 1) ? entry.PageBlob.Default : entry.PageBlob.Aggressive;
-                        await client.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
-                        return 1;
+                        var response = await client.DeleteIfExistsAsync(cancellationToken: this.PartitionErrorHandler.Token);
+                        return response ? 1 : 0;
                     });
             }
                 
@@ -327,8 +337,16 @@ namespace DurableTask.Netherite.Faster
                     async (numAttempts) =>
                     {
                         var client = (numAttempts > 1) ? entry.PageBlob.Default : entry.PageBlob.Aggressive;
-                        await client.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
-                        return 1;
+                        try
+                        {
+                            using var response = await client.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
+                            return 1;
+                        }
+                        catch (Azure.RequestFailedException ex) when (numAttempts > 1 && BlobUtilsV12.BlobDoesNotExist(ex))
+                        {
+                            // blob may have already been deleted by the previous attempt
+                            return 0;
+                        }
                     });
             }
 
@@ -514,7 +532,10 @@ namespace DurableTask.Netherite.Faster
                                     cancellationToken: this.PartitionErrorHandler.Token)
                                     .ConfigureAwait(false);
 
-                                await response.Value.Content.CopyToAsync(stream).ConfigureAwait(false);
+                                using (var streamingResult = response.Value)
+                                {
+                                    await streamingResult.Content.CopyToAsync(stream).ConfigureAwait(false);
+                                }
                             }
 
                             if (stream.Position != offset + length)
