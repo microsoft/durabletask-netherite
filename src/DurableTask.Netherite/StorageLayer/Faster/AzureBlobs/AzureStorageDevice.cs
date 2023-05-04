@@ -302,16 +302,8 @@ namespace DurableTask.Netherite.Faster
                     async (numAttempts) =>
                     {
                         var client = (numAttempts > 1) ? entry.PageBlob.Default : entry.PageBlob.Aggressive;
-                        try
-                        {
-                            using var response = await client.DeleteAsync(cancellationToken: this.PartitionErrorHandler.Token);
-                            return 1;
-                        }
-                        catch (Azure.RequestFailedException ex) when (numAttempts > 1 && BlobUtilsV12.BlobDoesNotExist(ex))
-                        {
-                            // blob may have already been deleted by the previous attempt
-                            return 0;
-                        }
+                        var response = await client.DeleteIfExistsAsync(cancellationToken: this.PartitionErrorHandler.Token);
+                        return response ? 1 : 0;
                     });
             }
                 
