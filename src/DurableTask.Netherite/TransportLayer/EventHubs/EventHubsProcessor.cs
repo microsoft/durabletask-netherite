@@ -158,7 +158,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     this.currentIncarnation = prior.Next;
 
                     // sometimes we can get stuck into a loop of failing attempts to reincarnate a partition. 
-                    // We don't want to waste CPU  and pollute the logs, but we als can't just give up because
+                    // We don't want to waste CPU  and pollute the logs, but we also can't just give up because
                     // the failures can be transient. Thus we back off the retry pace.
                     TimeSpan addedDelay = 
                           (prior.SuccessiveStartupFailures < 2)   ? TimeSpan.Zero
