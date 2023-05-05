@@ -32,7 +32,7 @@ namespace DurableTask.Netherite.AzureFunctions
 
         public Task<TargetScalerResult> GetScaleResultAsync(TargetScalerContext context)
         {
-            // Refer to GetScaleRecommendation() in ScaleMonitor
+            // Refer to GetTargetRecommendation() in ScaleMonitor
             throw new NotImplementedException();
         }
     }
