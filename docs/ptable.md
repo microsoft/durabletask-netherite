@@ -17,7 +17,7 @@ The meaning of the columns is:
 |RowKey| The partitionId of this partition. |
 |WorkerId| The name of the machine that is hosting this partition. |
 |Timestamp| The time at which this row was written.  |
-|LatencyTrend| A sequence of up to five letters, each one indicating load during a publishing interval. Every time the row is written, a new letter is appended on the right, so reading them from left to right indicates the latency trend. I means idle, L means low latency (less than 100ms), H means medium latency (between 100 and 1000ms), and H means high latency (above 1000ms).|
+|LatencyTrend| A sequence of up to five letters, each one indicating load during a publishing interval. Every time the row is written, a new letter is appended on the right, so reading them from left to right indicates the latency trend. I means idle, L means low latency (less than 100ms), M means medium latency (between 100 and 1000ms), and H means high latency (above 1000ms).|
 |Instances| The number of instances (orchestrations and entities) stored in this partition. |
 |WorkItems| The number of currently pending activity and orchestration work items. |
 |Timers| The number of currently pending timers. |
