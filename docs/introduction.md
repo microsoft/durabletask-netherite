@@ -68,7 +68,7 @@ In the future, we plan to support alternatives for these components. For example
 
 ## Status
 
-The current version of Netherite is *1.3.1*. Netherite supports almost all of the DT and DF APIs.
+The current version of Netherite is *1.3.5*. Netherite supports almost all of the DT and DF APIs.
 
 Some notable differences to the default Azure Table storage provider include:
 
