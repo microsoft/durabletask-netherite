@@ -13,7 +13,7 @@ namespace DurableTask.Netherite.AzureFunctions
     using Microsoft.Azure.WebJobs.Host.Scale;
     using static DurableTask.Netherite.Scaling.ScalingMonitor;
 
-    class NetheriteTargetScaler : ITargetScaler
+    public class NetheriteTargetScaler : ITargetScaler
     {
         readonly NetheriteMetricsProvider metricsProvider;
         readonly DurabilityProvider durabilityProvider;
@@ -34,7 +34,6 @@ namespace DurableTask.Netherite.AzureFunctions
 
         public async Task<TargetScalerResult> GetScaleResultAsync(TargetScalerContext context)
         {
-            // Refer to GetTargetRecommendation() in ScaleMonitor
             Metrics metrics = await this.metricsProvider.GetMetricsAsync();
 
             int maxConcurrentActivities = this.durabilityProvider.MaxConcurrentTaskActivityWorkItems;

@@ -23,7 +23,7 @@ namespace DurableTask.Netherite.Scaling
             this.eventHubsConnection = eventHubsConnection;
         }
 
-        public async Task<Metrics> GetMetricsAsync()
+        public virtual async Task<Metrics> GetMetricsAsync()
         {
             DateTime now = DateTime.UtcNow;
             var loadInformation = await this.loadPublisher.QueryAsync(CancellationToken.None).ConfigureAwait(false);
