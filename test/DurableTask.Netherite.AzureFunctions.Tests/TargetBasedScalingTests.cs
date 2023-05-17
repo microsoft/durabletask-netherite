@@ -39,12 +39,12 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
         [Theory]
         [InlineData(10, 10, 2)]
         [InlineData(20, 20, 2)]
-        public async void GetDurabilityProviderFactoryTest(int maxConcurrentTaskActivityWorkItems, int maxConcurrentTaskOrchestrationWorkItems, int expectedTargetWorkerCount)
+        public async void TargetBasedScalingTest(int maxConcurrentTaskActivityWorkItems, int maxConcurrentTaskOrchestrationWorkItems, int expectedTargetWorkerCount)
         {
             this.orchestrationServiceMock.Setup(m => m.MaxConcurrentTaskActivityWorkItems).Returns(maxConcurrentTaskActivityWorkItems);
             this.orchestrationServiceMock.Setup(m => m.MaxConcurrentTaskOrchestrationWorkItems).Returns(maxConcurrentTaskOrchestrationWorkItems);
 
-            Dictionary<uint, PartitionLoadInfo> loadInformation = new Dictionary<uint, PartitionLoadInfo>()
+            var loadInformation = new Dictionary<uint, PartitionLoadInfo>()
             {
                 { 1, this.Create("A") },
                 { 2, this.Create("B") },
