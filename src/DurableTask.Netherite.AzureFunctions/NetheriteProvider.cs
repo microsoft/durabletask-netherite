@@ -119,7 +119,7 @@ namespace DurableTask.Netherite.AzureFunctions
         {
             if (this.Service.TryGetScalingMonitor(out var monitor))
             {
-                scaleMonitor = new ScaleMonitor(monitor);
+                scaleMonitor = new ScaleMonitor(monitor, functionId);
                 monitor.InformationTracer($"ScaleMonitor Constructed, Descriptor.Id={scaleMonitor.Descriptor.Id}");
                 return true;
             }
@@ -159,10 +159,16 @@ namespace DurableTask.Netherite.AzureFunctions
             readonly DataContractSerializer serializer  = new DataContractSerializer(typeof(ScalingMonitor.Metrics));
             static Tuple<DateTime, NetheriteScaleMetrics> cachedMetrics;
 
-            public ScaleMonitor(ScalingMonitor scalingMonitor)
+            public ScaleMonitor(ScalingMonitor scalingMonitor, string functionId)
             {
                 this.scalingMonitor = scalingMonitor;
-                this.descriptor = new ScaleMonitorDescriptor($"DurableTaskTrigger-Netherite-{this.scalingMonitor.TaskHubName}".ToLower());
+                var descriptorId = $"DurableTaskTrigger-Netherite-{this.scalingMonitor.TaskHubName}".ToLower();
+
+#if NETCOREAPP3_1_OR_GREATER
+                this.descriptor = new ScaleMonitorDescriptor(descriptorId, functionId);
+#else
+                this.descriptor = new ScaleMonitorDescriptor(descriptorId);
+#endif
             }
 
             public ScaleMonitorDescriptor Descriptor => this.descriptor;
