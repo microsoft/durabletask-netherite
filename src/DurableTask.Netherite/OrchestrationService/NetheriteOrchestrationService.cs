@@ -212,9 +212,9 @@ namespace DurableTask.Netherite
             {
                 try
                 {
-                    ILoadPublisherService loadPublisher = string.IsNullOrEmpty(this.Settings.LoadInformationAzureTableName) ?
-                        new AzureBlobLoadPublisher(this.Settings.BlobStorageConnection, this.Settings.HubName)
-                        : new AzureTableLoadPublisher(this.Settings.TableStorageConnection, this.Settings.LoadInformationAzureTableName, this.Settings.HubName);
+                    ILoadPublisherService loadPublisher = this.GetLoadPublisher();
+
+                    NetheriteMetricsProvider netheriteMetricsProvider = this.GetNetheriteMetricsProvider(loadPublisher, this.Settings.EventHubsConnection);
 
                     monitor = new ScalingMonitor(
                         loadPublisher,
@@ -223,7 +223,8 @@ namespace DurableTask.Netherite
                         this.Settings.HubName,
                         this.TraceHelper.TraceScaleRecommendation,
                         this.TraceHelper.TraceProgress,
-                        this.TraceHelper.TraceError);
+                        this.TraceHelper.TraceError,
+                        netheriteMetricsProvider);
 
                     return true;
                 }
@@ -237,6 +238,17 @@ namespace DurableTask.Netherite
             return false;
         }
 
+        internal ILoadPublisherService GetLoadPublisher()
+        {
+            return string.IsNullOrEmpty(this.Settings.LoadInformationAzureTableName) ?
+                new AzureBlobLoadPublisher(this.Settings.BlobStorageConnection, this.Settings.HubName)
+                : new AzureTableLoadPublisher(this.Settings.TableStorageConnection, this.Settings.LoadInformationAzureTableName, this.Settings.HubName);
+        }
+
+        internal NetheriteMetricsProvider GetNetheriteMetricsProvider(ILoadPublisherService loadPublisher, ConnectionInfo eventHubsConnection)
+        {
+            return new NetheriteMetricsProvider(loadPublisher, eventHubsConnection);
+        }
 
         public void WatchThreads(object _)
         {
