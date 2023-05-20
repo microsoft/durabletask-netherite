@@ -47,6 +47,8 @@ steps:
     command: restore
     verbosityRestore: Minimal
     projects: 'src/dirs.proj'
+    feedsToUse: 'config'
+    nugetConfigPath: 'nuget.config'
 
 # Build the filtered solution in release mode, specifying the continuous integration flag.
 - task: DotNetCoreCLI@2

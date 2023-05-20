@@ -26,9 +26,9 @@
   <PropertyGroup>
 	<MajorVersion>1</MajorVersion>
 	<MinorVersion>3</MinorVersion>
-	<PatchVersion>4</PatchVersion>
+	<PatchVersion>6</PatchVersion>
 	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
-    <VersionSuffix></VersionSuffix>
+    <VersionSuffix>scv3-preview-1</VersionSuffix>
     <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
     <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
     <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
@@ -52,7 +52,7 @@
   
   <ItemGroup>
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.13.*" />
-    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.10.0" />
+    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.9.7-scv3-preview-1" />
   </ItemGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' != 'netcoreapp2.2' ">
