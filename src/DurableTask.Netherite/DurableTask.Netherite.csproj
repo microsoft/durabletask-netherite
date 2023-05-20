@@ -26,8 +26,8 @@
   <PropertyGroup>
     <MajorVersion>1</MajorVersion>
 	<MinorVersion>3</MinorVersion>
-	<PatchVersion>5</PatchVersion>
-	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)-preview1</VersionPrefix>
+	<PatchVersion>6</PatchVersion>
+	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
     <VersionSuffix>scv3-preview-1</VersionSuffix>
     <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
     <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
