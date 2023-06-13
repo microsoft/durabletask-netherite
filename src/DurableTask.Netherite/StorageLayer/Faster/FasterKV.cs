@@ -454,7 +454,7 @@ namespace DurableTask.Netherite.Faster
             long compactionAreaSize = Math.Min(50000, this.fht.Log.SafeReadOnlyAddress - this.fht.Log.BeginAddress);
 
             if (actualLogSize > 2 * minimalLogSize            // there must be significant bloat
-                && compactionAreaSize >= 500)                 // and enough compaction area to justify the overhead
+                && compactionAreaSize >= 5000)                // and enough compaction area to justify the overhead
             {
                 return this.fht.Log.BeginAddress + compactionAreaSize;
             }
