@@ -102,7 +102,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             // check that the storage format is supported, and load the relevant FASTER tuning parameters
             BlobManager.LoadAndCheckStorageFormat(this.parameters.StorageFormat, this.settings, this.host.TraceWarning);
 
-            this.connections = new EventHubsConnections(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub)
+            this.connections = new EventHubsConnections(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub, this.shutdownSource.Token)
             {
                 Host = host,
                 TraceHelper = this.traceHelper,

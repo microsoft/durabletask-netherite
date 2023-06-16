@@ -19,6 +19,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly string[] clientHubs;
         readonly string partitionHub;
         readonly string loadMonitorHub;
+        readonly CancellationToken shutdownToken;
 
         EventHubClient partitionClient;
         List<EventHubClient> clientClients;
@@ -44,12 +45,14 @@ namespace DurableTask.Netherite.EventHubsTransport
             ConnectionInfo connectionInfo, 
             string partitionHub,
             string[] clientHubs,
-            string loadMonitorHub)
+            string loadMonitorHub,
+            CancellationToken shutdownToken)
         {
             this.connectionInfo = connectionInfo;
             this.partitionHub = partitionHub;
             this.clientHubs = clientHubs;
             this.loadMonitorHub = loadMonitorHub;
+            this.shutdownToken = shutdownToken;
         }
 
         public string Fingerprint => $"{this.connectionInfo.HostName}{this.partitionHub}/{this.CreationTimestamp:o}";
@@ -62,30 +65,43 @@ namespace DurableTask.Netherite.EventHubsTransport
                 this.EnsureLoadMonitorAsync());
         }
 
-        public async Task StopAsync()
+        public Task StopAsync()
         {
-            IEnumerable<EventHubClient> Clients()
+            return Task.WhenAll(
+                this.StopClientClients(),
+                this.StopPartitionClients(),
+                this.StopLoadMonitorClients()
+            );
+        }
+
+        async Task StopClientClients()
+        {
+            await Task.WhenAll(this._clientSenders.Values.Select(sender => sender.WaitForShutdownAsync()).ToList());
+
+            if (this.clientClients != null)
             {
-                if (this.partitionClient != null)
-                {
-                    yield return this.partitionClient;
-                }
-
-                if (this.clientClients != null)
-                {
-                    foreach (var client in this.clientClients)
-                    {
-                        yield return client;
-                    }
-                }
-
-                if (this.loadMonitorHub != null)
-                {
-                    yield return this.loadMonitorClient;
-                }
+                await Task.WhenAll(this.clientClients.Select(client => client.CloseAsync()).ToList());
             }
+        }
 
-            await Task.WhenAll(Clients().Select(client => client.CloseAsync()).ToList());
+        async Task StopPartitionClients()
+        {
+            await Task.WhenAll(this._partitionSenders.Values.Select(sender => sender.WaitForShutdownAsync()).ToList());
+
+            if (this.partitionClient != null)
+            {
+                await this.partitionClient.CloseAsync();
+            }
+        }
+
+        async Task StopLoadMonitorClients()
+        {
+            await Task.WhenAll(this._loadMonitorSenders.Values.Select(sender => sender.WaitForShutdownAsync()).ToList());
+
+            if (this.loadMonitorHub != null)
+            {
+                await this.loadMonitorClient.CloseAsync();
+            }
         }
 
         const int EventHubCreationRetries = 5;
@@ -267,6 +283,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     this.Host,
                     taskHubGuid,
                     partitionSender,
+                    this.shutdownToken,
                     this.TraceHelper);
                 this.TraceHelper.LogDebug("Created PartitionSender {sender} from {clientId}", partitionSender.ClientId, client.ClientId);
                 return sender;
@@ -290,6 +307,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                         taskHubGuid,
                         clientId,
                         partitionSenders,
+                        this.shutdownToken,
                         this.TraceHelper);
                 return sender;
             });
@@ -304,6 +322,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     this.Host,
                     taskHubGuid,
                     loadMonitorSender,
+                    this.shutdownToken,
                     this.TraceHelper);
                 this.TraceHelper.LogDebug("Created LoadMonitorSender {sender} from {clientId}", loadMonitorSender.ClientId, this.loadMonitorClient.ClientId);
                 return sender;

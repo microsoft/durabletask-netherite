@@ -27,8 +27,8 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
         readonly Stopwatch stopwatch = new Stopwatch();
 
-        public EventHubsSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, EventHubsTraceHelper traceHelper)
-            : base($"EventHubsSender {sender.EventHubClient.EventHubName}/{sender.PartitionId}", false, 2000, CancellationToken.None, traceHelper)
+        public EventHubsSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper)
+            : base($"EventHubsSender {sender.EventHubClient.EventHubName}/{sender.PartitionId}", false, 2000, shutdownToken, traceHelper)
         {
             this.host = host;
             this.taskHubGuid = taskHubGuid;
@@ -59,6 +59,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 async Task SendBatch(int lastPosition)
                 {
                     maybeSent = lastPosition;
+                    this.cancellationToken.ThrowIfCancellationRequested();
                     this.stopwatch.Restart();
                     await this.sender.SendAsync(batch).ConfigureAwait(false);
                     this.stopwatch.Stop();
@@ -139,6 +140,12 @@ namespace DurableTask.Netherite.EventHubsTransport
                 this.maxMessageSize = 200 * 1024;
                 this.traceHelper.LogWarning("EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send due to message size, reducing to {maxMessageSize}kB",
                     this.eventHubName, this.eventHubPartition, this.maxMessageSize / 1024);
+            }
+            catch (OperationCanceledException) when (this.cancellationToken.IsCancellationRequested)
+            {
+                // normal during shutdown
+                this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} was cancelled", this.eventHubName, this.eventHubPartition);
+                return;
             }
             catch (Exception e)
             {
