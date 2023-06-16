@@ -35,7 +35,7 @@ namespace DurableTask.Netherite.Faster
             public Partition Partition;
             public Dictionary<TrackedObjectKey, string> Store;
             public long CommitLogPosition;
-            public long InputQueuePosition;
+            public (long,int) InputQueuePosition;
             public EffectTracker EffectTracker;
         }
 
@@ -131,7 +131,7 @@ namespace DurableTask.Netherite.Faster
         PartitionUpdateEvent DeserializePartitionUpdateEvent(string content)
             => (PartitionUpdateEvent) JsonConvert.DeserializeObject(content, this.settings);
 
-        internal void PartitionStarting(Partition partition, TrackedObjectStore store, long CommitLogPosition, long InputQueuePosition)
+        internal void PartitionStarting(Partition partition, TrackedObjectStore store, long CommitLogPosition, (long,int) InputQueuePosition)
         {
             var info = new Info()
             {
@@ -286,7 +286,7 @@ namespace DurableTask.Netherite.Faster
                 return default;
             }
 
-            public override (long, long) GetPositions()
+            public override (long, (long,int)) GetPositions()
             {
                 return (this.info.CommitLogPosition, this.info.InputQueuePosition);
             }

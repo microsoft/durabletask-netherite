@@ -87,7 +87,7 @@ namespace DurableTask.Netherite.SingleHostTransport
                     this.Notify();
                 };
                 
-                var nextInputQueuePosition = await this.Partition.CreateOrRestoreAsync(errorHandler, this.parameters, this.fingerPrint);
+                var (nextInputQueuePosition, _) = await this.Partition.CreateOrRestoreAsync(errorHandler, this.parameters, this.fingerPrint);
 
                 while(this.redeliverQueuePosition < nextInputQueuePosition)
                 {
@@ -144,7 +144,7 @@ namespace DurableTask.Netherite.SingleHostTransport
                 stream.Seek(0, SeekOrigin.Begin);
                 Packet.Serialize(evt, stream, this.taskhubGuid);
                 stream.Seek(0, SeekOrigin.Begin);
-                Packet.Deserialize(stream, out PartitionEvent freshEvent, null);
+                Packet.Deserialize(stream, out PartitionEvent freshEvent, out _,  null);
                 DurabilityListeners.Register(freshEvent, this);
                 freshEvent.NextInputQueuePosition = ++position;
                 list.Add(freshEvent);

@@ -30,6 +30,8 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly string eventHubPartition;
         readonly byte[] taskHubGuid;
         readonly uint partitionId;
+        readonly CancellationToken shutdownToken;
+        readonly BlobBatchReceiver<PartitionEvent> blobBatchReceiver;
 
         //private uint partitionId;
         CancellationTokenSource eventProcessorShutdown;
@@ -45,7 +47,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         // since EventProcessorHost does not redeliver packets, we need to keep them around until we are sure
         // they are processed durably, so we can redeliver them when recycling/recovering a partition
         // we make this a concurrent queue so we can remove confirmed events concurrently with receiving new ones
-        readonly ConcurrentQueue<(PartitionEvent evt, long offset, long seqno)> pendingDelivery;
+        readonly ConcurrentQueue<(PartitionEvent[] events, long offset, long seqno)> pendingDelivery;
         AsyncLock deliveryLock;
 
         // this points to the latest incarnation of this partition; it gets
@@ -62,7 +64,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             public IPartitionErrorHandler ErrorHandler;
             public TransportAbstraction.IPartition Partition;
             public Task<PartitionIncarnation> Next;
-            public long NextPacketToReceive;
+            public (long seqNo, int batchPos) NextPacketToReceive;
             public int SuccessiveStartupFailures;
         }
 
@@ -81,7 +83,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.host = host;
             this.sender = sender;
             this.parameters = parameters;
-            this.pendingDelivery = new ConcurrentQueue<(PartitionEvent evt, long offset, long seqno)>();
+            this.pendingDelivery = new ConcurrentQueue<(PartitionEvent[] events, long offset, long seqno)>();
             this.partitionContext = partitionContext;
             this.settings = settings;
             this.eventHubsTransport = eventHubsTransport;
@@ -90,6 +92,9 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.taskHubGuid = parameters.TaskhubGuid.ToByteArray();
             this.partitionId = uint.Parse(this.eventHubPartition);
             this.traceHelper = new EventHubsTraceHelper(traceHelper, this.partitionId);
+            this.shutdownToken = shutdownToken;
+            string traceContext = $"EventHubsProcessor {this.eventHubName}/{this.eventHubPartition}";
+            this.blobBatchReceiver = new BlobBatchReceiver<PartitionEvent>(traceContext, this.traceHelper, this.settings, keepUntilConfirmed: true);
 
             var _ = shutdownToken.Register(
               () => { var _ = Task.Run(() => this.IdempotentShutdown("shutdownToken", false)); },
@@ -120,7 +125,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             // this is called after an event has committed (i.e. has been durably persisted in the recovery log).
             // so we know we will never need to deliver it again. We remove it from the local buffer, and also checkpoint
             // with EventHubs occasionally.
-            while (this.pendingDelivery.TryPeek(out var front) && front.evt.NextInputQueuePosition <= ((PartitionEvent)evt).NextInputQueuePosition)
+            while (this.pendingDelivery.TryPeek(out var front) && front.events[front.events.Length - 1].NextInputQueuePosition <= ((PartitionEvent)evt).NextInputQueuePosition)
             {
                 if (this.pendingDelivery.TryDequeue(out var candidate))
                 {
@@ -224,10 +229,14 @@ namespace DurableTask.Netherite.EventHubsTransport
                 using (await this.deliveryLock.LockAsync())
                 {
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} checking for packets requiring redelivery (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, c.Incarnation);
-                    var batch = this.pendingDelivery.Select(triple => triple.Item1).Where(evt => evt.NextInputQueuePosition > c.NextPacketToReceive).ToList();
+                    var batch = this.pendingDelivery
+                        .SelectMany(x => x.Item1)
+                        .Where(evt => (evt.NextInputQueuePosition, evt.NextInputQueueBatchPosition).CompareTo(c.NextPacketToReceive) > 0)
+                        .ToList();
                     if (batch.Count > 0)
                     {
-                        c.NextPacketToReceive = batch[batch.Count - 1].NextInputQueuePosition;
+                        var lastInBatch = batch[batch.Count - 1];
+                        c.NextPacketToReceive = (lastInBatch.NextInputQueuePosition, lastInBatch.NextInputQueueBatchPosition);
                         c.Partition.SubmitEvents(batch);
                         this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} redelivered {batchsize} packets, starting with #{seqno}, next expected packet is #{nextSeqno} (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, batch.Count, batch[0].NextInputQueuePosition - 1, c.NextPacketToReceive, c.Incarnation);
                     }
@@ -375,9 +384,9 @@ namespace DurableTask.Netherite.EventHubsTransport
         async Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
         {
             var first = packets.FirstOrDefault();
-            long sequenceNumber = first?.SystemProperties.SequenceNumber ?? 0;
+            long firstSequenceNumber = first?.SystemProperties.SequenceNumber ?? 0;
             
-            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is receiving events starting with #{seqno}", this.eventHubName, this.eventHubPartition, sequenceNumber);
+            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is receiving events starting with #{seqno}", this.eventHubName, this.eventHubPartition, firstSequenceNumber);
 
             PartitionIncarnation current = await this.currentIncarnation;
 
@@ -402,99 +411,82 @@ namespace DurableTask.Netherite.EventHubsTransport
                 this.lastCheckpointedOffset = first == null ? null : long.Parse(first.SystemProperties.Offset);
 
                 // we may be missing packets if the service was down for longer than EH retention
-                if (sequenceNumber > current.NextPacketToReceive)
+                if (firstSequenceNumber > current.NextPacketToReceive.seqNo)
                 {
-                    this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} missing packets in sequence, #{seqno} instead of #{expected}. Initiating recovery via delete and restart.", this.eventHubName, this.eventHubPartition, sequenceNumber, current.NextPacketToReceive);
+                    this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} missing packets in sequence, #{seqno} instead of #{expected}. Initiating recovery via delete and restart.", this.eventHubName, this.eventHubPartition, firstSequenceNumber, current.NextPacketToReceive);
                     await this.eventHubsTransport.ExitProcess(true);
                 }
             }
 
             try
             {
-                var batch = new List<PartitionEvent>();
                 var receivedTimestamp = current.Partition.CurrentTimeMs;
+                int totalEvents = 0;
+                Stopwatch stopwatch = Stopwatch.StartNew();
 
                 using (await this.deliveryLock.LockAsync()) // must prevent rare race with a partition that is currently restarting. Contention is very unlikely.
                 {
-                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is processing packets (incarnation {seqno})", this.eventHubName, this.eventHubPartition, current.Incarnation);
+                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) is processing packets", this.eventHubName, this.eventHubPartition, current.Incarnation);
 
-                    foreach (var eventData in packets)
+                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, current.ErrorHandler.Token, current.NextPacketToReceive.seqNo))
                     {
-                        var seqno = eventData.SystemProperties.SequenceNumber;
-                        if (seqno == current.NextPacketToReceive)
+                        for (int i = 0; i < events.Length; i++)
                         {
-                            PartitionEvent partitionEvent = null;
+                            PartitionEvent evt = events[i];
 
-                            try
+                            if (i < events.Length - 1)
                             {
-                                Packet.Deserialize(eventData.Body, out partitionEvent, this.taskHubGuid);
-                            }
-                            catch (Exception)
-                            {
-                                this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} could not deserialize packet #{seqno} ({size} bytes)", this.eventHubName, this.eventHubPartition, seqno, eventData.Body.Count);
-                                throw;
-                            }
-
-                            current.NextPacketToReceive = seqno + 1;
-
-                            if (partitionEvent != null)
-                            {
-                                this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} received packet #{seqno} ({size} bytes) {event}", this.eventHubName, this.eventHubPartition, seqno, eventData.Body.Count, partitionEvent);
+                                evt.NextInputQueuePosition = seqNo;
+                                evt.NextInputQueueBatchPosition = i + 1;
                             }
                             else
                             {
-                                this.traceHelper.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition} ignored packet #{seqno} for different taskhub", this.eventHubName, this.eventHubPartition, seqno);
-                                continue;
+                                evt.NextInputQueuePosition = seqNo + 1;
                             }
 
-                            partitionEvent.NextInputQueuePosition = current.NextPacketToReceive;
-                            batch.Add(partitionEvent);
-                            this.pendingDelivery.Enqueue((partitionEvent, long.Parse(eventData.SystemProperties.Offset), eventData.SystemProperties.SequenceNumber));
-                            DurabilityListeners.Register(partitionEvent, this);
-                            partitionEvent.ReceivedTimestamp = current.Partition.CurrentTimeMs;
-                            //partitionEvent.ReceivedTimestampUnixMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                            if (this.traceHelper.IsEnabled(LogLevel.Trace))
+                            {
+                                this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received packet #{seqno}.{subSeqNo} {event} id={eventId}", this.eventHubName, this.eventHubPartition, current.Incarnation, seqNo, i, evt, evt.EventIdString);
+                            }
 
-                            // Output the time it took for the event to go through eventhubs.
-                            //if (partitionEvent.SentTimestampUnixMs != 0)
-                            //{
-                            //    long duration = partitionEvent.ReceivedTimestampUnixMs - partitionEvent.SentTimestampUnixMs;
-                            //    this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} received packet #{seqno} eventId={eventId} with {eventHubsLatencyMs} ms latency", this.eventHubName, this.eventHubPartition, seqno, partitionEvent.EventIdString, duration);
-                            //}
+                            totalEvents++;
                         }
-                        else if (seqno > current.NextPacketToReceive)
+ 
+                        // add events to redelivery queue, and attach durability listener to last update event in the batch
+                        this.pendingDelivery.Enqueue((events, long.Parse(eventData.SystemProperties.Offset), eventData.SystemProperties.SequenceNumber));
+                        for (int i = events.Length - 1; i >= 0; i--)
                         {
-                            this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} received wrong packet, #{seqno} instead of #{expected}", this.eventHubName, this.eventHubPartition, seqno, current.NextPacketToReceive);
-                            // this should never happen, as EventHubs guarantees in-order delivery of packets
-                            throw new InvalidOperationException("EventHubs Out-Of-Order Packet");
+                            if (events[i] is PartitionUpdateEvent partitionUpdateEvent)
+                            {
+                                DurabilityListeners.Register(partitionUpdateEvent, this);
+                            }
+                        }
+
+                        if (current.NextPacketToReceive.batchPos == 0)
+                        {
+                            current.Partition.SubmitEvents(events);
                         }
                         else
                         {
-                            this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} discarded packet #{seqno} because it is already processed", this.eventHubName, this.eventHubPartition, seqno);
+                            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) skipping {batchPos} events in batch #{seqno} because they are already processed", this.eventHubName, this.eventHubPartition, current.Incarnation, current.NextPacketToReceive.batchPos, seqNo);
+                            current.Partition.SubmitEvents(events.Skip(current.NextPacketToReceive.batchPos).ToList());
                         }
+
+                        current.NextPacketToReceive = (seqNo + 1, 0);
                     }
                 }
 
-                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} finished processing packets", this.eventHubName, this.eventHubPartition);
-
-                if (batch.Count > 0)
-                {
-                    this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} received batch of {batchsize} packets, starting with #{seqno}, next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, batch.Count, batch[0].NextInputQueuePosition - 1, current.NextPacketToReceive);
-                    current.Partition.SubmitEvents(batch);
-                }
+                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received {totalEvents} events in {latencyMs:F2}ms, starting with #{seqno}, next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, current.Incarnation, totalEvents, stopwatch.Elapsed.TotalMilliseconds, firstSequenceNumber, current.NextPacketToReceive.seqNo);
 
                 await this.SaveEventHubsReceiverCheckpoint(context, 600000);
-
-                // can use this for testing: terminates partition after every one packet received, but
-                // that packet is then processed once the partition recovers, so in the end there is progress
-                // throw new InvalidOperationException("error injection");
             }
             catch (OperationCanceledException)
             {
-                this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} was terminated", this.eventHubName, this.eventHubPartition);
+                this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) was terminated", this.eventHubName, this.eventHubPartition, current.Incarnation);
             }
             catch (Exception exception)
             {
-                this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} encountered an exception while processing packets : {exception}", this.eventHubName, this.eventHubPartition, exception);
+                this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) encountered an exception while processing packets : {exception}", this.eventHubName, this.eventHubPartition, current.Incarnation, exception);
                 current?.ErrorHandler.HandleError("IEventProcessor.ProcessEventsAsync", "Encountered exception while processing events", exception, true, false);
             }
         }

@@ -274,7 +274,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         }
 
 
-        public EventHubsSender<PartitionUpdateEvent> GetPartitionSender(int partitionId, byte[] taskHubGuid)
+        public EventHubsSender<PartitionUpdateEvent> GetPartitionSender(int partitionId, byte[] taskHubGuid, NetheriteOrchestrationServiceSettings settings)
         {
             return this._partitionSenders.GetOrAdd(partitionId, (key) => {
                 (EventHubClient client, string id) = this.partitionPartitions[partitionId];
@@ -284,13 +284,14 @@ namespace DurableTask.Netherite.EventHubsTransport
                     taskHubGuid,
                     partitionSender,
                     this.shutdownToken,
-                    this.TraceHelper);
+                    this.TraceHelper,
+                    settings);
                 this.TraceHelper.LogDebug("Created PartitionSender {sender} from {clientId}", partitionSender.ClientId, client.ClientId);
                 return sender;
             });
         }
 
-        public EventHubsClientSender GetClientSender(Guid clientId, byte[] taskHubGuid)
+        public EventHubsClientSender GetClientSender(Guid clientId, byte[] taskHubGuid, NetheriteOrchestrationServiceSettings settings)
         {
             return this._clientSenders.GetOrAdd(clientId, (key) =>
             {
@@ -308,7 +309,8 @@ namespace DurableTask.Netherite.EventHubsTransport
                         clientId,
                         partitionSenders,
                         this.shutdownToken,
-                        this.TraceHelper);
+                        this.TraceHelper,
+                        settings);
                 return sender;
             });
         }

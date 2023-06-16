@@ -11,6 +11,7 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
 
@@ -220,6 +221,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         {
             readonly uint partitionId;
             readonly ScriptedEventProcessorHost host;
+            readonly BlobBatchReceiver<PartitionEvent> blobBatchReceiver;
 
             TransportAbstraction.IPartition partition;
             Task partitionEventLoop;
@@ -234,6 +236,8 @@ namespace DurableTask.Netherite.EventHubsTransport
                 this.partitionId = partitionId;
                 this.Incarnation = incarnation;
                 this.host = eventProcessorHost;
+                string traceContext = $"PartitionInstance {this.host.eventHubPath}/{this.partitionId}({this.Incarnation})";
+                this.blobBatchReceiver = new BlobBatchReceiver<PartitionEvent>(traceContext, this.host.logger, this.host.settings, keepUntilConfirmed: true);
             }
 
             public int Incarnation { get; }
@@ -253,7 +257,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     var errorHandler = this.host.host.CreateErrorHandler(this.partitionId);
 
                     var nextPacketToReceive = await this.partition.CreateOrRestoreAsync(errorHandler, this.host.parameters, this.host.Fingerprint).ConfigureAwait(false);
-                    this.host.logger.LogInformation("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) started partition, next expected packet is #{nextSeqno}", this.host.eventHubPath, this.partitionId, this.Incarnation, nextPacketToReceive);
+                    this.host.logger.LogInformation("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) started partition, next expected packet is #{nextSeqno}.{batchPos}", this.host.eventHubPath, this.partitionId, this.Incarnation, nextPacketToReceive.Item1, nextPacketToReceive.Item2);
 
                     this.partitionEventLoop = Task.Run(() => this.PartitionEventLoop(nextPacketToReceive));
                 }
@@ -307,89 +311,81 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
 
             // TODO: Update all the logging messages
-            async Task PartitionEventLoop(long nextPacketToReceive)
+            async Task PartitionEventLoop((long seqNo, int batchPos) nextPacketToReceive)
             {
                 this.host.logger.LogDebug("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) starting receive loop", this.host.eventHubPath, this.partitionId, this.Incarnation);
                 try
                 {
-                    this.partitionReceiver = this.host.connections.CreatePartitionReceiver((int)this.partitionId, this.host.consumerGroupName, nextPacketToReceive);
+                    this.partitionReceiver = this.host.connections.CreatePartitionReceiver((int)this.partitionId, this.host.consumerGroupName, nextPacketToReceive.Item1);
+                    List<PartitionEvent> batch = new List<PartitionEvent>();
 
                     while (!this.shutdownSource.IsCancellationRequested)
                     {
-                        this.host.logger.LogTrace("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) trying to receive eventdata from position {position}", this.host.eventHubPath, this.partitionId, this.Incarnation, nextPacketToReceive);
+                        this.host.logger.LogTrace("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) trying to receive eventdata from position {position}", this.host.eventHubPath, this.partitionId, this.Incarnation, nextPacketToReceive.Item1);
 
-                        IEnumerable<EventData> eventData;
+                        IEnumerable<EventData> hubMessages;
 
                         try
                         {
                             var receiveTask = this.partitionReceiver.ReceiveAsync(MaxReceiveBatchSize, TimeSpan.FromMinutes(1));
                             await Task.WhenAny(receiveTask, this.shutdownTask).ConfigureAwait(false);
                             this.shutdownSource.Token.ThrowIfCancellationRequested();
-                            eventData = await receiveTask.ConfigureAwait(false);
+                            hubMessages = await receiveTask.ConfigureAwait(false);
                         }
                         catch (TimeoutException exception)
                         {
                             // not sure that we should be seeing this, but we do.
                             this.host.logger.LogWarning("Retrying after transient(?) TimeoutException in ReceiveAsync {exception}", exception);
-                            eventData = null;
+                            hubMessages = null;
                         }
 
-                        if (eventData != null)
+                        if (hubMessages != null)
                         {
-                            this.host.logger.LogDebug("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) received eventdata from position {position}", this.host.eventHubPath, this.partitionId, this.Incarnation, nextPacketToReceive);
+                            this.host.logger.LogDebug("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) received eventdata from position {position}", this.host.eventHubPath, this.partitionId, this.Incarnation, nextPacketToReceive.Item1);
 
-                            var batch = new List<PartitionEvent>();
+                            int totalEvents = 0;
+                            Stopwatch stopwatch = Stopwatch.StartNew();
+
                             var receivedTimestamp = this.partition.CurrentTimeMs;
 
-                            foreach (var eventDatum in eventData)
+                            await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.host.taskHubGuid, hubMessages, this.shutdownSource.Token, nextPacketToReceive.seqNo))
                             {
-                                var seqno = eventDatum.SystemProperties.SequenceNumber;
-                                if (seqno == nextPacketToReceive)
+                                for (int i = 0; i < events.Length; i++)
                                 {
-                                    PartitionEvent partitionEvent = null;
-                                    try
-                                    {
-                                        Packet.Deserialize(eventDatum.Body, out partitionEvent, this.host.taskHubGuid);
-                                    }
-                                    catch (Exception)
-                                    {
-                                        this.host.logger.LogError("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) could not deserialize packet #{seqno} ({size} bytes)", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno, eventDatum.Body.Count);
-                                        throw;
-                                    }
+                                    PartitionEvent evt = events[i];
 
-                                    nextPacketToReceive = seqno + 1;
-
-                                    if (partitionEvent != null)
+                                    if (i < events.Length - 1)
                                     {
-                                        this.host.logger.LogTrace("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) received packet #{seqno} ({size} bytes) {event} id={eventId}", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno, eventDatum.Body.Count, partitionEvent, partitionEvent.EventIdString);
+                                        evt.NextInputQueuePosition = seqNo;
+                                        evt.NextInputQueueBatchPosition = i + 1;
                                     }
                                     else
                                     {
-                                        this.host.logger.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation})  ignored packet #{seqno} for different taskhub", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno);
-                                        continue;
+                                        evt.NextInputQueuePosition = seqNo + 1;
                                     }
 
-                                    partitionEvent.NextInputQueuePosition = nextPacketToReceive;
-                                    batch.Add(partitionEvent);
-                                    partitionEvent.ReceivedTimestamp = this.partition.CurrentTimeMs;
+                                    if (this.host.logger.IsEnabled(LogLevel.Trace))
+                                    {
+                                        this.host.logger.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received packet #{seqno}.{subSeqNo} {event} id={eventId}", this.host.eventHubPath, this.partitionId, this.Incarnation, seqNo, i, evt, evt.EventIdString);
+                                    }
+
+                                    totalEvents++;
                                 }
-                                else if (seqno > nextPacketToReceive)
+
+                                if (nextPacketToReceive.batchPos == 0)
                                 {
-                                    this.host.logger.LogError("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) received wrong packet, #{seqno} instead of #{expected}", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno, nextPacketToReceive);
-                                    // this should never happen, as EventHubs guarantees in-order delivery of packets
-                                    throw new InvalidOperationException("EventHubs Out-Of-Order Packet");
+                                    this.partition.SubmitEvents(events);
                                 }
                                 else
                                 {
-                                    this.host.logger.LogTrace("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) discarded packet #{seqno} because it is already processed", this.host.eventHubPath, this.partitionId, this.Incarnation, seqno);
+                                    this.host.logger.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) skipping {batchPos} events in batch #{seqno} because they are already processed", this.host.eventHubPath, this.partitionId, this.Incarnation, nextPacketToReceive.batchPos, seqNo);
+                                    this.partition.SubmitEvents(events.Skip(nextPacketToReceive.batchPos).ToList());
                                 }
+
+                                nextPacketToReceive = (seqNo + 1, 0);
                             }
 
-                            if (batch.Count > 0 && !this.shutdownSource.IsCancellationRequested)
-                            {
-                                this.host.logger.LogDebug("PartitionInstance {eventHubName}/{eventHubPartition}({incarnation}) received batch of {batchsize} packets, starting with #{seqno}, next expected packet is #{nextSeqno}", this.host.eventHubPath, this.partitionId, this.Incarnation, batch.Count, batch[0].NextInputQueuePosition - 1, nextPacketToReceive);
-                                this.partition.SubmitEvents(batch);
-                            }
+                            this.host.logger.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received {totalEvents} events in {latencyMs:F2}ms, next expected packet is #{nextSeqno}", this.host.eventHubPath, this.partitionId, this.Incarnation, totalEvents, stopwatch.Elapsed.TotalMilliseconds, nextPacketToReceive.seqNo);
                         }
                     }
                 }

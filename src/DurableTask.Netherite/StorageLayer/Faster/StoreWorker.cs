@@ -23,7 +23,7 @@ namespace DurableTask.Netherite.Faster
         bool isShuttingDown;
 
         public string InputQueueFingerprint { get; private set; }
-        public long InputQueuePosition { get; private set; }
+        public (long,int) InputQueuePosition { get; private set; }
         public long CommitLogPosition { get; private set; }
 
         public LogWorker LogWorker { get; set; }
@@ -31,8 +31,8 @@ namespace DurableTask.Netherite.Faster
         // periodic index and store checkpointing
         CheckpointTrigger pendingCheckpointTrigger;
         Task pendingIndexCheckpoint;
-        Task<(long, long)> pendingStoreCheckpoint;
-        long lastCheckpointedInputQueuePosition;
+        Task<(long, (long,int))> pendingStoreCheckpoint;
+        (long,int) lastCheckpointedInputQueuePosition;
         long lastCheckpointedCommitLogPosition;
         long numberEventsSinceLastCheckpoint;
         DateTime timeOfNextIdleCheckpoint;
@@ -77,7 +77,7 @@ namespace DurableTask.Netherite.Faster
             this.partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
             this.InputQueueFingerprint = fingerprint;
-            this.InputQueuePosition = 0;
+            this.InputQueuePosition = (0,0);
             this.CommitLogPosition = initialCommitLogPosition;
            
             this.store.InitMainSession();
@@ -101,7 +101,7 @@ namespace DurableTask.Netherite.Faster
             var pokeLoop = this.PokeLoop();
         }
 
-        public void SetCheckpointPositionsAfterRecovery(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)
+        public void SetCheckpointPositionsAfterRecovery(long commitLogPosition, (long,int) inputQueuePosition, string inputQueueFingerprint)
         {
             this.CommitLogPosition = commitLogPosition;
             this.InputQueuePosition = inputQueuePosition;
@@ -225,9 +225,9 @@ namespace DurableTask.Netherite.Faster
                 this.loadInfo.CommitLogPosition = this.CommitLogPosition;
                 publish = true;
             }
-            if (this.loadInfo.InputQueuePosition < this.InputQueuePosition)
+            if (this.loadInfo.InputQueuePosition < this.InputQueuePosition.Item1)
             {
-                this.loadInfo.InputQueuePosition = this.InputQueuePosition;
+                this.loadInfo.InputQueuePosition = this.InputQueuePosition.Item1;
                 publish = true;
             }
 
@@ -293,7 +293,7 @@ namespace DurableTask.Netherite.Faster
             compactUntil = null;
 
             long inputQueuePositionLag =
-                this.InputQueuePosition - Math.Max(this.lastCheckpointedInputQueuePosition, this.LogWorker.LastCommittedInputQueuePosition);
+                this.InputQueuePosition.Item1 - Math.Max(this.lastCheckpointedInputQueuePosition.Item1, this.LogWorker.LastCommittedInputQueuePosition);
 
             if (this.lastCheckpointedCommitLogPosition + this.partition.Settings.MaxNumberBytesBetweenCheckpoints <= this.CommitLogPosition)
             {
@@ -398,8 +398,8 @@ namespace DurableTask.Netherite.Faster
                     // we can persist it as part of a snapshot
                     if (partitionEvent.NextInputQueuePosition > 0)
                     {
-                        this.partition.Assert(partitionEvent.NextInputQueuePosition > this.InputQueuePosition, "partitionEvent.NextInputQueuePosition > this.InputQueuePosition");
-                        this.InputQueuePosition = partitionEvent.NextInputQueuePosition;
+                        this.partition.Assert(partitionEvent.NextInputQueuePositionTuple.CompareTo(this.InputQueuePosition) > 0, "partitionEvent.NextInputQueuePosition > this.InputQueuePosition");
+                        this.InputQueuePosition = partitionEvent.NextInputQueuePositionTuple;
                     }
 
                     // if we are processing events that count as activity, our latency category is at least "low"
@@ -518,7 +518,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public async Task<(long,long)> WaitForCheckpointAsync(bool isIndexCheckpoint, Guid checkpointToken, bool removeObsoleteCheckpoints)
+        public async Task<(long,(long,int))> WaitForCheckpointAsync(bool isIndexCheckpoint, Guid checkpointToken, bool removeObsoleteCheckpoints)
         {
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
@@ -589,7 +589,7 @@ namespace DurableTask.Netherite.Faster
 
             if (queueChange)
             {
-                this.InputQueuePosition = 0;
+                this.InputQueuePosition = (0,0);
                 this.InputQueueFingerprint = inputQueueFingerprint;
 
                 this.traceHelper.FasterProgress($"Resetting input queue position because of new fingerprint {inputQueueFingerprint}");
@@ -618,15 +618,15 @@ namespace DurableTask.Netherite.Faster
 
             // update the input queue position if larger 
             // it can be smaller since the checkpoint can store positions advanced by non-update events
-            if (partitionUpdateEvent.NextInputQueuePosition > this.InputQueuePosition)
+            if (partitionUpdateEvent.NextInputQueuePositionTuple.CompareTo(this.InputQueuePosition) > 0)
             {
-                this.InputQueuePosition = partitionUpdateEvent.NextInputQueuePosition;
+                this.InputQueuePosition = partitionUpdateEvent.NextInputQueuePositionTuple;
             }
 
             // must keep track of queue fingerprint changes detected in previous recoveries
             else if (partitionUpdateEvent.ResetInputQueue)
             {
-                this.InputQueuePosition = 0;
+                this.InputQueuePosition = (0,0);
                 this.InputQueueFingerprint = ((RecoveryCompleted) partitionUpdateEvent).ChangedFingerprint;
             }
 
@@ -644,7 +644,7 @@ namespace DurableTask.Netherite.Faster
         {
             // the transport layer should always deliver a fresh event; if it repeats itself that's a bug
             // (note that it may not be the very next in the sequence since readonly events are not persisted in the log)
-            if (partitionUpdateEvent.NextInputQueuePosition > 0 && partitionUpdateEvent.NextInputQueuePosition <= this.InputQueuePosition)
+            if (partitionUpdateEvent.NextInputQueuePosition > 0 && partitionUpdateEvent.NextInputQueuePositionTuple.CompareTo(this.InputQueuePosition) <= 0)
             {
                 this.partition.ErrorHandler.HandleError(nameof(ProcessUpdate), "Duplicate event detected", null, false, false);
                 return;

@@ -29,8 +29,13 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly string eventHubPartition;
         readonly byte[] taskHubGuid;
         readonly uint partitionId;
+        readonly CancellationToken shutdownToken;
+        readonly BlobBatchReceiver<LoadMonitorEvent> blobBatchReceiver;
 
         TransportAbstraction.ILoadMonitor loadMonitor;
+        DateTime lastGarbageCheck = DateTime.MinValue;
+
+        readonly static TimeSpan GarbageCheckFrequency = TimeSpan.FromMinutes(30);
 
         public LoadMonitorProcessor(
             TransportAbstraction.IHost host,
@@ -51,21 +56,24 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.taskHubGuid = parameters.TaskhubGuid.ToByteArray();
             this.partitionId = uint.Parse(this.eventHubPartition);
             this.traceHelper = new EventHubsTraceHelper(traceHelper, this.partitionId);
+            this.shutdownToken = shutdownToken;
+            this.blobBatchReceiver = new BlobBatchReceiver<LoadMonitorEvent>("LoadMonitor", traceHelper, settings, keepUntilConfirmed: false);
         }
 
         Task IEventProcessor.OpenAsync(PartitionContext context)
         {
-            this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is opening", this.eventHubName, this.eventHubPartition);
+            this.traceHelper.LogInformation("LoadMonitor is opening", this.eventHubName, this.eventHubPartition);
             this.loadMonitor = this.host.AddLoadMonitor(this.parameters.TaskhubGuid, this.sender);
-            this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} opened", this.eventHubName, this.eventHubPartition);
+            this.traceHelper.LogInformation("LoadMonitor opened", this.eventHubName, this.eventHubPartition);
+            this.PeriodicGarbageCheck();
             return Task.CompletedTask;
         }
 
         async Task IEventProcessor.CloseAsync(PartitionContext context, CloseReason reason)
         {
-            this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is closing", this.eventHubName, this.eventHubPartition);
+            this.traceHelper.LogInformation("LoadMonitor is closing", this.eventHubName, this.eventHubPartition);
             await this.loadMonitor.StopAsync();
-            this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} closed", this.eventHubName, this.eventHubPartition);
+            this.traceHelper.LogInformation("LoadMonitor closed", this.eventHubName, this.eventHubPartition);
         }
 
         Task IEventProcessor.ProcessErrorAsync(PartitionContext context, Exception exception)
@@ -84,67 +92,67 @@ namespace DurableTask.Netherite.EventHubsTransport
                     break;
             }
 
-            this.traceHelper.Log(logLevel, "EventHubsProcessor {eventHubName}/{eventHubPartition} received internal error indication from EventProcessorHost: {exception}", this.eventHubName, this.eventHubPartition, exception);
+            this.traceHelper.Log(logLevel, "LoadMonitor received internal error indication from EventProcessorHost: {exception}", exception);
             return Task.CompletedTask;
         }
 
-        Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
+        async Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
         {         
-            this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} receiving #{seqno}", this.eventHubName, this.eventHubPartition, packets.First().SystemProperties.SequenceNumber);
+            this.traceHelper.LogTrace("LoadMonitor receiving #{seqno}", packets.First().SystemProperties.SequenceNumber);
             try
             {         
                 EventData last = null;
-                int count = 0;
-                int ignored = 0;
 
-                foreach (var eventData in packets)
+                int totalEvents = 0;
+                var stopwatch = Stopwatch.StartNew();
+             
+                await foreach ((EventData eventData, LoadMonitorEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, this.shutdownToken))
                 {
-                    var seqno = eventData.SystemProperties.SequenceNumber;
-                    LoadMonitorEvent loadMonitorEvent = null;
-                    last = eventData;
-
-                    try
+                    for (int i = 0; i < events.Length; i++)
                     {
-                        Packet.Deserialize(eventData.Body, out loadMonitorEvent, this.taskHubGuid);
-                    }
-                    catch (Exception)
-                    {
-                        this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} could not deserialize packet #{seqno} ({size} bytes)", this.eventHubName, this.eventHubPartition, seqno, eventData.Body.Count);
-                        throw;
-                    }
-
-                    if (loadMonitorEvent != null)
-                    {
-                        this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} received packet #{seqno} ({size} bytes) {event}", this.eventHubName, this.eventHubPartition, seqno, eventData.Body.Count, loadMonitorEvent);
-                        count++;
+                        var loadMonitorEvent = events[i];      
+                        this.traceHelper.LogTrace("LoadMonitor receiving packet #{seqno}.{subSeqNo} {event} id={eventId}", seqNo, i, loadMonitorEvent, loadMonitorEvent.EventIdString);
                         this.loadMonitor.Process(loadMonitorEvent);
+                        totalEvents++;
                     }
-                    else
-                    {
-                        this.traceHelper.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition} ignored packet #{seqno} for different taskhub", this.eventHubName, this.eventHubPartition, seqno);
-                        ignored++;
-                        continue;
-                    }
-
-                    if (context.CancellationToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
+                    
+                    last = eventData;
                 }
 
-                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} received batch of {batchsize} packets, through #{seqno}", this.eventHubName, this.eventHubPartition, count, last.SystemProperties.SequenceNumber);
+                this.traceHelper.LogDebug("LoadMonitor received {totalEvents} events in {latencyMs:F2}ms, through #{seqno}", totalEvents, stopwatch.Elapsed.TotalMilliseconds, last.SystemProperties.SequenceNumber);
+
+                this.PeriodicGarbageCheck();
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (this.shutdownToken.IsCancellationRequested) 
             {
-                this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} was terminated", this.eventHubName, this.eventHubPartition);
+                // normal during shutdown
             }
             catch (Exception exception)
             {
-                this.traceHelper.LogError("EventHubsProcessor {eventHubName}/{eventHubPartition} encountered an exception while processing packets : {exception}", this.eventHubName, this.eventHubPartition, exception);
+                this.traceHelper.LogError("LoadMonitor encountered an exception while processing packets : {exception}", exception);
                 throw;
             }
+            finally
+            {
+                this.traceHelper.LogInformation("LoadMonitor exits receive loop");
+            }
+        }
 
-            return Task.CompletedTask;
+        void PeriodicGarbageCheck()
+        {
+            if (DateTime.UtcNow - this.lastGarbageCheck > GarbageCheckFrequency)
+            {
+                this.lastGarbageCheck = DateTime.UtcNow;
+
+                Task.Run(async () =>
+                {
+                    var stopwatch = Stopwatch.StartNew();
+
+                    int deletedCount = await this.blobBatchReceiver.RemoveGarbageAsync(this.shutdownToken);
+
+                    this.traceHelper.LogInformation("LoadMonitor removed {deletedCount} expired blob batches in {elapsed:F2}s", deletedCount, stopwatch.Elapsed.TotalSeconds);
+                });
+            }
         }
     }
 }

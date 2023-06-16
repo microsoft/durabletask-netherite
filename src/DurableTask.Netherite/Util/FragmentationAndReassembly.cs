@@ -73,7 +73,7 @@ namespace DurableTask.Netherite
         {
             stream.Write(lastFragment.Bytes, 0, lastFragment.Bytes.Length);
             stream.Seek(0, SeekOrigin.Begin);
-            Packet.Deserialize(stream, out TEvent evt, null);
+            Packet.Deserialize(stream, out TEvent evt, out _, null);
             stream.Dispose();
             return evt;
         }
@@ -91,7 +91,7 @@ namespace DurableTask.Netherite
                 }
                 stream.Write(lastFragment.Bytes, 0, lastFragment.Bytes.Length);
                 stream.Seek(0, SeekOrigin.Begin);
-                Packet.Deserialize(stream, out TEvent evt, null);
+                Packet.Deserialize(stream, out TEvent evt, out _, null);
                 return evt;
             }
         }
