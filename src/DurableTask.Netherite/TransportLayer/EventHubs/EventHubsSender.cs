@@ -18,7 +18,7 @@ namespace DurableTask.Netherite.EventHubsTransport
     {
         readonly PartitionSender sender;
         readonly TransportAbstraction.IHost host;
-        readonly byte[] taskHubGuid;
+        readonly byte[] guid;
         readonly EventHubsTraceHelper traceHelper;
         readonly EventHubsTraceHelper lowestTraceLevel;
         readonly string eventHubName;
@@ -28,11 +28,11 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly Stopwatch stopwatch = new Stopwatch();
         readonly BlobBatchSender blobBatchSender;    
 
-        public EventHubsSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper, NetheriteOrchestrationServiceSettings settings)
+        public EventHubsSender(TransportAbstraction.IHost host, byte[] guid, PartitionSender sender, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper, NetheriteOrchestrationServiceSettings settings)
            : base($"EventHubsSender {sender.EventHubClient.EventHubName}/{sender.PartitionId}", false, 2000, shutdownToken, traceHelper)
         {
             this.host = host;
-            this.taskHubGuid = taskHubGuid;
+            this.guid = guid;
             this.sender = sender;
             this.traceHelper = traceHelper;
             this.lowestTraceLevel = traceHelper.IsEnabled(LogLevel.Trace) ? traceHelper : null;
@@ -79,7 +79,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     this.lowestTraceLevel?.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} is sending event {evt} id={eventId}", this.eventHubName, this.eventHubPartition, evt, evt.EventIdString);
                     if (!specificallyForBlob)
                     {
-                        Packet.Serialize(evt, this.stream, this.taskHubGuid);
+                        Packet.Serialize(evt, this.stream, this.guid);
                     }
                     else
                     {
@@ -143,7 +143,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                     // send the event(s) as a blob batch
                     this.stopwatch.Restart();
-                    EventData blobMessage = await this.blobBatchSender.UploadEventsAsync(this.stream, packetOffsets, this.taskHubGuid, this.cancellationToken);
+                    EventData blobMessage = await this.blobBatchSender.UploadEventsAsync(this.stream, packetOffsets, this.guid, this.cancellationToken);
                     maybeSent = index - 1;
                     await this.sender.SendAsync(blobMessage);
                     this.stopwatch.Stop();

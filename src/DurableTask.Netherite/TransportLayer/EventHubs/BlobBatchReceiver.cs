@@ -46,7 +46,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         }
 
         public async IAsyncEnumerable<(EventData eventData, TEvent[] events, long)> ReceiveEventsAsync(
-            byte[] taskHubGuid, 
+            byte[] guid, 
             IEnumerable<EventData> hubMessages,
             [EnumeratorCancellation] CancellationToken token,
             long? nextPacketToReceive = null)
@@ -75,7 +75,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                 try
                 {
-                    Packet.Deserialize(eventData.Body, out evt, out blobReference, taskHubGuid);
+                    Packet.Deserialize(eventData.Body, out evt, out blobReference, guid);
                 }
                 catch (Exception)
                 {
@@ -87,7 +87,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     if (evt == null)
                     {
-                        this.traceHelper.LogWarning("{context} ignored packet #{seqno} for different taskhub", this.traceContext, seqno);
+                        this.traceHelper.LogWarning("{context} ignored packet #{seqno} for different taskhub or client", this.traceContext, seqno);
                     }
                     else
                     {

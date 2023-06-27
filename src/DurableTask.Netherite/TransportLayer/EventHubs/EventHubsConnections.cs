@@ -291,7 +291,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             });
         }
 
-        public EventHubsClientSender GetClientSender(Guid clientId, byte[] taskHubGuid, NetheriteOrchestrationServiceSettings settings)
+        public EventHubsClientSender GetClientSender(Guid clientId, NetheriteOrchestrationServiceSettings settings)
         {
             return this._clientSenders.GetOrAdd(clientId, (key) =>
             {
@@ -305,7 +305,6 @@ namespace DurableTask.Netherite.EventHubsTransport
                 }
                 var sender = new EventHubsClientSender(
                         this.Host,
-                        taskHubGuid,
                         clientId,
                         partitionSenders,
                         this.shutdownToken,

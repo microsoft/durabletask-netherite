@@ -25,13 +25,13 @@ namespace DurableTask.Netherite
         static readonly byte batchWithGuid = 3;
         static readonly byte eventWithoutGuid = 4;
 
-        public static void Serialize(Event evt, Stream stream, byte[] taskHubGuid)
+        public static void Serialize(Event evt, Stream stream, byte[] guid)
         {
             var writer = new BinaryWriter(stream, Encoding.UTF8);
 
             // first write the packet type and the taskhub
             writer.Write(Packet.eventWithGuid);
-            writer.Write(taskHubGuid);
+            writer.Write(guid);
             writer.Flush();
 
             // then we write the binary serialization to the stream
@@ -50,13 +50,13 @@ namespace DurableTask.Netherite
             Serializer.SerializeEvent(evt, stream);
         }
 
-        public static void Serialize(string blobAddress, List<int> packetOffsets, Stream stream, byte[] taskHubGuid)
+        public static void Serialize(string blobAddress, List<int> packetOffsets, Stream stream, byte[] guid)
         {
             var writer = new BinaryWriter(stream, Encoding.UTF8);
 
             // first write the packet type and the taskhub
             writer.Write(Packet.batchWithGuid);
-            writer.Write(taskHubGuid);
+            writer.Write(guid);
 
             // then write the blob Address and the positions
             writer.Write(blobAddress);
@@ -76,7 +76,7 @@ namespace DurableTask.Netherite
         }
 
 
-        public static void Deserialize<TEvent>(Stream stream, out TEvent evt, out BlobReference blobReference, byte[] taskHubGuid) where TEvent : Event
+        public static void Deserialize<TEvent>(Stream stream, out TEvent evt, out BlobReference blobReference, byte[] guid) where TEvent : Event
         {
             var reader = new BinaryReader(stream);
             var packetType = reader.ReadByte();
@@ -86,7 +86,7 @@ namespace DurableTask.Netherite
             if (packetType == Packet.eventWithGuid)
             {
                 byte[] destinationTaskHubId = reader.ReadBytes(16);
-                if (taskHubGuid != null && !GuidMatches(taskHubGuid, destinationTaskHubId))
+                if (guid != null && !GuidMatches(guid, destinationTaskHubId))
                 {
                     return;
                 }
@@ -95,7 +95,7 @@ namespace DurableTask.Netherite
             else if (packetType == Packet.batchWithGuid)
             {
                 byte[] destinationTaskHubId = reader.ReadBytes(16);
-                if (taskHubGuid != null && !GuidMatches(taskHubGuid, destinationTaskHubId))
+                if (guid != null && !GuidMatches(guid, destinationTaskHubId))
                 {
                     return;
                 }

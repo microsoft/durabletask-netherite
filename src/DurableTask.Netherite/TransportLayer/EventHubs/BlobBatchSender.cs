@@ -54,7 +54,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             return $"{DateTime.UtcNow:o}-{random:X8}";
         }
 
-        public async Task<EventData> UploadEventsAsync(MemoryStream stream, List<int> packetOffsets, byte[] taskHubGuid, CancellationToken token)
+        public async Task<EventData> UploadEventsAsync(MemoryStream stream, List<int> packetOffsets, byte[] guid, CancellationToken token)
         {
             string blobName = this.GetRandomBlobName();
             string blobPath = $"{PathPrefix}{blobName}";
@@ -76,7 +76,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                 // create a message to send via event hubs
                 stream.SetLength(0);
-                Packet.Serialize(blobName, packetOffsets, stream, taskHubGuid);
+                Packet.Serialize(blobName, packetOffsets, stream, guid);
                 var arraySegment = new ArraySegment<byte>(stream.GetBuffer(), 0, (int)stream.Position);
                 var eventData = new EventData(arraySegment);
                 return eventData;

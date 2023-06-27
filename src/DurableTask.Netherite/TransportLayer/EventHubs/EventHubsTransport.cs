@@ -356,7 +356,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             {
                 case ClientEvent clientEvent:
                     var clientId = clientEvent.ClientId;
-                    var clientSender = this.connections.GetClientSender(clientEvent.ClientId, this.taskhubGuid, this.settings);
+                    var clientSender = this.connections.GetClientSender(clientEvent.ClientId, this.settings);
                     clientSender.Submit(clientEvent);
                     break;
 
@@ -397,7 +397,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         {
             try
             {
-                byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
+                byte[] clientGuid = this.ClientId.ToByteArray();
                 TimeSpan longPollingInterval = TimeSpan.FromMinutes(1);
                 var backoffDelay = TimeSpan.Zero;
                 string context = $"Client{this.shortClientId}.ch{index}";
@@ -437,36 +437,26 @@ namespace DurableTask.Netherite.EventHubsTransport
                         int totalEvents = 0;
                         var stopwatch = Stopwatch.StartNew();
 
-                        await foreach ((EventData eventData, ClientEvent[] events, long seqNo) in blobBatchReceiver.ReceiveEventsAsync(taskHubGuid, packets, this.shutdownSource.Token))
+                        await foreach ((EventData eventData, ClientEvent[] events, long seqNo) in blobBatchReceiver.ReceiveEventsAsync(clientGuid, packets, this.shutdownSource.Token))
                         {
-                            ClientEvent clientEvent = null;
+                            for (int i = 0; i < events.Length; i++)
+                            {
+                                var clientEvent = events[i];
 
-                            if (events == null)
-                            {
-                                this.traceHelper.LogWarning("Client.{clientId}.ch{index} ignored packet #{seqno} for different taskhub", this.shortClientId, index, seqNo);
-                            }
-                            else
-                            {
-                                for (int i = 0; i < events.Length; i++)
+                                clientEvent.ReceiveChannel = index;
+
+                                if (clientEvent.ClientId == this.ClientId)
                                 {
-                                    clientEvent = events[i];
-
-                                    clientEvent.ReceiveChannel = index;
-
-                                    if (clientEvent.ClientId == this.ClientId)
-                                    {
-                                        this.traceHelper.LogTrace("Client.{clientId}.ch{index} receiving packet #{seqno}.{subSeqNo} {event} id={eventId}", this.shortClientId, index, seqNo, i, clientEvent, clientEvent.EventIdString);
-                                        await channelWriter.WriteAsync(clientEvent, this.shutdownSource.Token);
-                                        totalEvents++;
-                                    }
-                                    else
-                                    {
-                                        this.traceHelper.LogTrace("Client.{clientId}.ch{index} ignoring packet #{seqno}.{subSeqNo} for different client", this.shortClientId, index, seqNo, i);
-                                    }
+                                    this.traceHelper.LogTrace("Client.{clientId}.ch{index} receiving packet #{seqno}.{subSeqNo} {event} id={eventId}", this.shortClientId, index, seqNo, i, clientEvent, clientEvent.EventIdString);
+                                    await channelWriter.WriteAsync(clientEvent, this.shutdownSource.Token);
+                                    totalEvents++;
+                                }
+                                else
+                                {
+                                    this.traceHelper.LogError("Client.{clientId}.ch{index} received packet #{seqno}.{subSeqNo} for client {otherClient}", this.shortClientId, index, seqNo, i, Client.GetShortId(clientEvent.ClientId));
                                 }
                             }
                         }
-
                         this.traceHelper.LogDebug("Client{clientId}.ch{index} received {totalEvents} events in {latencyMs:F2}ms", this.shortClientId, index, totalEvents, stopwatch.Elapsed.TotalMilliseconds);
                     }
                     else
