@@ -27,6 +27,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly EventHubsTraceHelper lowestTraceLevel;
         readonly BlobContainerClient containerClient;
         readonly bool keepUntilConfirmed;
+        readonly bool isClientReceiver;
 
         // Event Hubs discards messages after 24h, so we can throw away batches that are older than that
         readonly static TimeSpan expirationTimeSpan = TimeSpan.FromHours(24) + TimeSpan.FromMinutes(1);
@@ -43,6 +44,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.containerClient = serviceClient.GetBlobContainerClient(containerName);
             this.keepUntilConfirmed = keepUntilConfirmed;
             this.blobDeletions = this.keepUntilConfirmed ? new BlobDeletions(this) : null;
+            this.isClientReceiver = typeof(TEvent) == typeof(ClientEvent);
         }
 
         public async IAsyncEnumerable<(EventData eventData, TEvent[] events, long)> ReceiveEventsAsync(
@@ -51,6 +53,8 @@ namespace DurableTask.Netherite.EventHubsTransport
             [EnumeratorCancellation] CancellationToken token,
             long? nextPacketToReceive = null)
         {
+            int ignoredPacketCount = 0;
+
             foreach (var eventData in hubMessages)
             {
                 var seqno = eventData.SystemProperties.SequenceNumber;
@@ -87,7 +91,8 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     if (evt == null)
                     {
-                        this.traceHelper.LogWarning("{context} ignored packet #{seqno} for different taskhub or client", this.traceContext, seqno);
+                        this.lowestTraceLevel?.LogTrace("{context} ignored packet #{seqno} ({size} bytes) because its guid does not match taskhub/client", this.traceContext, seqno, eventData.Body.Count);
+                        ignoredPacketCount++;
                     }
                     else
                     {
@@ -180,6 +185,20 @@ namespace DurableTask.Netherite.EventHubsTransport
                 if (nextPacketToReceive.HasValue)
                 {
                     nextPacketToReceive = seqno + 1;
+                }
+            }
+
+            if (ignoredPacketCount > 0)
+            {
+                if (this.isClientReceiver)
+                {
+                    // Ignored packets are very common for clients because multiple clients may share the same partition. We log this only for debug purposes.
+                    this.traceHelper.LogDebug("{context} ignored {count} packets for different client", this.traceContext, ignoredPacketCount);
+                }
+                else
+                {
+                    // Ignored packets may indicate misconfiguration (multiple taskhubs using same EH namespace). We create a visible warning.
+                    this.traceHelper.LogWarning("{context} ignored {count} packets for different taskhub", this.traceContext, ignoredPacketCount);
                 }
             }
         }
