@@ -85,7 +85,7 @@ namespace DurableTask.Netherite
             /// Also, it can be used to detect that the partition has terminated for any other reason, 
             /// be it cleanly (after StopAsync) or uncleanly (after losing a lease or hitting a fatal error).
             /// </remarks>
-            Task<long> CreateOrRestoreAsync(IPartitionErrorHandler termination, TaskhubParameters parameters, string inputQueueFingerprint);
+            Task<(long,int)> CreateOrRestoreAsync(IPartitionErrorHandler termination, TaskhubParameters parameters, string inputQueueFingerprint);
 
             /// <summary>
             /// Clean shutdown: stop processing, save partition state to storage, and release ownership.

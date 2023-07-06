@@ -29,29 +29,29 @@ namespace DurableTask.Netherite.Faster
 
         // ----- faster storage layer events
 
-        public void FasterStoreCreated(long inputQueuePosition, long latencyMs)
+        public void FasterStoreCreated((long,int) inputQueuePosition, long latencyMs)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
-                this.logger.LogInformation("Part{partition:D2} Created Store, inputQueuePosition={inputQueuePosition} latencyMs={latencyMs}", this.partitionId, inputQueuePosition, latencyMs);
-                EtwSource.Log.FasterStoreCreated(this.account, this.taskHub, this.partitionId, inputQueuePosition, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.logger.LogInformation("Part{partition:D2} Created Store, inputQueuePosition={inputQueuePosition}.{inputQueueBatchPosition} latencyMs={latencyMs}", this.partitionId, inputQueuePosition.Item1, inputQueuePosition.Item2, latencyMs);
+                EtwSource.Log.FasterStoreCreated(this.account, this.taskHub, this.partitionId, inputQueuePosition.Item1, inputQueuePosition.Item2, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
-        public void FasterCheckpointStarted(Guid checkpointId, string details, string storeStats, long commitLogPosition, long inputQueuePosition)
+        public void FasterCheckpointStarted(Guid checkpointId, string details, string storeStats, long commitLogPosition, (long, int) inputQueuePosition)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
-                this.logger.LogInformation("Part{partition:D2} Started Checkpoint {checkpointId}, details={details}, storeStats={storeStats}, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition}", this.partitionId, checkpointId, details, storeStats, commitLogPosition, inputQueuePosition);
-                EtwSource.Log.FasterCheckpointStarted(this.account, this.taskHub, this.partitionId, checkpointId, details, storeStats, commitLogPosition, inputQueuePosition, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.logger.LogInformation("Part{partition:D2} Started Checkpoint {checkpointId}, details={details}, storeStats={storeStats}, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition}.{inputQueueBatchPosition}", this.partitionId, checkpointId, details, storeStats, commitLogPosition, inputQueuePosition.Item1, inputQueuePosition.Item2);
+                EtwSource.Log.FasterCheckpointStarted(this.account, this.taskHub, this.partitionId, checkpointId, details, storeStats, commitLogPosition, inputQueuePosition.Item1, inputQueuePosition.Item2, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
-        public void FasterCheckpointPersisted(Guid checkpointId, string details, long commitLogPosition, long inputQueuePosition, long latencyMs)
+        public void FasterCheckpointPersisted(Guid checkpointId, string details, long commitLogPosition, (long,int) inputQueuePosition, long latencyMs)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
-                this.logger.LogInformation("Part{partition:D2} Persisted Checkpoint {checkpointId}, details={details}, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition} latencyMs={latencyMs}", this.partitionId, checkpointId, details, commitLogPosition, inputQueuePosition, latencyMs);
-                EtwSource.Log.FasterCheckpointPersisted(this.account, this.taskHub, this.partitionId, checkpointId, details, commitLogPosition, inputQueuePosition, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.logger.LogInformation("Part{partition:D2} Persisted Checkpoint {checkpointId}, details={details}, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition}.{inputQueueBatchPosition} latencyMs={latencyMs}", this.partitionId, checkpointId, details, commitLogPosition, inputQueuePosition.Item1, inputQueuePosition.Item2, latencyMs);
+                EtwSource.Log.FasterCheckpointPersisted(this.account, this.taskHub, this.partitionId, checkpointId, details, commitLogPosition, inputQueuePosition.Item1, inputQueuePosition.Item2, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
 
             if (latencyMs > 10000)
@@ -83,21 +83,21 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public void FasterCheckpointLoaded(long commitLogPosition, long inputQueuePosition, string storeStats, long latencyMs)
+        public void FasterCheckpointLoaded(long commitLogPosition, (long,int) inputQueuePosition, string storeStats, long latencyMs)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
-                this.logger.LogInformation("Part{partition:D2} Loaded Checkpoint, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition}  storeStats={storeStats} latencyMs={latencyMs}", this.partitionId, commitLogPosition, inputQueuePosition, storeStats, latencyMs);
-                EtwSource.Log.FasterCheckpointLoaded(this.account, this.taskHub, this.partitionId, commitLogPosition, inputQueuePosition, storeStats, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.logger.LogInformation("Part{partition:D2} Loaded Checkpoint, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition}.{inputQueueBatchPosition}  storeStats={storeStats} latencyMs={latencyMs}", this.partitionId, commitLogPosition, inputQueuePosition.Item1, inputQueuePosition.Item2, storeStats, latencyMs);
+                EtwSource.Log.FasterCheckpointLoaded(this.account, this.taskHub, this.partitionId, commitLogPosition, inputQueuePosition.Item1, inputQueuePosition.Item2, storeStats, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
-        public void FasterLogReplayed(long commitLogPosition, long inputQueuePosition, long numberEvents, long sizeInBytes, string storeStats, long latencyMs)
+        public void FasterLogReplayed(long commitLogPosition, (long,int) inputQueuePosition, long numberEvents, long sizeInBytes, string storeStats, long latencyMs)
         {
             if (this.logLevelLimit <= LogLevel.Information)
             {
-                this.logger.LogInformation("Part{partition:D2} Replayed CommitLog, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition} numberEvents={numberEvents} sizeInBytes={sizeInBytes} storeStats={storeStats} latencyMs={latencyMs}", this.partitionId, commitLogPosition, inputQueuePosition, numberEvents, sizeInBytes, storeStats, latencyMs);
-                EtwSource.Log.FasterLogReplayed(this.account, this.taskHub, this.partitionId, commitLogPosition, inputQueuePosition, numberEvents, sizeInBytes, storeStats, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.logger.LogInformation("Part{partition:D2} Replayed CommitLog, commitLogPosition={commitLogPosition} inputQueuePosition={inputQueuePosition}.{inputQueueBatchPosition} numberEvents={numberEvents} sizeInBytes={sizeInBytes} storeStats={storeStats} latencyMs={latencyMs}", this.partitionId, commitLogPosition, inputQueuePosition.Item1, inputQueuePosition.Item2, numberEvents, sizeInBytes, storeStats, latencyMs);
+                EtwSource.Log.FasterLogReplayed(this.account, this.taskHub, this.partitionId, commitLogPosition, inputQueuePosition.Item1, inputQueuePosition.Item2, numberEvents, sizeInBytes, storeStats, latencyMs, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 

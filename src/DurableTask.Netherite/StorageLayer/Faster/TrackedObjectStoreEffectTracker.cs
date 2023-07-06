@@ -26,7 +26,7 @@ namespace DurableTask.Netherite.Faster
             return this.store.ProcessEffectOnTrackedObject(key, tracker);
         }
 
-        public override (long, long) GetPositions()
+        public override (long,(long,int)) GetPositions()
         {
             return (this.storeWorker.CommitLogPosition, this.storeWorker.InputQueuePosition);
         }

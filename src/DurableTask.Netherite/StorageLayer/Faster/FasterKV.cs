@@ -232,7 +232,7 @@ namespace DurableTask.Netherite.Faster
             return this.blobManager.FindCheckpointsAsync(logIsEmpty);
         }
 
-        public override async Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
+        public override async Task<(long commitLogPosition, (long,int) inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
         {
             try
             {
@@ -258,7 +258,10 @@ namespace DurableTask.Netherite.Faster
                 this.cacheTracker.MeasureCacheSize(true);
                 this.CheckInvariants();
 
-                return (this.blobManager.CheckpointInfo.CommitLogPosition, this.blobManager.CheckpointInfo.InputQueuePosition, this.blobManager.CheckpointInfo.InputQueueFingerprint);
+                return (
+                    this.blobManager.CheckpointInfo.CommitLogPosition, 
+                    (this.blobManager.CheckpointInfo.InputQueuePosition, this.blobManager.CheckpointInfo.InputQueueBatchPosition),
+                    this.blobManager.CheckpointInfo.InputQueueFingerprint);
             }
             catch (Exception exception)
                 when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
@@ -293,12 +296,13 @@ namespace DurableTask.Netherite.Faster
             return this.mainSession.ReadyToCompletePendingAsync(token);
         }
 
-        public override bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, out Guid checkpointGuid)
+        public override bool TakeFullCheckpoint(long commitLogPosition, (long,int) inputQueuePosition, string inputQueueFingerprint, out Guid checkpointGuid)
         {
             try
             {
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
-                this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
+                this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition.Item1;
+                this.blobManager.CheckpointInfo.InputQueueBatchPosition = inputQueuePosition.Item2;
                 this.blobManager.CheckpointInfo.InputQueueFingerprint = inputQueueFingerprint;
                 if (this.fht.TryInitiateFullCheckpoint(out checkpointGuid, CheckpointType.FoldOver))
                 {
@@ -398,12 +402,13 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, long? shiftBeginAddress)
+        public override Guid? StartStoreCheckpoint(long commitLogPosition, (long,int) inputQueuePosition, string inputQueueFingerprint, long? shiftBeginAddress)
         {
             try
             {
                 this.blobManager.CheckpointInfo.CommitLogPosition = commitLogPosition;
-                this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition;
+                this.blobManager.CheckpointInfo.InputQueuePosition = inputQueuePosition.Item1;
+                this.blobManager.CheckpointInfo.InputQueueBatchPosition = inputQueuePosition.Item2;
                 this.blobManager.CheckpointInfo.InputQueueFingerprint = inputQueueFingerprint;
 
                 if (shiftBeginAddress > this.fht.Log.BeginAddress)
