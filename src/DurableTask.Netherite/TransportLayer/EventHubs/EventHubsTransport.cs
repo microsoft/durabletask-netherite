@@ -53,10 +53,14 @@ namespace DurableTask.Netherite.EventHubsTransport
         CloudBlockBlob partitionScript;
         ScriptedEventProcessorHost scriptedEventProcessorHost;
 
+        int shutdownTriggered;
+
         public Guid ClientId { get; private set; }
 
         public string Fingerprint => this.connections.Fingerprint;
 
+        public bool FatalExceptionObserved { get; private set; }
+    
         public EventHubsTransport(TransportAbstraction.IHost host, NetheriteOrchestrationServiceSettings settings, IStorageLayer storage, ILoggerFactory loggerFactory)
         {
             if (storage is MemoryStorageLayer)
@@ -291,16 +295,20 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
         }
 
-        async Task ITransportLayer.StopAsync()
+        async Task ITransportLayer.StopAsync(bool fatalExceptionObserved)
         {
-            this.traceHelper.LogInformation("EventHubsTransport is shutting down");
-            this.shutdownSource.Cancel(); // immediately initiates shutdown of client and of all partitions
+            if (Interlocked.CompareExchange(ref this.shutdownTriggered, 1, 0) == 0)
+            {
+                this.traceHelper.LogInformation("EventHubsTransport is shutting down");
+                this.FatalExceptionObserved = fatalExceptionObserved;
+                this.shutdownSource.Cancel(); // immediately initiates shutdown of client and of all partitions
 
-            await Task.WhenAll(
-                 this.hasWorkers ? this.StopWorkersAsync() : Task.CompletedTask,
-                 this.StopClientsAndConnectionsAsync());
+                await Task.WhenAll(
+                     this.hasWorkers ? this.StopWorkersAsync() : Task.CompletedTask,
+                     this.StopClientsAndConnectionsAsync());
 
-            this.traceHelper.LogInformation("EventHubsTransport is shut down");
+                this.traceHelper.LogInformation("EventHubsTransport is shut down");
+            }
         }
 
         async Task StopWorkersAsync()

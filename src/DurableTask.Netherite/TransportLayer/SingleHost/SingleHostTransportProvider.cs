@@ -95,7 +95,7 @@ namespace DurableTask.Netherite.SingleHostTransport
             return Task.CompletedTask;
         }
 
-        async Task ITransportLayer.StopAsync()
+        async Task ITransportLayer.StopAsync(bool fatalExceptionObserved)
         {
             var tasks = new List<Task>();
             tasks.Add(this.clientQueue.Client.StopAsync());

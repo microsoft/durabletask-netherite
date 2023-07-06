@@ -97,7 +97,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.blobBatchReceiver = new BlobBatchReceiver<PartitionEvent>(traceContext, this.traceHelper, this.settings, keepUntilConfirmed: true);
 
             var _ = shutdownToken.Register(
-              () => { var _ = Task.Run(() => this.IdempotentShutdown("shutdownToken", false)); },
+              () => { var _ = Task.Run(() => this.IdempotentShutdown("shutdownToken", eventHubsTransport.FatalExceptionObserved)); },
               useSynchronizationContext: false);
         }
 
@@ -253,7 +253,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 // the partition startup was canceled
                 this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} canceled partition startup (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, c.Incarnation);
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 c.SuccessiveStartupFailures = 1 + (prior?.SuccessiveStartupFailures ?? 0);
                 c.ErrorHandler.HandleError("EventHubsProcessor.StartPartitionAsync", "failed to start partition", e, true, false);
@@ -338,11 +338,16 @@ namespace DurableTask.Netherite.EventHubsTransport
                     await context.CheckpointAsync(checkpoint);
                     this.lastCheckpointedOffset = long.Parse(checkpoint.Offset);
                 }
-                catch (Exception e) when (!Utils.IsFatal(e))
+                catch (Exception e)
                 {
                     // updating EventHubs checkpoints has been known to fail occasionally due to leases shifting around; since it is optional anyway
                     // we don't want this exception to cause havoc
                     this.traceHelper.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition} failed to checkpoint receive position: {e}", this.eventHubName, this.eventHubPartition, e);
+
+                    if (Utils.IsFatal(e))
+                    {
+                        this.host.OnFatalExceptionObserved(e);
+                    }
                 }
             }
         }

@@ -62,6 +62,11 @@ namespace DurableTask.Netherite
             /// </summary>
             /// <param name="message"></param>
             void TraceWarning(string message);
+
+            /// <summary>
+            /// Called when some component observed a fatal exception. Host may take action to initiate a fast shutdown.
+            /// </summary>
+            void OnFatalExceptionObserved(Exception e);
         }
 
         /// <summary>

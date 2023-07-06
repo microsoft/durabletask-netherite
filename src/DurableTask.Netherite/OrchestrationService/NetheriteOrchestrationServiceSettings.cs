@@ -151,6 +151,12 @@ namespace DurableTask.Netherite
         public bool KeepInstanceIdsInMemory = true;
 
         /// <summary>
+        /// Whether to immediately shut down the transport layer and terminate the process when a fatal exception is observed.
+        /// This is true by default, to enable failing hosts to leave quickly which allows other hosts to recover the partitions more quickly.
+        /// </summary>
+        public bool EmergencyShutdownOnFatalExceptions = true;
+
+        /// <summary>
         /// Forces steps to pe persisted before applying their effects, disabling all pipelining.
         /// </summary>
         public bool PersistStepsFirst { get; set; } = false;

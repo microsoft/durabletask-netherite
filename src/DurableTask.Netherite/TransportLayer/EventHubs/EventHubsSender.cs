@@ -165,8 +165,13 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
             catch (Exception e)
             {
-                this.traceHelper.LogWarning(e, "EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send", this.eventHubName, this.eventHubPartition);
+                this.traceHelper.LogWarning("EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send: {e}", this.eventHubName, this.eventHubPartition, e);
                 senderException = e;
+
+                if (Utils.IsFatal(e))
+                {
+                    this.host.OnFatalExceptionObserved(e);
+                }
             }
             finally
             {
@@ -221,9 +226,14 @@ namespace DurableTask.Netherite.EventHubsTransport
                 else
                     this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} has confirmed {confirmed}, requeued {requeued}, dropped {dropped} outbound events", this.eventHubName, this.eventHubPartition, confirmed, requeued, dropped);
             }
-            catch (Exception exception) when (!Utils.IsFatal(exception))
+            catch (Exception exception)
             {
                 this.traceHelper.LogError("EventHubsSender {eventHubName}/{eventHubPartitionId} encountered an error while trying to confirm messages: {exception}", this.eventHubName, this.eventHubPartition, exception);
+
+                if (Utils.IsFatal(exception))
+                {
+                    this.host.OnFatalExceptionObserved(exception);
+                }
             }
         }
     }

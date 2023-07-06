@@ -33,7 +33,8 @@ namespace DurableTask.Netherite
         /// <summary>
         /// Stops the transport backend.
         /// </summary>
+        /// <param name="fatalExceptionObserved">Whether this stop was initiated because we have observed a fatal exception.</param>
         /// <returns>After the transport backend has stopped.</returns>
-        Task StopAsync();
+        Task StopAsync(bool fatalExceptionObserved);
     }
 }
