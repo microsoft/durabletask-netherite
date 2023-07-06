@@ -31,6 +31,9 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly ILogger logger;
         readonly EventHubsTraceHelper traceHelper;
         readonly IStorageLayer storage;
+        readonly string consumerGroup;
+
+        string shortClientId;
 
         EventProcessorHost eventProcessorHost;
         EventProcessorHost loadMonitorHost;
@@ -67,6 +70,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             string namespaceName = settings.EventHubsConnection.ResourceName;
             this.logger = EventHubsTraceHelper.CreateLogger(loggerFactory);
             this.traceHelper = new EventHubsTraceHelper(this.logger, settings.TransportLogLevelLimit, null, settings.StorageAccountName, settings.HubName, namespaceName);
+            this.consumerGroup = settings.EventHubsConsumerGroup;
             this.ClientId = Guid.NewGuid();
         }
 
@@ -74,9 +78,6 @@ namespace DurableTask.Netherite.EventHubsTransport
         public static string PartitionHub = "partitions";
         public static string[] ClientHubs = { "clients0", "clients1", "clients2", "clients3" };
         public static string  LoadMonitorHub = "loadmonitor";
-        public static string PartitionConsumerGroup = "$Default";
-        public static string ClientConsumerGroup = "$Default";
-        public static string LoadMonitorConsumerGroup = "$Default";
 
         async Task<TaskhubParameters> ITransportLayer.StartAsync()
         {
@@ -102,7 +103,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             // check that the storage format is supported, and load the relevant FASTER tuning parameters
             BlobManager.LoadAndCheckStorageFormat(this.parameters.StorageFormat, this.settings, this.host.TraceWarning);
 
-            this.connections = new EventHubsConnections(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub, this.shutdownSource.Token)
+            this.connections = new EventHubsConnections(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub, this.consumerGroup, this.shutdownSource.Token)
             {
                 Host = host,
                 TraceHelper = this.traceHelper,
@@ -110,26 +111,75 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             await this.connections.StartAsync(this.parameters);
 
+            this.traceHelper.LogInformation("EventHubsTransport is connecting to {fingerPrint} via consumer group {consumerGroupName}", this.connections.Fingerprint, this.consumerGroup);
+
             return this.parameters;
         }
 
         async Task ITransportLayer.StartClientAsync()
         {
-            this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
-
             var channel = Channel.CreateBounded<ClientEvent>(new BoundedChannelOptions(500)
             {
                 SingleReader = true,
                 AllowSynchronousContinuations = true
             });
 
-            var clientReceivers = this.connections.CreateClientReceivers(this.ClientId, EventHubsTransport.ClientConsumerGroup);
+            PartitionReceiver[] clientReceivers = null;
 
-            this.clientConnectionsEstablished = Enumerable
-                .Range(0, EventHubsConnections.NumClientChannels)
-                .Select(i => this.ClientEstablishConnectionAsync(i, clientReceivers[i]))
-                .ToArray();
-       
+            int attempt = 0;
+            int maxAttempts = 8;
+
+            while (attempt++ < maxAttempts)
+            {
+                this.ClientId = Guid.NewGuid();
+                this.shortClientId = Client.GetShortId(this.ClientId);
+
+                clientReceivers = this.connections.CreateClientReceivers(this.ClientId, this.consumerGroup);
+
+                try
+                {
+                    this.clientConnectionsEstablished = Enumerable
+                        .Range(0, EventHubsConnections.NumClientChannels)
+                        .Select(i => this.ClientEstablishConnectionAsync(i, clientReceivers[i]))
+                        .ToArray();
+
+                    // we must wait for the client receive connections to be established before continuing
+                    // otherwise, we may miss messages that are sent before the client receiver establishes the receive position
+                    await Task.WhenAll(this.clientConnectionsEstablished);
+
+                    break; // was successful, so we exit retry loop
+                }
+                catch (Microsoft.Azure.EventHubs.QuotaExceededException) when (attempt < maxAttempts) 
+                {
+                    this.traceHelper.LogWarning("EventHubsTransport encountered quota-exceeded exception");
+                }
+                catch (Exception exception) when (attempt < maxAttempts)
+                {
+                    this.traceHelper.LogInformation("EventHubsTransport failed with exception {exception}", exception);
+                }
+
+                TimeSpan retryDelay = TimeSpan.FromSeconds(1 + attempt * 10);
+                this.traceHelper.LogDebug("EventHubsTransport retrying client connection in {retryDelay}", retryDelay);
+                Task retryDelayTask = Task.Delay(retryDelay);
+
+                foreach (var clientReceiver in clientReceivers)
+                {
+                    try
+                    {
+                        await clientReceiver.CloseAsync();
+                    }
+
+                    catch (Exception exception)
+                    {
+                        this.traceHelper.LogWarning("EventHubsTransport failed to close partition receiver {clientReceiver} during retry: {exception}", clientReceiver, exception);
+                    }
+                }
+
+                await retryDelayTask;
+            }
+
+            this.traceHelper.LogInformation("EventHubsTransport connected to {fingerPrint} via consumer group {consumerGroup}", this.connections.Fingerprint, this.consumerGroup);
+
             this.clientReceiveLoops = Enumerable
                 .Range(0, EventHubsConnections.NumClientChannels)
                 .Select(i => this.ClientReceiveLoopAsync(i, clientReceivers[i], channel.Writer))
@@ -137,9 +187,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             this.clientProcessTask = this.ClientProcessLoopAsync(channel.Reader);
 
-            // we must wait for the client receive connections to be established before continuing
-            // otherwise, we may miss messages that are sent before the client receiver establishes the receive position
-            await Task.WhenAll(this.clientConnectionsEstablished);
+            this.client = this.host.AddClient(this.ClientId, this.parameters.TaskhubGuid, this);
         }
 
         async Task ITransportLayer.StartWorkersAsync()
@@ -166,7 +214,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     this.eventProcessorHost = await this.settings.EventHubsConnection.GetEventProcessorHostAsync(
                         Guid.NewGuid().ToString(),
                         EventHubsTransport.PartitionHub,
-                        EventHubsTransport.PartitionConsumerGroup,
+                        this.consumerGroup,
                         this.settings.BlobStorageConnection,
                         this.cloudBlobContainer.Name,
                         $"{this.pathPrefix}eh-checkpoints/{(EventHubsTransport.PartitionHub)}/{formattedCreationDate}");
@@ -188,7 +236,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     this.traceHelper.LogInformation($"EventHubsTransport is starting scripted partition host");
                     this.scriptedEventProcessorHost = new ScriptedEventProcessorHost(
                             EventHubsTransport.PartitionHub,
-                            EventHubsTransport.PartitionConsumerGroup,
+                            this.consumerGroup,
                             this.settings.EventHubsConnection,
                             this.settings.BlobStorageConnection,
                             this.cloudBlobContainer.Name,
@@ -212,7 +260,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 this.loadMonitorHost = await this.settings.EventHubsConnection.GetEventProcessorHostAsync(
                         Guid.NewGuid().ToString(),
                         LoadMonitorHub,
-                        LoadMonitorConsumerGroup,
+                        this.consumerGroup,
                         this.settings.BlobStorageConnection,
                         this.cloudBlobContainer.Name,
                         $"{this.pathPrefix}eh-checkpoints/{LoadMonitorHub}");

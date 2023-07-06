@@ -52,6 +52,14 @@ namespace DurableTask.Netherite
         public string LoadInformationAzureTableName { get; set; } = "DurableTaskPartitions";
 
         /// <summary>
+        /// The consumer group to use. By specifying different consumer groups, two task hubs can use
+        /// the same event hubs namespace at the same time. However, note that this can waste bandwidth since messages
+        /// are always delivered to all consumer groups (even if only meaningfully processed by one of them). Also, 
+        /// for some event hub plan the number of consumer groups is limited.
+        /// </summary>
+        public string EventHubsConsumerGroup { get; set; } = "$Default";
+
+        /// <summary>
         /// Tuning parameters for the FASTER logs
         /// </summary>
         public Faster.BlobManager.FasterTuningParameters FasterTuningParameters { get; set; } = null;

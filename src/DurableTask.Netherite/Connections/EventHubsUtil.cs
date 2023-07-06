@@ -26,7 +26,7 @@ namespace DurableTask.Netherite
         /// <returns>true if the event hub was created.</returns>
         public static async Task<bool> EnsureEventHubExistsAsync(ConnectionInfo info, string eventHubName, int partitionCount, CancellationToken cancellationToken)
         {
-            var response = await SendHttpRequest(info, eventHubName, partitionCount, cancellationToken);
+            var response = await SendEventHubRequest(info, eventHubName, partitionCount, cancellationToken);
             if (response.StatusCode != System.Net.HttpStatusCode.Conflict)
             {
                 response.EnsureSuccessStatusCode();
@@ -42,7 +42,7 @@ namespace DurableTask.Netherite
         /// <returns>true if the event hub was deleted.</returns>
         public static async Task<bool> DeleteEventHubIfExistsAsync(ConnectionInfo info, string eventHubName, CancellationToken cancellationToken)
         {
-            var response = await SendHttpRequest(info, eventHubName, null, cancellationToken);
+            var response = await SendEventHubRequest(info, eventHubName, null, cancellationToken);
             if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
             {
                 response.EnsureSuccessStatusCode();
@@ -50,12 +50,24 @@ namespace DurableTask.Netherite
             return response.StatusCode == System.Net.HttpStatusCode.OK;
         }
 
-        static async Task<HttpResponseMessage> SendHttpRequest(ConnectionInfo info, string eventHubName, int? partitionCount, CancellationToken cancellationToken)
+        public static async Task<bool> EnsureConsumerGroupExistsAsync(ConnectionInfo info, string eventHubName, string consumerGroup, CancellationToken cancellationToken)
+        {
+            var response = await SendConsumerGroupRequest(info, eventHubName, consumerGroup, delete: false, cancellationToken);
+            if (response.StatusCode != System.Net.HttpStatusCode.Conflict)
+            {
+                response.EnsureSuccessStatusCode();
+            }
+            return response.StatusCode == System.Net.HttpStatusCode.Created;
+        }
+
+        // for documentation of these APIs, see https://learn.microsoft.com/en-us/rest/api/eventhub/event-hubs-management-rest
+
+        static async Task<HttpResponseMessage> SendEventHubRequest(ConnectionInfo info, string eventHubPath, int? partitionCount, CancellationToken cancellationToken)
         {
             // send an http request to create or delete the eventhub
             HttpClient client = new HttpClient();
             var request = new HttpRequestMessage();
-            request.RequestUri = new Uri($"https://{info.HostName}/{eventHubName}?timeout=60&api-version=2014-01");
+            request.RequestUri = new Uri($"https://{info.HostName}/{eventHubPath}?timeout=60&api-version=2014-01");
             request.Method = partitionCount.HasValue ? HttpMethod.Put : HttpMethod.Delete;
             if (partitionCount.HasValue)
             {
@@ -71,6 +83,31 @@ namespace DurableTask.Netherite
                                 Encoding.UTF8,
                                 "application/xml");
             }
+            request.Headers.Add("Host", info.HostName);
+
+            // add an authorization header to the request
+            await info.AuthorizeHttpRequestMessage(request, cancellationToken);
+
+            return await client.SendAsync(request);
+        }
+
+        static async Task<HttpResponseMessage> SendConsumerGroupRequest(ConnectionInfo info, string eventHubPath, string consumerGroupName, bool delete, CancellationToken cancellationToken)
+        {
+            // send an http request to create or delete the eventhub
+            HttpClient client = new HttpClient();
+            var request = new HttpRequestMessage();
+            request.RequestUri = new Uri($"https://{info.HostName}/{eventHubPath}/consumerGroups/{consumerGroupName}?timeout=60&api-version=2014-01");
+            request.Method = delete ? HttpMethod.Delete : HttpMethod.Put;
+            request.Content = new StringContent(@" 
+                            <entry xmlns='http://www.w3.org/2005/Atom'>  
+                              <content type='application/xml'>  
+                                <ConsumerGroupDescription xmlns:i='http://www.w3.org/2001/XMLSchema-instance' xmlns='http://schemas.microsoft.com/netservices/2010/10/servicebus/connect'>
+                                </ConsumerGroupDescription>
+                              </content>  
+                            </entry>",
+                               Encoding.UTF8,
+                               "application/xml");
+
             request.Headers.Add("Host", info.HostName);
 
             // add an authorization header to the request

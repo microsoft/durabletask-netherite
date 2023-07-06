@@ -71,6 +71,10 @@
         // set this to control the max size of the orchestration instance cache
         // "InstanceCacheSizeMB": "50",
 
+        // the consumer group to use. Two task hubs can use the same event hubs namespace
+        // if their consumer groups are different.
+        // "EventHubsConsumerGroup": "myconsumergroup",
+
         // set this to true to use the PSF support in Faster. Will soon be obsolete.
         "UsePSFQueries": "false",
 
