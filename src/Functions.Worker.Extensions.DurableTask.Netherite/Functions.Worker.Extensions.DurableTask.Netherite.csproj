@@ -26,8 +26,8 @@
   <!-- This version MUST be kept constant with DurableTask.Netherite.AzureFunctions -->
   <PropertyGroup>
     <MajorVersion>1</MajorVersion>
-    <MinorVersion>3</MinorVersion>
-    <PatchVersion>5</PatchVersion>
+    <MinorVersion>4</MinorVersion>
+    <PatchVersion>0</PatchVersion>
     <VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
       <VersionSuffix></VersionSuffix>
       <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
