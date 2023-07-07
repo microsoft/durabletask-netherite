@@ -19,12 +19,12 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly EventHubsSender<ClientEvent>[] channels;
         int roundRobin;
 
-        public EventHubsClientSender(TransportAbstraction.IHost host, byte[] taskHubGuid, Guid clientId, PartitionSender[] senders, EventHubsTraceHelper traceHelper)
+        public EventHubsClientSender(TransportAbstraction.IHost host, Guid clientId, PartitionSender[] senders, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper, NetheriteOrchestrationServiceSettings settings)
         {
             this.channels = new Netherite.EventHubsTransport.EventHubsSender<ClientEvent>[senders.Length];
             for (int i = 0; i < senders.Length; i++)
             {
-                this.channels[i] = new EventHubsSender<ClientEvent>(host, taskHubGuid, senders[i], traceHelper);
+                this.channels[i] = new EventHubsSender<ClientEvent>(host, clientId.ToByteArray(), senders[i], shutdownToken, traceHelper, settings);
             }
         }
 
@@ -40,6 +40,11 @@ namespace DurableTask.Netherite.EventHubsTransport
         {
             var channel = this.channels.FirstOrDefault(this.Idle) ?? this.NextChannel();
             channel.Submit(toSend);
+        }
+
+        public Task WaitForShutdownAsync()
+        {
+            return Task.WhenAll(this.channels.Select(sender => sender.WaitForShutdownAsync()));
         }
     }
 }

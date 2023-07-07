@@ -23,7 +23,7 @@ namespace DurableTask.Netherite
         Partition partition;
         EffectTracker effects;
         long commitPosition = 0;
-        long inputQueuePosition = 0;
+        (long,int) inputQueuePosition =(0,0);
 
         public MemoryStorage(ILogger logger) : base(nameof(MemoryStorageLayer), true, int.MaxValue, CancellationToken.None, null)
         {
@@ -52,7 +52,7 @@ namespace DurableTask.Netherite
             base.SubmitBatch(entries);
         }
 
-        public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler termination, string fingerprint)
+        public async Task<(long,int)> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler termination, string fingerprint)
         {
             await Task.Yield();
             this.partition = partition;
@@ -69,7 +69,7 @@ namespace DurableTask.Netherite
             }
 
             this.commitPosition = 1;
-            this.inputQueuePosition = 0;
+            this.inputQueuePosition = (0,0);
             return this.inputQueuePosition;
         }
 
@@ -173,8 +173,8 @@ namespace DurableTask.Netherite
 
                             if (partitionEvent.NextInputQueuePosition > 0)
                             {
-                                this.partition.Assert(partitionEvent.NextInputQueuePosition > this.inputQueuePosition, "partitionEvent.NextInputQueuePosition > this.inputQueuePosition in MemoryStorage");
-                                this.inputQueuePosition = partitionEvent.NextInputQueuePosition;
+                                this.partition.Assert(partitionEvent.NextInputQueuePositionTuple.CompareTo(this.inputQueuePosition) > 0, "partitionEvent.NextInputQueuePosition > this.inputQueuePosition in MemoryStorage");
+                                this.inputQueuePosition = partitionEvent.NextInputQueuePositionTuple;
                             }
                         }
                         catch (Exception e)
@@ -211,7 +211,7 @@ namespace DurableTask.Netherite
                 return default;
             }
 
-            public override (long, long) GetPositions()
+            public override (long, (long,int)) GetPositions()
             {
                 return (this.memoryStorage.commitPosition, this.memoryStorage.inputQueuePosition);
             }

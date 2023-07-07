@@ -17,6 +17,7 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.Linq;
     using System.Threading.Channels;
     using DurableTask.Netherite.Abstractions;
+    using System.Diagnostics;
 
     /// <summary>
     /// The EventHubs transport implementation.
@@ -31,6 +32,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly ILogger logger;
         readonly EventHubsTraceHelper traceHelper;
         readonly IStorageLayer storage;
+        readonly string shortClientId;
 
         EventProcessorHost eventProcessorHost;
         EventProcessorHost loadMonitorHost;
@@ -51,9 +53,14 @@ namespace DurableTask.Netherite.EventHubsTransport
         CloudBlockBlob partitionScript;
         ScriptedEventProcessorHost scriptedEventProcessorHost;
 
+        int shutdownTriggered;
+
         public Guid ClientId { get; private set; }
+
         public string Fingerprint => this.connections.Fingerprint;
 
+        public bool FatalExceptionObserved { get; private set; }
+    
         public EventHubsTransport(TransportAbstraction.IHost host, NetheriteOrchestrationServiceSettings settings, IStorageLayer storage, ILoggerFactory loggerFactory)
         {
             if (storage is MemoryStorageLayer)
@@ -68,6 +75,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.logger = EventHubsTraceHelper.CreateLogger(loggerFactory);
             this.traceHelper = new EventHubsTraceHelper(this.logger, settings.TransportLogLevelLimit, null, settings.StorageAccountName, settings.HubName, namespaceName);
             this.ClientId = Guid.NewGuid();
+            this.shortClientId = Client.GetShortId(this.ClientId);
         }
 
         // these are hardcoded now but we may turn them into settings
@@ -102,7 +110,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             // check that the storage format is supported, and load the relevant FASTER tuning parameters
             BlobManager.LoadAndCheckStorageFormat(this.parameters.StorageFormat, this.settings, this.host.TraceWarning);
 
-            this.connections = new EventHubsConnections(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub)
+            this.connections = new EventHubsConnections(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub, this.shutdownSource.Token)
             {
                 Host = host,
                 TraceHelper = this.traceHelper,
@@ -287,16 +295,20 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
         }
 
-        async Task ITransportLayer.StopAsync()
+        async Task ITransportLayer.StopAsync(bool fatalExceptionObserved)
         {
-            this.traceHelper.LogInformation("EventHubsTransport is shutting down");
-            this.shutdownSource.Cancel(); // immediately initiates shutdown of client and of all partitions
+            if (Interlocked.CompareExchange(ref this.shutdownTriggered, 1, 0) == 0)
+            {
+                this.traceHelper.LogInformation("EventHubsTransport is shutting down");
+                this.FatalExceptionObserved = fatalExceptionObserved;
+                this.shutdownSource.Cancel(); // immediately initiates shutdown of client and of all partitions
 
-            await Task.WhenAll(
-                 this.hasWorkers ? this.StopWorkersAsync() : Task.CompletedTask,
-                 this.StopClientsAndConnectionsAsync());
+                await Task.WhenAll(
+                     this.hasWorkers ? this.StopWorkersAsync() : Task.CompletedTask,
+                     this.StopClientsAndConnectionsAsync());
 
-            this.traceHelper.LogInformation("EventHubsTransport is shut down");
+                this.traceHelper.LogInformation("EventHubsTransport is shut down");
+            }
         }
 
         async Task StopWorkersAsync()
@@ -352,13 +364,13 @@ namespace DurableTask.Netherite.EventHubsTransport
             {
                 case ClientEvent clientEvent:
                     var clientId = clientEvent.ClientId;
-                    var clientSender = this.connections.GetClientSender(clientEvent.ClientId, this.taskhubGuid);
+                    var clientSender = this.connections.GetClientSender(clientEvent.ClientId, this.settings);
                     clientSender.Submit(clientEvent);
                     break;
 
                 case PartitionEvent partitionEvent:
                     var partitionId = partitionEvent.PartitionId;
-                    var partitionSender = this.connections.GetPartitionSender((int) partitionId, this.taskhubGuid);
+                    var partitionSender = this.connections.GetPartitionSender((int) partitionId, this.taskhubGuid, this.settings);
                     partitionSender.Submit(partitionEvent);
                     break;
 
@@ -376,15 +388,15 @@ namespace DurableTask.Netherite.EventHubsTransport
         {
             try
             {
-                this.traceHelper.LogDebug("Client.{clientId}.ch{index} establishing connection", Client.GetShortId(this.ClientId), index);
+                this.traceHelper.LogDebug("Client.{clientId}.ch{index} establishing connection", this.shortClientId, index);
                 // receive a dummy packet to establish connection
                 // (the packet, if any, cannot be for this receiver because it is fresh)
                 await receiver.ReceiveAsync(1, TimeSpan.FromMilliseconds(1));
-                this.traceHelper.LogDebug("Client.{clientId}.ch{index} connection established", Client.GetShortId(this.ClientId), index);
+                this.traceHelper.LogDebug("Client.{clientId}.ch{index} connection established", this.shortClientId, index);
             }
             catch (Exception exception)
             {
-                this.traceHelper.LogError("Client.{clientId}.ch{index} could not connect: {exception}", Client.GetShortId(this.ClientId), index, exception);
+                this.traceHelper.LogError("Client.{clientId}.ch{index} could not connect: {exception}", this.shortClientId, index, exception);
                 throw;
             }
         }
@@ -393,21 +405,23 @@ namespace DurableTask.Netherite.EventHubsTransport
         {
             try
             {
-                byte[] taskHubGuid = this.parameters.TaskhubGuid.ToByteArray();
+                byte[] clientGuid = this.ClientId.ToByteArray();
                 TimeSpan longPollingInterval = TimeSpan.FromMinutes(1);
                 var backoffDelay = TimeSpan.Zero;
+                string context = $"Client{this.shortClientId}.ch{index}";
+                var blobBatchReceiver = new BlobBatchReceiver<ClientEvent>(context, this.traceHelper, this.settings, keepUntilConfirmed: false);
 
                 await this.clientConnectionsEstablished[index];
 
                 while (!this.shutdownSource.IsCancellationRequested)
                 {
-                    IEnumerable<EventData> eventData;
+                    IEnumerable<EventData> packets;
 
                     try
                     {
-                        this.traceHelper.LogTrace("Client{clientId}.ch{index} waiting for new packets", Client.GetShortId(this.ClientId), index);
+                        this.traceHelper.LogTrace("Client{clientId}.ch{index} waiting for new packets", this.shortClientId, index);
 
-                        eventData = await receiver.ReceiveAsync(1000, longPollingInterval);
+                        packets = await receiver.ReceiveAsync(1000, longPollingInterval);
 
                         backoffDelay = TimeSpan.Zero;
                     }
@@ -419,40 +433,43 @@ namespace DurableTask.Netherite.EventHubsTransport
                         }
 
                         // if we lose access to storage temporarily, we back off, but don't quit
-                        this.traceHelper.LogError("Client.{clientId}.ch{index} backing off for {backoffDelay} after error in receive loop: {exception}", Client.GetShortId(this.ClientId), index, backoffDelay, exception);
+                        this.traceHelper.LogError("Client.{clientId}.ch{index} backing off for {backoffDelay} after error in receive loop: {exception}", this.shortClientId, index, backoffDelay, exception);
 
                         await Task.Delay(backoffDelay);
 
                         continue; // retry
                     }
 
-                    if (eventData != null)
+                    if (packets != null)
                     {
-                        foreach (var ed in eventData)
-                        {
-                            this.shutdownSource.Token.ThrowIfCancellationRequested();
-                            ClientEvent clientEvent = null;
+                        int totalEvents = 0;
+                        var stopwatch = Stopwatch.StartNew();
 
-                            try
+                        await foreach ((EventData eventData, ClientEvent[] events, long seqNo) in blobBatchReceiver.ReceiveEventsAsync(clientGuid, packets, this.shutdownSource.Token))
+                        {
+                            for (int i = 0; i < events.Length; i++)
                             {
-                                this.traceHelper.LogDebug("Client.{clientId}.ch{index} received packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
-                                Packet.Deserialize(ed.Body, out clientEvent, taskHubGuid);
+                                var clientEvent = events[i];
+
                                 clientEvent.ReceiveChannel = index;
-                                if (clientEvent != null && clientEvent.ClientId == this.ClientId)
+
+                                if (clientEvent.ClientId == this.ClientId)
                                 {
-                                    this.traceHelper.LogTrace("Client.{clientId}.ch{index} receiving event {evt} id={eventId}]", Client.GetShortId(this.ClientId), index, clientEvent, clientEvent.EventIdString);
+                                    this.traceHelper.LogTrace("Client.{clientId}.ch{index} receiving packet #{seqno}.{subSeqNo} {event} id={eventId}", this.shortClientId, index, seqNo, i, clientEvent, clientEvent.EventIdString);
                                     await channelWriter.WriteAsync(clientEvent, this.shutdownSource.Token);
+                                    totalEvents++;
+                                }
+                                else
+                                {
+                                    this.traceHelper.LogError("Client.{clientId}.ch{index} received packet #{seqno}.{subSeqNo} for client {otherClient}", this.shortClientId, index, seqNo, i, Client.GetShortId(clientEvent.ClientId));
                                 }
                             }
-                            catch (Exception)
-                            {
-                                this.traceHelper.LogError("Client.{clientId}.ch{index} could not deserialize packet #{seqno} ({size} bytes)", Client.GetShortId(this.ClientId), index, ed.SystemProperties.SequenceNumber, ed.Body.Count);
-                            }
                         }
+                        this.traceHelper.LogDebug("Client{clientId}.ch{index} received {totalEvents} events in {latencyMs:F2}ms", this.shortClientId, index, totalEvents, stopwatch.Elapsed.TotalMilliseconds);
                     }
                     else
                     {
-                        this.traceHelper.LogTrace("Client{clientId}.ch{index} no new packets for last {longPollingInterval}", Client.GetShortId(this.ClientId), index, longPollingInterval);
+                        this.traceHelper.LogTrace("Client{clientId}.ch{index} no new packets for last {longPollingInterval}", this.shortClientId, index, longPollingInterval);
                     }
                 }
             }
@@ -462,11 +479,11 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
             catch (Exception exception)
             {
-                this.traceHelper.LogError("Client.{clientId}.ch{index} event processing exception: {exception}", Client.GetShortId(this.ClientId), index, exception);
+                this.traceHelper.LogError("Client.{clientId}.ch{index} event processing exception: {exception}", this.shortClientId, index, exception);
             }
             finally
             {
-                this.traceHelper.LogInformation("Client.{clientId}.ch{index} event processing terminated", Client.GetShortId(this.ClientId), index);
+                this.traceHelper.LogInformation("Client.{clientId}.ch{index} exits receive loop", this.shortClientId, index);
             }
         }
 
@@ -486,11 +503,11 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
             catch(Exception exception)
             {
-                this.traceHelper.LogError("Client.{clientId} event processing exception: {exception}", Client.GetShortId(this.ClientId), exception);
+                this.traceHelper.LogError("Client.{clientId} event processing exception: {exception}", this.shortClientId, exception);
             }
             finally
             {
-                this.traceHelper.LogInformation("Client.{clientId} event processing terminated", Client.GetShortId(this.ClientId));
+                this.traceHelper.LogInformation("Client.{clientId} exits process loop", this.shortClientId);
             }
         }
     }

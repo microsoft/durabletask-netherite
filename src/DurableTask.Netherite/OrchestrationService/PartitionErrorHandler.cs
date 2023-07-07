@@ -4,8 +4,10 @@
 namespace DurableTask.Netherite
 {
     using System;
+    using System.Net;
     using System.Threading;
     using System.Threading.Tasks;
+    using DurableTask.Core.Common;
     using Microsoft.Extensions.Logging;
 
     // For indicating and initiating termination, and for tracing errors and warnings relating to a partition.
@@ -19,6 +21,7 @@ namespace DurableTask.Netherite
         readonly string account;
         readonly string taskHub;
         readonly TaskCompletionSource<object> shutdownComplete;
+        readonly TransportAbstraction.IHost host;
 
         public event Action OnShutdown;
 
@@ -46,7 +49,7 @@ namespace DurableTask.Netherite
         const int TerminatedWithError = 1;
         const int TerminatedNormally = 2;
 
-        public PartitionErrorHandler(int partitionId, ILogger logger, LogLevel logLevelLimit, string storageAccountName, string taskHubName)
+        public PartitionErrorHandler(int partitionId, ILogger logger, LogLevel logLevelLimit, string storageAccountName, string taskHubName, TransportAbstraction.IHost host)
         {
             this.cts = new CancellationTokenSource();
             this.partitionId = partitionId;
@@ -55,20 +58,31 @@ namespace DurableTask.Netherite
             this.account = storageAccountName;
             this.taskHub = taskHubName;
             this.shutdownComplete = new TaskCompletionSource<object>();
+            this.host = host;
         }
      
         public void HandleError(string context, string message, Exception exception, bool terminatePartition, bool isWarning)
         {
+            bool isFatal = exception != null && Utils.IsFatal(exception);
+
+            isWarning = isWarning && !isFatal;
+            terminatePartition = terminatePartition || isFatal;
+
             this.TraceError(isWarning, context, message, exception, terminatePartition);
 
-            // terminate this partition in response to the error
-
+            // if necessary, terminate this partition in response to the error
             if (terminatePartition && this.terminationStatus == NotTerminated)
             {
                 if (Interlocked.CompareExchange(ref this.terminationStatus, TerminatedWithError, NotTerminated) == NotTerminated)
                 {
                     this.Terminate();
                 }
+            }
+
+            // if fatal, notify host, because it may start a quick shutdown path in response
+            if (isFatal)
+            {
+                this.host.OnFatalExceptionObserved(exception); 
             }
         }
 

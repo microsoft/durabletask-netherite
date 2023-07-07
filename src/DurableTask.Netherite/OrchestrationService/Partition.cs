@@ -88,7 +88,7 @@ namespace DurableTask.Netherite
             this.LastTransition = this.CurrentTimeMs;
         }
 
-        public async Task<long> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, TaskhubParameters parameters, string inputQueueFingerprint)
+        public async Task<(long, int)> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, TaskhubParameters parameters, string inputQueueFingerprint)
         {
             EventTraceContext.Clear();
 
@@ -129,7 +129,7 @@ namespace DurableTask.Netherite
                 // start processing the worker queues
                 this.State.StartProcessing();
 
-                this.TraceHelper.TracePartitionProgress("Started", ref this.LastTransition, this.CurrentTimeMs, $"nextInputQueuePosition={inputQueuePosition}");
+                this.TraceHelper.TracePartitionProgress("Started", ref this.LastTransition, this.CurrentTimeMs, $"nextInputQueuePosition={inputQueuePosition.Item1}.{inputQueuePosition.Item2}");
                 return inputQueuePosition;
             }
             catch (OperationCanceledException) when (errorHandler.IsTerminated)

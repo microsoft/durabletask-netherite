@@ -49,7 +49,7 @@ namespace DurableTask.Netherite
 
         public abstract ValueTask RemoveFromStore(IEnumerable<TrackedObjectKey> keys);
         
-        public abstract (long, long) GetPositions();
+        public abstract (long, (long,int)) GetPositions();
 
         public abstract Partition Partition { get; }
 
@@ -187,7 +187,7 @@ namespace DurableTask.Netherite
 
         public void ProcessReadResult(PartitionReadEvent readEvent, TrackedObjectKey key, TrackedObject target)
         {
-            (long commitLogPosition, long inputQueuePosition) = this.GetPositions();
+            (long commitLogPosition, (long,int) inputQueuePosition) = this.GetPositions();
             this.Assert(!this.IsReplaying, "read events are not part of the replay");
             double startedTimestamp = this.CurrentTimeMs;
 
@@ -254,7 +254,7 @@ namespace DurableTask.Netherite
         
         public async Task ProcessQueryResultAsync(PartitionQueryEvent queryEvent, IAsyncEnumerable<(string, OrchestrationState)> instances, DateTime attempt)
         {
-            (long commitLogPosition, long inputQueuePosition) = this.GetPositions();
+            (long commitLogPosition, (long,int) inputQueuePosition) = this.GetPositions();
             this.Assert(!this.IsReplaying, "query events are never part of the replay");
             double startedTimestamp = this.CurrentTimeMs;
 

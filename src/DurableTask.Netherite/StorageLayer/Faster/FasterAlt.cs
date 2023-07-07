@@ -103,7 +103,7 @@ namespace DurableTask.Netherite.Faster
             return Task.FromResult(!logIsEmpty);
         }
 
-        public override Task<(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
+        public override Task<(long commitLogPosition, (long,int) inputQueuePosition, string inputQueueFingerprint)> RecoverAsync()
         {
             foreach (var guid in this.ReadCheckpointIntentions())
             {
@@ -157,7 +157,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override bool TakeFullCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, out Guid checkpointGuid)
+        public override bool TakeFullCheckpoint(long commitLogPosition, (long,int) inputQueuePosition, string inputQueueFingerprint, out Guid checkpointGuid)
         {
             checkpointGuid = Guid.NewGuid();
             this.StartStoreCheckpoint(commitLogPosition, inputQueuePosition, checkpointGuid);
@@ -181,14 +181,14 @@ namespace DurableTask.Netherite.Faster
             return default;
         }
 
-        public override Guid? StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, string inputQueueFingerprint, long? shiftBeginAddress)
+        public override Guid? StartStoreCheckpoint(long commitLogPosition, (long,int) inputQueuePosition, string inputQueueFingerprint, long? shiftBeginAddress)
         {
             var guid = Guid.NewGuid();
             this.StartStoreCheckpoint(commitLogPosition, inputQueuePosition, guid);
             return guid;
         }
 
-        internal void StartStoreCheckpoint(long commitLogPosition, long inputQueuePosition, Guid guid)
+        internal void StartStoreCheckpoint(long commitLogPosition, (long,int) inputQueuePosition, Guid guid)
         {
             // update the positions
             var dedupState = this.cache[TrackedObjectKey.Dedup];
@@ -472,7 +472,7 @@ namespace DurableTask.Netherite.Faster
                         await Task.Delay(nextRetryIn);
                         continue;
                     }
-                    catch (Exception exception) when (!Utils.IsFatal(exception))
+                    catch (Exception exception)
                     {
                         this.blobManager.PartitionErrorHandler.HandleError(nameof(LoadAsync), "Could not read object from storage", exception, true, this.blobManager.PartitionErrorHandler.IsTerminated);
                         throw;
@@ -562,7 +562,7 @@ namespace DurableTask.Netherite.Faster
                         await Task.Delay(nextRetryIn);
                         continue;
                     }
-                    catch (Exception exception) when (!Utils.IsFatal(exception))
+                    catch (Exception exception)
                     {
                         this.blobManager?.HandleStorageError(nameof(StoreAsync), "could not write object to storage", blob.Name, exception, true, this.blobManager.PartitionErrorHandler.IsTerminated);
                         throw;
@@ -592,7 +592,7 @@ namespace DurableTask.Netherite.Faster
             {
                 throw new OperationCanceledException("Partition was terminated.", this.terminationToken);
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.blobManager.PartitionErrorHandler.HandleError(nameof(WriteCheckpointIntention), "Failed to write checkpoint intention to storage", e, true, this.blobManager.PartitionErrorHandler.IsTerminated);
                 throw;
@@ -616,7 +616,7 @@ namespace DurableTask.Netherite.Faster
             {
                 throw new OperationCanceledException("Partition was terminated.", this.terminationToken);
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.blobManager.PartitionErrorHandler.HandleError(nameof(RemoveCheckpointIntention), "Failed to remove checkpoint intention from storage", e, true, false);
                 throw;
@@ -648,7 +648,7 @@ namespace DurableTask.Netherite.Faster
             {
                 throw new OperationCanceledException("Partition was terminated.", this.terminationToken);
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.blobManager.PartitionErrorHandler.HandleError(nameof(ReadCheckpointIntentions), "Failed to read checkpoint intentions from storage", e, true, false);
                 throw;

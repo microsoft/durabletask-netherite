@@ -21,6 +21,15 @@ namespace DurableTask.Netherite
         [DataMember]
         public long NextInputQueuePosition { get; set; }
 
+        /// <summary>
+        /// For events coming from batches in the input queue, the batch position.
+        /// </summary>
+        [DataMember(EmitDefaultValue = false)]
+        public int NextInputQueueBatchPosition { get; set; }
+
+        [IgnoreDataMember]
+        public (long,int) NextInputQueuePositionTuple => (this.NextInputQueuePosition, this.NextInputQueueBatchPosition);
+
         [IgnoreDataMember]
         public double ReceivedTimestamp { get; set; }
 

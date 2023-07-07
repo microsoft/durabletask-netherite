@@ -72,7 +72,7 @@ namespace DurableTask.Netherite.Faster
             await what;
         }
 
-        public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint)
+        public async Task<(long,int)> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint)
         {
             this.partition = partition;
             this.terminationToken = errorHandler.Token;

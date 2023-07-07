@@ -80,8 +80,6 @@ namespace DurableTask.Netherite
             // cancel the token, if not already cancelled.
             this.cts.Cancel();
 
-            await this.ResponseTimeouts.StopAsync();
-
             // We now enter the final stage of client shutdown, where we forcefully cancel
             // all requests that have not completed yet. 
             this.allRemainingRequestsAreNowBeingCancelled = true;
@@ -97,6 +95,8 @@ namespace DurableTask.Netherite
                     break;
                 }
             }
+
+            await this.ResponseTimeouts.StopAsync();
 
             this.cts.Dispose();
 
