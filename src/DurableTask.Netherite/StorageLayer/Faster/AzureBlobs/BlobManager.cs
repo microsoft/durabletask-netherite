@@ -640,7 +640,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     continue;
                 }
-                catch (Exception e) when (!Utils.IsFatal(e))
+                catch (Exception e)
                 {
                     this.PartitionErrorHandler.HandleError(nameof(AcquireOwnership), "Could not acquire partition lease", e, true, false);
                     throw;
@@ -720,7 +720,7 @@ namespace DurableTask.Netherite.Faster
                 // We lost the lease to someone else. Terminate ownership immediately.
                 this.PartitionErrorHandler.HandleError(nameof(MaintenanceLoopAsync), "Lost partition lease", ex, true, true);
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.PartitionErrorHandler.HandleError(nameof(MaintenanceLoopAsync), "Could not maintain partition lease", e, true, false);
             }

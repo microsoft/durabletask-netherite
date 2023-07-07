@@ -472,7 +472,7 @@ namespace DurableTask.Netherite
                     this.serviceShutdownSource.Dispose();
                     this.serviceShutdownSource = null;
 
-                    await this.transport.StopAsync();
+                    await this.transport.StopAsync(fatalExceptionObserved: false);
 
                     this.ActivityWorkItemQueue.Dispose();
                     this.OrchestrationWorkItemQueue.Dispose();
@@ -551,12 +551,31 @@ namespace DurableTask.Netherite
 
         IPartitionErrorHandler TransportAbstraction.IHost.CreateErrorHandler(uint partitionId)
         {
-            return new PartitionErrorHandler((int) partitionId, this.TraceHelper.Logger, this.Settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName);
+            return new PartitionErrorHandler((int) partitionId, this.TraceHelper.Logger, this.Settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName, this);
         }
 
         void TransportAbstraction.IHost.TraceWarning(string message)
         {
             this.TraceHelper.TraceWarning(message);
+        }
+
+        void TransportAbstraction.IHost.OnFatalExceptionObserved(Exception e)
+        {
+            if (this.Settings.EmergencyShutdownOnFatalExceptions)
+            {
+                Task.Run(async() =>
+                {
+                    this.TraceHelper.TraceError($"OrchestrationService is initiating an emergency shutdown due to a fatal {e.GetType().FullName}", e);
+
+                    // try to stop the transport as quickly as possible, and don't wait longer than 30 seconds
+                    await Task.WhenAny(this.transport.StopAsync(fatalExceptionObserved: true), Task.Delay(TimeSpan.FromSeconds(30)));
+
+                    this.TraceHelper.TraceWarning($"OrchestrationService is killing process in 10 seconds");
+                    await Task.Delay(TimeSpan.FromSeconds(10));
+
+                    System.Environment.Exit(333);
+                });
+            }
         }
 
         /******************************/
