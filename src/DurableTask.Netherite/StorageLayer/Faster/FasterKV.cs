@@ -456,11 +456,10 @@ namespace DurableTask.Netherite.Faster
             var stats = (StatsState) this.singletons[(int)TrackedObjectKey.Stats.ObjectType];
             long actualLogSize = this.fht.Log.TailAddress - this.fht.Log.BeginAddress;
             long minimalLogSize = this.MinimalLogSize;
-            long compactionAreaSize = (long)(0.5 * (this.fht.Log.SafeReadOnlyAddress - this.fht.Log.BeginAddress));
-            long mutableSectionSize = (this.fht.Log.TailAddress - this.fht.Log.SafeReadOnlyAddress);
+            long compactionAreaSize = Math.Min(50000, this.fht.Log.SafeReadOnlyAddress - this.fht.Log.BeginAddress);
 
             if (actualLogSize > 2 * minimalLogSize            // there must be significant bloat
-               && mutableSectionSize < compactionAreaSize)   // the potential size reduction must outweigh the cost of a foldover
+                && compactionAreaSize >= 5000)                // and enough compaction area to justify the overhead
             {
                 return this.fht.Log.BeginAddress + compactionAreaSize;
             }
