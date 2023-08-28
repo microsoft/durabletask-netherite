@@ -321,7 +321,7 @@ namespace DurableTask.Netherite.Faster
                 }
             }
 
-            var checkpointDueLog = $"CheckpointDue Debug: trigger={trigger}, " +
+            /*var checkpointDueLog = $"CheckpointDue Debug: trigger={trigger}, " +
                 $"lastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
                 $"MaxNumberBytesBetweenCheckpoints={this.partition.Settings.MaxNumberBytesBetweenCheckpoints}," +
                 $"CommitLogPosition={this.CommitLogPosition}, " +
@@ -329,7 +329,7 @@ namespace DurableTask.Netherite.Faster
                 $"MaxNumberEventsBetweenCheckpoints={this.partition.Settings.MaxNumberEventsBetweenCheckpoints}," +
                 $"inputQueuePositionLag={inputQueuePositionLag}," +
                 $"timeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}";
-            this.traceHelper.FasterProgress(checkpointDueLog);
+            this.traceHelper.FasterProgress(checkpointDueLog);*/
              
             return trigger != CheckpointTrigger.None;
         }
