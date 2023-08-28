@@ -435,9 +435,11 @@ namespace DurableTask.Netherite.Faster
                     this.traceHelper.FasterProgress("SM Debug: state 1 - pendingStoreCheckpoint != null");
                     if (this.pendingStoreCheckpoint.IsCompleted == true)
                     {
-                        this.traceHelper.FasterProgress("SM Debug: state 1.1 - this.pendingStoreCheckpoint.IsCompleted");
+                        this.traceHelper.FasterProgress("SM Debug: state 1.1.1 - this.pendingStoreCheckpoint.IsCompleted, awaiting pendingStoreCheckpoint");
                         (this.lastCheckpointedCommitLogPosition, this.lastCheckpointedInputQueuePosition)
                            = await this.pendingStoreCheckpoint; // observe exceptions here
+
+                        this.traceHelper.FasterProgress("SM Debug: state 1.1.1 - this.pendingStoreCheckpoint.IsCompleted, returned from pendingStoreCheckpoint");
 
                         // force collection of memory used during checkpointing
                         GC.Collect();
