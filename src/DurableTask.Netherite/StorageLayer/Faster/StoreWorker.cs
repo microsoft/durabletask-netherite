@@ -320,6 +320,16 @@ namespace DurableTask.Netherite.Faster
                     trigger = CheckpointTrigger.Idle;
                 }
             }
+
+            var checkpointDueLog = $"CheckpointDue Debug: trigger={trigger}, " +
+                $"lastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
+                $"MaxNumberBytesBetweenCheckpoints={this.partition.Settings.MaxNumberBytesBetweenCheckpoints}," +
+                $"CommitLogPosition={this.CommitLogPosition}, " +
+                $"numberEventsSinceLastCheckpoint={this.numberEventsSinceLastCheckpoint}," +
+                $"MaxNumberEventsBetweenCheckpoints={this.partition.Settings.MaxNumberEventsBetweenCheckpoints}," +
+                $"inputQueuePositionLag={inputQueuePositionLag}," +
+                $"timeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}";
+            this.traceHelper.FasterProgress(checkpointDueLog);
              
             return trigger != CheckpointTrigger.None;
         }
@@ -422,8 +432,10 @@ namespace DurableTask.Netherite.Faster
                 // handle progression of checkpointing state machine:  none -> pendingCompaction -> pendingIndexCheckpoint ->  pendingStoreCheckpoint -> none)
                 if (this.pendingStoreCheckpoint != null)
                 {
+                    this.traceHelper.FasterProgress("SM Debug: state 1 - pendingStoreCheckpoint != null");
                     if (this.pendingStoreCheckpoint.IsCompleted == true)
                     {
+                        this.traceHelper.FasterProgress("SM Debug: state 1.1 - this.pendingStoreCheckpoint.IsCompleted");
                         (this.lastCheckpointedCommitLogPosition, this.lastCheckpointedInputQueuePosition)
                            = await this.pendingStoreCheckpoint; // observe exceptions here
 
@@ -439,14 +451,17 @@ namespace DurableTask.Netherite.Faster
                 }
                 else if (this.pendingIndexCheckpoint != null)
                 {
+                    this.traceHelper.FasterProgress("SM Debug: state 2 - this.pendingIndexCheckpoint != null");
                     if (this.pendingIndexCheckpoint.IsCompleted == true)
                     {
+                        this.traceHelper.FasterProgress("SM Debug: state 2.1 - this.pendingIndexCheckpoint.IsCompleted");
                         await this.pendingIndexCheckpoint; // observe exceptions here
 
                         // the store checkpoint is next
                         var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, this.InputQueueFingerprint, null);
                         if (token.HasValue)
                         {
+                            this.traceHelper.FasterProgress("SM Debug: state 2.2 - token.hasValue");
                             this.pendingIndexCheckpoint = null;
                             this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value, true);
                             this.numberEventsSinceLastCheckpoint = 0;
@@ -455,8 +470,10 @@ namespace DurableTask.Netherite.Faster
                 }
                 else if (this.pendingCompaction != null)
                 {
+                    this.traceHelper.FasterProgress("SM Debug: state 3 - this.pendingCompaction != null");
                     if (this.pendingCompaction.IsCompleted == true)
                     {
+                        this.traceHelper.FasterProgress("SM Debug: state 3.1 - this.pendingCompaction.IsCompleted");
                         await this.pendingCompaction; // observe exceptions here
 
                         // force collection of memory used during compaction
@@ -473,6 +490,7 @@ namespace DurableTask.Netherite.Faster
                 }
                 else if (this.CheckpointDue(out var trigger, out long? compactUntil))
                 {
+                    this.traceHelper.FasterProgress("SM Debug: state 4 - checkpointDue");
                     this.pendingCheckpointTrigger = trigger;
                     this.pendingCompaction = this.RunCompactionAsync(compactUntil);
                 }
