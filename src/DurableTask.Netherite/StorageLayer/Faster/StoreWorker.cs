@@ -4,8 +4,6 @@
 namespace DurableTask.Netherite.Faster
 {
     using DurableTask.Netherite.Scaling;
-    using Microsoft.Azure.Amqp.Framing;
-    using Microsoft.IdentityModel.Tokens;
     using System;
     using System.Collections.Generic;
     using System.Threading;
