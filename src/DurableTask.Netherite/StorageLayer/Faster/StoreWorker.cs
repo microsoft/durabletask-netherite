@@ -21,7 +21,7 @@ namespace DurableTask.Netherite.Faster
         readonly EffectTracker effectTracker;
 
         bool isShuttingDown;
-        DateTime? startFasterCheckpointRefusal;
+        DateTime? timeOfFirstRefusedCheckpoint;
 
         public string InputQueueFingerprint { get; private set; }
         public (long,int) InputQueuePosition { get; private set; }
@@ -282,19 +282,19 @@ namespace DurableTask.Netherite.Faster
             Idle
         }
 
-        void ReportCheckpointingStats()
+        void LogCheckpointStats()
         {
             long inputQueuePositionLag = this.getInputQueuePositionLag();
 
             this.CheckpointDue(out CheckpointTrigger trigger, out long? compactUntil);
-            var checkpointDueLog = $"CheckpointDue statistics: current trigger={trigger}, " +
-                $"lastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
+            var checkpointDueLog = $"Checkpoint statistics: current checkpoint trigger={trigger}, " +
+                $"LastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
                 $"MaxNumberBytesBetweenCheckpoints={this.partition.Settings.MaxNumberBytesBetweenCheckpoints}," +
                 $"CommitLogPosition={this.CommitLogPosition}, " +
-                $"numberEventsSinceLastCheckpoint={this.numberEventsSinceLastCheckpoint}," +
+                $"NumberEventsSinceLastCheckpoint={this.numberEventsSinceLastCheckpoint}," +
                 $"MaxNumberEventsBetweenCheckpoints={this.partition.Settings.MaxNumberEventsBetweenCheckpoints}," +
-                $"inputQueuePositionLag={inputQueuePositionLag}," +
-                $"timeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}";
+                $"InputQueuePositionLag={inputQueuePositionLag}," +
+                $"TimeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}";
 
             this.traceHelper.FasterProgress(checkpointDueLog);
         }
@@ -377,19 +377,19 @@ namespace DurableTask.Netherite.Faster
             var checkpointStarted = checkpointRoutine.Invoke();
             if (checkpointStarted)
             {
-                this.startFasterCheckpointRefusal = null; 
+                this.timeOfFirstRefusedCheckpoint = null; 
             }
             else
             {
                 // track start of FASTER refusal to start checkpoint
                 var currentTime = DateTime.UtcNow;
-                this.startFasterCheckpointRefusal ??= currentTime;
+                this.timeOfFirstRefusedCheckpoint ??= currentTime;
 
                 // if the refusal to checkpoint started over a minute ago, terminate partition
-                TimeSpan durationFasterRefusal = currentTime - this.startFasterCheckpointRefusal.Value;
-                if (durationFasterRefusal > TimeSpan.FromMinutes(1))
+                TimeSpan duration = currentTime - this.timeOfFirstRefusedCheckpoint.Value;
+                if (duration > TimeSpan.FromMinutes(1))
                 {
-                    messageOnError += $" FASTER first refused to checkpoint at '{this.startFasterCheckpointRefusal}'. Duration of refusal = {durationFasterRefusal}";
+                    messageOnError += $" FASTER first refused to checkpoint at '{this.timeOfFirstRefusedCheckpoint}'. Duration of refusal = {duration}";
                     Exception err = new Exception(messageOnError);
                     this.partition.ErrorHandler.HandleError(nameof(StartCheckpointOrFailOnTimeout), messageOnError, err, terminatePartition: true, reportAsWarning: false);
                 }
@@ -569,7 +569,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     this.lastPublished = DateTime.UtcNow;
                     await this.PublishLoadAndPositions();
-                    this.ReportCheckpointingStats();
+                    this.LogCheckpointStats();
                 }
 
                 if (this.partition.NumberPartitions() > 1 && this.partition.Settings.ActivityScheduler == ActivitySchedulerOptions.Locavore)
