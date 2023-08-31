@@ -58,6 +58,16 @@ configuration:
       - closeIssue
     eventResponderTasks:
     - if:
+          - payloadType: Issues
+          - and:
+              - isOpen
+              - not:
+                  and:
+                    - isLabeled
+        then:
+          - addLabel:
+              label: "Needs: Triage :mag:"
+    - if:
       - payloadType: Issue_Comment
       - isAction:
           action: Created
