@@ -64,9 +64,9 @@ configuration:
               - not:
                   and:
                     - isLabeled
-        then:
-          - addLabel:
-              label: "Needs: Triage :mag:"
+      then:
+        - addLabel:
+            label: "Needs: Triage :mag:"
     - if:
       - payloadType: Issue_Comment
       - isAction:
