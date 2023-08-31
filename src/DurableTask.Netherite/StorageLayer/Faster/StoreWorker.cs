@@ -4,6 +4,8 @@
 namespace DurableTask.Netherite.Faster
 {
     using DurableTask.Netherite.Scaling;
+    using Microsoft.Azure.Amqp.Framing;
+    using Microsoft.IdentityModel.Tokens;
     using System;
     using System.Collections.Generic;
     using System.Threading;
@@ -21,6 +23,7 @@ namespace DurableTask.Netherite.Faster
         readonly EffectTracker effectTracker;
 
         bool isShuttingDown;
+        DateTime? startFasterCheckpointRefusal;
 
         public string InputQueueFingerprint { get; private set; }
         public (long,int) InputQueuePosition { get; private set; }
@@ -281,6 +284,28 @@ namespace DurableTask.Netherite.Faster
             Idle
         }
 
+        void ReportCheckpointingStats()
+        {
+            long inputQueuePositionLag = this.getInputQueuePositionLag();
+
+            this.CheckpointDue(out CheckpointTrigger trigger, out long? compactUntil);
+            var checkpointDueLog = $"CheckpointDue statistics: current trigger={trigger}, " +
+                $"lastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
+                $"MaxNumberBytesBetweenCheckpoints={this.partition.Settings.MaxNumberBytesBetweenCheckpoints}," +
+                $"CommitLogPosition={this.CommitLogPosition}, " +
+                $"numberEventsSinceLastCheckpoint={this.numberEventsSinceLastCheckpoint}," +
+                $"MaxNumberEventsBetweenCheckpoints={this.partition.Settings.MaxNumberEventsBetweenCheckpoints}," +
+                $"inputQueuePositionLag={inputQueuePositionLag}," +
+                $"timeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}";
+
+            this.traceHelper.FasterProgress(checkpointDueLog);
+        }
+
+        long getInputQueuePositionLag()
+        {
+            return this.InputQueuePosition.Item1 - Math.Max(this.lastCheckpointedInputQueuePosition.Item1, this.LogWorker.LastCommittedInputQueuePosition);
+        }
+
         bool CheckpointDue(out CheckpointTrigger trigger, out long? compactUntil)
         {
             // in a test setting, let the test decide when to checkpoint or compact
@@ -292,8 +317,7 @@ namespace DurableTask.Netherite.Faster
             trigger = CheckpointTrigger.None;
             compactUntil = null;
 
-            long inputQueuePositionLag =
-                this.InputQueuePosition.Item1 - Math.Max(this.lastCheckpointedInputQueuePosition.Item1, this.LogWorker.LastCommittedInputQueuePosition);
+            long inputQueuePositionLag = this.getInputQueuePositionLag();
 
             if (this.lastCheckpointedCommitLogPosition + this.partition.Settings.MaxNumberBytesBetweenCheckpoints <= this.CommitLogPosition)
             {
@@ -320,16 +344,6 @@ namespace DurableTask.Netherite.Faster
                     trigger = CheckpointTrigger.Idle;
                 }
             }
-
-            /*var checkpointDueLog = $"CheckpointDue Debug: trigger={trigger}, " +
-                $"lastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
-                $"MaxNumberBytesBetweenCheckpoints={this.partition.Settings.MaxNumberBytesBetweenCheckpoints}," +
-                $"CommitLogPosition={this.CommitLogPosition}, " +
-                $"numberEventsSinceLastCheckpoint={this.numberEventsSinceLastCheckpoint}," +
-                $"MaxNumberEventsBetweenCheckpoints={this.partition.Settings.MaxNumberEventsBetweenCheckpoints}," +
-                $"inputQueuePositionLag={inputQueuePositionLag}," +
-                $"timeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}";
-            this.traceHelper.FasterProgress(checkpointDueLog);*/
              
             return trigger != CheckpointTrigger.None;
         }
@@ -359,7 +373,126 @@ namespace DurableTask.Netherite.Faster
             var actual = (((earliest - offset - 1) / period) + 1) * period + offset;
             this.timeOfNextIdleCheckpoint = new DateTime(actual, DateTimeKind.Utc);
         }
-        
+
+        void StartCheckpointOrFailOnTimeout(Func<bool> checkpointRoutine, string messageOnError)
+        {
+            var checkpointStarted = checkpointRoutine.Invoke();
+            if (checkpointStarted)
+            {
+                this.startFasterCheckpointRefusal = null; 
+            }
+            else
+            {
+                // track start of FASTER refusal to start checkpoint
+                var currentTime = DateTime.UtcNow;
+                this.startFasterCheckpointRefusal ??= currentTime;
+
+                // if the refusal to checkpoint started over a minute ago, terminate partition
+                TimeSpan durationFasterRefusal = currentTime - this.startFasterCheckpointRefusal.Value;
+                if (durationFasterRefusal > TimeSpan.FromMinutes(1))
+                {
+                    messageOnError += $" FASTER first refused to checkpoint at '{this.startFasterCheckpointRefusal}'. Duration of refusal = {durationFasterRefusal}";
+                    Exception err = new Exception(messageOnError);
+                    this.partition.ErrorHandler.HandleError(nameof(StartCheckpointOrFailOnTimeout), messageOnError, err, terminatePartition: true, reportAsWarning: false);
+                }
+            }
+        }
+
+        async Task RunCheckpointingStateMachine()
+        {
+            // handle progression of checkpointing state machine:  none -> pendingCompaction -> pendingIndexCheckpoint ->  pendingStoreCheckpoint -> none)
+            if (this.pendingStoreCheckpoint != null)
+            {
+                if (this.pendingStoreCheckpoint.IsCompleted == true)
+                {
+                    this.traceHelper.FasterProgress("Checkpointing state machine: store checkpoint no longer pending");
+                    (this.lastCheckpointedCommitLogPosition, this.lastCheckpointedInputQueuePosition)
+                       = await this.pendingStoreCheckpoint; // observe exceptions here
+
+                    // force collection of memory used during checkpointing
+                    GC.Collect();
+
+                    this.traceHelper.FasterProgress("Checkpointing state machine: resetting to initial state");
+                    // we have reached the end of the state machine transitions
+                    this.pendingStoreCheckpoint = null;
+                    this.pendingCheckpointTrigger = CheckpointTrigger.None;
+                    this.ScheduleNextIdleCheckpointTime();
+                    this.partition.Settings.TestHooks?.CheckpointInjector?.SequenceComplete((this.store as FasterKV).Log);
+                }
+                else
+                {
+                    this.traceHelper.FasterProgress("Checkpointing state machine: store checkpoint still pending");
+                }
+            }
+            else if (this.pendingIndexCheckpoint != null)
+            {
+                if (this.pendingIndexCheckpoint.IsCompleted == true)
+                {
+                    this.traceHelper.FasterProgress("Checkpointing state machine: trying to start store checkpoint");
+                    await this.pendingIndexCheckpoint; // observe exceptions here
+
+                    // the store checkpoint is next
+                    this.StartCheckpointOrFailOnTimeout(
+                        checkpointRoutine: () =>
+                        { 
+                            var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, this.InputQueueFingerprint, null);
+                            if (token.HasValue)
+                            {
+                                this.traceHelper.FasterProgress("Checkpointing state machine: store checkpoint started");
+                                this.pendingIndexCheckpoint = null;
+                                this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value, true);
+                                this.numberEventsSinceLastCheckpoint = 0;
+                            }
+                            var checkpointStarted = token.HasValue;
+                            return checkpointStarted;
+
+                        },
+                        messageOnError: "Could not start store checkpoint before timeout");
+                }
+                else
+                {
+                    this.traceHelper.FasterProgress("Checkpointing state machine: index checkpoint still pending");
+                }
+            }
+            else if (this.pendingCompaction != null)
+            {
+                if (this.pendingCompaction.IsCompleted == true)
+                {
+                    this.traceHelper.FasterProgress("Checkpointing state machine: trying to start index checkpoint");
+                    await this.pendingCompaction; // observe exceptions here
+
+                    // force collection of memory used during compaction
+                    GC.Collect();
+
+                    // the index checkpoint is next
+                    this.StartCheckpointOrFailOnTimeout(
+                        checkpointRoutine: () =>
+                        {
+                            var token = this.store.StartIndexCheckpoint();
+                            if (token.HasValue)
+                            {
+                                this.traceHelper.FasterProgress("Checkpointing state machine: index checkpoint started");
+                                this.pendingCompaction = null;
+                                this.pendingIndexCheckpoint = this.WaitForCheckpointAsync(true, token.Value, false);
+                            }
+                            var checkpointStarted = token.HasValue;
+                            return checkpointStarted;
+                        },
+                        messageOnError: "Could not start index checkpoint before timeout");
+                }
+                else
+                {
+                    this.traceHelper.FasterProgress("Checkpointing state machine: compaction still pending");
+                }
+            }
+            else if (this.CheckpointDue(out var trigger, out long? compactUntil))
+            {
+                this.traceHelper.FasterProgress($"Checkpointing state machine: checkpoint is due. Trigger='{trigger}'. compactUntil='{compactUntil}'");
+                this.pendingCheckpointTrigger = trigger;
+                this.pendingCompaction = this.RunCompactionAsync(compactUntil);
+            }
+        }
+
         protected override async Task Process(IList<PartitionEvent> batch)
         {
             try
@@ -430,78 +563,15 @@ namespace DurableTask.Netherite.Faster
                 this.store.AdjustCacheSize();
 
                 // handle progression of checkpointing state machine:  none -> pendingCompaction -> pendingIndexCheckpoint ->  pendingStoreCheckpoint -> none)
-                if (this.pendingStoreCheckpoint != null)
-                {
-                    this.traceHelper.FasterProgress("SM Debug: state 1 - pendingStoreCheckpoint != null");
-                    if (this.pendingStoreCheckpoint.IsCompleted == true)
-                    {
-                        this.traceHelper.FasterProgress("SM Debug: state 1.1.1 - this.pendingStoreCheckpoint.IsCompleted, awaiting pendingStoreCheckpoint");
-                        (this.lastCheckpointedCommitLogPosition, this.lastCheckpointedInputQueuePosition)
-                           = await this.pendingStoreCheckpoint; // observe exceptions here
-
-                        this.traceHelper.FasterProgress("SM Debug: state 1.1.2 - this.pendingStoreCheckpoint.IsCompleted, returned from pendingStoreCheckpoint");
-
-                        // force collection of memory used during checkpointing
-                        GC.Collect();
-
-                        // we have reached the end of the state machine transitions
-                        this.pendingStoreCheckpoint = null;
-                        this.pendingCheckpointTrigger = CheckpointTrigger.None;
-                        this.ScheduleNextIdleCheckpointTime();
-                        this.partition.Settings.TestHooks?.CheckpointInjector?.SequenceComplete((this.store as FasterKV).Log);
-                    }
-                }
-                else if (this.pendingIndexCheckpoint != null)
-                {
-                    this.traceHelper.FasterProgress("SM Debug: state 2 - this.pendingIndexCheckpoint != null");
-                    if (this.pendingIndexCheckpoint.IsCompleted == true)
-                    {
-                        this.traceHelper.FasterProgress("SM Debug: state 2.1 - this.pendingIndexCheckpoint.IsCompleted");
-                        await this.pendingIndexCheckpoint; // observe exceptions here
-
-                        // the store checkpoint is next
-                        var token = this.store.StartStoreCheckpoint(this.CommitLogPosition, this.InputQueuePosition, this.InputQueueFingerprint, null);
-                        if (token.HasValue)
-                        {
-                            this.traceHelper.FasterProgress("SM Debug: state 2.2 - token.hasValue");
-                            this.pendingIndexCheckpoint = null;
-                            this.pendingStoreCheckpoint = this.WaitForCheckpointAsync(false, token.Value, true);
-                            this.numberEventsSinceLastCheckpoint = 0;
-                        }
-                    }
-                }
-                else if (this.pendingCompaction != null)
-                {
-                    this.traceHelper.FasterProgress("SM Debug: state 3 - this.pendingCompaction != null");
-                    if (this.pendingCompaction.IsCompleted == true)
-                    {
-                        this.traceHelper.FasterProgress("SM Debug: state 3.1 - this.pendingCompaction.IsCompleted");
-                        await this.pendingCompaction; // observe exceptions here
-
-                        // force collection of memory used during compaction
-                        GC.Collect();
-
-                        // the index checkpoint is next
-                        var token = this.store.StartIndexCheckpoint();
-                        if (token.HasValue)
-                        {
-                            this.pendingCompaction = null;
-                            this.pendingIndexCheckpoint = this.WaitForCheckpointAsync(true, token.Value, false);
-                        }
-                    }
-                }
-                else if (this.CheckpointDue(out var trigger, out long? compactUntil))
-                {
-                    this.traceHelper.FasterProgress("SM Debug: state 4 - checkpointDue");
-                    this.pendingCheckpointTrigger = trigger;
-                    this.pendingCompaction = this.RunCompactionAsync(compactUntil);
-                }
+                await this.RunCheckpointingStateMachine();
                   
                 // periodically publish the partition load information and the send/receive positions
+                // also report checkpointing stats
                 if (this.lastPublished + PublishInterval < DateTime.UtcNow)
                 {
                     this.lastPublished = DateTime.UtcNow;
                     await this.PublishLoadAndPositions();
+                    this.ReportCheckpointingStats();
                 }
 
                 if (this.partition.NumberPartitions() > 1 && this.partition.Settings.ActivityScheduler == ActivitySchedulerOptions.Locavore)
@@ -580,6 +650,10 @@ namespace DurableTask.Netherite.Faster
                 target = await this.store.RunCompactionAsync(target.Value);
 
                 this.partition.Settings.TestHooks?.CheckpointInjector?.CompactionComplete(this.partition.ErrorHandler);
+            }
+            else
+            {
+                this.traceHelper.FasterProgress($"RunCompactionAsync: skipped due to 'null' target");
             }
 
             this.Notify();
