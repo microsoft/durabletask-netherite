@@ -31,15 +31,15 @@ namespace DurableTask.Netherite.Faster
 
         // periodic index and store checkpointing
         CheckpointTrigger pendingCheckpointTrigger;
-        Task pendingIndexCheckpoint;
-        Task<(long, (long,int))> pendingStoreCheckpoint;
+        Task? pendingIndexCheckpoint;
+        Task<(long, (long,int))>? pendingStoreCheckpoint;
         (long,int) lastCheckpointedInputQueuePosition;
         long lastCheckpointedCommitLogPosition;
         long numberEventsSinceLastCheckpoint;
         DateTime timeOfNextIdleCheckpoint;
 
         // periodic compaction
-        Task<long?> pendingCompaction;
+        Task<long?>? pendingCompaction;
 
         // periodic load publishing
         PartitionLoadInfo loadInfo;
@@ -285,17 +285,31 @@ namespace DurableTask.Netherite.Faster
         void LogCheckpointStats()
         {
             long inputQueuePositionLag = this.getInputQueuePositionLag();
-
             this.CheckpointDue(out CheckpointTrigger trigger, out long? compactUntil);
+            var reportNullableTaskStatus = (Task? t) =>
+            {
+                if (t == null)
+                {
+                    return "is null";
+                }
+                else
+                {
+                    return t.IsCompleted ? "is completed" : "is not completed";
+                }
+            };
+
             var checkpointDueLog = $"Checkpoint statistics: current checkpoint trigger={trigger}, " +
                 $"LastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
-                $"MaxNumberBytesBetweenCheckpoints={this.partition.Settings.MaxNumberBytesBetweenCheckpoints}," +
+                $"MaxNumberBytesBetweenCheckpoints={this.partition.Settings.MaxNumberBytesBetweenCheckpoints}, " +
                 $"CommitLogPosition={this.CommitLogPosition}, " +
-                $"NumberEventsSinceLastCheckpoint={this.numberEventsSinceLastCheckpoint}," +
-                $"MaxNumberEventsBetweenCheckpoints={this.partition.Settings.MaxNumberEventsBetweenCheckpoints}," +
+                $"NumberEventsSinceLastCheckpoint={this.numberEventsSinceLastCheckpoint}, " +
+                $"MaxNumberEventsBetweenCheckpoints={this.partition.Settings.MaxNumberEventsBetweenCheckpoints}, " +
                 $"InputQueuePositionLag={inputQueuePositionLag}," +
-                $"TimeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}";
-
+                $"TimeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}, " +
+                $"TimeOfFirstRefusedCheckpoint={this.timeOfFirstRefusedCheckpoint}" +
+                $"PendingCompaction status ={reportNullableTaskStatus(this.pendingCompaction)} " +
+                $"PendingIndexCheckpoint status={reportNullableTaskStatus(this.pendingIndexCheckpoint)} " +
+                $"PendingStoreCheckpoint status={reportNullableTaskStatus(this.pendingStoreCheckpoint)}";
             this.traceHelper.FasterProgress(checkpointDueLog);
         }
 
@@ -389,14 +403,13 @@ namespace DurableTask.Netherite.Faster
                 TimeSpan duration = currentTime - this.timeOfFirstRefusedCheckpoint.Value;
                 if (duration > TimeSpan.FromMinutes(1))
                 {
-                    messageOnError += $" FASTER first refused to checkpoint at '{this.timeOfFirstRefusedCheckpoint}'. Duration of refusal = {duration}";
-                    Exception err = new Exception(messageOnError);
-                    this.partition.ErrorHandler.HandleError(nameof(StartCheckpointOrFailOnTimeout), messageOnError, err, terminatePartition: true, reportAsWarning: false);
+                    messageOnError += $". FASTER first refused to checkpoint at '{this.timeOfFirstRefusedCheckpoint}'. Duration of refusal = {duration}";
+                    this.partition.ErrorHandler.HandleError(nameof(StartCheckpointOrFailOnTimeout), messageOnError, e: null, terminatePartition: true, reportAsWarning: false);
                 }
             }
         }
 
-        async Task RunCheckpointingStateMachine()
+        async ValueTask RunCheckpointingStateMachine()
         {
             // handle progression of checkpointing state machine:  none -> pendingCompaction -> pendingIndexCheckpoint ->  pendingStoreCheckpoint -> none)
             if (this.pendingStoreCheckpoint != null)
@@ -416,10 +429,6 @@ namespace DurableTask.Netherite.Faster
                     this.pendingCheckpointTrigger = CheckpointTrigger.None;
                     this.ScheduleNextIdleCheckpointTime();
                     this.partition.Settings.TestHooks?.CheckpointInjector?.SequenceComplete((this.store as FasterKV).Log);
-                }
-                else
-                {
-                    this.traceHelper.FasterProgress("Checkpointing state machine: store checkpoint still pending");
                 }
             }
             else if (this.pendingIndexCheckpoint != null)
@@ -447,10 +456,6 @@ namespace DurableTask.Netherite.Faster
                         },
                         messageOnError: "Could not start store checkpoint before timeout");
                 }
-                else
-                {
-                    this.traceHelper.FasterProgress("Checkpointing state machine: index checkpoint still pending");
-                }
             }
             else if (this.pendingCompaction != null)
             {
@@ -477,10 +482,6 @@ namespace DurableTask.Netherite.Faster
                             return checkpointStarted;
                         },
                         messageOnError: "Could not start index checkpoint before timeout");
-                }
-                else
-                {
-                    this.traceHelper.FasterProgress("Checkpointing state machine: compaction still pending");
                 }
             }
             else if (this.CheckpointDue(out var trigger, out long? compactUntil))

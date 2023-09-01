@@ -61,7 +61,7 @@ namespace DurableTask.Netherite
             this.host = host;
         }
      
-        public void HandleError(string context, string message, Exception exception, bool terminatePartition, bool isWarning)
+        public void HandleError(string context, string message, Exception? exception, bool terminatePartition, bool isWarning)
         {
             bool isFatal = exception != null && Utils.IsFatal(exception);
 
