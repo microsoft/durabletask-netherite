@@ -94,7 +94,7 @@ namespace DurableTask.Netherite
             }
         }
 
-        void TraceError(bool isWarning, string context, string message, Exception exception, bool terminatePartition)
+        void TraceError(bool isWarning, string context, string message, Exception? exception, bool terminatePartition)
         {
             var logLevel = isWarning ? LogLevel.Warning : LogLevel.Error;
             if (this.logLevelLimit <= logLevel)

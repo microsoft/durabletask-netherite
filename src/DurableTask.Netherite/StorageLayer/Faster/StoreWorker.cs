@@ -284,9 +284,11 @@ namespace DurableTask.Netherite.Faster
 
         void LogCheckpointStats()
         {
-            long inputQueuePositionLag = this.getInputQueuePositionLag();
+            long inputQueuePositionLag = this.GetInputQueuePositionLag();
             this.CheckpointDue(out CheckpointTrigger trigger, out long? compactUntil);
-            var reportNullableTaskStatus = (Task? t) =>
+            
+            // since this is a pure function, we declare it as a local static for improved performance
+            static string ReportNullableTaskStatus(Task? t)
             {
                 if (t == null)
                 {
@@ -298,22 +300,28 @@ namespace DurableTask.Netherite.Faster
                 }
             };
 
-            var checkpointDueLog = $"Checkpoint statistics: current checkpoint trigger={trigger}, " +
-                $"LastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
-                $"MaxNumberBytesBetweenCheckpoints={this.partition.Settings.MaxNumberBytesBetweenCheckpoints}, " +
-                $"CommitLogPosition={this.CommitLogPosition}, " +
-                $"NumberEventsSinceLastCheckpoint={this.numberEventsSinceLastCheckpoint}, " +
-                $"MaxNumberEventsBetweenCheckpoints={this.partition.Settings.MaxNumberEventsBetweenCheckpoints}, " +
-                $"InputQueuePositionLag={inputQueuePositionLag}," +
-                $"TimeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}, " +
-                $"TimeOfFirstRefusedCheckpoint={this.timeOfFirstRefusedCheckpoint}, " +
-                $"PendingCompaction status={reportNullableTaskStatus(this.pendingCompaction)}, " +
-                $"PendingIndexCheckpoint status={reportNullableTaskStatus(this.pendingIndexCheckpoint)}, " +
-                $"PendingStoreCheckpoint status={reportNullableTaskStatus(this.pendingStoreCheckpoint)}";
-            this.traceHelper.FasterProgress(checkpointDueLog);
+            // since the statistics log is only emitted if the trace level is at least "Debug",
+            // we defer the construction of the string to relieve GC pressure
+            string ConstructLogString() {
+
+                var log = $"Checkpoint statistics: current checkpoint trigger={trigger}, " +
+                    $"LastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
+                    $"MaxNumberBytesBetweenCheckpoints={this.partition.Settings.MaxNumberBytesBetweenCheckpoints}, " +
+                    $"CommitLogPosition={this.CommitLogPosition}, " +
+                    $"NumberEventsSinceLastCheckpoint={this.numberEventsSinceLastCheckpoint}, " +
+                    $"MaxNumberEventsBetweenCheckpoints={this.partition.Settings.MaxNumberEventsBetweenCheckpoints}, " +
+                    $"InputQueuePositionLag={inputQueuePositionLag}," +
+                    $"TimeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}, " +
+                    $"TimeOfFirstRefusedCheckpoint={this.timeOfFirstRefusedCheckpoint}, " +
+                    $"PendingCompaction status={ReportNullableTaskStatus(this.pendingCompaction)}, " +
+                    $"PendingIndexCheckpoint status={ReportNullableTaskStatus(this.pendingIndexCheckpoint)}, " +
+                    $"PendingStoreCheckpoint status={ReportNullableTaskStatus(this.pendingStoreCheckpoint)}";
+                return log;
+            }
+            this.traceHelper.FasterProgress(ConstructLogString);
         }
 
-        long getInputQueuePositionLag()
+        long GetInputQueuePositionLag()
         {
             return this.InputQueuePosition.Item1 - Math.Max(this.lastCheckpointedInputQueuePosition.Item1, this.LogWorker.LastCommittedInputQueuePosition);
         }
@@ -329,7 +337,7 @@ namespace DurableTask.Netherite.Faster
             trigger = CheckpointTrigger.None;
             compactUntil = null;
 
-            long inputQueuePositionLag = this.getInputQueuePositionLag();
+            long inputQueuePositionLag = this.GetInputQueuePositionLag();
 
             if (this.lastCheckpointedCommitLogPosition + this.partition.Settings.MaxNumberBytesBetweenCheckpoints <= this.CommitLogPosition)
             {
