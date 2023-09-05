@@ -287,7 +287,7 @@ namespace DurableTask.Netherite.Faster
             long inputQueuePositionLag = this.GetInputQueuePositionLag();
             this.CheckpointDue(out CheckpointTrigger trigger, out long? compactUntil);
             
-            // since this is a pure function, we declare it as a local static for improved performance
+            // since this is a pure function, we declare it as local static for improved performance
             static string ReportNullableTaskStatus(Task? t)
             {
                 if (t == null)
