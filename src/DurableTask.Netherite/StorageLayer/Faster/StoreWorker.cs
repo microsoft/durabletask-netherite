@@ -497,7 +497,14 @@ namespace DurableTask.Netherite.Faster
             {
                 this.traceHelper.FasterProgress($"Checkpointing state machine: checkpoint is due. Trigger='{trigger}'. compactUntil='{compactUntil}'");
                 this.pendingCheckpointTrigger = trigger;
-                this.pendingCompaction = this.RunCompactionAsync(compactUntil);
+
+                var isCompactionSkipped = !compactUntil.HasValue;
+                this.pendingCompaction = isCompactionSkipped ? Task.FromResult((long?)null) : this.RunCompactionAsync(compactUntil.Value);
+
+                if (isCompactionSkipped)
+                {
+                    this.traceHelper.FasterProgress($"RunCompactionAsync was skipped because a compaction range was not provided by trigger = {trigger}.");
+                }
             }
         }
 
@@ -651,19 +658,10 @@ namespace DurableTask.Netherite.Faster
             return (commitLogPosition, inputQueuePosition);
         }
 
-        public async Task<long?> RunCompactionAsync(long? target)
+        public async Task<long?> RunCompactionAsync(long target)
         {
-            if (target.HasValue)
-            {
-                target = await this.store.RunCompactionAsync(target.Value);
-
-                this.partition.Settings.TestHooks?.CheckpointInjector?.CompactionComplete(this.partition.ErrorHandler);
-            }
-            else
-            {
-                this.traceHelper.FasterProgress($"RunCompactionAsync: skipped because the compaction's range was not provided. This may be expected depending on the checkpoint trigger");
-            }
-
+            target = await this.store.RunCompactionAsync(target);
+            this.partition.Settings.TestHooks?.CheckpointInjector?.CompactionComplete(this.partition.ErrorHandler);
             this.Notify();
             return target;
         }
