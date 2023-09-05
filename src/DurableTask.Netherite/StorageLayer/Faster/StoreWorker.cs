@@ -302,7 +302,8 @@ namespace DurableTask.Netherite.Faster
 
             // since the statistics log is only emitted if the trace level is at least "Debug",
             // we defer the construction of the string to relieve GC pressure
-            string ConstructLogString() {
+            string ConstructLogString()
+            {
 
                 var log = $"Checkpoint statistics: current checkpoint trigger={trigger}, " +
                     $"LastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
@@ -660,7 +661,7 @@ namespace DurableTask.Netherite.Faster
             }
             else
             {
-                this.traceHelper.FasterProgress($"RunCompactionAsync: skipped due to 'null' target");
+                this.traceHelper.FasterProgress($"RunCompactionAsync: skipped because the compaction's range was not provided. This may be expected depending on the checkpoint trigger");
             }
 
             this.Notify();
