@@ -306,9 +306,9 @@ namespace DurableTask.Netherite.Faster
                 $"MaxNumberEventsBetweenCheckpoints={this.partition.Settings.MaxNumberEventsBetweenCheckpoints}, " +
                 $"InputQueuePositionLag={inputQueuePositionLag}," +
                 $"TimeOfNextIdleCheckpoint={this.timeOfNextIdleCheckpoint}, " +
-                $"TimeOfFirstRefusedCheckpoint={this.timeOfFirstRefusedCheckpoint}" +
-                $"PendingCompaction status ={reportNullableTaskStatus(this.pendingCompaction)} " +
-                $"PendingIndexCheckpoint status={reportNullableTaskStatus(this.pendingIndexCheckpoint)} " +
+                $"TimeOfFirstRefusedCheckpoint={this.timeOfFirstRefusedCheckpoint}, " +
+                $"PendingCompaction status={reportNullableTaskStatus(this.pendingCompaction)}, " +
+                $"PendingIndexCheckpoint status={reportNullableTaskStatus(this.pendingIndexCheckpoint)}, " +
                 $"PendingStoreCheckpoint status={reportNullableTaskStatus(this.pendingStoreCheckpoint)}";
             this.traceHelper.FasterProgress(checkpointDueLog);
         }
