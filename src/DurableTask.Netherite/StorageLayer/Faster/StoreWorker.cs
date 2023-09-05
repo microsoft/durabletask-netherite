@@ -416,7 +416,7 @@ namespace DurableTask.Netherite.Faster
             {
                 if (this.pendingStoreCheckpoint.IsCompleted == true)
                 {
-                    this.traceHelper.FasterProgress("Checkpointing state machine: store checkpoint no longer pending");
+                    this.traceHelper.FasterProgress("Checkpointing state machine: pendingStorecheckpoint has completed.");
                     (this.lastCheckpointedCommitLogPosition, this.lastCheckpointedInputQueuePosition)
                        = await this.pendingStoreCheckpoint; // observe exceptions here
 
@@ -435,7 +435,7 @@ namespace DurableTask.Netherite.Faster
             {
                 if (this.pendingIndexCheckpoint.IsCompleted == true)
                 {
-                    this.traceHelper.FasterProgress("Checkpointing state machine: trying to start store checkpoint");
+                    this.traceHelper.FasterProgress("Checkpointing state machine: pendingIndexCheckpoint has completed");
                     await this.pendingIndexCheckpoint; // observe exceptions here
 
                     // the store checkpoint is next
@@ -461,7 +461,7 @@ namespace DurableTask.Netherite.Faster
             {
                 if (this.pendingCompaction.IsCompleted == true)
                 {
-                    this.traceHelper.FasterProgress("Checkpointing state machine: trying to start index checkpoint");
+                    this.traceHelper.FasterProgress("Checkpointing state machine: pendingCompaction has completed");
                     await this.pendingCompaction; // observe exceptions here
 
                     // force collection of memory used during compaction
