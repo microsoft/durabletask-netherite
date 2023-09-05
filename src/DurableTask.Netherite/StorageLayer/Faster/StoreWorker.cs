@@ -411,7 +411,7 @@ namespace DurableTask.Netherite.Faster
                 TimeSpan duration = currentTime - this.timeOfFirstRefusedCheckpoint.Value;
                 if (duration > TimeSpan.FromMinutes(1))
                 {
-                    messageOnError += $". FASTER first refused to checkpoint at '{this.timeOfFirstRefusedCheckpoint}'. Duration of refusal = {duration}";
+                    messageOnError += $". FASTER first refused to checkpoint at '{this.timeOfFirstRefusedCheckpoint}'. Duration of refusal = {duration}. Terminating partition.";
                     this.partition.ErrorHandler.HandleError(nameof(StartCheckpointOrFailOnTimeout), messageOnError, e: null, terminatePartition: true, reportAsWarning: false);
                 }
             }
