@@ -484,7 +484,11 @@ namespace DurableTask.Netherite.Faster
         public override async Task<long> RunCompactionAsync(long target)
         {
             string id = DateTime.UtcNow.ToString("O"); // for tracing purposes
+
+            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} is requesting to enter sempahore with {maxCompactionThreads.CurrentCount} threads available");
             await maxCompactionThreads.WaitAsync();
+            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} entered semaphore");
+
             try
             {
                 long beginAddressBeforeCompaction = this.Log.BeginAddress;
@@ -499,9 +503,20 @@ namespace DurableTask.Netherite.Faster
                     target - this.Log.BeginAddress,
                     this.GetElapsedCompactionMilliseconds());
 
+                var timeoutTask = Task.Delay(TimeSpan.FromMinutes(10));
                 var tcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var thread = TrackedThreads.MakeTrackedThread(RunCompaction, $"Compaction.{id}");
                 thread.Start();
+
+                var winner = await Task.WhenAny(tcs.Task, timeoutTask);
+
+                if (winner == timeoutTask)
+                {
+                    // compaction timed out. Abort compaction thread and terminate partition
+                    this.partition.ErrorHandler.HandleError(nameof(RunCompactionAsync), $"Compaction {id} time out", e: null, terminatePartition: true, reportAsWarning: true);
+                }
+
+                // return result of compaction task
                 return await tcs.Task;
 
                 void RunCompaction()
