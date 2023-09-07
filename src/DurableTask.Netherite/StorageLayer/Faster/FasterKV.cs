@@ -526,8 +526,11 @@ namespace DurableTask.Netherite.Faster
                         this.blobManager.TraceHelper.FasterProgress($"Compaction {id} started");
 
                         var session = this.CreateASession($"compaction-{id}", true);
+
+                        this.blobManager.TraceHelper.FasterProgress($"Compaction {id} obtained a FASTER session");
                         using (this.TrackTemporarySession(session))
                         {
+                            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} is invoking FASTER's compaction routine");
                             long compactedUntil = session.Compact(target, CompactionType.Scan);
 
                             this.TraceHelper.FasterCompactionProgress(
