@@ -513,7 +513,12 @@ namespace DurableTask.Netherite.Faster
                 if (winner == timeoutTask)
                 {
                     // compaction timed out. Abort compaction thread and terminate partition
-                    this.partition.ErrorHandler.HandleError(nameof(RunCompactionAsync), $"Compaction {id} time out", e: null, terminatePartition: true, reportAsWarning: true);
+                    thread.Abort();
+                    var exceptionMessage = $"Compaction {id} time out";
+                    this.partition.ErrorHandler.HandleError(nameof(RunCompactionAsync), exceptionMessage, e: null, terminatePartition: true, reportAsWarning: true);
+
+                    // we need resolve the task to ensure the 'finally' block is executed which frees up another thread to start compating
+                    tcs.SetException(new OperationCanceledException(exceptionMessage));
                 }
 
                 // return result of compaction task
@@ -523,6 +528,7 @@ namespace DurableTask.Netherite.Faster
                 {
                     try
                     {
+
                         this.blobManager.TraceHelper.FasterProgress($"Compaction {id} started");
 
                         var session = this.CreateASession($"compaction-{id}", true);
