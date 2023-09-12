@@ -512,8 +512,7 @@ namespace DurableTask.Netherite.Faster
 
                 if (winner == timeoutTask)
                 {
-                    // compaction timed out. Abort compaction thread and terminate partition
-                    thread.Abort();
+                    // compaction timed out. Terminate partition
                     var exceptionMessage = $"Compaction {id} time out";
                     this.partition.ErrorHandler.HandleError(nameof(RunCompactionAsync), exceptionMessage, e: null, terminatePartition: true, reportAsWarning: true);
 
