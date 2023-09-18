@@ -30,7 +30,7 @@ namespace PerformanceTests.FanOutFanIn
             Task[] tasks = new Task[count];
             for (int i = 0; i < tasks.Length; i++)
             {
-                tasks[i] = context.CallActivityAsync<string>("SayHello", i.ToString("00000"));
+                tasks[i] = context.CallActivityAsync<string>("SayHello", i.ToString());
             }
             await Task.WhenAll(tasks);
 

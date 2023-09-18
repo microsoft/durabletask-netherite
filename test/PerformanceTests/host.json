@@ -29,9 +29,12 @@
       "DurableTask.Netherite.Client": "Warning",
       "DurableTask.Netherite.LoadMonitor": "Warning"
     },
+
     "applicationInsights": {
-      "sampling": {
-        "isEnabled": false
+      "samplingSettings": {
+        "isEnabled": true,
+        "maxTelemetryItemsPerSecond": 1,
+        "excludedTypes": "Exception"
       }
     }
   },
