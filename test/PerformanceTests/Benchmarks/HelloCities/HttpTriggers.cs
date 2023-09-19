@@ -77,5 +77,23 @@ namespace PerformanceTests.HelloCities
 
             return response;
         }
+
+        [FunctionName(nameof(HelloCities3Nested))]
+        public static async Task<IActionResult> HelloCities3Nested(
+           [HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequest req,
+           [DurableClient] IDurableClient client,
+           ILogger log)
+        {
+            // start the orchestration
+            string orchestrationInstanceId = await client.StartNewAsync(nameof(HelloSequence.HelloSequence3Nested));
+
+            // wait for it to complete  
+            await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(200));
+
+            DurableOrchestrationStatus status = await client.GetStatusAsync(orchestrationInstanceId, true, true, true);
+
+            // return the history
+            return new OkObjectResult(status.History);
+        }
     }
 }

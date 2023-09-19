@@ -61,5 +61,11 @@ namespace PerformanceTests.HelloCities
                 await context.CallActivityAsync<string>(nameof(Activities.SayHello), $"City{i}");
             }
         }
+
+        [FunctionName(nameof(HelloSequence3Nested))]
+        public static async Task<List<string>> HelloSequence3Nested([OrchestrationTrigger] IDurableOrchestrationContext context)
+        {
+            return await context.CallSubOrchestratorAsync<List<string>>(nameof(HelloSequence3), null);
+        }
     }
 }
