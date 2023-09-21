@@ -29,7 +29,7 @@
     <MinorVersion>4</MinorVersion>
     <PatchVersion>0</PatchVersion>
     <VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
-      <VersionSuffix>checkpoint-logs-5</VersionSuffix>
+      <VersionSuffix></VersionSuffix>
       <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
       <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
       <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
