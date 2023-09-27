@@ -75,6 +75,7 @@ namespace DurableTask.Netherite
                     ExtensionData = ee.ExtensionData,
                     OrchestrationInstance = ee.OrchestrationInstance,
                     Timestamp = this.CreationTimestamp,
+                    ParentTraceContext = ee.ParentTraceContext,
                 },
                 SequenceNumber = tm.SequenceNumber,
                 OrchestrationInstance = tm.OrchestrationInstance,
