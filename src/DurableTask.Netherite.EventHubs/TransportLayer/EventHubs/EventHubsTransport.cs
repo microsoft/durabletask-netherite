@@ -112,7 +112,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             this.connections = new EventHubsConnections(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub, this.shutdownSource.Token)
             {
-                Host = host,
+                Host = this.host,
                 TraceHelper = this.traceHelper,
             };
 
