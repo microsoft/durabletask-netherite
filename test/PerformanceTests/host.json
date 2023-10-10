@@ -74,9 +74,6 @@
         // set this to true to use the PSF support in Faster. Will soon be obsolete.
         "UsePSFQueries": "false",
 
-        // set this to true to bypass Faster and instead use Azure blobs for the object store. Not for production use.
-        "UseAlternateObjectStore": "false",
-
         // set this to "true" to disable all pipelining
         "PersistStepsFirst": false,
 

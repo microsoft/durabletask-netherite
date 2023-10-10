@@ -102,24 +102,17 @@ namespace DurableTask.Netherite.Faster
             this.TraceHelper.FasterProgress("Creating FasterLog");
             this.log = new FasterLog(this.blobManager, partition.Settings);
 
-            if (partition.Settings.UseAlternateObjectStore)
-            {
-                this.TraceHelper.FasterProgress("Creating FasterAlt");
-                this.store = new FasterAlt(this.partition, this.blobManager);
-            }
-            else
-            {
-                this.TraceHelper.FasterProgress("Creating FasterKV");
-                this.store = new FasterKV(this.partition, this.blobManager, this.memoryTracker);
-            }
+
+            this.TraceHelper.FasterProgress("Creating FasterKV");
+            this.store = new FasterKV(this.partition, this.blobManager, this.memoryTracker);
 
             this.TraceHelper.FasterProgress("Creating StoreWorker");
             this.storeWorker = new StoreWorker(this.store, this.partition, this.TraceHelper, this.blobManager, this.terminationToken);
 
             this.TraceHelper.FasterProgress("Creating LogWorker");
             this.logWorker = this.storeWorker.LogWorker = new LogWorker(this.blobManager, this.log, this.partition, this.storeWorker, this.TraceHelper, this.terminationToken);
-             
-            if (this.partition.Settings.TestHooks?.ReplayChecker == null) 
+
+            if (this.partition.Settings.TestHooks?.ReplayChecker == null)
             {
                 this.hangCheckTimer = new Timer(this.CheckForStuckWorkers, null, 0, 20000);
                 errorHandler.OnShutdown += () => this.hangCheckTimer.Dispose();

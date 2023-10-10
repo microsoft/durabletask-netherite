@@ -141,11 +141,6 @@ namespace DurableTask.Netherite
         public string UseLocalDirectoryForPartitionStorage { get; set; } = null;
 
         /// <summary>
-        /// Whether to use the alternate object store implementation.
-        /// </summary>
-        public bool UseAlternateObjectStore { get; set; } = false;
-
-        /// <summary>
         /// Whether to keep an in-memory set of all instance ids in memory. This is required for supporting paged queries.
         /// </summary>
         public bool KeepInstanceIdsInMemory = true;
