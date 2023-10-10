@@ -433,7 +433,11 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) is processing packets", this.eventHubName, this.eventHubPartition, current.Incarnation);
 
-                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, current.ErrorHandler.Token, current.NextPacketToReceive.seqNo))
+                    // we need to update the next expected seqno even if the iterator returns nothing, since it may have discarded some packets.
+                    // iterators do not support ref arguments, so we use a simple wrapper class to work around this limitation
+                    MutableLong nextPacketToReceive = new MutableLong() { Value = current.NextPacketToReceive.seqNo };
+
+                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, current.ErrorHandler.Token, nextPacketToReceive))
                     {
                         for (int i = 0; i < events.Length; i++)
                         {
@@ -477,7 +481,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                             current.Partition.SubmitEvents(events.Skip(current.NextPacketToReceive.batchPos).ToList());
                         }
 
-                        current.NextPacketToReceive = (seqNo + 1, 0);
+                        current.NextPacketToReceive = (nextPacketToReceive.Value, 0);
                     }
                 }
 
