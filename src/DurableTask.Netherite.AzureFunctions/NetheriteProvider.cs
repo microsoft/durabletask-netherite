@@ -145,12 +145,7 @@ namespace DurableTask.Netherite.AzureFunctions
             public ScaleMonitor(ScalingMonitor scalingMonitor)
             {
                 this.scalingMonitor = scalingMonitor;
-
-                // appending random GUID to end of descriptor to keep scale monitor keys unique
-                string guid = Guid.NewGuid().ToString("N");
-
-                var descriptorId = $"DurableTaskTrigger-Netherite-{this.scalingMonitor.TaskHubName}-{guid}".ToLower();
-                this.descriptor = new ScaleMonitorDescriptor(descriptorId);
+                this.descriptor = new ScaleMonitorDescriptor($"DurableTaskTrigger-Netherite-{this.scalingMonitor.TaskHubName}".ToLower());
             }
 
             public ScaleMonitorDescriptor Descriptor => this.descriptor;
