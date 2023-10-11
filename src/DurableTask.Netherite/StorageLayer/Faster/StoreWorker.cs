@@ -285,7 +285,6 @@ namespace DurableTask.Netherite.Faster
         void LogCheckpointStats()
         {
             long inputQueuePositionLag = this.GetInputQueuePositionLag();
-            this.CheckpointDue(out CheckpointTrigger trigger, out long? compactUntil);
             
             // since this is a pure function, we declare it as local static for improved performance
             static string ReportNullableTaskStatus(Task? t)
@@ -305,7 +304,7 @@ namespace DurableTask.Netherite.Faster
             string ConstructLogString()
             {
 
-                var log = $"Checkpoint statistics: current checkpoint trigger={trigger}, " +
+                var log = $"Checkpoint statistics: " +
                     $"LastCheckpointedCommitLogPosition={this.lastCheckpointedCommitLogPosition}, " +
                     $"MaxNumberBytesBetweenCheckpoints={this.partition.Settings.MaxNumberBytesBetweenCheckpoints}, " +
                     $"CommitLogPosition={this.CommitLogPosition}, " +
@@ -500,11 +499,7 @@ namespace DurableTask.Netherite.Faster
 
                 var isCompactionSkipped = !compactUntil.HasValue;
                 this.pendingCompaction = isCompactionSkipped ? Task.FromResult((long?)null) : this.RunCompactionAsync(compactUntil.Value);
-
-                if (isCompactionSkipped)
-                {
-                    this.traceHelper.FasterProgress($"RunCompactionAsync was skipped because a compaction range was not provided by trigger = {trigger}.");
-                }
+                this.Notify();
             }
         }
 
@@ -662,7 +657,6 @@ namespace DurableTask.Netherite.Faster
         {
             target = await this.store.RunCompactionAsync(target);
             this.partition.Settings.TestHooks?.CheckpointInjector?.CompactionComplete(this.partition.ErrorHandler);
-            this.Notify();
             return target;
         }
 

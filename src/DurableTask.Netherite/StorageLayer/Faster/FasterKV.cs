@@ -503,7 +503,8 @@ namespace DurableTask.Netherite.Faster
                     target - this.Log.BeginAddress,
                     this.GetElapsedCompactionMilliseconds());
 
-                var timeoutTask = Task.Delay(TimeSpan.FromMinutes(10));
+                var tokenSource = new CancellationTokenSource();
+                var timeoutTask = Task.Delay(TimeSpan.FromMinutes(10), tokenSource.Token);
                 var tcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var thread = TrackedThreads.MakeTrackedThread(RunCompaction, $"Compaction.{id}");
                 thread.Start();
@@ -517,7 +518,12 @@ namespace DurableTask.Netherite.Faster
                     this.partition.ErrorHandler.HandleError(nameof(RunCompactionAsync), exceptionMessage, e: null, terminatePartition: true, reportAsWarning: true);
 
                     // we need resolve the task to ensure the 'finally' block is executed which frees up another thread to start compating
-                    tcs.SetException(new OperationCanceledException(exceptionMessage));
+                    tcs.TrySetException(new OperationCanceledException(exceptionMessage));
+                }
+                else
+                {
+                    // cancel the timeout task since compaction completed
+                    tokenSource.Cancel();
                 }
 
                 // return result of compaction task
@@ -548,17 +554,17 @@ namespace DurableTask.Netherite.Faster
                                 this.Log.BeginAddress - beginAddressBeforeCompaction,
                                 this.GetElapsedCompactionMilliseconds());
 
-                            tcs.SetResult(compactedUntil);
+                            tcs.TrySetResult(compactedUntil);
                         }
                     }
                     catch (Exception exception)
                         when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
                     {
-                        tcs.SetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
+                        tcs.TrySetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
                     }
                     catch (Exception e)
                     {
-                        tcs.SetException(e);
+                        tcs.TrySetException(e);
                     }
                 }
             }
