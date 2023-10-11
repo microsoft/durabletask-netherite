@@ -480,9 +480,9 @@ namespace DurableTask.Netherite.EventHubsTransport
                             this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) skipping {batchPos} events in batch #{seqno} because they are already processed", this.eventHubName, this.eventHubPartition, current.Incarnation, current.NextPacketToReceive.batchPos, seqNo);
                             current.Partition.SubmitEvents(events.Skip(current.NextPacketToReceive.batchPos).ToList());
                         }
-
-                        current.NextPacketToReceive = (nextPacketToReceive.Value, 0);
                     }
+
+                    current.NextPacketToReceive = (nextPacketToReceive.Value, 0);
                 }
 
                 this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received {totalEvents} events in {latencyMs:F2}ms, starting with #{seqno}, next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, current.Incarnation, totalEvents, stopwatch.Elapsed.TotalMilliseconds, firstSequenceNumber, current.NextPacketToReceive.seqNo);
