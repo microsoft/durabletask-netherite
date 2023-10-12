@@ -7,6 +7,7 @@ namespace PerformanceTests.Orchestrations.Counter
     using System.Diagnostics;
     using System.IO;
     using System.Linq;
+    using System.Net;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.AspNetCore.Http;
@@ -18,190 +19,127 @@ namespace PerformanceTests.Orchestrations.Counter
 
     public static class HttpTriggers
     {
-        class Input
-        {
-            public string Key { get; set; }
-            public int Expected { get; set; }
-        }
-
-        [FunctionName(nameof(WaitForCount))]
-        public static async Task<IActionResult> WaitForCount(
-            [HttpTrigger(AuthorizationLevel.Function, methods: "post", Route = nameof(WaitForCount))] HttpRequest req,
-            [DurableClient] IDurableClient client)
-        {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var input = JsonConvert.DeserializeObject<Input>(requestBody);
-            var entityId = new EntityId("Counter", input.Key);
-            Stopwatch stopwatch = new Stopwatch();
-            stopwatch.Start();
-
-            // poll the entity until the expected count is reached
-            while (stopwatch.Elapsed < TimeSpan.FromMinutes(5))
-            {
-                var response = await client.ReadEntityStateAsync<Counter>(entityId);
-
-                if (response.EntityExists
-                    && response.EntityState.CurrentValue >= input.Expected)
-                {
-                    return new OkObjectResult($"{JsonConvert.SerializeObject(response.EntityState)}\n");
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(2));
-            }
-
-            return new OkObjectResult("timed out.\n");
-        }
-
-        [FunctionName(nameof(Increment))]
-        public static async Task<IActionResult> Increment(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = nameof(Increment))] HttpRequest req,
+        [FunctionName(nameof(Add))]
+        public static async Task<IActionResult> Add(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "counter/{key}/add")] HttpRequest req,
+            string key,
             [DurableClient] IDurableClient client)
         {
             try
             {
-                string entityKey = await new StreamReader(req.Body).ReadToEndAsync();
-                var entityId = new EntityId("Counter", entityKey);
-                await client.SignalEntityAsync(entityId, "add", 1);
-                return new OkObjectResult($"increment was sent to {entityId}.\n");
+                string input = await new StreamReader(req.Body).ReadToEndAsync();
+                int amount = int.Parse(input);
+                var entityId = new EntityId("Counter", key);
+                await client.SignalEntityAsync(entityId, "add", amount);
+                return new OkObjectResult($"add({amount}) was sent to {entityId}.\n");
             }
             catch (Exception e)
             {
-                return new OkObjectResult(e.ToString());
+                return new ObjectResult(e.ToString()) { StatusCode = (int)HttpStatusCode.InternalServerError };
+            }
+        }
+
+        [FunctionName(nameof(ReadCounter))]
+        public static async Task<IActionResult> ReadCounter(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "counter/{key}")] HttpRequest req,
+            string key,
+            [DurableClient] IDurableClient client)
+        {
+            try
+            {
+                var entityId = new EntityId("Counter", key);
+                var response = await client.ReadEntityStateAsync<Counter>(entityId);
+
+                if (!response.EntityExists)
+                {
+                    return new NotFoundObjectResult($"no such entity: {entityId}");
+                }
+                else
+                {
+                    return new OkObjectResult(response.EntityState);
+                }
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(e.ToString()) { StatusCode = (int)HttpStatusCode.InternalServerError };
+            }
+        }
+
+        [FunctionName(nameof(DeleteCounter))]
+        public static async Task<IActionResult> DeleteCounter(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "counter/{key}")] HttpRequest req,
+            string key,
+            [DurableClient] IDurableClient client)
+        {
+            try
+            {
+                var entityId = new EntityId("Counter", key);
+                await client.SignalEntityAsync(entityId, "delete");
+                return new OkObjectResult($"delete was sent to {entityId}.\n");
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(e.ToString()) { StatusCode = (int)HttpStatusCode.InternalServerError };
+            }
+        }
+
+        [FunctionName(nameof(CrashCounter))]
+        public static async Task<IActionResult> CrashCounter(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "counter/{key}/crash")] HttpRequest req,
+            string key,
+            [DurableClient] IDurableClient client)
+        {
+            try
+            {
+                var entityId = new EntityId("Counter", key);
+                await client.SignalEntityAsync(entityId, "crash", DateTime.UtcNow);
+                return new OkObjectResult($"crash was sent to {entityId}.\n");
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(e.ToString()) { StatusCode = (int)HttpStatusCode.InternalServerError };
             }
         }
 
         [FunctionName(nameof(CountSignals))]
         public static async Task<IActionResult> CountSignals(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = nameof(CountSignals))] HttpRequest req,
-            [DurableClient] IDurableClient client)
+             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "signal-counter/{count}")] HttpRequest req,
+             int count,
+             [DurableClient] IDurableClient client)
         {
             try
             {
-                int numberSignals = int.Parse(await new StreamReader(req.Body).ReadToEndAsync());
-                var entityId = new EntityId("Counter", Guid.NewGuid().ToString("N"));
+                string key = Guid.NewGuid().ToString("N");
+                var entityId = new EntityId("Counter", key);
 
                 DateTime startTime = DateTime.UtcNow;
 
-                // send the specified number of signals to the entity
-                await SendIncrementSignals(client, numberSignals, 50, (i) => entityId);
+                // send the specified number of signals to the counter entity
+                // for better send throughput we do not send signals one at a time, but use parallel tasks
+                await Enumerable.Range(0, count).ParallelForEachAsync(50, true, i => client.SignalEntityAsync(entityId, "add", 1));
 
                 // poll the entity until the expected count is reached
-                while ((DateTime.UtcNow - startTime) < TimeSpan.FromMinutes(5))
+                while ((DateTime.UtcNow - startTime) < TimeSpan.FromMinutes(3))
                 {
                     var response = await client.ReadEntityStateAsync<Counter>(entityId);
 
                     if (response.EntityExists
-                        && response.EntityState.CurrentValue == numberSignals)
+                        && response.EntityState.CurrentValue == count)
                     {
-                        return new OkObjectResult($"received {numberSignals} signals in {(response.EntityState.LastModified - startTime).TotalSeconds:F1}s.\n");
+                        var state = response.EntityState;
+                        var elapsedSeconds = (state.LastModified - state.StartTime.Value).TotalSeconds;
+                        var throughput = count / elapsedSeconds;
+                        return new OkObjectResult(new { elapsedSeconds, count, throughput });
                     }
 
-                    await Task.Delay(TimeSpan.FromSeconds(2));
+                    await Task.Delay(TimeSpan.FromSeconds(5));
                 }
 
-                return new OkObjectResult($"timed out after {(DateTime.UtcNow - startTime)}.\n");
+                return new OkObjectResult($"timed out after {(DateTime.UtcNow - startTime)}.\n") { StatusCode = (int)HttpStatusCode.RequestTimeout };
             }
             catch (Exception e)
             {
-                return new OkObjectResult(e.ToString());
-            }
-        }
-
-        [FunctionName(nameof(CountParallelSignals))]
-        public static async Task<IActionResult> CountParallelSignals(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = nameof(CountParallelSignals))] HttpRequest req,
-            [DurableClient] IDurableClient client)
-        {
-            try
-            {
-                // input is of the form "nnn,mmm"
-                // nnn - number of signals to send
-                // mmm - number of entities to distribute the signals over
-
-                string input = await new StreamReader(req.Body).ReadToEndAsync();
-                int commaPosition = input.IndexOf(',');
-                int numberSignals = int.Parse(input.Substring(0, commaPosition));
-                int numberEntities = int.Parse(input.Substring(commaPosition + 1));
-                var entityPrefix = Guid.NewGuid().ToString("N");
-                EntityId MakeEntityId(int i) => new EntityId("Counter", $"{entityPrefix}-!{i:D6}");
-                DateTime startTime = DateTime.UtcNow;
-
-                if (numberSignals % numberEntities != 0)
-                {
-                    throw new ArgumentException("numberSignals must be a multiple of numberEntities");
-                }
-
-                // send the specified number of signals to the entity
-                await SendIncrementSignals(client, numberSignals, 50, (i) => MakeEntityId(i % numberEntities));
-
-                // poll the entities until the expected count is reached
-                async Task<double?> WaitForCount(int i)
-                {
-                    var random = new Random();
-
-                    while ((DateTime.UtcNow - startTime) < TimeSpan.FromMinutes(5))
-                    {
-                        var response = await client.ReadEntityStateAsync<Counter>(MakeEntityId(i));
-
-                        if (response.EntityExists
-                            && response.EntityState.CurrentValue == numberSignals / numberEntities)
-                        {
-                            return (response.EntityState.LastModified - startTime).TotalSeconds;
-                        }
-
-                        await Task.Delay(TimeSpan.FromSeconds(2 + random.NextDouble()));
-                    }
-
-                    return null;
-                };
-
-                var waitTasks = Enumerable.Range(0, numberEntities).Select(i => WaitForCount(i)).ToList();
-
-                await Task.WhenAll(waitTasks);
-
-                var results = waitTasks.Select(t => t.Result);
-
-                if (results.Any(result => result == null))
-                {
-                    return new OkObjectResult($"timed out after {(DateTime.UtcNow - startTime)}.\n");
-                }
-
-                return new OkObjectResult($"received {numberSignals} signals on {numberEntities} entities in {results.Max():F1}s.\n");
-            }
-            catch (Exception e)
-            {
-                return new OkObjectResult(e.ToString());
-            }
-        }
-
-        static async Task SendIncrementSignals(IDurableClient client, int numberSignals, int maxConcurrency, Func<int, EntityId> entityIdFactory)
-        {
-            // send the specified number of signals to the entity
-            // for better throughput we do this in parallel
-
-            using var semaphore = new SemaphoreSlim(maxConcurrency);
-
-            for (int i = 0; i < numberSignals; i++)
-            {
-                var entityId = entityIdFactory(i);
-                await semaphore.WaitAsync();
-                var task = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await client.SignalEntityAsync(entityId, "add", 1);
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                });
-            }
-
-            // wait for tasks to complete
-            for (int i = 0; i < maxConcurrency; i++)
-            {
-                await semaphore.WaitAsync();
+                return new ObjectResult(e.ToString()) { StatusCode = (int)HttpStatusCode.InternalServerError };
             }
         }
     }

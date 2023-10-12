@@ -15,6 +15,7 @@ namespace PerformanceTests.Bank
     using System.Collections.Generic;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using System.Linq;
+    using System.Net;
 
     /// <summary>
     /// A microbenchmark using durable entities for bank accounts, and an orchestration with a critical section for transferring
@@ -37,7 +38,7 @@ namespace PerformanceTests.Bank
             }
             catch (Exception e)
             {
-                return new ObjectResult(e.ToString());
+                return new ObjectResult(e.ToString()) { StatusCode = (int)HttpStatusCode.InternalServerError };
             }
         }
     }

@@ -24,25 +24,36 @@ namespace PerformanceTests.Orchestrations.Counter
 
     public class Counter
     {
-        [JsonProperty("value")]
         public int CurrentValue { get; set; }
 
-        [JsonProperty("modified")]
+        public DateTime? StartTime { get; set; }
+
         public DateTime LastModified { get; set; }
 
         public void Add(int amount)
         {
             this.CurrentValue += amount;
-            this.LastModified = DateTime.UtcNow;
+            this.UpdateTimestamps();
         }
 
-        public void Reset()
+        void UpdateTimestamps()
         {
-            this.CurrentValue = 0;
+            if (!this.StartTime.HasValue)
+            {
+                this.StartTime = DateTime.UtcNow;
+            }
             this.LastModified = DateTime.UtcNow;
         }
 
-        public (int, DateTime) Get() => (this.CurrentValue, DateTime.UtcNow);
+        public void Crash(DateTime timeStamp)
+        {
+            // crash if less that 4 seconds have passed since the signal was sent
+            // (so that we no longer crash when retrying after recovery)
+            if ((DateTime.UtcNow - timeStamp) < TimeSpan.FromSeconds(4))
+            {
+                System.Environment.Exit(333);
+            }
+        }
 
         [FunctionName(nameof(Counter))]
         public static Task Run([EntityTrigger] IDurableEntityContext ctx)
