@@ -497,9 +497,7 @@ namespace DurableTask.Netherite.Faster
                 this.traceHelper.FasterProgress($"Checkpointing state machine: checkpoint is due. Trigger='{trigger}'. compactUntil='{compactUntil}'");
                 this.pendingCheckpointTrigger = trigger;
 
-                var isCompactionSkipped = !compactUntil.HasValue;
-                this.pendingCompaction = isCompactionSkipped ? Task.FromResult((long?)null) : this.RunCompactionAsync(compactUntil.Value);
-                this.Notify();
+                this.pendingCompaction = this.RunCompactionAsync(compactUntil.Value);
             }
         }
 
@@ -653,10 +651,15 @@ namespace DurableTask.Netherite.Faster
             return (commitLogPosition, inputQueuePosition);
         }
 
-        public async Task<long?> RunCompactionAsync(long target)
+        public async Task<long?> RunCompactionAsync(long? target)
         {
-            target = await this.store.RunCompactionAsync(target);
-            this.partition.Settings.TestHooks?.CheckpointInjector?.CompactionComplete(this.partition.ErrorHandler);
+            if (target.HasValue)
+            {
+                target = await this.store.RunCompactionAsync(target);
+                this.partition.Settings.TestHooks?.CheckpointInjector?.CompactionComplete(this.partition.ErrorHandler);
+            }
+
+            this.Notify();
             return target;
         }
 
