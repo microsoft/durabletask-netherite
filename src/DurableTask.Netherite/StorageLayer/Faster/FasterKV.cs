@@ -526,6 +526,8 @@ namespace DurableTask.Netherite.Faster
                     tokenSource.Cancel();
                 }
 
+                await timeoutTask.ContinueWith(_ => tokenSource.Dispose());
+
                 // return result of compaction task
                 return await tcs.Task;
 
