@@ -4,13 +4,9 @@
 namespace DurableTask.Netherite.Faster
 {
     using System;
-    using System.Collections.Generic;
-    using System.Diagnostics;
-    using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Netherite.Abstractions;
-    using DurableTask.Netherite.EventHubsTransport;
     using DurableTask.Netherite.Scaling;
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;
@@ -158,11 +154,14 @@ namespace DurableTask.Netherite.Faster
                 await (await this.taskhubParameters).UploadTextAsync(jsonText, null, noOverwrite, null, null);
                 this.traceHelper.TraceProgress("Created new taskhub");
 
+                
+                /*
                 // zap the partition hub so we start from zero queue positions
                 if (this.settings.TransportChoice == TransportChoices.EventHubs)
                 {
                     await EventHubsUtil.DeleteEventHubIfExistsAsync(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, CancellationToken.None);
                 }
+                */
             }
             catch (StorageException e) when (BlobUtils.BlobAlreadyExists(e))
             {

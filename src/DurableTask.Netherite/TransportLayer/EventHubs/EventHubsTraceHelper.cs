@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite.EventHubsTransport
 {
+/*
     using Microsoft.Extensions.Logging;
     using System;
 
@@ -107,4 +108,5 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
         }
     }
+*/
 }

@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite.EventHubsTransport
 {
+/*
     using System;
     using System.Collections.Generic;
     using System.IO;
@@ -19,7 +20,6 @@ namespace DurableTask.Netherite.EventHubsTransport
     using Microsoft.Azure.Storage;
     using Microsoft.Extensions.Azure;
     using Microsoft.Extensions.Logging;
-
     class BlobBatchReceiver<TEvent> where TEvent : Event
     {
         readonly string traceContext;
@@ -362,4 +362,5 @@ namespace DurableTask.Netherite.EventHubsTransport
             return deletedCount;
         }
     }
+*/
 }

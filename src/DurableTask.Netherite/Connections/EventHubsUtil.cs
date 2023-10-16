@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite
 {
+/*
     using System;
     using System.Globalization;
     using System.Net.Http;
@@ -79,4 +80,5 @@ namespace DurableTask.Netherite
             return await client.SendAsync(request);
         }
     }
+*/
 }

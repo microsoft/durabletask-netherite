@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite.EventHubsTransport
 {
+/*
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
@@ -237,4 +238,5 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
         }
     }
+*/
 }

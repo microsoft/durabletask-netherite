@@ -3,22 +3,21 @@
 
 namespace DurableTask.Netherite
 {
-    using DurableTask.Core;
-    using DurableTask.Core.Common;
-    using DurableTask.Core.History;
-    using DurableTask.Netherite.Abstractions;
-    using DurableTask.Netherite.Faster;
-    using DurableTask.Netherite.Scaling;
-    using Microsoft.Azure.Storage;
-    using Microsoft.Extensions.DependencyInjection;
-    using Microsoft.Extensions.Logging;
-    using Newtonsoft.Json;
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
+    using DurableTask.Core;
+    using DurableTask.Core.Common;
+    using DurableTask.Core.History;
+    using DurableTask.Netherite.Abstractions;
+    using DurableTask.Netherite.Faster;
+    using DurableTask.Netherite.Scaling;
+    using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Logging;
+    using Newtonsoft.Json;
 
     /// <summary>
     /// Local partition of the distributed orchestration service.
@@ -167,9 +166,11 @@ namespace DurableTask.Netherite
                         this.transport = new SingleHostTransport.SingleHostTransportLayer(this, settings, this.storage, this.TraceHelper.Logger);
                         break;
 
+                    /*
                     case TransportChoices.EventHubs:
                         this.transport = new EventHubsTransport.EventHubsTransport(this, settings, this.storage, loggerFactory);
                         break;
+                    */
 
                     case TransportChoices.Custom:
                         var transportLayerFactory = this.ServiceProvider?.GetService<ITransportLayerFactory>();

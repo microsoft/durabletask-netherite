@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite.EventHubsTransport
 {
+/*
     using DurableTask.Core.Common;
     using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Logging;
@@ -47,4 +48,5 @@ namespace DurableTask.Netherite.EventHubsTransport
             return Task.WhenAll(this.channels.Select(sender => sender.WaitForShutdownAsync()));
         }
     }
+*/
 }

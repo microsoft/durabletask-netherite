@@ -4,14 +4,11 @@
 namespace DurableTask.Netherite.Scaling
 {
     using System;
-    using System.Collections;
     using System.Collections.Generic;
     using System.Linq;
     using System.Runtime.Serialization;
-    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
-    using DurableTask.Netherite.EventHubsTransport;
 
     /// <summary>
     /// Monitors the performance of the Netherite backend and makes scaling decisions.
@@ -216,8 +213,9 @@ namespace DurableTask.Netherite.Scaling
             // next, check if any of the entries are not current, in the sense that their input queue position
             // does not match the latest queue position
 
-           
-            List<long> positions = await Netherite.EventHubsTransport.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnection, EventHubsTransport.PartitionHub).ConfigureAwait(false);
+
+            //List<long> positions = await Netherite.EventHubsTransport.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnection, EventHubsTransport.PartitionHub).ConfigureAwait(false);
+            List<long> positions = null;
 
             if (positions == null)
             {

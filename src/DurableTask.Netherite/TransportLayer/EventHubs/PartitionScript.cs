@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite.EventHubsTransport
 {
+/*
     using System;
     using System.Collections.Generic;
     using System.IO;
@@ -79,4 +80,5 @@ namespace DurableTask.Netherite.EventHubsTransport
             public int PartitionId { get; set; }
         }
     }
+*/
 }

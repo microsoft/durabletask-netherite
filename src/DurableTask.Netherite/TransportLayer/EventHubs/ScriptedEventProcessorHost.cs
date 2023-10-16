@@ -3,6 +3,7 @@
 
 namespace DurableTask.Netherite.EventHubsTransport
 {
+/*
     using DurableTask.Core.Common;
     using DurableTask.Netherite.Abstractions;
     using Microsoft.Azure.EventHubs;
@@ -403,4 +404,5 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
         }
     }
+*/
 }
