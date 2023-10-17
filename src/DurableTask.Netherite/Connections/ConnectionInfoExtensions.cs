@@ -14,10 +14,8 @@ namespace DurableTask.Netherite
     using System.Security.Cryptography;
     using System.Web;
     using DurableTask.Netherite.EventHubsTransport;
-    using Microsoft.Azure.EventHubs;
     using Azure.Core;
     using System.Runtime.CompilerServices;
-    using Microsoft.Azure.EventHubs.Processor;
     using Newtonsoft.Json.Serialization;
     using DurableTask.Netherite.Faster;
     using Azure.Storage.Blobs;
@@ -106,7 +104,7 @@ namespace DurableTask.Netherite
             }
         }
 
-
+/*
         /// <summary>
         /// Creates an Event Hub client for the given connection info.
         /// </summary>
@@ -198,6 +196,7 @@ namespace DurableTask.Netherite
                 return new JsonSecurityToken(accessToken.Token, appliesTo);
             }
         }
+*/
 
         /// <summary>
         /// Adds the necessary authorization headers to a REST http request.

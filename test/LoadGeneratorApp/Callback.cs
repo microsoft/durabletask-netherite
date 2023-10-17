@@ -12,7 +12,7 @@
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
-    using Microsoft.Azure.EventHubs;
+    //using Microsoft.Azure.EventHubs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 
     public static class Callback

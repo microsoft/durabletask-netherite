@@ -3,6 +3,7 @@
 
 namespace PerformanceTests.EventProducer
 {
+/*
     using System;
     using System.Collections.Generic;
     using System.Threading.Tasks;
@@ -112,4 +113,5 @@ namespace PerformanceTests.EventProducer
             }
         }
     }
+*/
 }

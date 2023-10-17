@@ -13,7 +13,7 @@ namespace LoadGeneratorApp
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
-    using Microsoft.Azure.EventHubs;
+    //using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;

@@ -7,7 +7,6 @@ namespace DurableTask.Netherite
     using System.Collections.Generic;
     using System.Runtime;
     using System.Text;
-    using Microsoft.Azure.EventHubs;
 
     /// <summary>
     /// Encapsulates how the transport connection string setting is interpreted.
@@ -55,7 +54,7 @@ namespace DurableTask.Netherite
                     return;
             }
         }
- 
+ /*
         /// <summary>
         /// Returns the name of the eventhubs namespace
         /// </summary>
@@ -72,5 +71,6 @@ namespace DurableTask.Netherite
                 throw new FormatException("Could not parse the specified Eventhubs namespace connection string for the Netherite storage provider.", e);
             }
         }
+ */
     }
 }

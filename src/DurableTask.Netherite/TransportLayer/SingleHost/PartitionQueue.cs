@@ -4,7 +4,6 @@
 namespace DurableTask.Netherite.SingleHostTransport
 {
     using DurableTask.Netherite.Abstractions;
-    using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Azure;
     using Microsoft.Extensions.Logging;
     using System;

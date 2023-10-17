@@ -3,6 +3,7 @@
 
 namespace PerformanceTests.EventHubs
 {
+/*
     using System;
     using System.Collections.Generic;
     using System.IO;
@@ -65,4 +66,5 @@ namespace PerformanceTests.EventHubs
             }
         }
     }
+*/
 }
