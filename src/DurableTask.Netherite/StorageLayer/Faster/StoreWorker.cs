@@ -497,7 +497,7 @@ namespace DurableTask.Netherite.Faster
                 this.traceHelper.FasterProgress($"Checkpointing state machine: checkpoint is due. Trigger='{trigger}'. compactUntil='{compactUntil}'");
                 this.pendingCheckpointTrigger = trigger;
 
-                this.pendingCompaction = this.RunCompactionAsync(compactUntil.Value);
+                this.pendingCompaction = this.RunCompactionAsync(compactUntil);
             }
         }
 
