@@ -504,7 +504,7 @@ namespace DurableTask.Netherite.Faster
                     this.GetElapsedCompactionMilliseconds());
 
                 var tokenSource = new CancellationTokenSource();
-                var timeoutTask = Task.Delay(TimeSpan.FromMinutes(10), tokenSource.Token).ContinueWith(_ => tokenSource.Dispose());
+                var timeoutTask = Task.Delay(TimeSpan.FromMinutes(10), tokenSource.Token); //.ContinueWith(_ => tokenSource.Dispose());
                 var tcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var thread = TrackedThreads.MakeTrackedThread(RunCompaction, $"Compaction.{id}");
                 thread.Start();
