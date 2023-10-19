@@ -9,6 +9,7 @@ namespace DurableTask.Netherite.Scaling
     using System.Runtime.Serialization;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Messaging.EventHubs;
 
     /// <summary>
     /// Monitors the performance of the Netherite backend and makes scaling decisions.
@@ -214,8 +215,7 @@ namespace DurableTask.Netherite.Scaling
             // does not match the latest queue position
 
 
-            //List<long> positions = await Netherite.EventHubsTransport.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnection, EventHubsTransport.PartitionHub).ConfigureAwait(false);
-            List<long> positions = null;
+            List<long> positions = await GetQueuePositionsAsync(this.eventHubsConnection, "partitions").ConfigureAwait(false);
 
             if (positions == null)
             {
@@ -247,6 +247,22 @@ namespace DurableTask.Netherite.Scaling
 
             // we have concluded that there are no pending work items, timers, or unprocessed input queue entries
             return null;
-        }  
+        }
+
+        public static async Task<List<long>> GetQueuePositionsAsync(ConnectionInfo connectionInfo, string partitionHub)
+        {
+            var client = connectionInfo.CreateEventHubConsumerClient(partitionHub);
+            try
+            {
+                var partitionIds = await client.GetPartitionIdsAsync();
+                var infoTasks = partitionIds.Select(id => client.GetPartitionPropertiesAsync(id)).ToList();
+                await Task.WhenAll(infoTasks);
+                return infoTasks.Select(t => t.Result.LastEnqueuedSequenceNumber + 1).ToList();
+            }
+            catch (Azure.Messaging.EventHubs.EventHubsException)
+            {
+                return null;
+            }
+        }
     }
 }
