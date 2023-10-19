@@ -1,0 +1,46 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <DebugType>embedded</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Package props -->    
+    <PackageId>$(AssemblyName)</PackageId>
+    <PackageIcon>icon.png</PackageIcon>
+    <RepositoryUrl>https://github.com/microsoft/durabletask-netherite</RepositoryUrl>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <Authors>Microsoft</Authors>
+    <PackageProjectUrl>https://github.com/microsoft/durabletask-netherite</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
+    <!-- Signing -->
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)..\sign.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+
+  <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
+  <PropertyGroup>
+    <MajorVersion>1</MajorVersion>
+    <MinorVersion>4</MinorVersion>
+    <PatchVersion>0</PatchVersion>
+    <VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
+    <VersionSuffix></VersionSuffix>
+    <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
+    <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
+    <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(Configuration)'=='Release'">
+    <Content Include="..\..\_manifest\**">
+      <Pack>true</Pack>
+      <PackagePath>content/SBOM</PackagePath>
+    </Content>
+  </ItemGroup>
+  
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>
+  

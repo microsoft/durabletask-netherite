@@ -10,7 +10,6 @@ namespace DurableTask.Netherite.Faster
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Netherite.Abstractions;
-    using DurableTask.Netherite.EventHubsTransport;
     using DurableTask.Netherite.Scaling;
     using Microsoft.Azure.Storage;
     using Microsoft.Azure.Storage.Blob;

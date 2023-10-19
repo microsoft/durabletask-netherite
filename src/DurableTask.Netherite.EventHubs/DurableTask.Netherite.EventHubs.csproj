@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.1;netstandard2.0;netcoreapp3.1</TargetFrameworks>
+
+    <PackageId>Microsoft.Azure.DurableTask.Netherite.EventHubs</PackageId>
+    <Description>Netherite orchestration service provider for the Durable Task Framework.</Description>
+    <PackageTags>Azure Task Durable Orchestration Workflow Activity Reliable EventHubs</PackageTags>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.EventHubs.Processor" Version="4.3.2" />
+
+    <ProjectReference Include="..\DurableTask.Netherite\DurableTask.Netherite.csproj" />
+  </ItemGroup>
+</Project>

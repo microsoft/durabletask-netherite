@@ -5,13 +5,10 @@ namespace DurableTask.Netherite.SingleHostTransport
 {
     using System;
     using System.Collections.Generic;
-    using System.Linq;
-    using System.Net.NetworkInformation;
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Netherite.Abstractions;
     using DurableTask.Netherite.Faster;
-    using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Logging;
 
     /// <summary>
