@@ -17,6 +17,9 @@ namespace PerformanceTests.FanOutFanIn
     using System.Linq;
     using System.Collections.Concurrent;
     using System.Threading;
+    using Newtonsoft.Json.Linq;
+    using System.Net.Http;
+    using System.Net;
 
     /// <summary>
     /// A simple microbenchmark orchestration that executes activities in parallel.
@@ -25,18 +28,35 @@ namespace PerformanceTests.FanOutFanIn
     {
         [FunctionName(nameof(FanOutFanIn))]
         public static async Task<IActionResult> RunFanOutFanIn(
-           [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "fanoutfanin")] HttpRequest req,
+           [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "fanoutfanin/{count}")] HttpRequest req,
+           int count,
            [DurableClient] IDurableClient client)
         {
-            // get the number of tasks
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            int count = int.Parse(requestBody);
+            try
+            {
+                // start the orchestration
+                string orchestrationInstanceId = await client.StartNewAsync(nameof(FanOutFanInOrchestration), null, count);
 
-            // start the orchestration
-            string orchestrationInstanceId = await client.StartNewAsync(nameof(FanOutFanInOrchestration), null, count);
+                // wait for it to complete and return the result
+                var response = await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(600));
 
-            // wait for it to complete and return the result
-            return await client.WaitForCompletionOrCreateCheckStatusResponseAsync(req, orchestrationInstanceId, TimeSpan.FromSeconds(200));
+                if (response is ObjectResult objectResult
+                    && objectResult.Value is HttpResponseMessage responseMessage
+                    && responseMessage.StatusCode == System.Net.HttpStatusCode.OK
+                    && responseMessage.Content is StringContent stringContent)
+                {
+                    var state = await client.GetStatusAsync(orchestrationInstanceId, false, false, false);
+                    var elapsedSeconds = (state.LastUpdatedTime - state.CreatedTime).TotalSeconds;
+                    var throughput = count / elapsedSeconds;
+                    response = new OkObjectResult(new { elapsedSeconds, count, throughput });
+                }
+
+                return response;
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(new { error = e.ToString() }) { StatusCode = (int)HttpStatusCode.InternalServerError };
+            }
         }
     }
 }
