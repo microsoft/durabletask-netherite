@@ -51,6 +51,20 @@ namespace DurableTask.Netherite.Faster
 
         CancellationTokenSource ioCompletionNotificationCancellation;
 
+        long Deadline = 0;
+        void StartWatchdog(TimeSpan maxTime)
+        {
+            Interlocked.Exchange(ref this.Deadline, (DateTime.UtcNow + maxTime).Ticks);
+        }
+        void StopWatchdog()
+        {
+            Interlocked.Exchange(ref this.Deadline, 0);
+        }
+        public bool WatchdogSeesExpiredDeadline()
+        {
+            var deadline = Interlocked.Read(ref this.Deadline);
+            return deadline != 0 && DateTime.UtcNow > new DateTime(deadline);
+        }
 
         public StoreWorker(TrackedObjectStore store, Partition partition, FasterTraceHelper traceHelper, BlobManager blobManager, CancellationToken cancellationToken)
             : base($"{nameof(StoreWorker)}{partition.PartitionId:D2}", true, 500, cancellationToken, partition.TraceHelper)
@@ -523,7 +537,9 @@ namespace DurableTask.Netherite.Faster
                     }
 
                     // if there are IO responses ready to process, do that first
+                    this.StartWatchdog(TimeSpan.FromSeconds(10)); // This is a temporary mitigation for #251
                     this.store.CompletePending();
+                    this.StopWatchdog();
 
                     // record the current time, for measuring latency in the event processing pipeline
                     partitionEvent.IssuedTimestamp = this.partition.CurrentTimeMs;

@@ -1283,7 +1283,7 @@ namespace DurableTask.Netherite.Faster
         public override (double totalSizeMB, int fillPercentage) CacheSizeInfo {
             get
             {
-                double totalSize = (double)(Math.Min(0, this.cacheTracker.TrackedObjectSize) + this.MemoryUsedWithoutObjects);
+                double totalSize = (double)(Math.Max(0, this.cacheTracker.TrackedObjectSize) + this.MemoryUsedWithoutObjects);
                 double totalSizeMB = Math.Round(100 * totalSize / (1024 * 1024)) / 100;
                 if (this.cacheTracker.TargetSize == 0)
                 {

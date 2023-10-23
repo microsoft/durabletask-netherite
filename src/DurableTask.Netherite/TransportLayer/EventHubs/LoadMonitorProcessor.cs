@@ -119,7 +119,15 @@ namespace DurableTask.Netherite.EventHubsTransport
                     last = eventData;
                 }
 
-                this.traceHelper.LogDebug("LoadMonitor received {totalEvents} events in {latencyMs:F2}ms, through #{seqno}", totalEvents, stopwatch.Elapsed.TotalMilliseconds, last.SystemProperties.SequenceNumber);
+
+                if (last != null)
+                {
+                    this.traceHelper.LogDebug("LoadMonitor received {totalEvents} events in {latencyMs:F2}ms, through #{seqno}", totalEvents, stopwatch.Elapsed.TotalMilliseconds, last.SystemProperties.SequenceNumber);
+                }
+                else
+                {
+                    this.traceHelper.LogDebug("LoadMonitor received no new events in {latencyMs:F2}ms", stopwatch.Elapsed.TotalMilliseconds);
+                }
 
                 this.PeriodicGarbageCheck();
             }

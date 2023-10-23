@@ -13,7 +13,7 @@ namespace PerformanceTests.CollisionSearch
     using System.Linq;
 
     /// <summary>
-    /// An orchestration that searches for hash collisions using a recursive divide-and-conquer algorithm.
+    /// An orchestration that searches for hash collisions using the simple fan-out-fan-in pattern.
     /// </summary>
     public static class FlatParallelSearch
     {
