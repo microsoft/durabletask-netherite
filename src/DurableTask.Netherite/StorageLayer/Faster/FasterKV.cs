@@ -416,10 +416,28 @@ namespace DurableTask.Netherite.Faster
                     this.fht.Log.ShiftBeginAddress(shiftBeginAddress.Value);
                 }
 
+                long versionBeforeCheckpoint = this.mainSession.Version;
+
                 if (this.fht.TryInitiateHybridLogCheckpoint(out var token, CheckpointType.FoldOver))
                 {
                     // according to Badrish this ensures proper fencing w.r.t. session
-                    this.mainSession.Refresh();
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    TimeSpan timeLimit = TimeSpan.FromMinutes(1);
+                    while (stopwatch.Elapsed < timeLimit)
+                    {
+                        this.mainSession.Refresh();
+                        if (this.mainSession.Version > versionBeforeCheckpoint)
+                        {
+                            break;
+                        }
+                        System.Threading.Thread.Sleep(5);
+                    }
+                    if (this.mainSession.Version == versionBeforeCheckpoint)
+                    {
+                        string message = $"FASTER did not advance version of main session after initiating checkpoint for over {timeLimit}. Terminating partition.";
+                        this.partition.ErrorHandler.HandleError(nameof(StartStoreCheckpoint), message, e: null, terminatePartition: true, reportAsWarning: false);
+                        return null;
+                    }
 
                     byte[] serializedSingletons = Serializer.SerializeSingletons(this.singletons);
                     this.persistSingletonsTask = this.blobManager.PersistSingletonsAsync(serializedSingletons, token);
