@@ -251,7 +251,7 @@ namespace DurableTask.Netherite.Scaling
 
         public static async Task<List<long>> GetQueuePositionsAsync(ConnectionInfo connectionInfo, string partitionHub)
         {
-            var client = connectionInfo.CreateEventHubConsumerClient(partitionHub);
+            var client = connectionInfo.CreateEventHubProducerClient(partitionHub);
             try
             {
                 var partitionIds = await client.GetPartitionIdsAsync();
@@ -259,7 +259,8 @@ namespace DurableTask.Netherite.Scaling
                 await Task.WhenAll(infoTasks);
                 return infoTasks.Select(t => t.Result.LastEnqueuedSequenceNumber + 1).ToList();
             }
-            catch (Azure.Messaging.EventHubs.EventHubsException)
+            catch (Azure.Messaging.EventHubs.EventHubsException ex) when
+                (ex.Reason == EventHubsException.FailureReason.ResourceNotFound)
             {
                 return null;
             }

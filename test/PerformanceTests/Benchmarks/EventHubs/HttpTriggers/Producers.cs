@@ -4,22 +4,18 @@
 namespace PerformanceTests.EventProducer
 {
     using System;
-    using System.Collections.Generic;
+    using System.IO;
+    using System.Linq;
+    using System.Net;
     using System.Threading.Tasks;
-    using Microsoft.Azure.EventHubs;
     using EventHubs;
-    using Microsoft.AspNetCore.Mvc;
-    using Microsoft.AspNetCore.Routing;
-    using Microsoft.Azure.WebJobs;
     using Microsoft.AspNetCore.Http;
-    using Microsoft.Extensions.Logging;
+    using Microsoft.AspNetCore.Mvc;
+    using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Azure.WebJobs.Extensions.Http;
+    using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
-    using System.Linq;
-    using System.Diagnostics;
-    using System.IO;
-    using System.Net;
 
     public static class Producers
     {

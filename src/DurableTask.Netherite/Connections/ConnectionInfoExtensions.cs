@@ -4,22 +4,15 @@
 namespace DurableTask.Netherite
 {
     using System;
-    using System.Collections.Generic;
-    using System.Text;
-    using System.Threading.Tasks;
-    using System.Threading;
-    using System.Net.Cache;
-    using System.Net.Http;
     using System.Globalization;
+    using System.Net.Http;
     using System.Security.Cryptography;
+    using System.Text;
+    using System.Threading;
+    using System.Threading.Tasks;
     using System.Web;
-    using DurableTask.Netherite.EventHubsTransport;
-    using Azure.Core;
-    using System.Runtime.CompilerServices;
-    using Newtonsoft.Json.Serialization;
-    using DurableTask.Netherite.Faster;
+    using Azure.Messaging.EventHubs.Producer;
     using Azure.Storage.Blobs;
-    using Azure.Messaging.EventHubs.Consumer;
 
     /// <summary>
     /// Utilities for constructing various SDK objects from a connection information.
@@ -106,23 +99,24 @@ namespace DurableTask.Netherite
         }
 
         /// <summary>
-        /// Creates an Event Hub Consumer client for the given connection info.
+        /// Creates an Event Hub Producer client for the given connection info.
         /// </summary>
         /// <param name="connectionInfo">The connection info.</param>
         /// <param name="eventHubName">The event hub name.</param>
         /// <returns></returns>
-        public static EventHubConsumerClient CreateEventHubConsumerClient(this ConnectionInfo connectionInfo, string eventHubName)
+        public static EventHubProducerClient CreateEventHubProducerClient(this ConnectionInfo connectionInfo, string eventHubName)
         {
             if (connectionInfo.ConnectionString != null)
             {
-                return new EventHubConsumerClient("$Default", connectionInfo.ConnectionString, eventHubName);
+                return new EventHubProducerClient(connectionInfo.ConnectionString, eventHubName);
             }
             else
             {
                 var properties = Azure.Messaging.EventHubs.EventHubsConnectionStringProperties.Parse(connectionInfo.ConnectionString);
                 string fullyQualifiedNamespace = properties.FullyQualifiedNamespace;
-                return new EventHubConsumerClient("$Default", fullyQualifiedNamespace, eventHubName, connectionInfo.TokenCredential);
+                return new EventHubProducerClient(fullyQualifiedNamespace, eventHubName, connectionInfo.TokenCredential);
             }
+
         }
 
         /*
