@@ -349,7 +349,12 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                             var receivedTimestamp = this.partition.CurrentTimeMs;
 
-                            await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.host.taskHubGuid, hubMessages, this.shutdownSource.Token, nextPacketToReceive.seqNo))
+
+                            // we need to update the next expected seqno even if the iterator returns no packets, since it may have discarded some
+                            // iterators do not support ref arguments, so we use a simple wrapper class to work around this limitation
+                            MutableLong nextPacket = new MutableLong() { Value = nextPacketToReceive.seqNo };
+
+                            await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.host.taskHubGuid, hubMessages, this.shutdownSource.Token, nextPacket))
                             {
                                 for (int i = 0; i < events.Length; i++)
                                 {
@@ -383,7 +388,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                                     this.partition.SubmitEvents(events.Skip(nextPacketToReceive.batchPos).ToList());
                                 }
 
-                                nextPacketToReceive = (seqNo + 1, 0);
+                                nextPacketToReceive = (nextPacket.Value, 0);
                             }
 
                             this.host.logger.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received {totalEvents} events in {latencyMs:F2}ms, next expected packet is #{nextSeqno}", this.host.eventHubPath, this.partitionId, this.Incarnation, totalEvents, stopwatch.Elapsed.TotalMilliseconds, nextPacketToReceive.seqNo);
