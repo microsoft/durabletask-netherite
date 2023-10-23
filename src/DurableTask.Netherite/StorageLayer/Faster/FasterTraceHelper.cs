@@ -128,6 +128,15 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        public void FasterProgress(Func<string> constructString)
+        {
+            if (this.logLevelLimit <= LogLevel.Debug)
+            {
+                var details = constructString();
+                this.FasterProgress(details);
+            }
+        }
+
         public void FasterStorageProgress(string details)
         {
             if (this.logLevelLimit <= LogLevel.Trace)

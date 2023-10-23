@@ -176,7 +176,6 @@ namespace DurableTask.Netherite.Faster
 
             return JsonConvert.SerializeObject(new StorageFormatSettings()
                 {
-                    UseAlternateObjectStore = settings.UseAlternateObjectStore,
                     FormatVersion = StorageFormatVersion.Last(),
                     PageAndSegmentSizes = pageAndSegmentSizes,
                     MemorySizes = memorySizes,
@@ -193,9 +192,6 @@ namespace DurableTask.Netherite.Faster
             public int FormatVersion { get; set; }
 
             // the following can be changed between versions
-
-            [JsonProperty("UseAlternateObjectStore", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool? UseAlternateObjectStore { get; set; }
 
             [JsonProperty("PageAndSegmentSizes", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public int[] PageAndSegmentSizes { get; set; }
@@ -218,10 +214,6 @@ namespace DurableTask.Netherite.Faster
             {
                 var taskhubFormat = JsonConvert.DeserializeObject<StorageFormatSettings>(format, serializerSettings);
 
-                if (taskhubFormat.UseAlternateObjectStore != settings.UseAlternateObjectStore)
-                {
-                    throw new NetheriteConfigurationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
-                }
                 if (taskhubFormat.FormatVersion != StorageFormatVersion.Last())
                 {
                     throw new NetheriteConfigurationException($"The current storage format version (={StorageFormatVersion.Last()}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");

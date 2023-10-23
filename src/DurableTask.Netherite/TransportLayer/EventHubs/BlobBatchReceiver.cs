@@ -51,7 +51,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             byte[] guid, 
             IEnumerable<EventData> hubMessages,
             [EnumeratorCancellation] CancellationToken token,
-            long? nextPacketToReceive = null)
+            MutableLong nextPacketToReceive = null)
         {
             int ignoredPacketCount = 0;
 
@@ -59,7 +59,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             {
                 var seqno = eventData.SystemProperties.SequenceNumber;
 
-                if (nextPacketToReceive.HasValue)
+                if (nextPacketToReceive != null)
                 {
                     if (seqno < nextPacketToReceive.Value)
                     {
@@ -182,9 +182,9 @@ namespace DurableTask.Netherite.EventHubsTransport
                     }
                 }
 
-                if (nextPacketToReceive.HasValue)
+                if (nextPacketToReceive != null)
                 {
-                    nextPacketToReceive = seqno + 1;
+                    nextPacketToReceive.Value = seqno + 1;
                 }
             }
 
@@ -361,5 +361,10 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             return deletedCount;
         }
+    }
+
+    public class MutableLong
+    {
+        public long Value;
     }
 }
