@@ -484,7 +484,11 @@ namespace DurableTask.Netherite.Faster
         public override async Task<long> RunCompactionAsync(long target)
         {
             string id = DateTime.UtcNow.ToString("O"); // for tracing purposes
+
+            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} is requesting to enter semaphore with {maxCompactionThreads.CurrentCount} threads available");
             await maxCompactionThreads.WaitAsync();
+            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} entered semaphore");
+
             try
             {
                 long beginAddressBeforeCompaction = this.Log.BeginAddress;
@@ -499,20 +503,47 @@ namespace DurableTask.Netherite.Faster
                     target - this.Log.BeginAddress,
                     this.GetElapsedCompactionMilliseconds());
 
+                var tokenSource = new CancellationTokenSource();
+                var timeoutTask = Task.Delay(TimeSpan.FromMinutes(10), tokenSource.Token);
                 var tcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var thread = TrackedThreads.MakeTrackedThread(RunCompaction, $"Compaction.{id}");
                 thread.Start();
+
+                var winner = await Task.WhenAny(tcs.Task, timeoutTask);
+
+                if (winner == timeoutTask)
+                {
+                    // compaction timed out. Terminate partition
+                    var exceptionMessage = $"Compaction {id} time out";
+                    this.partition.ErrorHandler.HandleError(nameof(RunCompactionAsync), exceptionMessage, e: null, terminatePartition: true, reportAsWarning: true);
+
+                    // we need resolve the task to ensure the 'finally' block is executed which frees up another thread to start compating
+                    tcs.TrySetException(new OperationCanceledException(exceptionMessage));
+                }
+                else
+                {
+                    // cancel the timeout task since compaction completed
+                    tokenSource.Cancel();
+                }
+
+                await timeoutTask.ContinueWith(_ => tokenSource.Dispose());
+
+                // return result of compaction task
                 return await tcs.Task;
 
                 void RunCompaction()
                 {
                     try
                     {
+
                         this.blobManager.TraceHelper.FasterProgress($"Compaction {id} started");
 
                         var session = this.CreateASession($"compaction-{id}", true);
+
+                        this.blobManager.TraceHelper.FasterProgress($"Compaction {id} obtained a FASTER session");
                         using (this.TrackTemporarySession(session))
                         {
+                            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} is invoking FASTER's compaction routine");
                             long compactedUntil = session.Compact(target, CompactionType.Scan);
 
                             this.TraceHelper.FasterCompactionProgress(
@@ -525,17 +556,17 @@ namespace DurableTask.Netherite.Faster
                                 this.Log.BeginAddress - beginAddressBeforeCompaction,
                                 this.GetElapsedCompactionMilliseconds());
 
-                            tcs.SetResult(compactedUntil);
+                            tcs.TrySetResult(compactedUntil);
                         }
                     }
                     catch (Exception exception)
                         when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
                     {
-                        tcs.SetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
+                        tcs.TrySetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
                     }
                     catch (Exception e)
                     {
-                        tcs.SetException(e);
+                        tcs.TrySetException(e);
                     }
                 }
             }
