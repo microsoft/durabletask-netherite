@@ -64,6 +64,7 @@ namespace DurableTask.Netherite
 
             evt.TaskMessage = new TaskMessage()
             {
+                // TODO: consider using Object.MemberwiseClone() to copy ExecutionStartedEvent
                 Event = new ExecutionStartedEvent(ee.EventId, ee.Input)
                 {
                     ParentInstance = ee.ParentInstance,
@@ -75,6 +76,7 @@ namespace DurableTask.Netherite
                     ExtensionData = ee.ExtensionData,
                     OrchestrationInstance = ee.OrchestrationInstance,
                     Timestamp = this.CreationTimestamp,
+                    ParentTraceContext = ee.ParentTraceContext,
                 },
                 SequenceNumber = tm.SequenceNumber,
                 OrchestrationInstance = tm.OrchestrationInstance,
