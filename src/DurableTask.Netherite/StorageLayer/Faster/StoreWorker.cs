@@ -31,15 +31,15 @@ namespace DurableTask.Netherite.Faster
 
         // periodic index and store checkpointing
         CheckpointTrigger pendingCheckpointTrigger;
-        Task? pendingIndexCheckpoint;
-        Task<(long, (long,int))>? pendingStoreCheckpoint;
+        Task pendingIndexCheckpoint;
+        Task<(long, (long,int))> pendingStoreCheckpoint;
         (long,int) lastCheckpointedInputQueuePosition;
         long lastCheckpointedCommitLogPosition;
         long numberEventsSinceLastCheckpoint;
         DateTime timeOfNextIdleCheckpoint;
 
         // periodic compaction
-        Task<long?>? pendingCompaction;
+        Task<long?> pendingCompaction;
 
         // periodic load publishing
         PartitionLoadInfo loadInfo;
@@ -301,7 +301,7 @@ namespace DurableTask.Netherite.Faster
             long inputQueuePositionLag = this.GetInputQueuePositionLag();
             
             // since this is a pure function, we declare it as local static for improved performance
-            static string ReportNullableTaskStatus(Task? t)
+            static string ReportNullableTaskStatus(Task t)
             {
                 if (t == null)
                 {
