@@ -754,9 +754,11 @@ namespace DurableTask.Netherite.Faster
                 }
             }
 
+            this.TraceHelper.FasterProgress("Blob manager is terminating partition normally");
+
             this.PartitionErrorHandler.TerminateNormally();
 
-            this.TraceHelper.LeaseProgress("Blob manager stopped");
+            this.TraceHelper.FasterProgress("Blob manager stopped");
         }
 
         public async Task RemoveObsoleteCheckpoints()
