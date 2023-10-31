@@ -76,6 +76,11 @@ namespace DurableTask.Netherite
                 return true;
             }
 
+            if (exception is ForceRetryException)
+            {
+                return true; 
+            }
+
             // Empirically observed: timeouts on synchronous calls
             if (exception.InnerException is TimeoutException)
             {
@@ -125,6 +130,27 @@ namespace DurableTask.Netherite
             || statusCode == 503  //503 Service Unavailable
             || statusCode == 504); //504 Gateway Timeout
 
+
+        /// <summary>
+        /// A custom exception class that we use to explicitly force a retry after a transient error.
+        /// By using an exception we ensure that we stay under the total retry count and generate the proper tracing.
+        /// </summary>
+        public class ForceRetryException : Exception
+        {
+            public ForceRetryException()
+            {
+            }
+
+            public ForceRetryException(string message)
+                : base(message)
+            {
+            }
+
+            public ForceRetryException(string message, Exception inner)
+                : base(message, inner)
+            {
+            }
+        }
 
         // Lease error codes are documented at https://docs.microsoft.com/en-us/rest/api/storageservices/lease-blob
 

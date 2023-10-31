@@ -62,7 +62,10 @@ namespace DurableTask.Netherite.Faster
         const uint MAX_UPLOAD_SIZE = 1024 * 1024;
         const uint MAX_DOWNLOAD_SIZE = 1024 * 1024;
 
-        const long MAX_PAGEBLOB_SIZE = 512L * 1024 * 1024 * 1024; // set this at 512 GB for now TODO consider implications
+        // some blobs have no specific size; for example, they are used for the object log, and for checkpoints.
+        // we start them at 512 GB - there is no cost incurred for empty pages so why not.
+        // if that turns out to not be enough at some point, we enlarge the page blob automatically.
+        const long STARTING_DEFAULT_PAGEBLOB_SIZE = 512L * 1024 * 1024 * 1024; 
 
         /// <summary>
         /// Constructs a new AzureStorageDevice instance, backed by Azure Page Blobs
@@ -425,7 +428,7 @@ namespace DurableTask.Netherite.Faster
                     var pageBlob = this.pageBlobDirectory.GetPageBlobClient(this.GetSegmentBlobName(segmentId));
 
                     // If segment size is -1 we use a default
-                    var size = this.segmentSize == -1 ? AzureStorageDevice.MAX_PAGEBLOB_SIZE : this.segmentSize;
+                    var size = this.segmentSize == -1 ? AzureStorageDevice.STARTING_DEFAULT_PAGEBLOB_SIZE : this.segmentSize;
 
                     // If no blob exists for the segment, we must first create the segment asynchronouly. (Create call takes ~70 ms by measurement)
                     // After creation is done, we can call write.
@@ -469,15 +472,46 @@ namespace DurableTask.Netherite.Faster
                         {
                             var client = numAttempts > 2 ? blobEntry.PageBlob.Default : blobEntry.PageBlob.Aggressive;
 
-                            var response = await client.UploadPagesAsync(
-                                 content: stream,
-                                 offset: destinationAddress + offset,
-                                 transactionalContentHash: null,
-                                 conditions: this.underLease ? new PageBlobRequestConditions() { IfMatch = blobEntry.ETag } : null,
-                                 progressHandler: null,
-                                 cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
+                            try
+                            {
+                                var response = await client.UploadPagesAsync(
+                                     content: stream,
+                                     offset: destinationAddress + offset,
+                                     transactionalContentHash: null,
+                                     conditions: this.underLease ? new PageBlobRequestConditions() { IfMatch = blobEntry.ETag } : null,
+                                     progressHandler: null,
+                                     cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
+                            
+                                blobEntry.ETag = response.Value.ETag;
+                            }
+                            catch (Azure.RequestFailedException e) when (e.ErrorCode == "InvalidPageRange")
+                            {
+                                // this kind of error can indicate that the page blob is too small.
+                                // first, compute desired size to request
+                                long currentSize = (await client.GetPropertiesAsync().ConfigureAwait(false)).Value.ContentLength;
+                                long sizeToRequest = currentSize; 
+                                long sizeToAccommodate = destinationAddress + offset + length + 1;
+                                while (sizeToAccommodate > sizeToRequest)
+                                {
+                                    sizeToRequest <<= 1;
+                                }
 
-                            blobEntry.ETag = response.Value.ETag;
+                                if (sizeToRequest <= currentSize)
+                                {
+                                    throw e; // blob is already big enough, so this exception was thrown for some other reason
+                                }
+                                else
+                                {
+                                    // enlarge the blob to accommodate the size
+                                    await client.ResizeAsync(
+                                        sizeToRequest,
+                                        conditions: this.underLease ? new PageBlobRequestConditions() { IfMatch = blobEntry.ETag } : null,
+                                        cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
+
+                                    // force retry
+                                    throw new BlobUtils.ForceRetryException($"page blob was enlarged from {currentSize} to {sizeToRequest}", e);
+                                }
+                            }
                         }
 
                         return (long)length;
@@ -500,11 +534,17 @@ namespace DurableTask.Netherite.Faster
         {
             using (stream)
             {
+                // we use this to prevent reading past the end of the page blob
+                // but for performance reasons (Azure storage access required to determine current size of page blob)
+                // we set it lazily, i.e. only after a request failed
+                long? readCap = null;
+
                 long offset = 0;
                 while (readLength > 0)
                 {
-                    var length = Math.Min(readLength, MAX_DOWNLOAD_SIZE);
-
+                    // determine how much we are going to try to read in this portion
+                    var length = Math.Min(readLength, MAX_DOWNLOAD_SIZE); 
+ 
                     await this.BlobManager.PerformWithRetriesAsync(
                         BlobManager.AsynchronousStorageReadMaxConcurrency,
                         true,
@@ -516,31 +556,83 @@ namespace DurableTask.Netherite.Faster
                         true,
                         async (numAttempts) =>
                         {
-                            if (numAttempts > 0)
+                            stream.Seek(offset, SeekOrigin.Begin);
+
+                            long requestedLength = length;
+
+                            if (readCap.HasValue && sourceAddress + offset + requestedLength > readCap.Value)
                             {
-                                stream.Seek(offset, SeekOrigin.Begin); // must go back to original position before retrying
-                            }
+                                requestedLength = readCap.Value - (sourceAddress + offset);
 
-                            if (length > 0)
-                            {
-                                var client = (numAttempts > 1 || length == MAX_DOWNLOAD_SIZE) ? blob.Default : blob.Aggressive;
-
-                                var response = await client.DownloadStreamingAsync(
-                                    range: new Azure.HttpRange(sourceAddress + offset, length),
-                                    conditions: null,
-                                    rangeGetContentHash: false,
-                                    cancellationToken: this.PartitionErrorHandler.Token)
-                                    .ConfigureAwait(false);
-
-                                using (var streamingResult = response.Value)
+                                if (requestedLength <= 0)
                                 {
-                                    await streamingResult.Content.CopyToAsync(stream).ConfigureAwait(false);
+                                    requestedLength = 0;
                                 }
                             }
 
-                            if (stream.Position != offset + length)
+                            if (requestedLength > 0)
                             {
-                                throw new InvalidDataException($"wrong amount of data received from page blob, expected={length}, actual={stream.Position}");
+                                var client = (numAttempts > 1 || requestedLength == MAX_DOWNLOAD_SIZE) ? blob.Default : blob.Aggressive;
+
+                                try
+                                {
+                                    var response = await client.DownloadStreamingAsync(
+                                        range: new Azure.HttpRange(sourceAddress + offset, requestedLength),
+                                        conditions: null,
+                                        rangeGetContentHash: false,
+                                        cancellationToken: this.PartitionErrorHandler.Token)
+                                        .ConfigureAwait(false);
+
+                                    using (var streamingResult = response.Value)
+                                    {
+                                        await streamingResult.Content.CopyToAsync(stream).ConfigureAwait(false);
+                                    }
+
+                                    // we have observed that we may get 206 responses where the actual length is less than the requested length
+                                    // this seems to only happen if blob was enlarged in the past
+                                    long actualLength = (stream.Position - offset); 
+
+                                    if (actualLength < requestedLength)
+                                    {
+                                        this.BlobManager.StorageTracer?.FasterStorageProgress($"PageBlob.DownloadStreamingAsync id={id} returned partial response range={response.Value.Details.ContentRange} requestedLength={requestedLength} actualLength={actualLength}");
+                                       
+                                        if (actualLength == 0)
+                                        {
+                                            throw new InvalidDataException($"PageBlob.DownloadStreamingAsync returned empty response, range={response.Value.Details.ContentRange} requestedLength={requestedLength} ");
+                                        }
+                                        else if (actualLength % 512 != 0)
+                                        {
+                                            throw new InvalidDataException($"PageBlob.DownloadStreamingAsync returned unaligned response, range={response.Value.Details.ContentRange} requestedLength={requestedLength} actualLength=${actualLength}");
+                                        }
+                                        else
+                                        {
+                                            length = (uint)actualLength; // adjust length to actual length read so the next read will start where this read ended
+                                        }
+                                    }
+                                    else if (actualLength > requestedLength)
+                                    {
+                                        throw new InvalidDataException($"PageBlob.DownloadStreamingAsync returned too much data, range={response.Value.Details.ContentRange} requestedLength={requestedLength} actualLength=${actualLength}");
+                                    }
+                                }
+                                catch (Azure.RequestFailedException e) when (e.ErrorCode == "InvalidRange")
+                                {
+                                    // this type of error can be caused by the page blob being smaller than where FASTER is reading from.
+                                    // to handle this, first determine current page blob size.
+                                    var properties = await client.GetPropertiesAsync().ConfigureAwait(false);
+                                    readCap = properties.Value.ContentLength;
+
+                                    if (sourceAddress + offset + requestedLength <= readCap.Value)
+                                    {
+                                        // page blob is big enough, so this exception was thrown for some other reason
+                                        throw e; 
+                                    }
+                                    else
+                                    {
+                                        // page blob was indeed too small; now that we have set a read cap, force a retry
+                                        // so we can read an adjusted portion
+                                        throw new BlobUtils.ForceRetryException($"reads now capped at {readCap}", e);
+                                    }
+                                }                  
                             }
 
                             return length;
