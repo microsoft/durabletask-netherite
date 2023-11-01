@@ -11,9 +11,9 @@ namespace DurableTask.Netherite
 
     /// <summary>
     /// A utility class for terminating the partition if some task takes too long.
-    /// Implemented as a disposable, with <see cref="IDisposable.Dispose"> used to cancel the timeout.
+    /// Implemented as a disposable, with <see cref="IAsyncDisposable.DisposeAsync"> used to cancel the timeout.
     /// </summary>
-    class PartitionTimeout : IDisposable
+    class PartitionTimeout : IAsyncDisposable
     {
         readonly CancellationTokenSource tokenSource;
         readonly Task timeoutTask;
@@ -21,26 +21,39 @@ namespace DurableTask.Netherite
         public PartitionTimeout(IPartitionErrorHandler errorHandler, string task, TimeSpan timeout)
         {
             this.tokenSource = new CancellationTokenSource();
-            this.timeoutTask = Task.Delay(timeout, this.tokenSource.Token);
+            this.timeoutTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(timeout, this.tokenSource.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // we did not time out
+                    return;
+                }
 
-            // if the timeout tasks runs to completion without being cancelled, terminate the partition
-            this.timeoutTask.ContinueWith(
-                 _ => errorHandler.HandleError(
-                     $"{nameof(PartitionTimeout)}",
-                     $"{task} timed out after {timeout}",
-                     e: null,
-                     terminatePartition: true,
-                     reportAsWarning: false),
-                 TaskContinuationOptions.OnlyOnRanToCompletion);
+                errorHandler.HandleError(
+                    $"{nameof(PartitionTimeout)}",
+                    $"{task} timed out after {timeout}",
+                    e: null,
+                    terminatePartition: true,
+                    reportAsWarning: false);
+            });
         }
 
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {      
             // cancel the timeout task (if it has not already completed)
             this.tokenSource.Cancel();
 
-            // dispose the token source after the timeout task has completed
-            this.timeoutTask.ContinueWith(_ => this.tokenSource.Dispose());
+            // wait for the timeouttask to complete here, so we can be sure that the
+            // decision about the timeout firing or not firing has been made
+            // before we leave this method
+            await this.timeoutTask.ConfigureAwait(false);
+
+            // we can dispose the token source now since the timeoutTask is completed
+            this.tokenSource.Dispose();
         }
     }
 }
