@@ -482,6 +482,9 @@ namespace DurableTask.Netherite.Faster
                             catch (Azure.RequestFailedException e) when (e.ErrorCode == "InvalidPageRange")
                             {
                                 // this kind of error can indicate that the page blob is too small.
+                                // from the perspective of FASTER, this storage device is infinite, so it may write past the end of the blob.
+                                // To deal with this situation, we dynamically enlarge this device as needed.
+
                                 // first, compute desired size to request
                                 long currentSize = (await client.GetPropertiesAsync().ConfigureAwait(false)).Value.ContentLength;
                                 long sizeToRequest = currentSize; 
@@ -509,6 +512,7 @@ namespace DurableTask.Netherite.Faster
                                         cancellationToken: this.PartitionErrorHandler.Token).ConfigureAwait(false);
 
                                     // force retry
+                                    // this also generates a warning in the traces, containing the information about what happened 
                                     throw new BlobUtils.ForceRetryException($"page blob was enlarged from {currentSize} to {sizeToRequest}", e);
                                 }
                             }
@@ -588,8 +592,9 @@ namespace DurableTask.Netherite.Faster
                                         await streamingResult.Content.CopyToAsync(stream).ConfigureAwait(false);
                                     }
 
-                                    // we have observed that we may get 206 responses where the actual length is less than the requested length
-                                    // this seems to only happen if blob was enlarged in the past
+                                    // We have observed that we may get 206 (Partial Response) codes where the actual length is less than the requested length
+                                    // The Azure storage client SDK handles the http codes transparently, but we may still observe that fewer bytes than
+                                    // requested were returned by the streamingResult.
                                     long actualLength = (stream.Position - offset); 
 
                                     if (actualLength < requestedLength)
@@ -616,8 +621,11 @@ namespace DurableTask.Netherite.Faster
                                 }
                                 catch (Azure.RequestFailedException e) when (e.ErrorCode == "InvalidRange")
                                 {
-                                    // this type of error can be caused by the page blob being smaller than where FASTER is reading from.
-                                    // to handle this, first determine current page blob size.
+                                    // from the perspective of FASTER, this storage device is infinite, so it may read past the end of the blob.
+                                    // But even though it requests more data than what it wrote, it will only actually use what it wrote before. 
+                                    // so we can deal with this situation by just copying fewer bytes from the blob into the buffer.
+
+                                    // first, determine current page blob size.
                                     var properties = await client.GetPropertiesAsync().ConfigureAwait(false);
                                     readCap = properties.Value.ContentLength;
 
@@ -638,6 +646,8 @@ namespace DurableTask.Netherite.Faster
                             return length;
                         });
 
+                    // adjust how much we have to read, and where to read from, in the next iteration
+                    // based on how much was actually read in this iteration.
                     readLength -= length;
                     offset += length;
                 }
