@@ -62,11 +62,6 @@ namespace DurableTask.Netherite.Faster
         const uint MAX_UPLOAD_SIZE = 1024 * 1024;
         const uint MAX_DOWNLOAD_SIZE = 1024 * 1024;
 
-        // some blobs have no specific size; for example, they are used for the object log, and for checkpoints.
-        // we start them at 512 GB - there is no cost incurred for empty pages so why not.
-        // if that turns out to not be enough at some point, we enlarge the page blob automatically.
-        const long STARTING_DEFAULT_PAGEBLOB_SIZE = 512L * 1024 * 1024 * 1024; 
-
         /// <summary>
         /// Constructs a new AzureStorageDevice instance, backed by Azure Page Blobs
         /// </summary>
@@ -427,8 +422,8 @@ namespace DurableTask.Netherite.Faster
                 {
                     var pageBlob = this.pageBlobDirectory.GetPageBlobClient(this.GetSegmentBlobName(segmentId));
 
-                    // If segment size is -1 we use a default
-                    var size = this.segmentSize == -1 ? AzureStorageDevice.STARTING_DEFAULT_PAGEBLOB_SIZE : this.segmentSize;
+                    // If segment size is -1 we use the default starting size for auto-expanding page blobs.
+                    var size = this.segmentSize == -1 ? this.BlobManager.StartingPageBlobSize : this.segmentSize;
 
                     // If no blob exists for the segment, we must first create the segment asynchronouly. (Create call takes ~70 ms by measurement)
                     // After creation is done, we can call write.
@@ -502,6 +497,11 @@ namespace DurableTask.Netherite.Faster
                                 }
                                 else
                                 {
+                                    if (sizeToRequest > this.BlobManager.MaxPageBlobSize)
+                                    {
+                                        throw new InvalidOperationException($"cannot expand page blob {blobEntry.PageBlob.Default.Name} beyond maximum size {this.BlobManager.MaxPageBlobSize}");
+                                    }
+
                                     // enlarge the blob to accommodate the size
                                     await client.ResizeAsync(
                                         sizeToRequest,

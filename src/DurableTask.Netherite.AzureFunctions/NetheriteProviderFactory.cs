@@ -116,10 +116,18 @@ namespace DurableTask.Netherite.AzureFunctions
             this.options.MaxConcurrentActivityFunctions = this.options.MaxConcurrentActivityFunctions ?? maxConcurrentActivitiesDefault;
             this.options.MaxEntityOperationBatchSize = this.options.MaxEntityOperationBatchSize ?? maxEntityOperationBatchSizeDefault;
 
-            // copy all applicable fields from both the options and the storageProvider options
-            JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options), netheriteSettings);
-            JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options.StorageProvider), netheriteSettings);
- 
+            // collect settings from the two places that we want to import into the Netherite settings
+            string durableExtensionSettings = JsonConvert.SerializeObject(this.options);
+            string storageProviderSettings = JsonConvert.SerializeObject(this.options.StorageProvider);
+
+            // copy all applicable settings into the Netherite settings, based on matching the names
+            JsonConvert.PopulateObject(durableExtensionSettings, netheriteSettings);
+            JsonConvert.PopulateObject(storageProviderSettings, netheriteSettings);
+
+            // copy extension settings to FASTER tuning parameters, based on matching the names
+            netheriteSettings.FasterTuningParameters ??= new Faster.BlobManager.FasterTuningParameters();
+            JsonConvert.PopulateObject(storageProviderSettings, netheriteSettings.FasterTuningParameters);
+
             // configure the cache size if not already configured
             netheriteSettings.InstanceCacheSizeMB ??= (this.inConsumption ? 100 : 200 * Environment.ProcessorCount);
 
