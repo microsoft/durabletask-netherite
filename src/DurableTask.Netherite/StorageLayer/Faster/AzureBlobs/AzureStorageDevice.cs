@@ -383,23 +383,7 @@ namespace DurableTask.Netherite.Faster
                 throw exception;
             }
 
-            this.ReadFromBlobUnsafeAsync(blobEntry.PageBlob, (long)sourceAddress, (long)destinationAddress, readLength, id)
-                  .ContinueWith((Task t) =>
-                  {
-                      if (this.pendingReadWriteOperations.TryRemove(id, out ReadWriteRequestInfo request))
-                      {
-                          if (t.IsFaulted)
-                          {
-                              this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.ReadAsync id={id} (Failure)");
-                              request.Callback(uint.MaxValue, request.NumBytes, request.Context);
-                          }
-                          else
-                          {
-                              this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.ReadAsync id={id}");
-                              request.Callback(0, request.NumBytes, request.Context);
-                          }
-                      }
-                  }, TaskContinuationOptions.ExecuteSynchronously);
+            this.ReadFromBlobUnsafeAsync(blobEntry.PageBlob, (long)sourceAddress, (long)destinationAddress, readLength, id);
         }
 
         /// <summary>
@@ -525,14 +509,15 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        unsafe Task ReadFromBlobUnsafeAsync(BlobUtilsV12.PageBlobClients blob, long sourceAddress, long destinationAddress, uint readLength, long id)
+        unsafe void ReadFromBlobUnsafeAsync(BlobUtilsV12.PageBlobClients blob, long sourceAddress, long destinationAddress, uint readLength, long id)
         {
-            return this.ReadFromBlobAsync(new UnmanagedMemoryStream((byte*)destinationAddress, readLength, readLength, FileAccess.Write), blob, sourceAddress, readLength, id);
+            Task _ = this.ReadFromBlobAsync(new UnmanagedMemoryStream((byte*)destinationAddress, readLength, readLength, FileAccess.Write), blob, sourceAddress, readLength, id);
         }
 
         async Task ReadFromBlobAsync(UnmanagedMemoryStream stream, BlobUtilsV12.PageBlobClients blob, long sourceAddress, uint readLength, long id)
         {
-            using (stream)
+            bool IsFaulted = false;
+            try
             {
                 // we use this to prevent reading past the end of the page blob
                 // but for performance reasons (Azure storage access required to determine current size of page blob)
@@ -642,6 +627,28 @@ namespace DurableTask.Netherite.Faster
                     offset += length;
                 }
             }
+            catch
+            {
+                IsFaulted = true;
+            }
+            finally
+            {
+                stream.Dispose();
+            }
+
+            if (this.pendingReadWriteOperations.TryRemove(id, out ReadWriteRequestInfo request))
+            {
+                if (IsFaulted)
+                {
+                    this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.ReadAsync id={id} (Failure)");
+                    request.Callback(uint.MaxValue, request.NumBytes, request.Context);
+                }
+                else
+                {
+                    this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.ReadAsync id={id}");
+                    request.Callback(0, request.NumBytes, request.Context);
+                }
+            }
         }
 
         void TryWriteAsync(BlobEntry blobEntry, IntPtr sourceAddress, ulong destinationAddress, uint numBytesToWrite, long id)
@@ -658,29 +665,7 @@ namespace DurableTask.Netherite.Faster
 
         unsafe void WriteToBlobAsync(BlobEntry blobEntry, IntPtr sourceAddress, ulong destinationAddress, uint numBytesToWrite, long id)
         {
-            this.WriteToBlobAsync(blobEntry, sourceAddress, (long)destinationAddress, numBytesToWrite, id)
-                .ContinueWith((Task t) =>
-                    {
-                        if (this.pendingReadWriteOperations.TryRemove(id, out ReadWriteRequestInfo request))
-                        {
-                            if (t.IsFaulted)
-                            {
-                                this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.WriteAsync id={id} (Failure)");
-                                request.Callback(uint.MaxValue, request.NumBytes, request.Context);
-                            }
-                            else
-                            {
-                                this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.WriteAsync id={id}");
-                                request.Callback(0, request.NumBytes, request.Context);
-                            }
-                        }
-
-                        if (this.underLease)
-                        {
-                            this.SingleWriterSemaphore.Release();
-                        }
-
-                    }, TaskContinuationOptions.ExecuteSynchronously);
+            Task _ = this.WriteToBlobAsync(blobEntry, sourceAddress, (long)destinationAddress, numBytesToWrite, id);
         }
 
         async Task WriteToBlobAsync(BlobEntry blobEntry, IntPtr sourceAddress, long destinationAddress, uint numBytesToWrite, long id)
@@ -690,13 +675,43 @@ namespace DurableTask.Netherite.Faster
                 await this.SingleWriterSemaphore.WaitAsync();
             }
 
-            long offset = 0;
-            while (numBytesToWrite > 0)
+            bool IsFaulted = false;
+
+            try
             {
-                var length = Math.Min(numBytesToWrite, MAX_UPLOAD_SIZE);
-                await this.WritePortionToBlobUnsafeAsync(blobEntry, sourceAddress, destinationAddress, offset, length, id).ConfigureAwait(false);
-                numBytesToWrite -= length;
-                offset += length;
+                long offset = 0;
+                while (numBytesToWrite > 0)
+                {
+                    var length = Math.Min(numBytesToWrite, MAX_UPLOAD_SIZE);
+                    await this.WritePortionToBlobUnsafeAsync(blobEntry, sourceAddress, destinationAddress, offset, length, id).ConfigureAwait(false);
+                    numBytesToWrite -= length;
+                    offset += length;
+                }
+            }
+            catch
+            {
+                IsFaulted = true;
+            }
+            finally
+            {
+                if (this.underLease)
+                {
+                    this.SingleWriterSemaphore.Release(); // must release the semaphore before calling back into faster!
+                }
+            }
+
+            if (this.pendingReadWriteOperations.TryRemove(id, out ReadWriteRequestInfo request))
+            {
+                if (IsFaulted)
+                {
+                    this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.WriteAsync id={id} (Failure)");
+                    request.Callback(uint.MaxValue, request.NumBytes, request.Context);
+                }
+                else
+                {
+                    this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.WriteAsync id={id}");
+                    request.Callback(0, request.NumBytes, request.Context);
+                }
             }
         }
     }
