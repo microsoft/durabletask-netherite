@@ -93,9 +93,6 @@ namespace DurableTask.Netherite
             EventTraceContext.Clear();
 
             this.ErrorHandler = errorHandler;
-
-            this.TraceHelper.TracePartitionProgress("Starting", ref this.LastTransition, this.CurrentTimeMs, "");
-
             errorHandler.Token.Register(() =>
             {
                 this.TraceHelper.TracePartitionProgress("Terminated", ref this.LastTransition, this.CurrentTimeMs, "");
@@ -108,26 +105,37 @@ namespace DurableTask.Netherite
                 }
 
             }, useSynchronizationContext: false);
-          
+
+            // before we start the partition, we have to acquire the MaxConcurrentStarts semaphore
+            // (to prevent a host from being overwhelmed by the simultaneous start of too many partitions)
+            this.TraceHelper.TracePartitionProgress("Waiting", ref this.LastTransition, this.CurrentTimeMs, "");
             await MaxConcurrentStarts.WaitAsync();
 
-            // create or restore partition state from last snapshot
             try
             {
-                // create the state
-                this.State = ((TransportAbstraction.IHost) this.host).StorageLayer.CreatePartitionState(parameters);
+                this.TraceHelper.TracePartitionProgress("Starting", ref this.LastTransition, this.CurrentTimeMs, "");
 
-                // initialize timer for this partition
-                this.PendingTimers = new BatchTimer<PartitionEvent>(this.ErrorHandler.Token, this.TimersFired);
+                (long, int) inputQueuePosition;
 
-                // goes to storage to create or restore the partition state
-                var inputQueuePosition = await this.State.CreateOrRestoreAsync(this, this.ErrorHandler, inputQueueFingerprint).ConfigureAwait(false);
+                using (new PartitionTimeout(errorHandler, "partition startup", TimeSpan.FromMinutes(this.Settings.PartitionStartupTimeoutMinutes)))
+                {
 
-                // start processing the timers
-                this.PendingTimers.Start($"Timer{this.PartitionId:D2}");
+                    // create or restore partition state from last snapshot
+                    // create the state
+                    this.State = ((TransportAbstraction.IHost)this.host).StorageLayer.CreatePartitionState(parameters);
 
-                // start processing the worker queues
-                this.State.StartProcessing();
+                    // initialize timer for this partition
+                    this.PendingTimers = new BatchTimer<PartitionEvent>(this.ErrorHandler.Token, this.TimersFired);
+
+                    // goes to storage to create or restore the partition state
+                    inputQueuePosition = await this.State.CreateOrRestoreAsync(this, this.ErrorHandler, inputQueueFingerprint).ConfigureAwait(false);
+
+                    // start processing the timers
+                    this.PendingTimers.Start($"Timer{this.PartitionId:D2}");
+
+                    // start processing the worker queues
+                    this.State.StartProcessing();
+                }
 
                 this.TraceHelper.TracePartitionProgress("Started", ref this.LastTransition, this.CurrentTimeMs, $"nextInputQueuePosition={inputQueuePosition.Item1}.{inputQueuePosition.Item2}");
                 return inputQueuePosition;

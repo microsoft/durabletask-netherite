@@ -169,6 +169,11 @@ namespace DurableTask.Netherite
         public int PackPartitionTaskMessages { get; set; } = 100;
 
         /// <summary>
+        /// Time limit for partition startup, in minutes.
+        /// </summary>
+        public int PartitionStartupTimeoutMinutes { get; set; } = 15;
+
+        /// <summary>
         /// Allows attaching additional checkers and debuggers during testing.
         /// </summary>
         [JsonIgnore]
