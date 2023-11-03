@@ -569,6 +569,11 @@ namespace DurableTask.Netherite.Faster
             this.WriteToBlobAsync(blobEntry, sourceAddress, (long)destinationAddress, numBytesToWrite, id)
                 .ContinueWith((Task t) =>
                     {
+                        if (this.underLease)
+                        {
+                            this.SingleWriterSemaphore.Release();
+                        }
+
                         if (this.pendingReadWriteOperations.TryRemove(id, out ReadWriteRequestInfo request))
                         {
                             if (t.IsFaulted)
@@ -581,11 +586,6 @@ namespace DurableTask.Netherite.Faster
                                 this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.WriteAsync id={id}");
                                 request.Callback(0, request.NumBytes, request.Context);
                             }
-                        }
-
-                        if (this.underLease)
-                        {
-                            this.SingleWriterSemaphore.Release();
                         }
 
                     }, TaskContinuationOptions.ExecuteSynchronously);
