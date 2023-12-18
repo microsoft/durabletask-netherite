@@ -736,16 +736,11 @@ namespace DurableTask.Netherite.Faster
                     this.TraceHelper.LeaseProgress("Releasing lease");
 
                     this.FaultInjector?.StorageAccess(this, "ReleaseLeaseAsync", "ReleaseLease", this.eventLogCommitBlob.Name);
-                    await this.leaseClient.ReleaseAsync(null, this.PartitionErrorHandler.Token).ConfigureAwait(false);
+
+                    // we always release the lease here, whether the partition has already been terminated or not.
+                    await this.leaseClient.ReleaseAsync(conditions: null, CancellationToken.None).ConfigureAwait(false);
+
                     this.TraceHelper.LeaseReleased(this.leaseTimer.Elapsed.TotalSeconds);
-                }
-                catch (OperationCanceledException)
-                {
-                    // it's o.k. if termination is triggered while waiting
-                }
-                catch (Azure.RequestFailedException e) when (e.InnerException != null && e.InnerException is OperationCanceledException)
-                {
-                    // it's o.k. if termination is triggered while we are releasing the lease
                 }
                 catch (Exception e)
                 {
