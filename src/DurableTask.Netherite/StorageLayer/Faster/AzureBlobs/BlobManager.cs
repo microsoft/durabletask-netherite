@@ -677,6 +677,8 @@ namespace DurableTask.Netherite.Faster
 
         public async Task MaintenanceLoopAsync()
         {
+            bool releaseLeaseAtEnd = !this.UseLocalFiles;
+
             this.TraceHelper.LeaseProgress("Started lease maintenance loop");
             try
             {
@@ -711,6 +713,7 @@ namespace DurableTask.Netherite.Faster
             {
                 // We lost the lease to someone else. Terminate ownership immediately.
                 this.PartitionErrorHandler.HandleError(nameof(MaintenanceLoopAsync), "Lost partition lease", ex, true, true);
+                releaseLeaseAtEnd = false;
             }
             catch (Exception e)
             {
@@ -729,7 +732,7 @@ namespace DurableTask.Netherite.Faster
             this.TraceHelper.LeaseProgress("Waited for lease users to complete");
 
             // release the lease
-            if (!this.UseLocalFiles)
+            if (releaseLeaseAtEnd)
             {
                 try
                 {
