@@ -737,7 +737,10 @@ namespace DurableTask.Netherite.Faster
 
                     this.FaultInjector?.StorageAccess(this, "ReleaseLeaseAsync", "ReleaseLease", this.eventLogCommitBlob.Name);
 
-                    // we always release the lease here, whether the partition has already been terminated or not.
+                    // we must always release the lease here, whether the partition has already been terminated or not.
+                    // otherwise, the recovery of this partition (on this host or another host) has to wait for up
+                    // to 40s for the lease to expire. During this time, the partition is stalled (cannot process any work
+                    // items or client requests). In particular, client requests targeting this partition may be heavily delayed.
                     await this.leaseClient.ReleaseAsync(conditions: null, CancellationToken.None).ConfigureAwait(false);
 
                     this.TraceHelper.LeaseReleased(this.leaseTimer.Elapsed.TotalSeconds);
