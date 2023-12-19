@@ -1,13 +1,14 @@
 #!/usr/bin/pwsh
 param (
     $Settings="./settings.ps1",
-	$Plan="EP2", 
+	$Plan="Consumption", 
 	$MinNodes="1", 
 	$MaxNodes="20", 
 	$Configuration="Release",
 	$HostConfigurationFile="./host.json",
 	$HubName="",
 	$MaxA="",
+    $MaxO="",
 	$DeployCode=$true
 )
 
