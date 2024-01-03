@@ -115,9 +115,10 @@ namespace DurableTask.Netherite
 
         /// <summary>
         /// Whether to checkpoint the current state of a partition when it is stopped. This improves recovery time but
-        /// lengthens shutdown time.
+        /// lengthens shutdown time and can cause memory pressure if many partitions are stopped at the same time,
+        /// for example if a host is shutting down.
         /// </summary>
-        public bool TakeStateCheckpointWhenStoppingPartition { get; set; } = true;
+        public bool TakeStateCheckpointWhenStoppingPartition { get; set; } = false;
 
         /// <summary>
         /// A limit on how many bytes to append to the log before initiating a state checkpoint. The default is 20MB.

@@ -677,6 +677,8 @@ namespace DurableTask.Netherite.Faster
 
         public async Task MaintenanceLoopAsync()
         {
+            bool releaseLeaseAtEnd = !this.UseLocalFiles;
+
             this.TraceHelper.LeaseProgress("Started lease maintenance loop");
             try
             {
@@ -711,6 +713,7 @@ namespace DurableTask.Netherite.Faster
             {
                 // We lost the lease to someone else. Terminate ownership immediately.
                 this.PartitionErrorHandler.HandleError(nameof(MaintenanceLoopAsync), "Lost partition lease", ex, true, true);
+                releaseLeaseAtEnd = false;
             }
             catch (Exception e)
             {
@@ -729,23 +732,21 @@ namespace DurableTask.Netherite.Faster
             this.TraceHelper.LeaseProgress("Waited for lease users to complete");
 
             // release the lease
-            if (!this.UseLocalFiles)
+            if (releaseLeaseAtEnd)
             {
                 try
                 {
                     this.TraceHelper.LeaseProgress("Releasing lease");
 
                     this.FaultInjector?.StorageAccess(this, "ReleaseLeaseAsync", "ReleaseLease", this.eventLogCommitBlob.Name);
-                    await this.leaseClient.ReleaseAsync(null, this.PartitionErrorHandler.Token).ConfigureAwait(false);
+
+                    // we must always release the lease here, whether the partition has already been terminated or not.
+                    // otherwise, the recovery of this partition (on this host or another host) has to wait for up
+                    // to 40s for the lease to expire. During this time, the partition is stalled (cannot process any work
+                    // items or client requests). In particular, client requests targeting this partition may be heavily delayed.
+                    await this.leaseClient.ReleaseAsync(conditions: null, CancellationToken.None).ConfigureAwait(false);
+
                     this.TraceHelper.LeaseReleased(this.leaseTimer.Elapsed.TotalSeconds);
-                }
-                catch (OperationCanceledException)
-                {
-                    // it's o.k. if termination is triggered while waiting
-                }
-                catch (Azure.RequestFailedException e) when (e.InnerException != null && e.InnerException is OperationCanceledException)
-                {
-                    // it's o.k. if termination is triggered while we are releasing the lease
                 }
                 catch (Exception e)
                 {
