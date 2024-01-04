@@ -146,13 +146,13 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public void FasterAzureStorageAccessCompleted(string intent, long size, string operation, string target, double latency, int attempt)
+        public void FasterAzureStorageAccessCompleted(string intent, long size, string operation, string target, double latency, int attempt, string details)
         {
             if (this.logLevelLimit <= LogLevel.Debug)
             {
-                this.logger.LogDebug("Part{partition:D2} storage access completed intent={intent} size={size} operation={operation} target={target} latency={latency} attempt={attempt}", 
-                    this.partitionId, intent, size, operation, target, latency, attempt);
-                EtwSource.Log.FasterAzureStorageAccessCompleted(this.account, this.taskHub, this.partitionId, intent, size, operation, target, latency, attempt, TraceUtils.AppName, TraceUtils.ExtensionVersion);
+                this.logger.LogDebug("Part{partition:D2} storage access completed intent={intent} size={size} operation={operation} target={target} latency={latency} attempt={attempt} details={details}",
+                    this.partitionId, intent, size, operation, target, latency, attempt, details);
+                EtwSource.Log.FasterAzureStorageAccessCompleted(this.account, this.taskHub, this.partitionId, intent, size, operation, target, latency, attempt, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);
             }
         }
 
