@@ -21,6 +21,7 @@ namespace DurableTask.Netherite.Faster
             bool requireLease,
             string name,
             string intent,
+            long position,
             string data,
             string target,
             int expectedLatencyBound,
@@ -75,7 +76,7 @@ namespace DurableTask.Netherite.Faster
                             this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) took {stopwatch.Elapsed.TotalSeconds:F1}s on attempt {numAttempts}, which is excessive; {data}");
                         }
 
-                        this.TraceHelper.FasterAzureStorageAccessCompleted(intent, size, name, target, stopwatch.Elapsed.TotalMilliseconds, numAttempts, data);
+                        this.TraceHelper.FasterAzureStorageAccessCompleted(intent, position, size, name, target, stopwatch.Elapsed.TotalMilliseconds, numAttempts);
 
                         return;
                     }
@@ -134,6 +135,7 @@ namespace DurableTask.Netherite.Faster
             bool requireLease,
             string name,
             string intent,
+            long position,
             string data,
             string target,
             int expectedLatencyBound,
@@ -171,7 +173,7 @@ namespace DurableTask.Netherite.Faster
                     stopwatch.Stop();
                     this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) succeeded on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} size={size} {data} ");
 
-                    this.TraceHelper.FasterAzureStorageAccessCompleted(intent, size, name, target, stopwatch.Elapsed.TotalMilliseconds, numAttempts, data);
+                    this.TraceHelper.FasterAzureStorageAccessCompleted(intent, position, size, name, target, stopwatch.Elapsed.TotalMilliseconds, numAttempts);
 
                     if (stopwatch.ElapsedMilliseconds > expectedLatencyBound)
                     {

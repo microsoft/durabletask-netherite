@@ -115,6 +115,7 @@ namespace DurableTask.Netherite.Faster
                         this.underLease,
                         "BlobContainerClient.GetBlobsAsync",
                         "RecoverDevice",
+                        0,
                         $"continuationToken={continuationToken}",
                         this.pageBlobDirectory.ToString(),
                         2000,
@@ -295,6 +296,7 @@ namespace DurableTask.Netherite.Faster
                     this.underLease,
                     "BlobBaseClient.DeleteAsync",
                     "DeleteDeviceSegment",
+                    0,
                     "",
                     entry.PageBlob.Default.Name,
                     5000,
@@ -330,6 +332,7 @@ namespace DurableTask.Netherite.Faster
                     this.underLease,
                     "BlobBaseClient.DeleteAsync",
                     "DeleteDevice",
+                    0,
                     "",
                     entry.PageBlob.Default.Name,
                     5000,
@@ -448,13 +451,15 @@ namespace DurableTask.Netherite.Faster
         {
             using (stream)
             {
+                var position = destinationAddress + offset;
                 long originalStreamPosition = stream.Position;
                 await this.BlobManager.PerformWithRetriesAsync(
                     BlobManager.AsynchronousStorageWriteMaxConcurrency,
                     true,
                     "PageBlobClient.UploadPagesAsync",
                     "WriteToDevice",
-                    $"id={id} length={length} destinationAddress={destinationAddress + offset}",
+                    position,
+                    $"id={id} position={position} length={length}",
                     blobEntry.PageBlob.Default.Name,
                     1000 + (int)length / 1000,
                     true,
@@ -506,6 +511,7 @@ namespace DurableTask.Netherite.Faster
                 long offset = 0;
                 while (readLength > 0)
                 {
+                    var position = sourceAddress + offset;
                     var length = Math.Min(readLength, MAX_DOWNLOAD_SIZE);
 
                     await this.BlobManager.PerformWithRetriesAsync(
@@ -513,7 +519,8 @@ namespace DurableTask.Netherite.Faster
                         true,
                         "PageBlobClient.DownloadStreamingAsync",
                         "ReadFromDevice",
-                        $"id={id} readLength={length} sourceAddress={sourceAddress + offset} operationReadRange={operationReadRange}",
+                        position,
+                        $"id={id} position={position} length={length} operationReadRange={operationReadRange}",
                         blob.Default.Name,
                         1000 + (int)length / 1000,
                         true,

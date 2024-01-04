@@ -585,6 +585,7 @@ namespace DurableTask.Netherite.Faster
                         false,
                         "CloudBlockBlob.UploadFromByteArrayAsync",
                         "CreateCommitLog",
+                        0,
                         "",
                         this.eventLogCommitBlob.Default.Name,
                         2000,
@@ -797,6 +798,7 @@ namespace DurableTask.Netherite.Faster
                         true,
                         "BlobContainerClient.GetBlobsAsync",
                         "RemoveObsoleteCheckpoints",
+                        0,
                         "",
                         directory.Prefix,
                         1000,
@@ -834,6 +836,7 @@ namespace DurableTask.Netherite.Faster
                                     false,
                                     "BlobUtils.ForceDeleteAsync",
                                     "DeleteCheckpointDirectory",
+                                    0,
                                     "",
                                     blobName,
                                     1000,
@@ -882,6 +885,7 @@ namespace DurableTask.Netherite.Faster
                     false,
                     "BlockBlobClient.Upload",
                     "WriteCommitLogMetadata",
+                    0,
                     "",
                     this.eventLogCommitBlob.Default.Name,
                     1000,
@@ -960,6 +964,7 @@ namespace DurableTask.Netherite.Faster
                    false,
                    "BlobClient.DownloadTo",
                    "ReadCommitLogMetadata",
+                   0,
                    "",
                    this.eventLogCommitBlob.Name,
                    1000,
@@ -1067,6 +1072,7 @@ namespace DurableTask.Netherite.Faster
                         requireLease: true,
                         "BlockBlobClient.DownloadContentAsync",
                         "FindCheckpointsAsync",
+                        0,
                         "",
                         checkpointCompletedBlob.Name,
                         1000,
@@ -1115,23 +1121,24 @@ namespace DurableTask.Netherite.Faster
                 var metaFileBlob = partDir.GetBlockBlobClient(this.GetIndexCheckpointMetaBlobName(indexToken));
 
                 this.PerformWithRetries(
-                 false,
-                 "BlockBlobClient.OpenWrite",
-                 "WriteIndexCheckpointMetadata",
-                 $"token={indexToken} size={commitMetadata.Length}",
-                 metaFileBlob.Name,
-                 1000,
-                 true,
-                 (numAttempts) =>
-                 {
-                     var client = metaFileBlob.WithRetries;
-                     using var blobStream = client.OpenWrite(overwrite: true);
-                     using var writer = new BinaryWriter(blobStream);
-                     writer.Write(commitMetadata.Length);
-                     writer.Write(commitMetadata);
-                     writer.Flush();
-                     return (commitMetadata.Length, true);
-                 });
+                    false,
+                    "BlockBlobClient.OpenWrite",
+                    "WriteIndexCheckpointMetadata",
+                    0,
+                    $"token={indexToken} size={commitMetadata.Length}",
+                    metaFileBlob.Name,
+                    1000,
+                    true,
+                    (numAttempts) =>
+                    {
+                        var client = metaFileBlob.WithRetries;
+                        using var blobStream = client.OpenWrite(overwrite: true);
+                        using var writer = new BinaryWriter(blobStream);
+                        writer.Write(commitMetadata.Length);
+                        writer.Write(commitMetadata);
+                        writer.Flush();
+                        return (commitMetadata.Length, true);
+                    });
 
                 this.CheckpointInfo.IndexToken = indexToken;
                 this.StorageTracer?.FasterStorageProgress($"StorageOpReturned ICheckpointManager.CommitIndexCheckpoint, target={metaFileBlob.Name}");
@@ -1155,6 +1162,7 @@ namespace DurableTask.Netherite.Faster
                     false,
                     "BlockBlobClient.OpenWrite",
                     "WriteHybridLogCheckpointMetadata",
+                    0,
                     $"token={logToken}",
                     metaFileBlob.Name,
                     1000,
@@ -1198,6 +1206,7 @@ namespace DurableTask.Netherite.Faster
                    false,
                    "BlockBlobClient.OpenRead",
                    "ReadIndexCheckpointMetadata",
+                   0,
                    "",
                    metaFileBlob.Name,
                    1000,
@@ -1235,6 +1244,7 @@ namespace DurableTask.Netherite.Faster
                     false,
                     "BlockBlobClient.OpenRead",
                     "ReadLogCheckpointMetadata",
+                    0,
                     "",
                     metaFileBlob.Name,
                     1000,
@@ -1362,6 +1372,7 @@ namespace DurableTask.Netherite.Faster
                    false,
                    "BlockBlobClient.UploadAsync",
                    "WriteSingletons",
+                   0,
                    "",
                    singletonsBlob.Name,
                    1000 + singletons.Length / 5000,
@@ -1395,6 +1406,7 @@ namespace DurableTask.Netherite.Faster
                     true,
                     "BlobBaseClient.DownloadToAsync",
                     "ReadSingletons",
+                    0,
                     "",
                     singletonsBlob.Name,
                     20000,
@@ -1428,6 +1440,7 @@ namespace DurableTask.Netherite.Faster
                     true,
                     "BlockBlobClient.UploadAsync",
                     "WriteCheckpointMetadata",
+                    0,
                     "",
                     checkpointCompletedBlob.Name,
                     1000,
