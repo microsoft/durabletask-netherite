@@ -498,8 +498,9 @@ namespace DurableTask.Netherite.Faster
 
         async Task ReadFromBlobAsync(UnmanagedMemoryStream stream, BlobUtilsV12.PageBlobClients blob, long sourceAddress, uint readLength, long id)
         {
-            uint originalReadLength = readLength;
-            long originalSourceAddress = sourceAddress;
+            long readRangeStart = sourceAddress;
+            long readRangeEnd = readRangeStart + readLength;
+            string operationReadRange = $"[{readRangeStart}, {readRangeEnd}]";
             using (stream)
             {
                 long offset = 0;
@@ -512,7 +513,7 @@ namespace DurableTask.Netherite.Faster
                         true,
                         "PageBlobClient.DownloadStreamingAsync",
                         "ReadFromDevice",
-                        $"id={id} readLength={length} sourceAddress={sourceAddress + offset} originalReadLength={originalReadLength} originalSourceAddress={originalSourceAddress}",
+                        $"id={id} readLength={length} sourceAddress={sourceAddress + offset} operationReadRange={operationReadRange}",
                         blob.Default.Name,
                         1000 + (int)length / 1000,
                         true,
