@@ -18,13 +18,20 @@ namespace DurableTask.Netherite
         ClientOnly,
 
         /// <summary>
-        /// Use the event processor host implementation provided by the EventHubs client library.
+        /// Use the event processor host implementation provided by the EventHubs client library. This dynamically
+        /// balances the partitions across all connected hosts.
         /// </summary>
         EventProcessorHost,
 
         /// <summary>
         /// Follow a predefined partition management script. This is meant to be used for testing and benchmarking scenarios.
+        /// This was an internal feature and is no longer supported.
         /// </summary>
         Scripted,
+
+        /// <summary>
+        /// Test the recovery without modifying storage. Useful for diagnosing recovery problems. Not functional as an orchestration service!
+        /// </summary>
+        RecoveryTester,
     }
 }

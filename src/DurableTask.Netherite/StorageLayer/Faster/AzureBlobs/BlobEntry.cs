@@ -71,6 +71,7 @@ namespace DurableTask.Netherite.Faster
                 pageBlob.Default.Name,
                 3000,
                 true,
+                failIfReadonly: true,
                 async (numAttempts) =>
                 {
                     var client = (numAttempts > 1) ? pageBlob.Default : pageBlob.Aggressive;

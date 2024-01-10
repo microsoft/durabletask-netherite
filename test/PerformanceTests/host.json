@@ -21,7 +21,7 @@
 
       // --- the levels below are used to control the Netherite tracing.
       "DurableTask.Netherite": "Information",
-      "DurableTask.Netherite.FasterStorage": "Warning",
+      "DurableTask.Netherite.FasterStorage": "Information",
       "DurableTask.Netherite.FasterStorage.Performance": "Error",
       "DurableTask.Netherite.EventHubsTransport": "Warning",
       "DurableTask.Netherite.Events": "Warning",
@@ -90,9 +90,15 @@
         // can change this to use a different table, or blobs
         //"LoadInformationAzureTableName": "",
 
-        // set this to "Scripted" to control the scenario with a partition script
-        // or to "ClientOnly" to run only the client
+        // default partition management: use native EH partition management
         "PartitionManagement": "EventProcessorHost",
+
+        // EXAMPLE alternative: run only a client, but no work items
+        // "PartitionManagement": "ClientOnly",
+
+        // EXAMPLE alternative: test recovery of partition 7 (without modifying any data)
+        // "PartitionManagement": "RecoveryTester",
+        // "PartitionManagementParameters": "7",
 
         // set this to "Local" to disable the global activity distribution algorithm
         // options: "Local", "Static", "Locavore"
