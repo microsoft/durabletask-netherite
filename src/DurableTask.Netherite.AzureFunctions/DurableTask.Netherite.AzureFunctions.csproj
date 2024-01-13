@@ -26,9 +26,9 @@
   <PropertyGroup>
 	<MajorVersion>1</MajorVersion>
 	<MinorVersion>4</MinorVersion>
-	<PatchVersion>1</PatchVersion>
+	<PatchVersion>2</PatchVersion>
 	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
-    <VersionSuffix></VersionSuffix>
+    <VersionSuffix>preview.1</VersionSuffix>
     <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
     <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
     <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
