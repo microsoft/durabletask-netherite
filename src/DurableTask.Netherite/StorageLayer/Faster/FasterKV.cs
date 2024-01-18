@@ -218,7 +218,14 @@ namespace DurableTask.Netherite.Faster
         {
             this.singletons = new TrackedObject[TrackedObjectKey.NumberSingletonTypes];
             string suffix = DateTime.UtcNow.ToString("O");
+            // The main session is the session used by all reads and writes performed by the storeworker.
+            // Using a single session means that the store worker sees a consistent state at all times.
+            // A single session is sufficient since the storeworker performs only one operation at a time.
             this.mainSession = this.CreateASession($"main-{suffix}", false);
+            // Since queries may require scans that can take a significant time, it is not advisable to perform
+            // queries on the main session. We therefore create a pool of read-only sessions available for queries. 
+            // Query sessions may see a slightly stale store than the main session, i.e. may not contain
+            // all the same updates.
             for (int i = 0; i < this.querySessions.Length; i++)
             {
                 this.querySessions[i] = this.CreateASession($"query{i:D2}-{suffix}", true);
@@ -416,10 +423,40 @@ namespace DurableTask.Netherite.Faster
                     this.fht.Log.ShiftBeginAddress(shiftBeginAddress.Value);
                 }
 
+                long versionBeforeCheckpoint = this.mainSession.Version;
+
                 if (this.fht.TryInitiateHybridLogCheckpoint(out var token, CheckpointType.FoldOver))
                 {
-                    // according to Badrish this ensures proper fencing w.r.t. session
-                    this.mainSession.Refresh();
+                    // After the checkpoint is initiated, any subsequent writes done in the mainSession must create a later version of the 
+                    // object than the one being checkpointed. This is important to guarantee that the checkpoint contains an atomic snapshot of all objects
+                    // at the time the checkpoint is initiated. 
+                    //
+                    // according to Badrish the loop below ensures this desired "fencing" of updates.
+                    // It works because the mainSession is the only session that updates tracked objects.
+                    // So, by waiting for it to advance its version, we make sure any later writes do not race
+                    // with the checkpointing thread.
+                    //
+                    // This is expected to complete very quickly; to avoid hanging
+                    // the store worker indefinitely should there be bugs, we add a timeout after
+                    // which we terminate and recover the partition.
+                    //
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    TimeSpan timeLimit = TimeSpan.FromMinutes(1);
+                    while (stopwatch.Elapsed < timeLimit)
+                    {
+                        this.mainSession.Refresh();
+                        if (this.mainSession.Version > versionBeforeCheckpoint)
+                        {
+                            break;
+                        }
+                        System.Threading.Thread.Sleep(5);
+                    }
+                    if (this.mainSession.Version == versionBeforeCheckpoint)
+                    {
+                        string message = $"FASTER did not advance version of main session after initiating checkpoint for over {timeLimit}. Terminating partition.";
+                        this.partition.ErrorHandler.HandleError(nameof(StartStoreCheckpoint), message, e: null, terminatePartition: true, reportAsWarning: false);
+                        return null;
+                    }
 
                     byte[] serializedSingletons = Serializer.SerializeSingletons(this.singletons);
                     this.persistSingletonsTask = this.blobManager.PersistSingletonsAsync(serializedSingletons, token);
@@ -456,11 +493,10 @@ namespace DurableTask.Netherite.Faster
             var stats = (StatsState) this.singletons[(int)TrackedObjectKey.Stats.ObjectType];
             long actualLogSize = this.fht.Log.TailAddress - this.fht.Log.BeginAddress;
             long minimalLogSize = this.MinimalLogSize;
-            long compactionAreaSize = (long)(0.5 * (this.fht.Log.SafeReadOnlyAddress - this.fht.Log.BeginAddress));
-            long mutableSectionSize = (this.fht.Log.TailAddress - this.fht.Log.SafeReadOnlyAddress);
+            long compactionAreaSize = Math.Min(50000, this.fht.Log.SafeReadOnlyAddress - this.fht.Log.BeginAddress);
 
             if (actualLogSize > 2 * minimalLogSize            // there must be significant bloat
-               && mutableSectionSize < compactionAreaSize)   // the potential size reduction must outweigh the cost of a foldover
+                && compactionAreaSize >= 5000)                // and enough compaction area to justify the overhead
             {
                 return this.fht.Log.BeginAddress + compactionAreaSize;
             }
@@ -485,7 +521,11 @@ namespace DurableTask.Netherite.Faster
         public override async Task<long> RunCompactionAsync(long target)
         {
             string id = DateTime.UtcNow.ToString("O"); // for tracing purposes
+
+            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} is requesting to enter semaphore with {maxCompactionThreads.CurrentCount} threads available");
             await maxCompactionThreads.WaitAsync();
+            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} entered semaphore");
+
             try
             {
                 long beginAddressBeforeCompaction = this.Log.BeginAddress;
@@ -500,20 +540,47 @@ namespace DurableTask.Netherite.Faster
                     target - this.Log.BeginAddress,
                     this.GetElapsedCompactionMilliseconds());
 
+                var tokenSource = new CancellationTokenSource();
+                var timeoutTask = Task.Delay(TimeSpan.FromMinutes(10), tokenSource.Token);
                 var tcs = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var thread = TrackedThreads.MakeTrackedThread(RunCompaction, $"Compaction.{id}");
                 thread.Start();
+
+                var winner = await Task.WhenAny(tcs.Task, timeoutTask);
+
+                if (winner == timeoutTask)
+                {
+                    // compaction timed out. Terminate partition
+                    var exceptionMessage = $"Compaction {id} time out";
+                    this.partition.ErrorHandler.HandleError(nameof(RunCompactionAsync), exceptionMessage, e: null, terminatePartition: true, reportAsWarning: true);
+
+                    // we need resolve the task to ensure the 'finally' block is executed which frees up another thread to start compating
+                    tcs.TrySetException(new OperationCanceledException(exceptionMessage));
+                }
+                else
+                {
+                    // cancel the timeout task since compaction completed
+                    tokenSource.Cancel();
+                }
+
+                await timeoutTask.ContinueWith(_ => tokenSource.Dispose());
+
+                // return result of compaction task
                 return await tcs.Task;
 
                 void RunCompaction()
                 {
                     try
                     {
+
                         this.blobManager.TraceHelper.FasterProgress($"Compaction {id} started");
 
                         var session = this.CreateASession($"compaction-{id}", true);
+
+                        this.blobManager.TraceHelper.FasterProgress($"Compaction {id} obtained a FASTER session");
                         using (this.TrackTemporarySession(session))
                         {
+                            this.blobManager.TraceHelper.FasterProgress($"Compaction {id} is invoking FASTER's compaction routine");
                             long compactedUntil = session.Compact(target, CompactionType.Scan);
 
                             this.TraceHelper.FasterCompactionProgress(
@@ -526,17 +593,17 @@ namespace DurableTask.Netherite.Faster
                                 this.Log.BeginAddress - beginAddressBeforeCompaction,
                                 this.GetElapsedCompactionMilliseconds());
 
-                            tcs.SetResult(compactedUntil);
+                            tcs.TrySetResult(compactedUntil);
                         }
                     }
                     catch (Exception exception)
                         when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
                     {
-                        tcs.SetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
+                        tcs.TrySetException(new OperationCanceledException("Partition was terminated.", exception, this.terminationToken));
                     }
                     catch (Exception e)
                     {
-                        tcs.SetException(e);
+                        tcs.TrySetException(e);
                     }
                 }
             }
@@ -679,7 +746,7 @@ namespace DurableTask.Netherite.Faster
             {
                 // partition is terminating
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.partition.ErrorHandler.HandleError(nameof(RunPrefetchSession), "PrefetchSession {sessionId} encountered exception", e, false, this.partition.ErrorHandler.IsTerminated);
             }
@@ -1253,7 +1320,7 @@ namespace DurableTask.Netherite.Faster
         public override (double totalSizeMB, int fillPercentage) CacheSizeInfo {
             get
             {
-                double totalSize = (double)(Math.Min(0, this.cacheTracker.TrackedObjectSize) + this.MemoryUsedWithoutObjects);
+                double totalSize = (double)(Math.Max(0, this.cacheTracker.TrackedObjectSize) + this.MemoryUsedWithoutObjects);
                 double totalSizeMB = Math.Round(100 * totalSize / (1024 * 1024)) / 100;
                 if (this.cacheTracker.TargetSize == 0)
                 {

@@ -97,7 +97,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.blobBatchReceiver = new BlobBatchReceiver<PartitionEvent>(traceContext, this.traceHelper, this.settings, keepUntilConfirmed: true);
 
             var _ = shutdownToken.Register(
-              () => { var _ = Task.Run(() => this.IdempotentShutdown("shutdownToken", false)); },
+              () => { var _ = Task.Run(() => this.IdempotentShutdown("shutdownToken", eventHubsTransport.FatalExceptionObserved)); },
               useSynchronizationContext: false);
         }
 
@@ -253,7 +253,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 // the partition startup was canceled
                 this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} canceled partition startup (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, c.Incarnation);
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 c.SuccessiveStartupFailures = 1 + (prior?.SuccessiveStartupFailures ?? 0);
                 c.ErrorHandler.HandleError("EventHubsProcessor.StartPartitionAsync", "failed to start partition", e, true, false);
@@ -338,11 +338,16 @@ namespace DurableTask.Netherite.EventHubsTransport
                     await context.CheckpointAsync(checkpoint);
                     this.lastCheckpointedOffset = long.Parse(checkpoint.Offset);
                 }
-                catch (Exception e) when (!Utils.IsFatal(e))
+                catch (Exception e)
                 {
                     // updating EventHubs checkpoints has been known to fail occasionally due to leases shifting around; since it is optional anyway
                     // we don't want this exception to cause havoc
                     this.traceHelper.LogWarning("EventHubsProcessor {eventHubName}/{eventHubPartition} failed to checkpoint receive position: {e}", this.eventHubName, this.eventHubPartition, e);
+
+                    if (Utils.IsFatal(e))
+                    {
+                        this.host.OnFatalExceptionObserved(e);
+                    }
                 }
             }
         }
@@ -428,7 +433,11 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) is processing packets", this.eventHubName, this.eventHubPartition, current.Incarnation);
 
-                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, current.ErrorHandler.Token, current.NextPacketToReceive.seqNo))
+                    // we need to update the next expected seqno even if the iterator returns nothing, since it may have discarded some packets.
+                    // iterators do not support ref arguments, so we use a simple wrapper class to work around this limitation
+                    MutableLong nextPacketToReceive = new MutableLong() { Value = current.NextPacketToReceive.seqNo };
+
+                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, current.ErrorHandler.Token, nextPacketToReceive))
                     {
                         for (int i = 0; i < events.Length; i++)
                         {
@@ -471,9 +480,9 @@ namespace DurableTask.Netherite.EventHubsTransport
                             this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) skipping {batchPos} events in batch #{seqno} because they are already processed", this.eventHubName, this.eventHubPartition, current.Incarnation, current.NextPacketToReceive.batchPos, seqNo);
                             current.Partition.SubmitEvents(events.Skip(current.NextPacketToReceive.batchPos).ToList());
                         }
-
-                        current.NextPacketToReceive = (seqNo + 1, 0);
                     }
+
+                    current.NextPacketToReceive = (nextPacketToReceive.Value, 0);
                 }
 
                 this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received {totalEvents} events in {latencyMs:F2}ms, starting with #{seqno}, next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, current.Incarnation, totalEvents, stopwatch.Elapsed.TotalMilliseconds, firstSequenceNumber, current.NextPacketToReceive.seqNo);

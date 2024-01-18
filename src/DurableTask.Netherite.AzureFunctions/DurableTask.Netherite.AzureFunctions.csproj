@@ -2,7 +2,7 @@
 
   <PropertyGroup>
 	<!--The target netcoreapp2.2 is not functional, but just generates runtime error when used.-->
-    <TargetFrameworks>netstandard2.1;netstandard2.0;netcoreapp2.2;netcoreapp3.1;net5.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.1;netstandard2.0;netcoreapp2.2;netcoreapp3.1</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeSymbols>true</IncludeSymbols>
@@ -25,8 +25,8 @@
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
   <PropertyGroup>
 	<MajorVersion>1</MajorVersion>
-	<MinorVersion>3</MinorVersion>
-	<PatchVersion>5</PatchVersion>
+	<MinorVersion>4</MinorVersion>
+	<PatchVersion>1</PatchVersion>
 	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
     <VersionSuffix></VersionSuffix>
     <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
@@ -51,8 +51,8 @@
   </ItemGroup>
   
   <ItemGroup>
-    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.11.1" />
-    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.8.1" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.15.1" />
+    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.12.0" />
   </ItemGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' != 'netcoreapp2.2' ">

@@ -24,7 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\DurableTask.Netherite.AzureFunctions\DurableTask.Netherite.AzureFunctions.csproj" />
     <ProjectReference Include="..\DurableTask.Netherite.Tests\DurableTask.Netherite.Tests.csproj" />
-    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.11.1" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.15.1" />
   </ItemGroup>
 
 </Project>
