@@ -94,6 +94,10 @@
         // or to "ClientOnly" to run only the client
         "PartitionManagement": "EventProcessorHost",
 
+        // can use the following to test the auto-expansion of page blobs
+        //"StartingPageBlobSizeBits": 13, // 8 kB
+        //"MaxPageBlobSizeBits":  22, // 4 GB
+         
         // set this to "Local" to disable the global activity distribution algorithm
         // options: "Local", "Static", "Locavore"
         "ActivityScheduler": "Locavore",

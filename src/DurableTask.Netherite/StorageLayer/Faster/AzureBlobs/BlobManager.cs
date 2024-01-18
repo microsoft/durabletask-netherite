@@ -58,6 +58,9 @@ namespace DurableTask.Netherite.Faster
         public IDevice HybridLogDevice { get; private set; }
         public IDevice ObjectLogDevice { get; private set; }
 
+        internal long StartingPageBlobSize { get; private set; }
+        internal long MaxPageBlobSize { get; private set; }
+
         public DateTime IncarnationTimestamp { get; private set; }
 
         public string ContainerName { get; }
@@ -90,6 +93,8 @@ namespace DurableTask.Netherite.Faster
             public double? StoreLogMutableFraction;
             public int? EstimatedAverageObjectSize;
             public int? NumPagesToPreload;
+            public int? StartingPageBlobSizeBits;
+            public int? MaxPageBlobSizeBits;
         }
 
         public FasterLogSettings GetEventLogSettings(bool useSeparatePageBlobStorage, FasterTuningParameters tuningParameters)
@@ -332,6 +337,13 @@ namespace DurableTask.Netherite.Faster
             this.partitionId = partitionId;
             this.CheckpointInfo = new CheckpointInfo();
             this.CheckpointInfoETag = default;
+
+            // some page blobs have no specific size; for example, they are used for the object log, and for checkpoints.
+            // by default, we start those at 512 GB (by default) - there is no cost incurred for empty pages so why not.
+            // if that turns out to not be enough at some point, we enlarge them automatically,
+            // up to a maximum of 2TB (by default). For maximum for Azure Storage is 8TB.
+            this.StartingPageBlobSize = 1L << (this.settings.FasterTuningParameters?.StartingPageBlobSizeBits ?? 29 /* 512 GB */); 
+            this.MaxPageBlobSize = 1L << (this.settings.FasterTuningParameters?.MaxPageBlobSizeBits ?? 31 /* 2 TB */);
 
             if (!string.IsNullOrEmpty(settings.UseLocalDirectoryForPartitionStorage))
             {
