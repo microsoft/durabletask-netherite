@@ -55,11 +55,13 @@ namespace DurableTask.Netherite.EventHubsTransport
         CloudBlockBlob partitionScript;
         ScriptedEventProcessorHost scriptedEventProcessorHost;
 
+        Offsets offsets;
+
         int shutdownTriggered;
 
         public Guid ClientId { get; private set; }
 
-        public string Fingerprint => this.connections.Fingerprint;
+        public string Fingerprint { get; private set; }
 
         public bool FatalExceptionObserved { get; private set; }
     
@@ -76,7 +78,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             string namespaceName = settings.EventHubsConnection.ResourceName;
             this.logger = EventHubsTraceHelper.CreateLogger(loggerFactory);
             this.traceHelper = new EventHubsTraceHelper(this.logger, settings.TransportLogLevelLimit, null, settings.StorageAccountName, settings.HubName, namespaceName);
-            this.consumerGroup = settings.EventHubsConsumerGroup;
+            this.consumerGroup = settings.UseSeparateConsumerGroups ? settings.HubName : "$Default";
             this.ClientId = Guid.NewGuid();
             this.shortClientId = Client.GetShortId(this.ClientId);
         }
@@ -112,16 +114,79 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             this.connections = new EventHubsConnections(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, EventHubsTransport.ClientHubs, EventHubsTransport.LoadMonitorHub, this.consumerGroup, this.shutdownSource.Token)
             {
-                Host = host,
+                Host = this.host,
                 TraceHelper = this.traceHelper,
             };
 
             await this.connections.StartAsync(this.parameters);
 
-            this.traceHelper.LogInformation("EventHubsTransport is connecting to {fingerPrint} via consumer group {consumerGroupName}", this.connections.Fingerprint, this.consumerGroup);
+            if (this.settings.UseSeparateConsumerGroups)
+            {
+                this.traceHelper.LogInformation($"Determining initial partition offsets for consumer group '{this.consumerGroup}'");
+                string formattedFingerprint = this.connections.CreationTimestamp.ToString("o").Replace("/", "-");
+                var offsetsBlob = this.cloudBlobContainer.GetBlockBlobReference($"{this.pathPrefix}offsets/{formattedFingerprint}");
+
+                try
+                {
+                    var jsonText = await offsetsBlob.DownloadTextAsync(this.shutdownSource.Token);
+                    this.offsets = JsonConvert.DeserializeObject<Offsets>(jsonText);
+                    this.traceHelper.LogInformation($"Loaded initial partition offsets [{string.Join(", ", this.offsets.InitialOffsets)}]");
+                }
+                catch (StorageException ex) when (ex.RequestInformation.HttpStatusCode == (int)System.Net.HttpStatusCode.NotFound)
+                {
+                    try
+                    {
+                        this.traceHelper.LogDebug("Creating offsets");
+                        this.offsets = new Offsets()
+                        {
+                            Guid = Guid.NewGuid(),
+                            InitialOffsets = await this.connections.GetStartingSequenceNumbers(),
+                        };
+                        var jsonText = JsonConvert.SerializeObject(this.offsets, Formatting.Indented, new JsonSerializerSettings() { TypeNameHandling = TypeNameHandling.None });
+                        var noOverwrite = AccessCondition.GenerateIfNoneMatchCondition("*");
+                        await offsetsBlob.UploadTextAsync(jsonText, null, noOverwrite, null, null);
+                        this.traceHelper.LogInformation($"Created initial partition offsets [{string.Join(", ", this.offsets.InitialOffsets)}]");
+                    }
+                    catch (StorageException) when (ex.RequestInformation.HttpStatusCode == (int)System.Net.HttpStatusCode.Conflict)
+                    {
+                        this.traceHelper.LogDebug("Lost creation race, reloading");
+                        var jsonText = await offsetsBlob.DownloadTextAsync(this.shutdownSource.Token);
+                        this.offsets = JsonConvert.DeserializeObject<Offsets>(jsonText);
+                        this.traceHelper.LogInformation($"Loaded initial partition offsets on second attempt [{string.Join(", ", this.offsets.InitialOffsets)}]");
+                    }
+                }
+
+                this.Fingerprint = $"{this.connections.Fingerprint}-{this.offsets.Guid}";
+            }
+            else
+            {
+                this.Fingerprint = this.connections.Fingerprint;
+            }
+
+            this.traceHelper.LogInformation($"EventHubs transport connected to partition event hubs with fingerprint {this.Fingerprint}");
 
             return this.parameters;
         }
+
+        class Offsets
+        {
+            public Guid Guid { get; set; }
+
+            public List<long> InitialOffsets { get; set; }
+        }
+
+        internal long GetInitialOffset(int partitionId)
+        {
+            if (this.offsets != null)
+            {
+                return this.offsets.InitialOffsets[partitionId];
+            }
+            else
+            {
+                return 0;
+            }
+        }
+
 
         async Task ITransportLayer.StartClientAsync()
         {
@@ -185,7 +250,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 await retryDelayTask;
             }
 
-            this.traceHelper.LogInformation("EventHubsTransport connected to {fingerPrint} via consumer group {consumerGroup}", this.connections.Fingerprint, this.consumerGroup);
+            this.traceHelper.LogInformation("EventHubsTransport sucessfully established client connection with {fingerPrint} via {consumerGroup}", this.Fingerprint, this.consumerGroup);
 
             this.clientReceiveLoops = Enumerable
                 .Range(0, EventHubsConnections.NumClientChannels)

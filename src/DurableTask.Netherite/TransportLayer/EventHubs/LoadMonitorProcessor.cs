@@ -142,7 +142,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
             finally
             {
-                this.traceHelper.LogInformation("LoadMonitor exits receive loop");
+                this.traceHelper.LogTrace("LoadMonitor finished processing packets");
             }
         }
 

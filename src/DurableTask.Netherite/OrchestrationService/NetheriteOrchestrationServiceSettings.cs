@@ -52,12 +52,14 @@ namespace DurableTask.Netherite
         public string LoadInformationAzureTableName { get; set; } = "DurableTaskPartitions";
 
         /// <summary>
-        /// The consumer group to use. By specifying different consumer groups, two task hubs can use
-        /// the same event hubs namespace at the same time. However, note that this can waste bandwidth since messages
-        /// are always delivered to all consumer groups (even if only meaningfully processed by one of them). Also, 
-        /// for some event hub plan the number of consumer groups is limited.
+        /// If true, use a consumer group with the same name as this task hub, for all event hubs in the namespace. This allows connecting multiple task hubs to the same namespace. 
         /// </summary>
-        public string EventHubsConsumerGroup { get; set; } = "$Default";
+        /// <remarks>
+        /// This feature is recommended only for small message volumes and a small number of hubs - because all messages are delivered to all connected task hubs, the total 
+        /// message volume grows quadratically.
+        /// All task hubs connecting to the same namespace must have different names. 
+        /// Note that even though the consumer groups are automatically created for each task hub, they are not automatically deleted when the task hub is deleted.</remarks>
+        public bool UseSeparateConsumerGroups { get; set; }
 
         /// <summary>
         /// Tuning parameters for the FASTER logs

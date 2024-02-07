@@ -260,6 +260,23 @@ namespace DurableTask.Netherite.EventHubsTransport
             await this.EnsureLoadMonitorAsync(retries - 1);
         }
 
+        public async Task<List<long>> GetStartingSequenceNumbers()
+        {
+            Task<long>[] tasks = new Task<long>[this.partitionPartitions.Count];
+            for (int i = 0; i < this.partitionPartitions.Count; i++)
+            {
+                tasks[i] = GetLastEnqueuedSequenceNumber(i);
+            }
+            await Task.WhenAll(tasks);
+            return tasks.Select(t => t.Result).ToList();    
+
+            async Task<long> GetLastEnqueuedSequenceNumber(int i)
+            {
+                var info = await this.partitionPartitions[i].client.GetPartitionRuntimeInformationAsync(this.partitionPartitions[i].id);
+                return info.LastEnqueuedSequenceNumber + 1;
+            }
+        }
+
         public static async Task<List<long>> GetQueuePositionsAsync(ConnectionInfo connectionInfo, string partitionHub)
         {
             var client = connectionInfo.CreateEventHubClient(partitionHub);

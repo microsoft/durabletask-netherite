@@ -28,6 +28,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly BlobContainerClient containerClient;
         readonly bool keepUntilConfirmed;
         readonly bool isClientReceiver;
+        readonly bool useSeparateConsumerGroups;
 
         // Event Hubs discards messages after 24h, so we can throw away batches that are older than that
         readonly static TimeSpan expirationTimeSpan = TimeSpan.FromHours(24) + TimeSpan.FromMinutes(1);
@@ -45,6 +46,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.keepUntilConfirmed = keepUntilConfirmed;
             this.blobDeletions = this.keepUntilConfirmed ? new BlobDeletions(this) : null;
             this.isClientReceiver = typeof(TEvent) == typeof(ClientEvent);
+            this.useSeparateConsumerGroups = settings.UseSeparateConsumerGroups;
         }
 
         public async IAsyncEnumerable<(EventData eventData, TEvent[] events, long)> ReceiveEventsAsync(
@@ -194,6 +196,11 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     // Ignored packets are very common for clients because multiple clients may share the same partition. We log this only for debug purposes.
                     this.traceHelper.LogDebug("{context} ignored {count} packets for different client", this.traceContext, ignoredPacketCount);
+                }
+                else if (this.useSeparateConsumerGroups)
+                {
+                    // Ignored packets are common when using multiple task hubs with separate consumer groups. We log this only for debug purposes.
+                    this.traceHelper.LogDebug("{context} ignored {count} packets for different taskhub", this.traceContext, ignoredPacketCount);
                 }
                 else
                 {

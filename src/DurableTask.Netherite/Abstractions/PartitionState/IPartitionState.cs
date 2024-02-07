@@ -19,9 +19,10 @@ namespace DurableTask.Netherite
         /// <param name="localPartition">The partition.</param>
         /// <param name="errorHandler">An error handler to initiate and/or indicate termination of this partition.</param>
         /// <param name="inputQueueFingerprint">A fingerprint for the input queue.</param>
+        /// <param name="initialOffset">Initial offset for the input queue, if this partition is being created.</param>
         /// <returns>the input queue position from which to resume input processing</returns>
         /// <exception cref="OperationCanceledException">Indicates that termination was signaled before the operation completed.</exception>
-        Task<(long,int)> CreateOrRestoreAsync(Partition localPartition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint);
+        Task<(long,int)> CreateOrRestoreAsync(Partition localPartition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint, long initialOffset);
 
         /// <summary>
         /// Starts processing, after creating or restoring the partition state.
