@@ -186,7 +186,7 @@ namespace DurableTask.Netherite.Faster
         ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> CreateASession(string id, bool isScan)
         {
             var functions = new Functions(this.partition, this, this.cacheTracker, isScan);
-            return this.fht.NewSession(functions, id, readFlags: (isScan ? ReadFlags.None : ReadFlags.CopyReadsToTail));
+            return this.fht.NewSession(functions, id);
         }
 
         public IDisposable TrackTemporarySession(ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> session)
