@@ -7,11 +7,12 @@ namespace DurableTask.Netherite
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
+    using System.Runtime.Serialization;
 
     /// <summary>
     /// Represents a key used to identify <see cref="TrackedObject"/> instances.
     /// </summary>
-    struct TrackedObjectKey 
+    struct TrackedObjectKey
     {
         public TrackedObjectType ObjectType;
         public string InstanceId;
@@ -70,12 +71,12 @@ namespace DurableTask.Netherite
 
         public class Comparer : IComparer<TrackedObjectKey>
         {
-            public int Compare(TrackedObjectKey x, TrackedObjectKey y) => TrackedObjectKey.Compare(ref x, ref y); 
+            public int Compare(TrackedObjectKey x, TrackedObjectKey y) => TrackedObjectKey.Compare(ref x, ref y);
         }
 
         public override int GetHashCode()
         {
-            return (this.InstanceId?.GetHashCode() ?? 0) + (int) this.ObjectType;
+            return (this.InstanceId?.GetHashCode() ?? 0) + (int)this.ObjectType;
         }
 
         public override bool Equals(object obj)
@@ -97,55 +98,37 @@ namespace DurableTask.Netherite
 
         // convenient constructors for non-singletons
 
-        public static TrackedObjectKey History(string id) => new TrackedObjectKey() 
-            { 
-                ObjectType = TrackedObjectType.History,
-                InstanceId = id,
-            };
-        public static TrackedObjectKey Instance(string id) => new TrackedObjectKey() 
-            {
-                ObjectType = TrackedObjectType.Instance,
-                InstanceId = id,
-            };
+        public static TrackedObjectKey History(string id) => new TrackedObjectKey()
+        {
+            ObjectType = TrackedObjectType.History,
+            InstanceId = id,
+        };
+        public static TrackedObjectKey Instance(string id) => new TrackedObjectKey()
+        {
+            ObjectType = TrackedObjectType.Instance,
+            InstanceId = id,
+        };
 
         public static TrackedObject Factory(TrackedObjectKey key) => key.ObjectType switch
-            {
-                TrackedObjectType.Activities => new ActivitiesState(),
-                TrackedObjectType.Dedup => new DedupState(),
-                TrackedObjectType.Outbox => new OutboxState(),
-                TrackedObjectType.Reassembly => new ReassemblyState(),
-                TrackedObjectType.Sessions => new SessionsState(),
-                TrackedObjectType.Timers => new TimersState(),
-                TrackedObjectType.Prefetch => new PrefetchState(),
-                TrackedObjectType.Queries => new QueriesState(),
-                TrackedObjectType.Stats => new StatsState(),
-                TrackedObjectType.History => new HistoryState() { InstanceId = key.InstanceId },
-                TrackedObjectType.Instance => new InstanceState() { InstanceId = key.InstanceId },
-                _ => throw new ArgumentException("invalid key", nameof(key)),
-            };
+        {
+            TrackedObjectType.Activities => new ActivitiesState(),
+            TrackedObjectType.Dedup => new DedupState(),
+            TrackedObjectType.Outbox => new OutboxState(),
+            TrackedObjectType.Reassembly => new ReassemblyState(),
+            TrackedObjectType.Sessions => new SessionsState(),
+            TrackedObjectType.Timers => new TimersState(),
+            TrackedObjectType.Prefetch => new PrefetchState(),
+            TrackedObjectType.Queries => new QueriesState(),
+            TrackedObjectType.Stats => new StatsState(),
+            TrackedObjectType.History => new HistoryState() { InstanceId = key.InstanceId },
+            TrackedObjectType.Instance => new InstanceState() { InstanceId = key.InstanceId },
+            _ => throw new ArgumentException("invalid key", nameof(key)),
+        };
 
-        public static IEnumerable<TrackedObjectKey> GetSingletons() 
+        public static IEnumerable<TrackedObjectKey> GetSingletons()
             => Enum.GetValues(typeof(TrackedObjectType)).Cast<TrackedObjectType>().Where(t => IsSingletonType(t)).Select(t => new TrackedObjectKey() { ObjectType = t });
 
-        public override string ToString() 
+        public override string ToString()
             => this.InstanceId == null ? this.ObjectType.ToString() : $"{this.ObjectType}-{this.InstanceId}";
-
-        public void Deserialize(BinaryReader reader)
-        {
-            this.ObjectType = (TrackedObjectType) reader.ReadByte();
-            if (!IsSingletonType(this.ObjectType))
-            {
-                this.InstanceId = reader.ReadString();
-            }
-        }
-
-        public void Serialize(BinaryWriter writer)
-        {
-            writer.Write((byte) this.ObjectType);
-            if (!IsSingletonType(this.ObjectType))
-            {
-                writer.Write(this.InstanceId);
-            }
-        }
     }
 }
