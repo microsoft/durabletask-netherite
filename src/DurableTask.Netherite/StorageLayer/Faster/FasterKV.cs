@@ -1605,21 +1605,24 @@ namespace DurableTask.Netherite.Faster
                 public override void Deserialize(out Key obj)
                 {
                     try
-                    {                      
-                        // first, determine the object type
-                        var objectType = (TrackedObjectKey.TrackedObjectType)this.reader.ReadByte();
-                        if (objectType != TrackedObjectKey.TrackedObjectType.History 
-                            && objectType != TrackedObjectKey.TrackedObjectType.Instance)
+                    {
+                        if (!this.errorHandler.IsTerminated) // skip deserialization if the partition is already terminated - to speed up cancellation and to avoid repeated errors
                         {
-                            throw new SerializationException("invalid object type field");
+                            // first, determine the object type
+                            var objectType = (TrackedObjectKey.TrackedObjectType)this.reader.ReadByte();
+                            if (objectType != TrackedObjectKey.TrackedObjectType.History
+                                && objectType != TrackedObjectKey.TrackedObjectType.Instance)
+                            {
+                                throw new SerializationException("invalid object type field");
+                            }
+                            var instanceId = this.reader.ReadString();
+                            obj = new TrackedObjectKey(objectType, instanceId);
+                            return;
                         }
-                        var instanceId = this.reader.ReadString();
-                        obj = new TrackedObjectKey(objectType, instanceId);
-                        return;
                     }
                     catch (Exception ex)
                     {
-                        this.errorHandler.HandleError("FasterKV.Key.Serializer", "could not deserialize key - possible data corruption", ex, true, this.errorHandler.IsTerminated);
+                        this.errorHandler.HandleError("FasterKV.Key.Serializer", "could not deserialize key - possible data corruption", ex, true, !this.errorHandler.IsTerminated);
                     }
 
                     obj = default;
@@ -1697,7 +1700,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     catch (Exception ex)
                     {
-                        this.errorHandler.HandleError("FasterKV.Key.Serializer", "could not deserialize value - possible data corruption", ex, true, this.errorHandler.IsTerminated);
+                        this.errorHandler.HandleError("FasterKV.Value.Serializer", "could not deserialize value - possible data corruption", ex, true, !this.errorHandler.IsTerminated);
                     }
                     obj = default;
                 }
@@ -1730,7 +1733,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     catch (Exception ex)
                     {
-                        this.errorHandler.HandleError("FasterKV.Key.Serializer", "could not serialize value", ex, true, false);
+                        this.errorHandler.HandleError("FasterKV.Value.Serializer", "could not serialize value", ex, true, false);
                     }
                 }
             }
