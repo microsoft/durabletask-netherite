@@ -40,11 +40,12 @@ namespace PerformanceTests.Orchestrations.Store
             }
         }
 
-        [FunctionName(nameof(SetManyStore))]
-        public static async Task<IActionResult> SetManyStore(
-          [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "storemany/{count}")] HttpRequest req,
-          int count,
-          [DurableClient] IDurableClient client)
+        [FunctionName(nameof(SetStoreVector))]
+        public static async Task<IActionResult> SetStoreVector(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "storevector/{prefix}/{count}")] HttpRequest req,
+            int count,
+            string prefix,
+            [DurableClient] IDurableClient client)
         {
             try
             {
@@ -52,11 +53,55 @@ namespace PerformanceTests.Orchestrations.Store
                 int size = int.Parse(input);
                 for (int i = 0; i < count; i++)
                 {
-                    string key = i.ToString("D6");
+                    string key = $"{prefix}{i}";
                     var entityId = new EntityId(nameof(Store), key);
                     await client.SignalEntityAsync(entityId, "setrandom", size);
                 }
                 return new OkObjectResult($"SetRandom({size}) was sent to {count} entities.\n");
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(e.ToString()) { StatusCode = (int)HttpStatusCode.InternalServerError };
+            }
+        }
+
+        [FunctionName(nameof(DeleteStore))]
+        public static async Task<IActionResult> DeleteStore(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "store/{key}")] HttpRequest req,
+            string key,
+            [DurableClient] IDurableClient client)
+        {
+            try
+            {
+
+                var entityId = new EntityId(nameof(Store), key);
+
+                await client.SignalEntityAsync(entityId, "delete");
+                return new OkObjectResult($"Delete was sent to {entityId}.\n");
+            }
+            catch (Exception e)
+            {
+                return new ObjectResult(e.ToString()) { StatusCode = (int)HttpStatusCode.InternalServerError };
+            }
+        }
+
+        [FunctionName(nameof(DeleteStoreVector))]
+        public static async Task<IActionResult> DeleteStoreVector(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "storevector/{prefix}/{count}")] HttpRequest req,
+            int count,
+            string prefix,
+            [DurableClient] IDurableClient client)
+        {
+            try
+            {
+                string input = await new StreamReader(req.Body).ReadToEndAsync();
+                for (int i = 0; i < count; i++)
+                {
+                    string key = $"{prefix}{i}";
+                    var entityId = new EntityId(nameof(Store), key);
+                    await client.SignalEntityAsync(entityId, "delete");
+                }
+                return new OkObjectResult($"Delete was sent to {count} entities.\n");
             }
             catch (Exception e)
             {
