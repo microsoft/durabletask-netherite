@@ -437,7 +437,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     // iterators do not support ref arguments, so we use a simple wrapper class to work around this limitation
                     MutableLong nextPacketToReceive = new MutableLong() { Value = current.NextPacketToReceive.seqNo };
 
-                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, current.ErrorHandler.Token, nextPacketToReceive))
+                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, this.shutdownToken, nextPacketToReceive))
                     {
                         for (int i = 0; i < events.Length; i++)
                         {
@@ -489,7 +489,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                 await this.SaveEventHubsReceiverCheckpoint(context, 600000);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (this.shutdownToken.IsCancellationRequested)
             {
                 this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) was terminated", this.eventHubName, this.eventHubPartition, current.Incarnation);
             }
