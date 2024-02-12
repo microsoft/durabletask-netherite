@@ -489,7 +489,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                 await this.SaveEventHubsReceiverCheckpoint(context, 600000);
             }
-            catch (OperationCanceledException) when (this.shutdownToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (this.shutdownToken.IsCancellationRequested) // we should only ignore these exceptions during VM shutdowns. See :  https://github.com/microsoft/durabletask-netherite/pull/347
             {
                 this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) was terminated", this.eventHubName, this.eventHubPartition, current.Incarnation);
             }
