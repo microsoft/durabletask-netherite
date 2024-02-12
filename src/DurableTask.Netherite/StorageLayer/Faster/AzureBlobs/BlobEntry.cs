@@ -67,7 +67,6 @@ namespace DurableTask.Netherite.Faster
                 true,
                 "PageBlobClient.CreateAsync",
                 "CreateDevice",
-                0,
                 "",
                 pageBlob.Default.Name,
                 3000,

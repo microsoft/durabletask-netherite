@@ -21,8 +21,7 @@ namespace DurableTask.Netherite.Faster
             bool requireLease,
             string name,
             string intent,
-            long position,
-            string data,
+            string details,
             string target,
             int expectedLatencyBound,
             bool isCritical,
@@ -60,7 +59,7 @@ namespace DurableTask.Netherite.Faster
 
                         this.PartitionErrorHandler.Token.ThrowIfCancellationRequested();
 
-                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) started attempt {numAttempts}; target={target} {data}");
+                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) started attempt {numAttempts}; target={target} {details}");
 
                         stopwatch.Restart();
 
@@ -69,14 +68,14 @@ namespace DurableTask.Netherite.Faster
                         long size = await operationAsync(numAttempts).ConfigureAwait(false);
 
                         stopwatch.Stop();
-                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) succeeded on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} {data}");
+                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) succeeded on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} {details}");
 
                         if (stopwatch.ElapsedMilliseconds > expectedLatencyBound)
                         {
-                            this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) took {stopwatch.Elapsed.TotalSeconds:F1}s on attempt {numAttempts}, which is excessive; {data}");
+                            this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) took {stopwatch.Elapsed.TotalSeconds:F1}s on attempt {numAttempts}, which is excessive; {details}");
                         }
 
-                        this.TraceHelper.FasterAzureStorageAccessCompleted(intent, position, size, name, target, stopwatch.Elapsed.TotalMilliseconds, numAttempts);
+                        this.TraceHelper.FasterAzureStorageAccessCompleted(intent, size, name, details, target, stopwatch.Elapsed.TotalMilliseconds, numAttempts);
 
                         return;
                     }
@@ -92,7 +91,7 @@ namespace DurableTask.Netherite.Faster
 
                         if (BlobUtils.IsTimeout(e))
                         {
-                            this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) timed out on attempt {numAttempts} after {stopwatch.Elapsed.TotalSeconds:F1}s, retrying now; target={target} {data}");
+                            this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) timed out on attempt {numAttempts} after {stopwatch.Elapsed.TotalSeconds:F1}s, retrying now; target={target} {details}");
                         }
                         else
                         {
@@ -104,7 +103,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     catch (Azure.RequestFailedException ex) when (BlobUtilsV12.PreconditionFailed(ex) && readETagAsync != null)
                     {
-                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) failed precondition on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} {data}");
+                        this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) failed precondition on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} {details}");
                         mustReadETagFirst = true;
                         continue;
                     }
@@ -135,8 +134,7 @@ namespace DurableTask.Netherite.Faster
             bool requireLease,
             string name,
             string intent,
-            long position,
-            string data,
+            string details,
             string target,
             int expectedLatencyBound,
             bool isCritical,
@@ -158,7 +156,7 @@ namespace DurableTask.Netherite.Faster
 
                     this.PartitionErrorHandler.Token.ThrowIfCancellationRequested();
 
-                    this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) started attempt {numAttempts}; target={target} {data}");
+                    this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) started attempt {numAttempts}; target={target} {details}");
                     stopwatch.Restart();
 
                     this.FaultInjector?.StorageAccess(this, name, intent, target);
@@ -171,13 +169,13 @@ namespace DurableTask.Netherite.Faster
                     }
 
                     stopwatch.Stop();
-                    this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) succeeded on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} size={size} {data} ");
+                    this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) succeeded on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} size={size} {details} ");
 
-                    this.TraceHelper.FasterAzureStorageAccessCompleted(intent, position, size, name, target, stopwatch.Elapsed.TotalMilliseconds, numAttempts);
+                    this.TraceHelper.FasterAzureStorageAccessCompleted(intent, size, name, details, target, stopwatch.Elapsed.TotalMilliseconds, numAttempts);
 
                     if (stopwatch.ElapsedMilliseconds > expectedLatencyBound)
                     {
-                        this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) took {stopwatch.Elapsed.TotalSeconds:F1}s on attempt {numAttempts}, which is excessive; {data}");
+                        this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) took {stopwatch.Elapsed.TotalSeconds:F1}s on attempt {numAttempts}, which is excessive; {details}");
                     }
 
                     return;
@@ -193,7 +191,7 @@ namespace DurableTask.Netherite.Faster
                     stopwatch.Stop();
                     if (BlobUtils.IsTimeout(e))
                     {
-                        this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) timed out on attempt {numAttempts} after {stopwatch.Elapsed.TotalSeconds:F1}s, retrying now; target={target} {data}");
+                        this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) timed out on attempt {numAttempts} after {stopwatch.Elapsed.TotalSeconds:F1}s, retrying now; target={target} {details}");
                     }
                     else
                     {
