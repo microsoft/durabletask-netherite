@@ -55,7 +55,7 @@ namespace DurableTask.Netherite.Faster
         /// </summary>
         /// <param name="size">maximum size of the blob</param>
         /// <param name="pageBlob">The page blob to create</param>
-        public async Task CreateAsync(long size, BlobUtilsV12.PageBlobClients pageBlob)
+        public async Task CreateAsync(long size, BlobUtilsV12.PageBlobClients pageBlob, long id)
         {
             if (this.waitingCount != 0)
             {
@@ -67,12 +67,17 @@ namespace DurableTask.Netherite.Faster
                 true,
                 "PageBlobClient.CreateAsync",
                 "CreateDevice",
-                "",
+                $"id={id}",
                 pageBlob.Default.Name,
                 3000,
                 true,
                 async (numAttempts) =>
                 {
+                    if (this.ETag != default)
+                    {
+                        return 1; // blob was already created by previous attempt
+                    }
+
                     var client = (numAttempts > 1) ? pageBlob.Default : pageBlob.Aggressive;
 
                     var response = await client.CreateAsync(
@@ -85,8 +90,14 @@ namespace DurableTask.Netherite.Faster
                 },
                 async () =>
                 {
-                    var response = await pageBlob.Default.GetPropertiesAsync();
-                    this.ETag = response.Value.ETag;
+                    try
+                    {
+                        var response = await pageBlob.Default.GetPropertiesAsync();
+                        this.ETag = response.Value.ETag;
+                    }
+                    catch (Azure.RequestFailedException ex) when (BlobUtilsV12.BlobDoesNotExist(ex))
+                    {
+                    }
                 });
 
             // At this point the blob is fully created. After this line all consequent writers will write immediately. We just

@@ -429,7 +429,7 @@ namespace DurableTask.Netherite.Faster
 
                     // If no blob exists for the segment, we must first create the segment asynchronouly. (Create call takes ~70 ms by measurement)
                     // After creation is done, we can call write.
-                    _ = entry.CreateAsync(size, pageBlob);
+                    _ = entry.CreateAsync(size, pageBlob, id);
                 }
                 // Otherwise, some other thread beat us to it. Okay to use their blobs.
                 blobEntry = this.blobs[segmentId];
