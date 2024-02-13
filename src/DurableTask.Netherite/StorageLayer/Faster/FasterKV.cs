@@ -113,7 +113,7 @@ namespace DurableTask.Netherite.Faster
             partition.Assert(this.fht.ReadCache == null, "Unexpected read cache");
 
             this.terminationToken = partition.ErrorHandler.Token;
-            partition.ErrorHandler.OnShutdown += this.Shutdown;
+            partition.ErrorHandler.AddDisposeTask($"{nameof(FasterKV)}.{nameof(this.Dispose)}", TimeSpan.FromMinutes(2), this.Dispose);
 
             this.compactionStopwatch = new Stopwatch();
             this.compactionStopwatch.Start();
@@ -123,58 +123,53 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
         }
 
-        void Shutdown()
+        void Dispose()
         {
+            this.TraceHelper.FasterProgress("Disposing CacheTracker");
+            this.cacheTracker?.Dispose();
+
+            foreach (var s in this.sessionsToDisposeOnShutdown)
+            {
+                this.TraceHelper.FasterStorageProgress($"Disposing Temporary Session");
+                s.Dispose();
+            }
+
+            this.TraceHelper.FasterProgress("Disposing Main Session");
             try
             {
-                this.TraceHelper.FasterProgress("Disposing CacheTracker");
-                this.cacheTracker?.Dispose();
+                this.mainSession?.Dispose();
+            }
+            catch (OperationCanceledException)
+            {
+                // can happen during shutdown
+            }
 
-                foreach (var s in this.sessionsToDisposeOnShutdown)
-                {
-                    this.TraceHelper.FasterStorageProgress($"Disposing Temporary Session");
-                    s.Dispose();
-                }
-
-                this.TraceHelper.FasterProgress("Disposing Main Session");
+            this.TraceHelper.FasterProgress("Disposing Query Sessions");
+            foreach (var s in this.querySessions)
+            {
                 try
                 {
-                    this.mainSession?.Dispose();
+                    s?.Dispose();
                 }
-                catch(OperationCanceledException)
+                catch (OperationCanceledException)
                 {
                     // can happen during shutdown
                 }
-
-                this.TraceHelper.FasterProgress("Disposing Query Sessions");
-                foreach (var s in this.querySessions)
-                {
-                    try
-                    {
-                        s?.Dispose();
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // can happen during shutdown
-                    }
-                }
-
-                this.TraceHelper.FasterProgress("Disposing FasterKV");
-                this.fht.Dispose();
-
-                this.TraceHelper.FasterProgress($"Disposing Devices");
-                this.blobManager.DisposeDevices();
-
-                if (this.blobManager.FaultInjector != null)
-                {
-                    this.TraceHelper.FasterProgress($"Unregistering from FaultInjector");
-                    this.blobManager.FaultInjector.Disposed(this.blobManager);
-                }
             }
-            catch (Exception e)
+
+            this.TraceHelper.FasterProgress("Disposing FasterKV");
+            this.fht.Dispose();
+
+            this.TraceHelper.FasterProgress($"Disposing Devices");
+            this.blobManager.DisposeDevices();
+
+            if (this.blobManager.FaultInjector != null)
             {
-                this.blobManager.TraceHelper.FasterStorageError("Disposing FasterKV", e);
+                this.TraceHelper.FasterProgress($"Unregistering from FaultInjector");
+                this.blobManager.FaultInjector.Disposed(this.blobManager);
             }
+
+            this.TraceHelper.FasterProgress("Disposed FasterKV");
         }
 
         double GetElapsedCompactionMilliseconds()
