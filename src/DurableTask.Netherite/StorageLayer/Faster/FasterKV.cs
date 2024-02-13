@@ -256,8 +256,9 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 // recover Faster
-                this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
+                this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV - Entering fht.RecoverAsync");
                 await this.fht.RecoverAsync(this.partition.Settings.FasterTuningParameters?.NumPagesToPreload ?? 1, true, -1, this.terminationToken);
+                this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV - Returned from fht.RecoverAsync");
                 this.mainSession = this.CreateASession($"main-{this.blobManager.IncarnationTimestamp:o}", false);
                 for (int i = 0; i < this.querySessions.Length; i++)
                 {
