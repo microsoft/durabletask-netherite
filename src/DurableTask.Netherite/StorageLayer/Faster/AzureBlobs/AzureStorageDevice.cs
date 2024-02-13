@@ -247,6 +247,7 @@ namespace DurableTask.Netherite.Faster
                     try
                     {
                         request.Callback(uint.MaxValue, request.NumBytes, request.Context);
+                        this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpCallbackCompleted id={id}");
                     }
                     catch (Exception ex)
                     {
@@ -263,6 +264,7 @@ namespace DurableTask.Netherite.Faster
                     try
                     {
                         request.Callback(request.Result);
+                        this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpCallbackCompleted id={id}");
                     }
                     catch (Exception ex)
                     {
@@ -585,7 +587,7 @@ namespace DurableTask.Netherite.Faster
                         this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.ReadAsync id={id}");
                         request.Callback(0, request.NumBytes, request.Context);
                     }
-                    this.BlobManager?.StorageTracer?.FasterStorageProgress($"AzureStorageDevice.ReadAsync FASTER callback completed id={id}");
+                    this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpCallbackCompleted id={id}");
                 }
                 catch (Exception e)
                 {
@@ -620,6 +622,7 @@ namespace DurableTask.Netherite.Faster
         {
             if (this.underLease)
             {
+                // this semaphore is needed to avoid ambiguous e-tags under concurrent writes
                 await this.SingleWriterSemaphore.WaitAsync();
             }
 
@@ -648,6 +651,7 @@ namespace DurableTask.Netherite.Faster
             {
                 if (this.underLease)
                 {
+                    // always release this semaphore again
                     this.SingleWriterSemaphore.Release();
                 }
             }
@@ -666,7 +670,7 @@ namespace DurableTask.Netherite.Faster
                         this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpReturned AzureStorageDevice.WriteAsync id={id}");
                         request.Callback(0, request.NumBytes, request.Context);
                     }
-                    this.BlobManager?.StorageTracer?.FasterStorageProgress($"AzureStorageDevice.WriteAsync FASTER callback completed id={id}");
+                    this.BlobManager?.StorageTracer?.FasterStorageProgress($"StorageOpCallbackCompleted id={id}");
                 }
                 catch (Exception e)
                 {
