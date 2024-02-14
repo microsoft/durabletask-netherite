@@ -26,6 +26,9 @@ namespace DurableTask.Netherite.Faster
 
         void Dispose()
         {
+            this.blobManager.TraceHelper.FasterProgress("Canceling FasterLog callbacks");
+            this.blobManager.CancelFasterKVCallbacks();
+
             this.blobManager.TraceHelper.FasterProgress("Disposing FasterLog");
             this.log.Dispose();
 

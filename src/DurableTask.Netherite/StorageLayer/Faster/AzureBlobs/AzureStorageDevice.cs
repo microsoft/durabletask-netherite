@@ -195,6 +195,41 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        public void CancelFasterCallbacks()
+        {
+            foreach (var id in this.pendingReadWriteOperations.Keys.ToList())
+            {
+                if (this.pendingReadWriteOperations.TryRemove(id, out var request))
+                {
+                    try
+                    {
+                        this.BlobManager?.StorageTracer?.FasterStorageProgress($"FasterCallbackCancellation Called id={id}");
+                        request.Callback(uint.MaxValue, request.NumBytes, request.Context);
+                        this.BlobManager?.StorageTracer?.FasterStorageProgress($"FasterCallbackCancellation Completed id={id}");
+                    }
+                    catch (Exception ex)
+                    {
+                        this.BlobManager.StorageTracer?.FasterStorageError($"FasterCallbackCancellation Failed id={id}", ex);
+                    }
+                }
+            }
+            foreach (var id in this.pendingRemoveOperations.Keys.ToList())
+            {
+                if (this.pendingRemoveOperations.TryRemove(id, out var request))
+                {
+                    try
+                    {
+                        this.BlobManager?.StorageTracer?.FasterStorageProgress($"FasterCallbackCancellation Called id={id}");
+                        request.Callback(request.Result);
+                        this.BlobManager?.StorageTracer?.FasterStorageProgress($"FasterCallbackCancellation Completed id={id}");
+                    }
+                    catch (Exception ex)
+                    {
+                        this.BlobManager.StorageTracer?.FasterStorageError($"FasterCallbackCancellation Failed id={id}", ex);
+                    }
+                }
+            }
+        }
 
         /// <summary>
         /// Is called on exceptions, if non-null; can be set by application

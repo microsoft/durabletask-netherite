@@ -449,6 +449,22 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
+        internal void CancelFasterKVCallbacks()
+        {
+            if (! this.UseLocalFiles)
+            {
+                ((AzureStorageDevice) this.HybridLogDevice).CancelFasterCallbacks();
+                ((AzureStorageDevice) this.ObjectLogDevice).CancelFasterCallbacks();
+            }
+        }
+        internal void CancelFasterLogCallbacks()
+        {
+            if (!this.UseLocalFiles)
+            {
+                ((AzureStorageDevice)this.EventLogDevice).CancelFasterCallbacks();
+            }
+        }
+
         public void HandleStorageError(string where, string message, string blobName, Exception e, bool isFatal, bool isWarning)
         {
             if (blobName == null)
