@@ -100,6 +100,12 @@ namespace DurableTask.Netherite
                 return true; 
             }
 
+            // Empirically observed: transient DNS failures
+            if (exception is Azure.RequestFailedException && exception.InnerException is System.Net.Http.HttpRequestException e2 && e2.Message.Contains("No such host is known"))
+            {
+                return true;
+            }
+
             return false;
         }
 
