@@ -4,7 +4,6 @@
 namespace DurableTask.Netherite
 {
     using System;
-    using System.Collections.Generic;
     using System.Net;
     using System.Threading;
     using System.Threading.Tasks;
@@ -23,7 +22,8 @@ namespace DurableTask.Netherite
         readonly string taskHub;
         readonly TaskCompletionSource<object> shutdownComplete;
         readonly TransportAbstraction.IHost host;
-        readonly List<Task> disposeTasks;
+
+        public event Action OnShutdown;
 
         public CancellationToken Token
         {
@@ -44,11 +44,6 @@ namespace DurableTask.Netherite
 
         public bool NormalTermination =>  this.terminationStatus == TerminatedNormally;
 
-        public bool WaitForDisposeTasks(TimeSpan timeout)
-        {
-            return Task.WhenAll(this.disposeTasks).Wait(timeout);
-        }
-
         volatile int terminationStatus = NotTerminated;
         const int NotTerminated = 0;
         const int TerminatedWithError = 1;
@@ -64,7 +59,6 @@ namespace DurableTask.Netherite
             this.taskHub = taskHubName;
             this.shutdownComplete = new TaskCompletionSource<object>();
             this.host = host;
-            this.disposeTasks = new List<Task>();
         }
      
         public void HandleError(string context, string message, Exception exception, bool terminatePartition, bool isWarning)
@@ -125,8 +119,9 @@ namespace DurableTask.Netherite
         {
             try
             {
-                // this immediately cancels all activities depending on the error handler token
+                this.logger?.LogDebug("Part{partition:D2} Started PartitionCancellation", this.partitionId);
                 this.cts.Cancel();
+                this.logger?.LogDebug("Part{partition:D2} Completed PartitionCancellation", this.partitionId);
             }
             catch (AggregateException aggregate)
             {
@@ -139,45 +134,47 @@ namespace DurableTask.Netherite
             {
                 this.HandleError("PartitionErrorHandler.Terminate", "Exception in PartitionCancellation", e, false, true);
             }
-            finally
-            {
-                // now that the partition is dead, run all the dispose tasks
-                Task.Run(this.DisposeAsync);
-            }
-        }
 
-        public void AddDisposeTask(string name, TimeSpan timeout, Action action)
-        {
-            this.disposeTasks.Add(new Task(() =>
+            // we use a dedicated shutdown thread to help debugging and to contain damage if there are hangs
+            Thread shutdownThread = TrackedThreads.MakeTrackedThread(Shutdown, "PartitionShutdown");
+            shutdownThread.Start();
+
+            void Shutdown()
             {
-                Task disposeTask = Task.Run(action);
                 try
                 {
-                    bool completedInTime = disposeTask.Wait(timeout);
-                    if (!completedInTime)
+                    this.logger?.LogDebug("Part{partition:D2} Started PartitionShutdown", this.partitionId);
+
+                    if (this.OnShutdown != null)
                     {
-                        this.HandleError("PartitionErrorHandler.DisposeAsync", $"Dispose Task {name} timed out after {timeout}", null, false, false);
+                        this.OnShutdown();
+                    }
+
+                    this.cts.Dispose();
+
+                    this.logger?.LogDebug("Part{partition:D2} Completed PartitionShutdown", this.partitionId);
+                }
+                catch (AggregateException aggregate)
+                {
+                    foreach (var e in aggregate.InnerExceptions)
+                    {
+                        this.HandleError("PartitionErrorHandler.Shutdown", "Exception in PartitionShutdown", e, false, true);
                     }
                 }
-                catch(Exception exception)
+                catch (Exception e)
                 {
-                    this.HandleError("PartitionErrorHandler.DisposeAsync", $"Dispose Task {name} threw exception {exception}", null, false, false);
+                    this.HandleError("PartitionErrorHandler.Shutdown", "Exception in PartitionShutdown", e, false, true);
                 }
-            }));
+
+                this.shutdownComplete.TrySetResult(null);
+            }
         }
 
-        async Task DisposeAsync()
+        public async Task<bool> WaitForTermination(TimeSpan timeout)
         {
-            // execute all the dispose tasks in parallel
-            var tasks = this.disposeTasks;
-            foreach (var task in tasks)
-            {
-                task.Start();
-            }
-            await Task.WhenAll(tasks);
-
-            // we can now dispose the cancellation token source itself
-            this.cts.Dispose();
+            Task timeoutTask = Task.Delay(timeout);
+            var first = await Task.WhenAny(timeoutTask, this.shutdownComplete.Task);
+            return first == this.shutdownComplete.Task;
         }
     }
 }

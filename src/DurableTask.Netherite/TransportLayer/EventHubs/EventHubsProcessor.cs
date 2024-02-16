@@ -180,13 +180,18 @@ namespace DurableTask.Netherite.EventHubsTransport
                         await Task.Delay(addedDelay);
                     }
 
-                    // the previous incarnation has already been terminated. But it may not have cleaned up yet.
-                    // We wait (but no more than 20 seconds) for the previous partition to dispose its assets
-                    bool disposalComplete = prior.ErrorHandler.WaitForDisposeTasks(TimeSpan.FromSeconds(20));
+                    // we wait at most 20 seconds for the previous partition to terminate cleanly
+                    int tries = 4;
+                    var timeout = TimeSpan.FromSeconds(5);
 
-                    if (!disposalComplete)
+                    while (!await prior.ErrorHandler.WaitForTermination(timeout))
                     {
-                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} partition (incarnation {incarnation}) timed out waiting for disposal of previous incarnation", this.eventHubName, this.eventHubPartition, c.Incarnation);
+                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} partition (incarnation {incarnation}) is still waiting for PartitionShutdown of previous incarnation", this.eventHubName, this.eventHubPartition, c.Incarnation);
+
+                        if (--tries == 0)
+                        {
+                            break;
+                        }
                     }
                 }
             }

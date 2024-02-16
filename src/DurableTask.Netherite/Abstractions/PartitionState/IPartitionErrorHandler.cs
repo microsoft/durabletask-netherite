@@ -20,9 +20,9 @@ namespace DurableTask.Netherite
         CancellationToken Token { get; }
 
         /// <summary>
-        /// Adds a task to be executed after the partition has been terminated.
+        /// A place to subscribe (potentially non-instantaneous) cleanup actions that execute on a dedicated thread.
         /// </summary>
-        void AddDisposeTask(string name, TimeSpan timeout, Action action);
+        event Action OnShutdown;
 
         /// <summary>
         /// A boolean indicating whether the partition is terminated.
@@ -35,11 +35,9 @@ namespace DurableTask.Netherite
         bool NormalTermination { get; }
 
         /// <summary>
-        /// Waits for the dispose tasks to complete, up to the specified time limit.
+        /// Wait for all termination operations to finish
         /// </summary>
-        /// <param name="timeout">The maximum time to wait for</param>
-        /// <returns>true if all tasks completed within the timeout, false otherwise.</returns>
-        bool WaitForDisposeTasks(TimeSpan timeout);
+        Task<bool> WaitForTermination(TimeSpan timeout);
 
         /// <summary>
         /// Error handling for the partition.
