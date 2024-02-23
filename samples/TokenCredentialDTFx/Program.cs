@@ -13,7 +13,7 @@ Console.WriteLine("Starting Netherite...");
 
 var netheriteSettings = new NetheriteOrchestrationServiceSettings()
 {
-    HubName = "myhub",
+    HubName = "TokenCredentialDTFx",
     PartitionCount = 4,
 };
 
