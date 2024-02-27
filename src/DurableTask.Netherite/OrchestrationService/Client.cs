@@ -523,6 +523,8 @@ namespace DurableTask.Netherite
                 throw new ArgumentException(nameof(instanceId));
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             var request = new WaitRequestReceived()
             {
                 PartitionId = partitionId,
