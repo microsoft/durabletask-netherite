@@ -46,6 +46,7 @@ namespace DurableTask.Netherite
         public TransportAbstraction.ISender BatchSender { get; private set; }
         public WorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; private set; }
         public WorkItemQueue<OrchestrationWorkItem> OrchestrationWorkItemQueue { get; private set; }
+        public WorkItemQueue<OrchestrationWorkItem> EntityWorkItemQueue { get; private set; }
         public LoadPublishWorker LoadPublisher { get; private set; }
 
         public BatchTimer<PartitionEvent> PendingTimers { get; private set; }
@@ -70,6 +71,7 @@ namespace DurableTask.Netherite
             string storageAccountName,
             WorkItemQueue<ActivityWorkItem> activityWorkItemQueue,
             WorkItemQueue<OrchestrationWorkItem> orchestrationWorkItemQueue,
+            WorkItemQueue<OrchestrationWorkItem> entityWorkItemQueue,
             LoadPublishWorker loadPublisher,
 
             WorkItemTraceHelper workItemTraceHelper)
@@ -83,6 +85,7 @@ namespace DurableTask.Netherite
             this.StorageAccountName = storageAccountName;
             this.ActivityWorkItemQueue = activityWorkItemQueue;
             this.OrchestrationWorkItemQueue = orchestrationWorkItemQueue;
+            this.EntityWorkItemQueue = entityWorkItemQueue;
             this.LoadPublisher = loadPublisher;
             this.TraceHelper = new PartitionTraceHelper(host.TraceHelper.Logger, settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName, this.PartitionId);
             this.EventTraceHelper = new EventTraceHelper(host.LoggerFactory, settings.EventLogLevelLimit, this);
@@ -326,14 +329,21 @@ namespace DurableTask.Netherite
         {
             this.WorkItemTraceHelper.TraceWorkItemQueued(
                 this.PartitionId,
-                WorkItemTraceHelper.WorkItemType.Orchestration,
+                item.WorkItemType,
                 item.MessageBatch.WorkItemId,
                 item.InstanceId,
                 item.Type.ToString(),
                 item.EventCount,
                 WorkItemTraceHelper.FormatMessageIdList(item.MessageBatch.TracedMessages));
 
-            this.OrchestrationWorkItemQueue.Add(item);
+            if (this.Settings.UseSeparateQueueForEntityWorkItems && item.WorkItemType == WorkItemTraceHelper.WorkItemType.Entity)
+            {
+                this.EntityWorkItemQueue.Add(item);
+            }
+            else
+            {
+                this.OrchestrationWorkItemQueue.Add(item);
+            }
         }
     }
 }

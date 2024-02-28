@@ -968,8 +968,8 @@ namespace DurableTask.Netherite.Faster
                 {
                     while (enumerator.MoveNext())
                     {
-                        if (!string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
-                            && !enumerator.Current.StartsWith(instanceQuery.InstanceIdPrefix))
+                        if ((!string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix) && !enumerator.Current.StartsWith(instanceQuery.InstanceIdPrefix))
+                            || (instanceQuery.ExcludeEntities && DurableTask.Core.Common.Entities.IsEntityInstance(enumerator.Current)))
                         {
                             // the instance does not match the prefix
                             continue;
@@ -1188,8 +1188,8 @@ namespace DurableTask.Netherite.Faster
                                 scanned++;
                                 //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {key.InstanceId}");
 
-                                if (string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
-                                    || key.Val.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
+                                if ((string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix) || key.Val.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
+                                    || (instanceQuery.ExcludeEntities && DurableTask.Core.Common.Entities.IsEntityInstance(key.Val.InstanceId)))
                                 {
                                     //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"reading instance {key.InstanceId}");
 

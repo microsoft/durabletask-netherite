@@ -52,6 +52,12 @@ namespace DurableTask.Netherite
         [DataMember]
         internal bool PrefetchHistory { get; set; }
 
+        /// <summary>
+        /// Whether to exclude entities from the results.
+        /// </summary>
+        [DataMember]
+        internal bool ExcludeEntities { get; set; }
+
 
         /// <summary>
         /// Construct an instance query with the given parameters.
@@ -78,7 +84,7 @@ namespace DurableTask.Netherite
         internal bool HasRuntimeStatus => this.RuntimeStatus != null && this.RuntimeStatus.Length > 0;
 
         internal bool IsSet => this.HasRuntimeStatus || !string.IsNullOrWhiteSpace(this.InstanceIdPrefix)
-                                    || !(this.CreatedTimeFrom is null) || !(this.CreatedTimeTo is null);
+                                    || !(this.CreatedTimeFrom is null) || !(this.CreatedTimeTo is null) || this.ExcludeEntities;
 
         internal bool Matches(OrchestrationState targetState)
         {
@@ -88,7 +94,8 @@ namespace DurableTask.Netherite
             return (!this.HasRuntimeStatus || this.RuntimeStatus.Contains(targetState.OrchestrationStatus))
                      && (string.IsNullOrWhiteSpace(this.InstanceIdPrefix) || targetState.OrchestrationInstance.InstanceId.StartsWith(this.InstanceIdPrefix))
                      && (!this.CreatedTimeFrom.HasValue || targetState.CreatedTime >= this.CreatedTimeFrom.Value)
-                     && (!this.CreatedTimeTo.HasValue || targetState.CreatedTime <= this.CreatedTimeTo.Value);
+                     && (!this.CreatedTimeTo.HasValue || targetState.CreatedTime <= this.CreatedTimeTo.Value)
+                     && (!this.ExcludeEntities || !DurableTask.Core.Common.Entities.IsEntityInstance(targetState.OrchestrationInstance.InstanceId));
         }
     }
 }
