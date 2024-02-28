@@ -5,6 +5,7 @@ namespace DurableTask.Netherite
 {
     using DurableTask.Core;
     using DurableTask.Core.Common;
+    using DurableTask.Core.Entities;
     using DurableTask.Core.History;
     using DurableTask.Netherite.Abstractions;
     using DurableTask.Netherite.Faster;
@@ -24,10 +25,12 @@ namespace DurableTask.Netherite
     /// Local partition of the distributed orchestration service.
     /// </summary>
     public class NetheriteOrchestrationService :
-        DurableTask.Core.IOrchestrationService, 
+        DurableTask.Core.IOrchestrationService,
         DurableTask.Core.IOrchestrationServiceClient,
         DurableTask.Core.IOrchestrationServicePurgeClient,
+        DurableTask.Core.Query.IOrchestrationServiceQueryClient,
         DurableTask.Netherite.IOrchestrationServiceQueryClient,
+        DurableTask.Core.Entities.IEntityOrchestrationService,
         TransportAbstraction.IHost
     {
         /// <summary>
@@ -43,6 +46,7 @@ namespace DurableTask.Netherite
 
         readonly ITransportLayer transport;
         readonly IStorageLayer storage;
+        readonly EntityBackendQueriesImplementation EntityBackendQueries;
 
         readonly WorkItemTraceHelper workItemTraceHelper;
 
@@ -88,6 +92,8 @@ namespace DurableTask.Netherite
 
         internal WorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; private set; }
         internal WorkItemQueue<OrchestrationWorkItem> OrchestrationWorkItemQueue { get; private set; }
+        internal WorkItemQueue<OrchestrationWorkItem> EntityWorkItemQueue { get; private set; }
+
         internal LoadPublishWorker LoadPublisher { get; private set; }
 
         internal ILoggerFactory LoggerFactory { get; }
@@ -124,7 +130,8 @@ namespace DurableTask.Netherite
             this.Settings = settings;
             this.TraceHelper = new OrchestrationServiceTraceHelper(loggerFactory, settings.LogLevelLimit, settings.WorkerId, settings.HubName);
             this.workItemTraceHelper = new WorkItemTraceHelper(loggerFactory, settings.WorkItemLogLevelLimit, settings.HubName);
-           
+            this.EntityBackendQueries = new EntityBackendQueriesImplementation(this);
+
             try
             {
                 this.TraceHelper.TraceProgress("Reading configuration for transport and storage layers");
@@ -379,6 +386,7 @@ namespace DurableTask.Netherite
 
                 this.ActivityWorkItemQueue = new WorkItemQueue<ActivityWorkItem>();
                 this.OrchestrationWorkItemQueue = new WorkItemQueue<OrchestrationWorkItem>();
+                this.EntityWorkItemQueue = new WorkItemQueue<OrchestrationWorkItem>();
 
                 this.TraceHelper.TraceProgress($"Started client");
 
@@ -475,6 +483,7 @@ namespace DurableTask.Netherite
                     await this.transport.StopAsync(fatalExceptionObserved: false);
 
                     this.ActivityWorkItemQueue.Dispose();
+                    this.EntityWorkItemQueue.Dispose();
                     this.OrchestrationWorkItemQueue.Dispose();
                 }
 
@@ -539,7 +548,7 @@ namespace DurableTask.Netherite
         TransportAbstraction.IPartition TransportAbstraction.IHost.AddPartition(uint partitionId, TransportAbstraction.ISender batchSender)
         {
             var partition = new Partition(this, partitionId, this.GetPartitionId, this.GetNumberPartitions, batchSender, this.Settings, this.StorageAccountName,
-                this.ActivityWorkItemQueue, this.OrchestrationWorkItemQueue, this.LoadPublisher, this.workItemTraceHelper);
+                this.ActivityWorkItemQueue, this.OrchestrationWorkItemQueue, this.EntityWorkItemQueue, this.LoadPublisher, this.workItemTraceHelper);
 
             return partition;
         }
@@ -551,7 +560,7 @@ namespace DurableTask.Netherite
 
         IPartitionErrorHandler TransportAbstraction.IHost.CreateErrorHandler(uint partitionId)
         {
-            return new PartitionErrorHandler((int) partitionId, this.TraceHelper.Logger, this.Settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName, this);
+            return new PartitionErrorHandler((int)partitionId, this.TraceHelper.Logger, this.Settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName, this);
         }
 
         void TransportAbstraction.IHost.TraceWarning(string message)
@@ -716,7 +725,30 @@ namespace DurableTask.Netherite
 
         /// <inheritdoc />
         async Task<InstanceQueryResult> IOrchestrationServiceQueryClient.QueryOrchestrationStatesAsync(InstanceQuery instanceQuery, int pageSize, string continuationToken, CancellationToken cancellationToken)
-            => await (await this.GetClientAsync().ConfigureAwait(false)).QueryOrchestrationStatesAsync(instanceQuery, pageSize, continuationToken, cancellationToken).ConfigureAwait(false);
+        {
+            return await (await this.GetClientAsync().ConfigureAwait(false)).QueryOrchestrationStatesAsync(instanceQuery, pageSize, continuationToken, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        async Task<DurableTask.Core.Query.OrchestrationQueryResult> DurableTask.Core.Query.IOrchestrationServiceQueryClient.GetOrchestrationWithQueryAsync(
+            DurableTask.Core.Query.OrchestrationQuery query,
+            CancellationToken cancellationToken)
+        {
+            InstanceQuery instanceQuery = new()
+            {
+                CreatedTimeFrom = query.CreatedTimeFrom,
+                CreatedTimeTo = query.CreatedTimeTo,
+                ExcludeEntities = query.ExcludeEntities,
+                FetchInput = query.FetchInputsAndOutputs,
+                InstanceIdPrefix = query.InstanceIdPrefix,
+                PrefetchHistory = false,
+                RuntimeStatus = query.RuntimeStatus?.ToArray(),
+            };
+
+            Client client = await this.GetClientAsync().ConfigureAwait(false);
+            InstanceQueryResult result = await client.QueryOrchestrationStatesAsync(instanceQuery, query.PageSize, query.ContinuationToken, cancellationToken).ConfigureAwait(false);
+            return new DurableTask.Core.Query.OrchestrationQueryResult(result.Instances.ToList(), result.ContinuationToken);
+        }
 
         /// <inheritdoc />
         async Task<PurgeResult> IOrchestrationServicePurgeClient.PurgeInstanceStateAsync(string instanceId)
@@ -726,24 +758,192 @@ namespace DurableTask.Netherite
         async Task<PurgeResult> IOrchestrationServicePurgeClient.PurgeInstanceStateAsync(PurgeInstanceFilter purgeInstanceFilter)
             => new PurgeResult(await (await this.GetClientAsync()).PurgeInstanceHistoryAsync(purgeInstanceFilter.CreatedTimeFrom, purgeInstanceFilter.CreatedTimeTo, purgeInstanceFilter.RuntimeStatus));
 
+        /// <inheritdoc />
+        EntityBackendQueries IEntityOrchestrationService.EntityBackendQueries => this.EntityBackendQueries;
+
+        class EntityBackendQueriesImplementation : EntityBackendQueries
+        {
+            readonly NetheriteOrchestrationService service;
+
+            public EntityBackendQueriesImplementation(NetheriteOrchestrationService netheriteOrchestrationService)
+            {
+                this.service = netheriteOrchestrationService;
+            }
+            public override async Task<EntityMetadata?> GetEntityAsync(EntityId id, bool includeState = false, bool includeTransient = false, CancellationToken cancellation = default)
+            {
+                string instanceId = id.ToString();
+                OrchestrationState state = await(await this.service.GetClientAsync().ConfigureAwait(false))
+                    .GetOrchestrationStateAsync(this.service.GetPartitionId(instanceId.ToString()), instanceId, fetchInput: includeState, false).ConfigureAwait(false);
+
+                return this.GetEntityMetadata(state, includeState, includeTransient);
+            }
+
+            public override async Task<EntityQueryResult> QueryEntitiesAsync(EntityQuery filter, CancellationToken cancellation)
+            {
+                string adjustedPrefix = string.IsNullOrEmpty(filter.InstanceIdStartsWith) ? "@" : filter.InstanceIdStartsWith;
+
+                if (adjustedPrefix[0] != '@')
+                {
+                    return new EntityQueryResult()
+                    {
+                        Results = new List<EntityMetadata>(),
+                        ContinuationToken = null,
+                    };
+                }
+
+                var condition = new InstanceQuery()
+                {
+                    InstanceIdPrefix = adjustedPrefix,
+                    CreatedTimeFrom = filter.LastModifiedFrom,
+                    CreatedTimeTo = filter.LastModifiedTo,
+                    FetchInput = filter.IncludeState,
+                    PrefetchHistory = false,
+                    ExcludeEntities = false,
+                }; 
+
+                List<EntityMetadata> metadataList = new List<EntityMetadata>();
+
+                InstanceQueryResult result = await (await this.service.GetClientAsync().ConfigureAwait(false))
+                    .QueryOrchestrationStatesAsync(condition, filter.PageSize ?? 200, filter.ContinuationToken, cancellation).ConfigureAwait(false);
+
+                foreach(var entry in result.Instances)
+                {
+                    var metadata = this.GetEntityMetadata(entry, filter.IncludeState, filter.IncludeTransient);
+                    if (metadata.HasValue)
+                    {
+                        metadataList.Add(metadata.Value);
+                    }
+                }
+
+                return new EntityQueryResult()
+                {
+                    Results = metadataList,
+                    ContinuationToken = result.ContinuationToken,
+                };
+            }
+
+            public override async Task<CleanEntityStorageResult> CleanEntityStorageAsync(CleanEntityStorageRequest request = default, CancellationToken cancellation = default)
+            {
+                if (!request.ReleaseOrphanedLocks)
+                {
+                    // there is no need to do anything since deletion is implicit
+                    return new CleanEntityStorageResult();
+                }
+
+                var condition = new InstanceQuery()
+                {
+                    InstanceIdPrefix = "@",
+                    FetchInput = false,
+                    PrefetchHistory = false,
+                    ExcludeEntities = false,
+                };
+
+                var client = await this.service.GetClientAsync().ConfigureAwait(false);
+
+                string continuationToken = null;
+                int orphanedLocksReleased = 0;
+                            
+                // list all entities (without fetching the input) and for each one that requires action,
+                // perform that action. Waits for all actions to finish after each page.
+                do
+                {
+                    var page = await client.QueryOrchestrationStatesAsync(condition, 500, continuationToken, cancellation).ConfigureAwait(false);
+
+                    List<Task> tasks = new List<Task>();
+                    foreach (var state in page.Instances)
+                    {
+                        EntityStatus status = ClientEntityHelpers.GetEntityStatus(state.Status);
+                        if (status != null)
+                        {
+                            if (request.ReleaseOrphanedLocks && status.LockedBy != null)
+                            {
+                                tasks.Add(CheckForOrphanedLockAndFixIt(state, status.LockedBy));
+                            }
+                        }
+                    }
+
+                    async Task CheckForOrphanedLockAndFixIt(OrchestrationState state, string lockOwner)
+                    {
+                        uint partitionId = this.service.GetPartitionId(lockOwner);
+
+                        OrchestrationState ownerState
+                            = await client.GetOrchestrationStateAsync(partitionId, lockOwner, fetchInput: false, fetchOutput: false);
+
+                        bool OrchestrationIsRunning(OrchestrationStatus? status)
+                            => status != null && (status == OrchestrationStatus.Running || status == OrchestrationStatus.Suspended);
+
+                        if (!OrchestrationIsRunning(ownerState?.OrchestrationStatus))
+                        {
+                            // the owner is not a running orchestration. Send a lock release.
+                            EntityMessageEvent eventToSend = ClientEntityHelpers.EmitUnlockForOrphanedLock(state.OrchestrationInstance, lockOwner);
+                            await client.SendTaskOrchestrationMessageBatchAsync(
+                                this.service.GetPartitionId(state.OrchestrationInstance.InstanceId),
+                                new TaskMessage[] { eventToSend.AsTaskMessage() });
+
+                            Interlocked.Increment(ref orphanedLocksReleased);
+                        }
+                    }
+
+                    await Task.WhenAll(tasks);
+                }
+                while (continuationToken != null);
+
+                return new CleanEntityStorageResult()
+                {
+                    EmptyEntitiesRemoved = 0,
+                    OrphanedLocksReleased = orphanedLocksReleased,
+                };
+            }
+
+            EntityMetadata? GetEntityMetadata(OrchestrationState state, bool includeState, bool includeTransient)
+            {
+                if (state != null)
+                {
+                    // determine the status of the entity by deserializing the custom status field
+                    EntityStatus status = ClientEntityHelpers.GetEntityStatus(state.Status);
+
+                    if (status?.EntityExists == true || includeTransient)
+                    {
+                        return new EntityMetadata()
+                        {
+                            EntityId = EntityId.FromString(state.OrchestrationInstance.InstanceId),
+                            LastModifiedTime = state.CreatedTime,
+                            SerializedState = (includeState && status?.EntityExists == true) ? ClientEntityHelpers.GetEntityState(state.Input) : null,
+                            LockedBy = status?.LockedBy,
+                            BacklogQueueSize = status?.BacklogQueueSize ?? 0,
+                        };
+                    }
+                }
+
+                return null;               
+            }
+        }
+
 
         /******************************/
         // Task orchestration methods
         /******************************/
 
-        async Task<TaskOrchestrationWorkItem> IOrchestrationService.LockNextTaskOrchestrationWorkItemAsync(
-            TimeSpan receiveTimeout,
-            CancellationToken cancellationToken)
+        Task<TaskOrchestrationWorkItem> IOrchestrationService.LockNextTaskOrchestrationWorkItemAsync(TimeSpan receiveTimeout, CancellationToken cancellationToken)
+        => this.LockNextWorkItemInternal(this.OrchestrationWorkItemQueue, receiveTimeout, cancellationToken);
+
+        Task<TaskOrchestrationWorkItem> IEntityOrchestrationService.LockNextOrchestrationWorkItemAsync(TimeSpan receiveTimeout, CancellationToken cancellationToken)
+        => this.LockNextWorkItemInternal(this.OrchestrationWorkItemQueue, receiveTimeout, cancellationToken);
+
+        Task<TaskOrchestrationWorkItem> IEntityOrchestrationService.LockNextEntityWorkItemAsync(TimeSpan receiveTimeout, CancellationToken cancellationToken)
+        => this.LockNextWorkItemInternal(this.EntityWorkItemQueue, receiveTimeout, cancellationToken);
+
+        async Task<TaskOrchestrationWorkItem> LockNextWorkItemInternal(WorkItemQueue<OrchestrationWorkItem> workItemQueue, TimeSpan receiveTimeout, CancellationToken cancellationToken)
         {
-            var nextOrchestrationWorkItem = await this.OrchestrationWorkItemQueue.GetNext(receiveTimeout, cancellationToken).ConfigureAwait(false);
+            var nextOrchestrationWorkItem = await workItemQueue.GetNext(receiveTimeout, cancellationToken).ConfigureAwait(false);
 
             if (nextOrchestrationWorkItem != null) 
             {
                 nextOrchestrationWorkItem.MessageBatch.WaitingSince = null;
 
                 this.workItemTraceHelper.TraceWorkItemStarted(
-                    nextOrchestrationWorkItem.Partition.PartitionId, 
-                    WorkItemTraceHelper.WorkItemType.Orchestration,
+                    nextOrchestrationWorkItem.Partition.PartitionId,
+                    nextOrchestrationWorkItem.WorkItemType,
                     nextOrchestrationWorkItem.MessageBatch.WorkItemId,
                     nextOrchestrationWorkItem.MessageBatch.InstanceId,
                     nextOrchestrationWorkItem.Type.ToString(),
@@ -829,7 +1029,7 @@ namespace DurableTask.Netherite
                 // It's unavoidable by design, but let's at least create a warning.
                 this.workItemTraceHelper.TraceWorkItemDiscarded(
                     partition.PartitionId,
-                    WorkItemTraceHelper.WorkItemType.Orchestration,
+                    orchestrationWorkItem.WorkItemType,
                     messageBatch.WorkItemId,
                     workItem.InstanceId,
                     "",
@@ -871,7 +1071,7 @@ namespace DurableTask.Netherite
 
             this.workItemTraceHelper.TraceWorkItemCompleted(
                 partition.PartitionId,
-                WorkItemTraceHelper.WorkItemType.Orchestration,
+                orchestrationWorkItem.WorkItemType,
                 messageBatch.WorkItemId,
                 workItem.InstanceId,
                 batchProcessedEvent.OrchestrationStatus,
@@ -1049,5 +1249,15 @@ namespace DurableTask.Netherite
         int IOrchestrationService.MaxConcurrentTaskActivityWorkItems => this.Settings.MaxConcurrentActivityFunctions;
 
         int IOrchestrationService.TaskActivityDispatcherCount => this.Settings.ActivityDispatcherCount;
+
+        EntityBackendProperties IEntityOrchestrationService.EntityBackendProperties => new EntityBackendProperties()
+        {
+            EntityMessageReorderWindow = TimeSpan.Zero,
+            MaxConcurrentTaskEntityWorkItems = this.Settings.MaxConcurrentEntityFunctions,
+            MaxEntityOperationBatchSize = this.Settings.MaxEntityOperationBatchSize,
+            MaximumSignalDelayTime = TimeSpan.MaxValue,
+            SupportsImplicitEntityDeletion = true,
+            UseSeparateQueueForEntityWorkItems = this.Settings.UseSeparateQueueForEntityWorkItems,
+        };
     }
 }
