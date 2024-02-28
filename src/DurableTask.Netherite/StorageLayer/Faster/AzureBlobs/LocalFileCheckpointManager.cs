@@ -94,7 +94,7 @@ namespace DurableTask.Netherite.Faster
 
         public void CheckpointVersionShift(long oldVersion, long newVersion)
         {
-            throw new NotImplementedException();
+            // no-op
         }
     }
 }
