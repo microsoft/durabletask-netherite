@@ -121,6 +121,7 @@ namespace DurableTask.Netherite.Faster
                 MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
                 SegmentSizeBits = segmentSizeBits,
                 PreallocateLog = false,
+                ReadCopyOptions = default, // is overridden by the per-session configuration
                 ReadCacheSettings = null, // no read cache
                 MemorySizeBits = memorySizeBits,
             };
@@ -1461,7 +1462,7 @@ namespace DurableTask.Netherite.Faster
 
         public void CheckpointVersionShift(long oldVersion, long newVersion)
         {
-            throw new NotImplementedException();
+            // no-op
         }
     }
 }
