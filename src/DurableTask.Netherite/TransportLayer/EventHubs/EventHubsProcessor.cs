@@ -180,18 +180,13 @@ namespace DurableTask.Netherite.EventHubsTransport
                         await Task.Delay(addedDelay);
                     }
 
-                    // we wait at most 20 seconds for the previous partition to terminate cleanly
-                    int tries = 4;
-                    var timeout = TimeSpan.FromSeconds(5);
+                    // the previous incarnation has already been terminated. But it may not have cleaned up yet.
+                    // We wait (but no more than 20 seconds) for the previous partition to dispose its assets
+                    bool disposalComplete = prior.ErrorHandler.WaitForDisposeTasks(TimeSpan.FromSeconds(20));
 
-                    while (!await prior.ErrorHandler.WaitForTermination(timeout))
+                    if (!disposalComplete)
                     {
-                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} partition (incarnation {incarnation}) is still waiting for PartitionShutdown of previous incarnation", this.eventHubName, this.eventHubPartition, c.Incarnation);
-
-                        if (--tries == 0)
-                        {
-                            break;
-                        }
+                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} partition (incarnation {incarnation}) timed out waiting for disposal of previous incarnation", this.eventHubName, this.eventHubPartition, c.Incarnation);
                     }
                 }
             }
@@ -437,7 +432,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     // iterators do not support ref arguments, so we use a simple wrapper class to work around this limitation
                     MutableLong nextPacketToReceive = new MutableLong() { Value = current.NextPacketToReceive.seqNo };
 
-                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, current.ErrorHandler.Token, nextPacketToReceive))
+                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, this.shutdownToken, nextPacketToReceive))
                     {
                         for (int i = 0; i < events.Length; i++)
                         {
@@ -489,7 +484,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                 await this.SaveEventHubsReceiverCheckpoint(context, 600000);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (this.shutdownToken.IsCancellationRequested) // we should only ignore these exceptions during VM shutdowns. See :  https://github.com/microsoft/durabletask-netherite/pull/347
             {
                 this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) was terminated", this.eventHubName, this.eventHubPartition, current.Incarnation);
             }

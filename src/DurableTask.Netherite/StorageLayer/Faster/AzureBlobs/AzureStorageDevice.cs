@@ -296,7 +296,7 @@ namespace DurableTask.Netherite.Faster
                     this.underLease,
                     "BlobBaseClient.DeleteAsync",
                     "DeleteDeviceSegment",
-                    "",
+                    $"id={id}",
                     entry.PageBlob.Default.Name,
                     5000,
                     true,
@@ -451,13 +451,14 @@ namespace DurableTask.Netherite.Faster
         {
             using (stream)
             {
+                var position = destinationAddress + offset;
                 long originalStreamPosition = stream.Position;
                 await this.BlobManager.PerformWithRetriesAsync(
                     BlobManager.AsynchronousStorageWriteMaxConcurrency,
                     true,
                     "PageBlobClient.UploadPagesAsync",
                     "WriteToDevice",
-                    $"id={id} length={length} destinationAddress={destinationAddress + offset}",
+                    $"id={id} position={position} length={length}",
                     blobEntry.PageBlob.Default.Name,
                     1000 + (int)length / 1000,
                     true,
@@ -502,11 +503,15 @@ namespace DurableTask.Netherite.Faster
 
         async Task ReadFromBlobAsync(UnmanagedMemoryStream stream, BlobUtilsV12.PageBlobClients blob, long sourceAddress, uint readLength, long id)
         {
+            long readRangeStart = sourceAddress;
+            long readRangeEnd = readRangeStart + readLength;
+            string operationReadRange = $"[{readRangeStart}, {readRangeEnd}]";
             using (stream)
             {
                 long offset = 0;
                 while (readLength > 0)
                 {
+                    var position = sourceAddress + offset;
                     var length = Math.Min(readLength, MAX_DOWNLOAD_SIZE);
 
                     await this.BlobManager.PerformWithRetriesAsync(
@@ -514,7 +519,7 @@ namespace DurableTask.Netherite.Faster
                         true,
                         "PageBlobClient.DownloadStreamingAsync",
                         "ReadFromDevice",
-                        $"id={id} readLength={length} sourceAddress={sourceAddress + offset}",
+                        $"id={id} position={position} length={length} operationReadRange={operationReadRange}",
                         blob.Default.Name,
                         1000 + (int)length / 1000,
                         true,

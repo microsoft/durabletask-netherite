@@ -764,9 +764,11 @@ namespace DurableTask.Netherite.Faster
                 }
             }
 
+            this.TraceHelper.FasterProgress("Blob manager is terminating partition normally");
+
             this.PartitionErrorHandler.TerminateNormally();
 
-            this.TraceHelper.LeaseProgress("Blob manager stopped");
+            this.TraceHelper.FasterProgress("Blob manager stopped");
         }
 
         public async Task RemoveObsoleteCheckpoints()
@@ -1130,24 +1132,24 @@ namespace DurableTask.Netherite.Faster
                 var metaFileBlob = partDir.GetBlockBlobClient(this.GetIndexCheckpointMetaBlobName(indexToken));
 
                 this.PerformWithRetries(
-                 false,
-                 "BlockBlobClient.OpenWrite",
-                 "WriteIndexCheckpointMetadata",
-                 $"token={indexToken} size={commitMetadata.Length}",
-                 metaFileBlob.Name,
-                 1000,
-                 true,
-                 failIfReadonly: true,
-                 (numAttempts) =>
-                 {
-                     var client = metaFileBlob.WithRetries;
-                     using var blobStream = client.OpenWrite(overwrite: true);
-                     using var writer = new BinaryWriter(blobStream);
-                     writer.Write(commitMetadata.Length);
-                     writer.Write(commitMetadata);
-                     writer.Flush();
-                     return (commitMetadata.Length, true);
-                 });
+                    false,
+                    "BlockBlobClient.OpenWrite",
+                    "WriteIndexCheckpointMetadata",
+                    $"token={indexToken} size={commitMetadata.Length}",
+                    metaFileBlob.Name,
+                    1000,
+                    true,
+                    failIfReadonly: true,
+                    (numAttempts) =>
+                    {
+                        var client = metaFileBlob.WithRetries;
+                        using var blobStream = client.OpenWrite(overwrite: true);
+                        using var writer = new BinaryWriter(blobStream);
+                        writer.Write(commitMetadata.Length);
+                        writer.Write(commitMetadata);
+                        writer.Flush();
+                        return (commitMetadata.Length, true);
+                    });
 
                 this.CheckpointInfo.IndexToken = indexToken;
                 this.StorageTracer?.FasterStorageProgress($"StorageOpReturned ICheckpointManager.CommitIndexCheckpoint, target={metaFileBlob.Name}");
