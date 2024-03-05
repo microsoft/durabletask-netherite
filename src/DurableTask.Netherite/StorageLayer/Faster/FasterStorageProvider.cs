@@ -134,7 +134,6 @@ namespace DurableTask.Netherite.Faster
                 this.traceHelper.TraceProgress($"Using existing blob container at {this.cloudBlobContainer.Result.Uri}");
             }
 
-            // TODO: Add validation to check if customer is using a Netherite V1 task hub
 
             var taskHubParameters = new TaskhubParameters()
             {
