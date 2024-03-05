@@ -216,7 +216,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                 // start this partition (which may include waiting for the lease to become available)
                 c.Partition = this.host.AddPartition(this.partitionId, this.sender);
-                c.NextPacketToReceive = await c.Partition.CreateOrRestoreAsync(c.ErrorHandler, this.parameters, this.eventHubsTransport.Fingerprint);
+                c.NextPacketToReceive = await c.Partition.CreateOrRestoreAsync(c.ErrorHandler, this.parameters, this.eventHubsTransport.Fingerprint, this.eventHubsTransport.GetInitialOffset((int)this.partitionId));
 
                 this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} started partition (incarnation {incarnation}), next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, c.Incarnation, c.NextPacketToReceive);
 

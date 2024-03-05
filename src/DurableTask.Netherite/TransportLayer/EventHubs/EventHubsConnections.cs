@@ -20,6 +20,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly string partitionHub;
         readonly string loadMonitorHub;
         readonly CancellationToken shutdownToken;
+        readonly string consumerGroup;
 
         EventHubClient partitionClient;
         List<EventHubClient> clientClients;
@@ -46,6 +47,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             string partitionHub,
             string[] clientHubs,
             string loadMonitorHub,
+            string consumerGroup,
             CancellationToken shutdownToken)
         {
             this.connectionInfo = connectionInfo;
@@ -53,7 +55,10 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.clientHubs = clientHubs;
             this.loadMonitorHub = loadMonitorHub;
             this.shutdownToken = shutdownToken;
+            this.consumerGroup = consumerGroup;
         }
+
+        const string defaultConsumerGroup = "$Default";
 
         public string Fingerprint => $"{this.connectionInfo.HostName}{this.partitionHub}/{this.CreationTimestamp:o}";
 
@@ -63,6 +68,11 @@ namespace DurableTask.Netherite.EventHubsTransport
                 this.EnsurePartitionsAsync(parameters.PartitionCount), 
                 this.EnsureClientsAsync(), 
                 this.EnsureLoadMonitorAsync());
+
+            if (this.consumerGroup != defaultConsumerGroup)
+            {
+                await this.EnsureConsumerGroupsExistAsync();
+            }
         }
 
         public Task StopAsync()
@@ -120,6 +130,31 @@ namespace DurableTask.Netherite.EventHubsTransport
                 await Task.Delay(TimeSpan.FromSeconds(5));
             }
         }
+
+        public Task EnsureConsumerGroupsExistAsync()
+        {
+            return Task.WhenAll(
+                EnsureExistsAsync(this.partitionHub),
+                EnsureExistsAsync(this.loadMonitorHub),
+                Task.WhenAll(this.clientHubs.Select(clientHub => EnsureExistsAsync(clientHub)).ToList())
+            );
+
+            async Task EnsureExistsAsync(string eventHubName)
+            {
+                this.TraceHelper.LogDebug("Creating ConsumerGroup {eventHubName}|{name}", eventHubName, this.consumerGroup);
+                bool success = await EventHubsUtil.EnsureConsumerGroupExistsAsync(this.connectionInfo, eventHubName, this.consumerGroup, CancellationToken.None);
+                if (success)
+                {
+                    this.TraceHelper.LogInformation("Created ConsumerGroup {eventHubName}|{name}", eventHubName, this.consumerGroup, CancellationToken.None);
+                }
+                else
+                {
+                    this.TraceHelper.LogDebug("Conflict on ConsumerGroup {eventHubName}|{name}", eventHubName, this.consumerGroup, CancellationToken.None);
+                    await Task.Delay(TimeSpan.FromSeconds(5));
+                }
+            }
+        }
+
 
         internal async Task DeletePartitions()
         {
@@ -223,6 +258,23 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
             // try again
             await this.EnsureLoadMonitorAsync(retries - 1);
+        }
+
+        public async Task<List<long>> GetStartingSequenceNumbers()
+        {
+            Task<long>[] tasks = new Task<long>[this.partitionPartitions.Count];
+            for (int i = 0; i < this.partitionPartitions.Count; i++)
+            {
+                tasks[i] = GetLastEnqueuedSequenceNumber(i);
+            }
+            await Task.WhenAll(tasks);
+            return tasks.Select(t => t.Result).ToList();    
+
+            async Task<long> GetLastEnqueuedSequenceNumber(int i)
+            {
+                var info = await this.partitionPartitions[i].client.GetPartitionRuntimeInformationAsync(this.partitionPartitions[i].id);
+                return info.LastEnqueuedSequenceNumber + 1;
+            }
         }
 
         public static async Task<List<long>> GetQueuePositionsAsync(ConnectionInfo connectionInfo, string partitionHub)

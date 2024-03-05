@@ -159,8 +159,9 @@ namespace DurableTask.Netherite.Faster
                 this.traceHelper.TraceProgress("Created new taskhub");
 
                 // zap the partition hub so we start from zero queue positions
-                if (this.settings.TransportChoice == TransportChoices.EventHubs)
+                if (this.settings.TransportChoice == TransportChoices.EventHubs && !this.settings.UseSeparateConsumerGroups)
                 {
+                    this.traceHelper.TraceProgress("Deleting partition event hub, to ensure all partitions start at sequence number zero");
                     await EventHubsUtil.DeleteEventHubIfExistsAsync(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, CancellationToken.None);
                 }
             }

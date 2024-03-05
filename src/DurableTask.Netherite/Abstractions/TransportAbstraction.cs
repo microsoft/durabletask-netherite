@@ -84,13 +84,14 @@ namespace DurableTask.Netherite
             /// </summary>
             /// <param name="termination">A termination object for initiating and/or detecting termination of the partition.</param>
             /// <param name="inputQueueFingerprint">Fingerprint for the intput queue.</param>
+            /// <param name="initialOffset">Initial offset for the input queue, if this partition is being created.</param>
             /// <returns>The input queue position of the next message to receive.</returns>
             /// <remarks>
             /// The termination token source can be used for immediately terminating the partition.
             /// Also, it can be used to detect that the partition has terminated for any other reason, 
             /// be it cleanly (after StopAsync) or uncleanly (after losing a lease or hitting a fatal error).
             /// </remarks>
-            Task<(long,int)> CreateOrRestoreAsync(IPartitionErrorHandler termination, TaskhubParameters parameters, string inputQueueFingerprint);
+            Task<(long,int)> CreateOrRestoreAsync(IPartitionErrorHandler termination, TaskhubParameters parameters, string inputQueueFingerprint, long initialOffset = 0);
 
             /// <summary>
             /// Clean shutdown: stop processing, save partition state to storage, and release ownership.

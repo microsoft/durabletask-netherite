@@ -72,7 +72,7 @@ namespace DurableTask.Netherite.Faster
             await what;
         }
 
-        public async Task<(long,int)> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint)
+        public async Task<(long,int)> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint, long initialOffset)
         {
             this.partition = partition;
             this.terminationToken = errorHandler.Token;
@@ -146,7 +146,7 @@ namespace DurableTask.Netherite.Faster
                     this.TraceHelper.FasterProgress("Creating store");
 
                     // this is a fresh partition
-                    await this.TerminationWrapper(this.storeWorker.Initialize(this.log.BeginAddress, inputQueueFingerprint));
+                    await this.TerminationWrapper(this.storeWorker.Initialize(this.log.BeginAddress, inputQueueFingerprint, initialOffset));
 
                     await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("initial checkpoint").AsTask());
                     this.TraceHelper.FasterStoreCreated(this.storeWorker.InputQueuePosition, stopwatch.ElapsedMilliseconds);

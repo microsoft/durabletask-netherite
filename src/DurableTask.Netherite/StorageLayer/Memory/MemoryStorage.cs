@@ -52,7 +52,7 @@ namespace DurableTask.Netherite
             base.SubmitBatch(entries);
         }
 
-        public async Task<(long,int)> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler termination, string fingerprint)
+        public async Task<(long,int)> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler termination, string fingerprint, long initialOffset)
         {
             await Task.Yield();
             this.partition = partition;
@@ -66,6 +66,11 @@ namespace DurableTask.Netherite
                 {
                     trackedObject.OnFirstInitialization(partition);
                 }
+            }
+
+            if (initialOffset != 0)
+            {
+                throw new NetheriteConfigurationException("memory storage cannot be started with a non-zero initial offset");
             }
 
             this.commitPosition = 1;

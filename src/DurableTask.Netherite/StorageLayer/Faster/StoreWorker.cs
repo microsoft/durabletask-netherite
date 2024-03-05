@@ -87,12 +87,12 @@ namespace DurableTask.Netherite.Faster
             this.effectTracker = new TrackedObjectStoreEffectTracker(this.partition, this, store);
         }
 
-        public async Task Initialize(long initialCommitLogPosition, string fingerprint)
+        public async Task Initialize(long initialCommitLogPosition, string fingerprint, long initialOffset)
         {
             this.partition.ErrorHandler.Token.ThrowIfCancellationRequested();
 
             this.InputQueueFingerprint = fingerprint;
-            this.InputQueuePosition = (0,0);
+            this.InputQueuePosition = (initialOffset, 0);
             this.CommitLogPosition = initialCommitLogPosition;
            
             this.store.InitMainSession();
