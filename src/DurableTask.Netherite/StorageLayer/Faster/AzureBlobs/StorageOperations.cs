@@ -25,9 +25,18 @@ namespace DurableTask.Netherite.Faster
             string target,
             int expectedLatencyBound,
             bool isCritical,
+            bool failIfReadonly,
             Func<int, Task<long>> operationAsync,
             Func<Task> readETagAsync = null)
         {
+            if (this.readOnlyMode && failIfReadonly)
+            {
+                string message = $"storage operation {name} ({intent}) cannot be performed in read-only mode";
+                this.StorageTracer?.FasterStorageProgress(message);
+                this.HandleStorageError(name, message, target, null, isCritical, false);
+                throw new OperationCanceledException(message);
+            }
+
             try
             {
                 if (semaphore != null)
@@ -138,8 +147,17 @@ namespace DurableTask.Netherite.Faster
             string target,
             int expectedLatencyBound,
             bool isCritical,
+            bool failIfReadonly,
             Func<int,(long,bool)> operation)
         {
+            if (this.readOnlyMode && failIfReadonly)
+            {
+                string message = $"storage operation {name} ({intent}) cannot be performed in read-only mode";
+                this.StorageTracer?.FasterStorageProgress(message);
+                this.HandleStorageError(name, message, target, null, isCritical, false);
+                throw new OperationCanceledException(message);
+            }
+
             Stopwatch stopwatch = new Stopwatch();
             int numAttempts = 0;
 

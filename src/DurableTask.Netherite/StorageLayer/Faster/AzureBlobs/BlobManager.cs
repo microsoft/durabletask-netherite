@@ -31,6 +31,7 @@ namespace DurableTask.Netherite.Faster
         readonly uint partitionId;
         readonly CancellationTokenSource shutDownOrTermination;
         readonly string taskHubPrefix;
+        readonly bool readOnlyMode;
 
         BlobUtilsV12.ServiceClients blockBlobAccount;
         BlobUtilsV12.ServiceClients pageBlobAccount;
@@ -61,6 +62,8 @@ namespace DurableTask.Netherite.Faster
         public DateTime IncarnationTimestamp { get; private set; }
 
         public string ContainerName { get; }
+
+        public bool ReadonlyMode => this.readOnlyMode;
 
         internal BlobUtilsV12.ContainerClients BlockBlobContainer => this.blockBlobContainer;
         internal BlobUtilsV12.ContainerClients PageBlobContainer => this.pageBlobContainer;
@@ -349,6 +352,11 @@ namespace DurableTask.Netherite.Faster
             this.TraceHelper = new FasterTraceHelper(logger, logLevelLimit, performanceLogger, this.partitionId, this.UseLocalFiles ? "none" : this.settings.StorageAccountName, taskHubName);
             this.PartitionErrorHandler = errorHandler;
             this.shutDownOrTermination = CancellationTokenSource.CreateLinkedTokenSource(errorHandler.Token);
+
+            if (this.settings.PartitionManagement == PartitionManagementOptions.RecoveryTester)
+            {
+                this.readOnlyMode = true;
+            }
         }
 
         string PartitionFolderName => $"{this.taskHubPrefix}p{this.partitionId:D2}";
@@ -605,6 +613,7 @@ namespace DurableTask.Netherite.Faster
                         this.eventLogCommitBlob.Default.Name,
                         2000,
                         true,
+                        failIfReadonly: true,
                         async (numAttempts) =>
                         {
                             try
@@ -785,7 +794,7 @@ namespace DurableTask.Netherite.Faster
                 //TODO
                 return;
             }
-            else
+            else if (!this.readOnlyMode)
             {
                 string token1 = this.CheckpointInfo.LogToken.ToString();
                 string token2 = this.CheckpointInfo.IndexToken.ToString();
@@ -820,6 +829,7 @@ namespace DurableTask.Netherite.Faster
                         directory.Prefix,
                         1000,
                         false,
+                        failIfReadonly: true,
                         async (numAttempts) =>
                         {
                             results = await directory.GetBlobsAsync(this.shutDownOrTermination.Token);
@@ -857,6 +867,7 @@ namespace DurableTask.Netherite.Faster
                                     blobName,
                                     1000,
                                     false,
+                                    failIfReadonly: true,
                                     async (numAttempts) => (await BlobUtilsV12.ForceDeleteAsync(directory.Client.Default, blobName) ? 1 : 0)));
                         }
                         await Task.WhenAll(deletionTasks);
@@ -905,6 +916,7 @@ namespace DurableTask.Netherite.Faster
                     this.eventLogCommitBlob.Default.Name,
                     1000,
                     true,
+                    failIfReadonly: true,
                     (int numAttempts) =>
                     {
                         try
@@ -983,6 +995,7 @@ namespace DurableTask.Netherite.Faster
                    this.eventLogCommitBlob.Name,
                    1000,
                    true,
+                   failIfReadonly: false,
                    (int numAttempts) =>
                    {
                        if (numAttempts > 0)
@@ -1090,6 +1103,7 @@ namespace DurableTask.Netherite.Faster
                         checkpointCompletedBlob.Name,
                         1000,
                         true,
+                        failIfReadonly: false, 
                         async (numAttempts) =>
                         {
                             try
@@ -1141,6 +1155,7 @@ namespace DurableTask.Netherite.Faster
                     metaFileBlob.Name,
                     1000,
                     true,
+                    failIfReadonly: true,
                     (numAttempts) =>
                     {
                         var client = metaFileBlob.WithRetries;
@@ -1178,6 +1193,7 @@ namespace DurableTask.Netherite.Faster
                     metaFileBlob.Name,
                     1000,
                     true,
+                    failIfReadonly: true,
                     (numAttempts) =>
                     {
                         var client = metaFileBlob.WithRetries;
@@ -1221,6 +1237,7 @@ namespace DurableTask.Netherite.Faster
                    metaFileBlob.Name,
                    1000,
                    true,
+                   failIfReadonly: false, 
                    (numAttempts) =>
                    {
                        var client = metaFileBlob.WithRetries;
@@ -1258,6 +1275,7 @@ namespace DurableTask.Netherite.Faster
                     metaFileBlob.Name,
                     1000,
                     true,
+                    failIfReadonly: false,
                     (numAttempts) =>
                     {
                         var client = metaFileBlob.WithRetries;
@@ -1385,6 +1403,7 @@ namespace DurableTask.Netherite.Faster
                    singletonsBlob.Name,
                    1000 + singletons.Length / 5000,
                    false,
+                   failIfReadonly: true,
                    async (numAttempts) =>
                    {
                        var client = singletonsBlob.WithRetries;
@@ -1418,6 +1437,7 @@ namespace DurableTask.Netherite.Faster
                     singletonsBlob.Name,
                     20000,
                     true,
+                    failIfReadonly: false,
                     async (numAttempts) =>
                     {
 
@@ -1451,6 +1471,7 @@ namespace DurableTask.Netherite.Faster
                     checkpointCompletedBlob.Name,
                     1000,
                     true,
+                    failIfReadonly: true,
                     async (numAttempts) =>
                     {
                         var client = numAttempts > 1 ? checkpointCompletedBlob.Default : checkpointCompletedBlob.Aggressive;
