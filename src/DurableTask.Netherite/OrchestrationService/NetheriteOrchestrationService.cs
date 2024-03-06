@@ -615,20 +615,48 @@ namespace DurableTask.Netherite
                     .ConfigureAwait(false);
             }
         }
-           
 
         /// <inheritdoc />
         async Task<OrchestrationState> IOrchestrationServiceClient.WaitForOrchestrationAsync(
                 string instanceId,
                 string executionId,
                 TimeSpan timeout,
-                CancellationToken cancellationToken) 
-            => await (await this.GetClientAsync().ConfigureAwait(false)).WaitForOrchestrationAsync(
-                this.GetPartitionId(instanceId),
-                instanceId,
-                executionId,
-                timeout,
-                cancellationToken).ConfigureAwait(false);
+                CancellationToken cancellationToken)
+        {
+            Client client = await this.GetClientAsync().ConfigureAwait(false);
+            DateTime deadlineUtc = (timeout.TotalMilliseconds == -1) ? DateTime.MaxValue.ToUniversalTime() : DateTime.UtcNow + timeout;
+
+            while (true)
+            {
+                var nextTimeout = deadlineUtc - DateTime.UtcNow;
+
+                if (nextTimeout <= TimeSpan.Zero)
+                {
+                    // we are out of time, and return null to indicate that the request timed out.
+                    // Returning null is consistent with the behavior of WaitForOrchestrationAsync in other backends.
+                    return null;
+                }
+                else if (nextTimeout > TimeSpan.FromMinutes(5))
+                {
+                    // we do not want wait requests to remain in the system for a very long time
+                    // (because it could potentially cause issues with partition state size)
+                    // so we break long timeouts into 5 minute chunks
+                    nextTimeout = TimeSpan.FromMinutes(5); 
+                }
+
+                OrchestrationState response = await client.WaitForOrchestrationAsync(
+                    this.GetPartitionId(instanceId),
+                    instanceId,
+                    executionId,
+                    nextTimeout,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (response != null)
+                {
+                    return response;
+                }
+            }
+        }
 
         /// <inheritdoc />
         async Task<OrchestrationState> IOrchestrationServiceClient.GetOrchestrationStateAsync(
