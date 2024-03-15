@@ -142,6 +142,7 @@ namespace DurableTask.Netherite.Faster
                 this.traceHelper.TraceProgress($"Using existing blob container at {this.cloudBlobContainer.Result.Uri}");
             }
 
+
             var taskHubParameters = new TaskhubParameters()
             {
                 TaskhubName = this.settings.HubName,
