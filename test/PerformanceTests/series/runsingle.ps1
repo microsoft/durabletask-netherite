@@ -37,6 +37,11 @@ az eventhubs namespace update -n $nameSpaceName -g $groupName --capacity $Throug
 Write-Host "Waiting $WaitForDeploy seconds for deployment to load-balance and start partitions..."
 Start-Sleep -Seconds $WaitForDeploy
 
+Write-Host "Issuing Ping..."
+$reply = (curl.exe --max-time 300 https://$functionAppName.azurewebsites.net/ping -d 12)
+Write-Host $reply
+Start-Sleep -Seconds 10
+
 for($i = 0; $i -lt $NumReps; $i++)
 {
 	Write-Host "---------- Experiment $i/$NumReps"

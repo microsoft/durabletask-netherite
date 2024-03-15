@@ -57,6 +57,8 @@ if (-not ((az functionapp list -g $groupName --query "[].name"| ConvertFrom-Json
 	az functionapp config set -n $functionAppName -g $groupName --use-32bit-worker-process false
     az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EventHubsConnection=$eventHubsConnectionString
     az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EHNamespace=$Env:EHNamespace
+	az functionapp config appsettings set -n $functionAppName -g  $groupName --settings CorpusConnection=$corpusConnectionString
+
 }
 else
 {
