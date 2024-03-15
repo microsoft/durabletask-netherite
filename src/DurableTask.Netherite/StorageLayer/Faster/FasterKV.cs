@@ -128,9 +128,6 @@ namespace DurableTask.Netherite.Faster
             this.TraceHelper.FasterProgress("Disposing CacheTracker");
             this.cacheTracker?.Dispose();
 
-            this.TraceHelper.FasterProgress("Canceling FasterKV callbacks");
-            this.blobManager.CancelFasterKVCallbacks();
-
             foreach (var s in this.sessionsToDisposeOnShutdown)
             {
                 this.TraceHelper.FasterStorageProgress($"Disposing Temporary Session");
