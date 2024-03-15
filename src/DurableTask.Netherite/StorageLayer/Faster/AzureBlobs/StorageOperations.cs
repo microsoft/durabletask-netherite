@@ -101,7 +101,7 @@ namespace DurableTask.Netherite.Faster
                         }
                         continue;
                     }
-                    catch (Azure.RequestFailedException ex) when (BlobUtilsV12.PreconditionFailed(ex) && readETagAsync != null)
+                    catch (Azure.RequestFailedException ex) when (BlobUtilsV12.PreconditionFailed(ex) && readETagAsync != null && numAttempts < BlobManager.MaxRetries)
                     {
                         this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) failed precondition on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} {details}");
                         mustReadETagFirst = true;
