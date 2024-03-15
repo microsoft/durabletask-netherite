@@ -25,9 +25,18 @@ namespace DurableTask.Netherite.Faster
             string target,
             int expectedLatencyBound,
             bool isCritical,
+            bool failIfReadonly,
             Func<int, Task<long>> operationAsync,
             Func<Task> readETagAsync = null)
         {
+            if (this.readOnlyMode && failIfReadonly)
+            {
+                string message = $"storage operation {name} ({intent}) cannot be performed in read-only mode";
+                this.StorageTracer?.FasterStorageProgress(message);
+                this.HandleStorageError(name, message, target, null, isCritical, false);
+                throw new OperationCanceledException(message);
+            }
+
             try
             {
                 if (semaphore != null)
@@ -101,7 +110,7 @@ namespace DurableTask.Netherite.Faster
                         }
                         continue;
                     }
-                    catch (Azure.RequestFailedException ex) when (BlobUtilsV12.PreconditionFailed(ex) && readETagAsync != null)
+                    catch (Azure.RequestFailedException ex) when (BlobUtilsV12.PreconditionFailed(ex) && readETagAsync != null && numAttempts < BlobManager.MaxRetries)
                     {
                         this.StorageTracer?.FasterStorageProgress($"storage operation {name} ({intent}) failed precondition on attempt {numAttempts}; target={target} latencyMs={stopwatch.Elapsed.TotalMilliseconds:F1} {details}");
                         mustReadETagFirst = true;
@@ -138,8 +147,17 @@ namespace DurableTask.Netherite.Faster
             string target,
             int expectedLatencyBound,
             bool isCritical,
+            bool failIfReadonly,
             Func<int,(long,bool)> operation)
         {
+            if (this.readOnlyMode && failIfReadonly)
+            {
+                string message = $"storage operation {name} ({intent}) cannot be performed in read-only mode";
+                this.StorageTracer?.FasterStorageProgress(message);
+                this.HandleStorageError(name, message, target, null, isCritical, false);
+                throw new OperationCanceledException(message);
+            }
+
             Stopwatch stopwatch = new Stopwatch();
             int numAttempts = 0;
 

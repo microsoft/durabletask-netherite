@@ -8,7 +8,7 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.IO;
 
     /// <summary>
-    /// Functionality for parsing the partition scripts used by <see cref="ScriptedEventProcessorHost"/>.
+    /// Functionality for parsing the partition scripts used by <see cref="ScriptedPartitionManager"/>.
     /// </summary>
     static class PartitionScript
     {

@@ -119,6 +119,7 @@ namespace DurableTask.Netherite.Faster
                         this.pageBlobDirectory.ToString(),
                         2000,
                         true,
+                        failIfReadonly: false,
                         async (numAttempts) =>
                         {
                             var client = this.pageBlobDirectory.Client.WithRetries;
@@ -314,6 +315,7 @@ namespace DurableTask.Netherite.Faster
                     entry.PageBlob.Default.Name,
                     5000,
                     true,
+                    failIfReadonly: true,
                     async (numAttempts) =>
                     {
                         var client = (numAttempts > 1) ? entry.PageBlob.Default : entry.PageBlob.Aggressive;
@@ -349,6 +351,7 @@ namespace DurableTask.Netherite.Faster
                     entry.PageBlob.Default.Name,
                     5000,
                     false,
+                    failIfReadonly: true,
                     async (numAttempts) =>
                     {
                         var client = (numAttempts > 1) ? entry.PageBlob.Default : entry.PageBlob.Aggressive;
@@ -430,7 +433,7 @@ namespace DurableTask.Netherite.Faster
 
                     // If no blob exists for the segment, we must first create the segment asynchronouly. (Create call takes ~70 ms by measurement)
                     // After creation is done, we can call write.
-                    _ = entry.CreateAsync(size, pageBlob);
+                    _ = entry.CreateAsync(size, pageBlob, id);
                 }
                 // Otherwise, some other thread beat us to it. Okay to use their blobs.
                 blobEntry = this.blobs[segmentId];
@@ -460,6 +463,7 @@ namespace DurableTask.Netherite.Faster
                     blobEntry.PageBlob.Default.Name,
                     1000 + (int)length / 1000,
                     true,
+                    failIfReadonly: true,
                     async (numAttempts) =>
                     {
                         if (numAttempts > 0)
@@ -522,6 +526,7 @@ namespace DurableTask.Netherite.Faster
                             blob.Default.Name,
                             1000 + (int)length / 1000,
                             true,
+                            failIfReadonly: false,
                             async (numAttempts) =>
                             {
                                 if (numAttempts > 0)

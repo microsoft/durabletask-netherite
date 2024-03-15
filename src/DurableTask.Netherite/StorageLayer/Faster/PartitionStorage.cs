@@ -206,8 +206,13 @@ namespace DurableTask.Netherite.Faster
                     throw;
                 }
 
+                this.TraceHelper.FasterProgress("Replay complete");
+
                 // restart pending actitivities, timers, work items etc.
-                this.storeWorker.RestartThingsAtEndOfRecovery(inputQueueFingerprint, this.blobManager.IncarnationTimestamp);
+                if (!this.blobManager.ReadonlyMode)
+                { 
+                    this.storeWorker.RestartThingsAtEndOfRecovery(inputQueueFingerprint, this.blobManager.IncarnationTimestamp);
+                }
 
                 this.TraceHelper.FasterProgress("Recovery complete");
             }
@@ -217,8 +222,11 @@ namespace DurableTask.Netherite.Faster
 
         public void StartProcessing()
         {
-            this.storeWorker.StartProcessing();
-            this.logWorker.StartProcessing();
+            if (!this.blobManager.ReadonlyMode)
+            {
+                this.storeWorker.StartProcessing();
+                this.logWorker.StartProcessing();
+            }
         }
 
         internal void CheckForStuckWorkers(object _)
@@ -252,21 +260,24 @@ namespace DurableTask.Netherite.Faster
 
         public async Task CleanShutdown(bool takeFinalCheckpoint)
         {
-            this.TraceHelper.FasterProgress("Stopping workers");
-            
-            // in parallel, finish processing log requests and stop processing store requests
-            Task t1 = this.logWorker.PersistAndShutdownAsync();
-            Task t2 = this.storeWorker.CancelAndShutdown();
-
-            // observe exceptions if the clean shutdown is not working correctly
-            await this.TerminationWrapper(t1);
-            await this.TerminationWrapper(t2);
-
-            // if the the settings indicate we want to take a final checkpoint, do so now.
-            if (takeFinalCheckpoint)
+            if (!this.blobManager.ReadonlyMode)
             {
-                this.TraceHelper.FasterProgress("Writing final checkpoint");
-                await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("final checkpoint").AsTask());
+                this.TraceHelper.FasterProgress("Stopping workers");
+
+                // in parallel, finish processing log requests and stop processing store requests
+                Task t1 = this.logWorker.PersistAndShutdownAsync();
+                Task t2 = this.storeWorker.CancelAndShutdown();
+
+                // observe exceptions if the clean shutdown is not working correctly
+                await this.TerminationWrapper(t1);
+                await this.TerminationWrapper(t2);
+
+                // if the the settings indicate we want to take a final checkpoint, do so now.
+                if (takeFinalCheckpoint)
+                {
+                    this.TraceHelper.FasterProgress("Writing final checkpoint");
+                    await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("final checkpoint").AsTask());
+                }
             }
 
             this.TraceHelper.FasterProgress("Stopping BlobManager");
