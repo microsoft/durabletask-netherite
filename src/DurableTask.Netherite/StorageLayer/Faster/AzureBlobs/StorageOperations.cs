@@ -41,7 +41,7 @@ namespace DurableTask.Netherite.Faster
             {
                 if (semaphore != null)
                 {
-                    await semaphore.WaitAsync();
+                    await semaphore.WaitAsync(this.PartitionErrorHandler.Token);
                 }
 
                 Stopwatch stopwatch = new Stopwatch();
