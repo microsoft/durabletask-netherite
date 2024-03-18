@@ -10,6 +10,7 @@ namespace DurableTask.Netherite.Faster
     using System.IO;
     using System.Linq;
     using System.Runtime.CompilerServices;
+    using System.Runtime.Serialization;
     using System.Text;
     using System.Threading;
     using System.Threading.Channels;
@@ -97,8 +98,8 @@ namespace DurableTask.Netherite.Faster
                 blobManager.StoreCheckpointSettings,
                 new SerializerSettings<Key, Value>
                 {
-                    keySerializer = () => new Key.Serializer(),
-                    valueSerializer = () => new Value.Serializer(this.StoreStats, partition.TraceHelper, this.cacheDebugger),
+                    keySerializer = () => new Key.Serializer(partition.ErrorHandler),
+                    valueSerializer = () => new Value.Serializer(this.StoreStats, partition.TraceHelper, this.cacheDebugger, partition.ErrorHandler),
                 });
 
             this.cacheTracker = memoryTracker.NewCacheTracker(this, (int) partition.PartitionId, this.cacheDebugger);
@@ -112,7 +113,7 @@ namespace DurableTask.Netherite.Faster
             partition.Assert(this.fht.ReadCache == null, "Unexpected read cache");
 
             this.terminationToken = partition.ErrorHandler.Token;
-            partition.ErrorHandler.OnShutdown += this.Shutdown;
+            partition.ErrorHandler.AddDisposeTask($"{nameof(FasterKV)}.{nameof(this.Dispose)}", TimeSpan.FromMinutes(2), this.Dispose);
 
             this.compactionStopwatch = new Stopwatch();
             this.compactionStopwatch.Start();
@@ -122,58 +123,53 @@ namespace DurableTask.Netherite.Faster
             this.blobManager.TraceHelper.FasterProgress("Constructed FasterKV");
         }
 
-        void Shutdown()
+        void Dispose()
         {
+            this.TraceHelper.FasterProgress("Disposing CacheTracker");
+            this.cacheTracker?.Dispose();
+
+            foreach (var s in this.sessionsToDisposeOnShutdown)
+            {
+                this.TraceHelper.FasterStorageProgress($"Disposing Temporary Session");
+                s.Dispose();
+            }
+
+            this.TraceHelper.FasterProgress("Disposing Main Session");
             try
             {
-                this.TraceHelper.FasterProgress("Disposing CacheTracker");
-                this.cacheTracker?.Dispose();
+                this.mainSession?.Dispose();
+            }
+            catch (OperationCanceledException)
+            {
+                // can happen during shutdown
+            }
 
-                foreach (var s in this.sessionsToDisposeOnShutdown)
-                {
-                    this.TraceHelper.FasterStorageProgress($"Disposing Temporary Session");
-                    s.Dispose();
-                }
-
-                this.TraceHelper.FasterProgress("Disposing Main Session");
+            this.TraceHelper.FasterProgress("Disposing Query Sessions");
+            foreach (var s in this.querySessions)
+            {
                 try
                 {
-                    this.mainSession?.Dispose();
+                    s?.Dispose();
                 }
-                catch(OperationCanceledException)
+                catch (OperationCanceledException)
                 {
                     // can happen during shutdown
                 }
-
-                this.TraceHelper.FasterProgress("Disposing Query Sessions");
-                foreach (var s in this.querySessions)
-                {
-                    try
-                    {
-                        s?.Dispose();
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // can happen during shutdown
-                    }
-                }
-
-                this.TraceHelper.FasterProgress("Disposing FasterKV");
-                this.fht.Dispose();
-
-                this.TraceHelper.FasterProgress($"Disposing Devices");
-                this.blobManager.DisposeDevices();
-
-                if (this.blobManager.FaultInjector != null)
-                {
-                    this.TraceHelper.FasterProgress($"Unregistering from FaultInjector");
-                    this.blobManager.FaultInjector.Disposed(this.blobManager);
-                }
             }
-            catch (Exception e)
+
+            this.TraceHelper.FasterProgress("Disposing FasterKV");
+            this.fht.Dispose();
+
+            this.TraceHelper.FasterProgress($"Disposing Devices");
+            this.blobManager.DisposeDevices();
+
+            if (this.blobManager.FaultInjector != null)
             {
-                this.blobManager.TraceHelper.FasterStorageError("Disposing FasterKV", e);
+                this.TraceHelper.FasterProgress($"Unregistering from FaultInjector");
+                this.blobManager.FaultInjector.Disposed(this.blobManager);
             }
+
+            this.TraceHelper.FasterProgress("Disposed FasterKV");
         }
 
         double GetElapsedCompactionMilliseconds()
@@ -260,8 +256,9 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 // recover Faster
-                this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV");
+                this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV - Entering fht.RecoverAsync");
                 await this.fht.RecoverAsync(this.partition.Settings.FasterTuningParameters?.NumPagesToPreload ?? 1, true, -1, this.terminationToken);
+                this.blobManager.TraceHelper.FasterProgress($"Recovering FasterKV - Returned from fht.RecoverAsync");
                 this.mainSession = this.CreateASession($"main-{this.blobManager.IncarnationTimestamp:o}", false);
                 for (int i = 0; i < this.querySessions.Length; i++)
                 {
@@ -1599,13 +1596,51 @@ namespace DurableTask.Netherite.Faster
 
             public class Serializer : BinaryObjectSerializer<Key>
             {
-                public override void Deserialize(out Key obj)
+                readonly IPartitionErrorHandler errorHandler;
+
+                public Serializer(IPartitionErrorHandler errorHandler)
                 {
-                    obj = new Key();
-                    obj.Val.Deserialize(this.reader);
+                    this.errorHandler = errorHandler;
                 }
 
-                public override void Serialize(ref Key obj) => obj.Val.Serialize(this.writer);
+                public override void Deserialize(out Key obj)
+                {
+                    try
+                    {
+                        if (!this.errorHandler.IsTerminated) // skip deserialization if the partition is already terminated - to speed up cancellation and to avoid repeated errors
+                        {
+                            // first, determine the object type
+                            var objectType = (TrackedObjectKey.TrackedObjectType)this.reader.ReadByte();
+                            if (objectType != TrackedObjectKey.TrackedObjectType.History
+                                && objectType != TrackedObjectKey.TrackedObjectType.Instance)
+                            {
+                                throw new SerializationException("invalid object type field");
+                            }
+                            var instanceId = this.reader.ReadString();
+                            obj = new TrackedObjectKey(objectType, instanceId);
+                            return;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        this.errorHandler.HandleError("FasterKV.Key.Serializer", "could not deserialize key - possible data corruption", ex, true, !this.errorHandler.IsTerminated);
+                    }
+
+                    obj = default;
+                }
+
+                public override void Serialize(ref Key obj)
+                {
+                    try
+                    {
+                        this.writer.Write((byte)obj.Val.ObjectType);
+                        this.writer.Write(obj.Val.InstanceId);
+                    }
+                    catch (Exception ex)
+                    {
+                        this.errorHandler.HandleError("FasterKV.Key.Serializer", "could not serialize key", ex, true, false);
+                    }
+                }
             }
         }
 
@@ -1629,49 +1664,77 @@ namespace DurableTask.Netherite.Faster
                 readonly StoreStatistics storeStats;
                 readonly PartitionTraceHelper traceHelper;
                 readonly CacheDebugger cacheDebugger;
+                readonly IPartitionErrorHandler errorHandler;
 
-                public Serializer(StoreStatistics storeStats, PartitionTraceHelper traceHelper, CacheDebugger cacheDebugger)
+                public Serializer(StoreStatistics storeStats, PartitionTraceHelper traceHelper, CacheDebugger cacheDebugger, IPartitionErrorHandler errorHandler)
                 {
                     this.storeStats = storeStats;
                     this.traceHelper = traceHelper;
                     this.cacheDebugger = cacheDebugger;
+                    this.errorHandler = errorHandler;   
                 }
 
                 public override void Deserialize(out Value obj)
                 {
-                    int version = this.reader.ReadInt32();
-                    int count = this.reader.ReadInt32();
-                    byte[] bytes = this.reader.ReadBytes(count); // lazy deserialization - keep as byte array until used
-                    obj = new Value { Val = bytes, Version = version};
-                    if (this.cacheDebugger != null)
+                    try
                     {
-                        var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
-                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeBytes, version, null, 0);
+                        if (!this.errorHandler.IsTerminated) // skip deserialization if the partition is already terminated - to speed up cancellation and to avoid repeated errors
+                        {
+                            int version = this.reader.ReadInt32();
+                            int count = this.reader.ReadInt32();
+                            byte[] bytes = this.reader.ReadBytes(count); // lazy deserialization - keep as byte array until used
+
+                            if (bytes.Length != count)
+                            {
+                                throw new EndOfStreamException($"trying to read {count} bytes but only found {bytes.Length}");
+                            }
+
+                            obj = new Value { Val = bytes, Version = version};
+                            if (this.cacheDebugger != null)
+                            {
+                                var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(bytes);
+                                this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.DeserializeBytes, version, null, 0);
+                            }
+
+                            return;
+                        }
                     }
+                    catch (Exception ex)
+                    {
+                        this.errorHandler.HandleError("FasterKV.Value.Serializer", "could not deserialize value - possible data corruption", ex, true, !this.errorHandler.IsTerminated);
+                    }
+                    obj = default;
                 }
 
                 public override void Serialize(ref Value obj)
                 {
-                    this.writer.Write(obj.Version);
-                    if (obj.Val is byte[] serialized)
+                    try
                     {
-                        // We did already serialize this object on the last CopyUpdate. So we can just use the byte array.
-                        this.writer.Write(serialized.Length);
-                        this.writer.Write(serialized);
-                        if (this.cacheDebugger != null)
+                        this.writer.Write(obj.Version);
+                        if (obj.Val is byte[] serialized)
                         {
-                            var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(serialized);
-                            this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeBytes, obj.Version, null, 0);
+                            // We did already serialize this object on the last CopyUpdate. So we can just use the byte array.
+                            this.writer.Write(serialized.Length);
+                            this.writer.Write(serialized);
+                            if (this.cacheDebugger != null)
+                            {
+                                var trackedObject = DurableTask.Netherite.Serializer.DeserializeTrackedObject(serialized);
+                                this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeBytes, obj.Version, null, 0);
+                            }
+                        }
+                        else
+                        {
+                            TrackedObject trackedObject = (TrackedObject) obj.Val;
+                            var bytes = DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
+                            this.storeStats.Serialize++;
+                            this.writer.Write(bytes.Length);
+                            this.writer.Write(bytes);
+                            this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, obj.Version, null, 0);
                         }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        TrackedObject trackedObject = (TrackedObject) obj.Val;
-                        var bytes = DurableTask.Netherite.Serializer.SerializeTrackedObject(trackedObject);
-                        this.storeStats.Serialize++;
-                        this.writer.Write(bytes.Length);
-                        this.writer.Write(bytes);
-                        this.cacheDebugger?.Record(trackedObject.Key, CacheDebugger.CacheEvent.SerializeObject, obj.Version, null, 0);
+                        this.errorHandler.HandleError("FasterKV.Value.Serializer", "could not serialize value", ex, true, false);
                     }
                 }
             }

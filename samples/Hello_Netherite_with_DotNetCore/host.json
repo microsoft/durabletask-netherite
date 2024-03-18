@@ -2,7 +2,7 @@
   "version": "2.0",
   "extensions": {
     "durableTask": {
-      "hubName": "hello",
+      "hubName": "HelloDF",
       "UseGracefulShutdown": true,
       "storageProvider": {
         "type":"Netherite",

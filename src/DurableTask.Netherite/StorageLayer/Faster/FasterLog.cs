@@ -20,24 +20,19 @@ namespace DurableTask.Netherite.Faster
             this.blobManager = blobManager;
             var eventlogsettings = blobManager.GetEventLogSettings(settings.UseSeparatePageBlobStorage, settings.FasterTuningParameters);
             this.log = new FASTER.core.FasterLog(eventlogsettings);
-            blobManager.PartitionErrorHandler.OnShutdown += this.Shutdown;
+            blobManager.PartitionErrorHandler.AddDisposeTask($"{nameof(FasterLog)}.{nameof(this.Dispose)}", TimeSpan.FromMinutes(2), this.Dispose);
             this.terminationToken = blobManager.PartitionErrorHandler.Token;
         }
-        
-        void Shutdown()
-        {
-            try
-            {
-                this.blobManager.TraceHelper.FasterProgress("Disposing FasterLog");
-                this.log.Dispose();
 
-                this.blobManager.TraceHelper.FasterProgress("Disposing FasterLog Device");
-                this.blobManager.EventLogDevice.Dispose();
-            }
-            catch (Exception e)
-            {
-                this.blobManager.TraceHelper.FasterStorageError("Disposing FasterLog", e);
-            }
+        void Dispose()
+        {
+            this.blobManager.TraceHelper.FasterProgress("Disposing FasterLog");
+            this.log.Dispose();
+
+            this.blobManager.TraceHelper.FasterProgress("Disposing FasterLog Device");
+            this.blobManager.EventLogDevice.Dispose();
+
+            this.blobManager.TraceHelper.FasterProgress("Disposed FasterLog");
         }
 
         public long BeginAddress => this.log.BeginAddress;

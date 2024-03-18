@@ -78,14 +78,14 @@ namespace DurableTask.Netherite.SingleHostTransport
             {
                 this.Partition = this.host.AddPartition(this.partitionId, this.sender);
                 var errorHandler = this.host.CreateErrorHandler(this.partitionId);
-                errorHandler.OnShutdown += () =>
+                errorHandler.AddDisposeTask("PartitionQueue.Termination", TimeSpan.FromSeconds(10), () =>
                 {
                     if (!this.isShuttingDown && this.testHooks?.FaultInjectionActive != true)
                     {
                         this.testHooks?.Error("MemoryTransport", "Unexpected partition termination");
                     }
                     this.Notify();
-                };
+                });
                 
                 var (nextInputQueuePosition, _) = await this.Partition.CreateOrRestoreAsync(errorHandler, this.parameters, this.fingerPrint);
 

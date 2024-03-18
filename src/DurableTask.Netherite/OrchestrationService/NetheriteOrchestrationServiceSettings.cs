@@ -92,6 +92,11 @@ namespace DurableTask.Netherite
         public PartitionManagementOptions PartitionManagement { get; set; } = PartitionManagementOptions.EventProcessorHost;
 
         /// <summary>
+        /// Additional parameters for the partition management, if necessary
+        /// </summary>
+        public string PartitionManagementParameters { get; set; } = null;
+
+        /// <summary>
         /// Gets or sets the activity scheduler option
         /// </summary>
         [JsonConverter(typeof(StringEnumConverter))]
