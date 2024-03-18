@@ -843,22 +843,20 @@ namespace DurableTask.Netherite
                 string continuationToken = null;
                 int orphanedLocksReleased = 0;
                             
-                // list all entities (without fetching the input) and for each one that requires action,
-                // perform that action. Waits for all actions to finish after each page.
+                // list all entities (without fetching the input) and for each locked one,
+                // check if the lock owner is still running. If not, release the lock.
                 do
                 {
                     var page = await client.QueryOrchestrationStatesAsync(condition, 500, continuationToken, cancellation).ConfigureAwait(false);
 
+                    // The checks run in parallel for all entities in the page
                     List<Task> tasks = new List<Task>();
                     foreach (var state in page.Instances)
                     {
                         EntityStatus status = ClientEntityHelpers.GetEntityStatus(state.Status);
-                        if (status != null)
+                        if (status != null && status.LockedBy != null)
                         {
-                            if (request.ReleaseOrphanedLocks && status.LockedBy != null)
-                            {
-                                tasks.Add(CheckForOrphanedLockAndFixIt(state, status.LockedBy));
-                            }
+                            tasks.Add(CheckForOrphanedLockAndFixIt(state, status.LockedBy));
                         }
                     }
 
@@ -884,6 +882,7 @@ namespace DurableTask.Netherite
                         }
                     }
 
+                    // wait for all of the checks to finish before moving on to the next page.
                     await Task.WhenAll(tasks);
                 }
                 while (continuationToken != null);

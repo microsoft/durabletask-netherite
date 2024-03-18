@@ -58,21 +58,21 @@ namespace DurableTask.Netherite
         public Faster.BlobManager.FasterTuningParameters FasterTuningParameters { get; set; } = null;
 
         /// <summary>
-        /// Gets or sets the maximum number of work items that can be processed concurrently on a single node.
+        /// Gets or sets the maximum number of activity work items that can be processed concurrently on a single node.
         /// The default value is 100.
         /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
         /// </summary>
         public int MaxConcurrentActivityFunctions { get; set; } = 100;
 
         /// <summary>
-        /// Gets or sets the maximum number of orchestrations that can be processed concurrently on a single node.
+        /// Gets or sets the maximum number of orchestration work items that can be processed concurrently on a single node.
         /// The default value is 100.
         /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
         /// </summary>
         public int MaxConcurrentOrchestratorFunctions { get; set; } = 100;
 
         /// <summary>
-        /// Gets or sets the maximum number of work items that can be processed concurrently on a single node.
+        /// Gets or sets the maximum number of entity work items that can be processed concurrently on a single node.
         /// The default value is 100.
         /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
         /// </summary>

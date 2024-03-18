@@ -83,9 +83,6 @@ namespace DurableTask.Netherite
 
         internal bool HasRuntimeStatus => this.RuntimeStatus != null && this.RuntimeStatus.Length > 0;
 
-        internal bool IsSet => this.HasRuntimeStatus || !string.IsNullOrWhiteSpace(this.InstanceIdPrefix)
-                                    || !(this.CreatedTimeFrom is null) || !(this.CreatedTimeTo is null) || this.ExcludeEntities;
-
         internal bool Matches(OrchestrationState targetState)
         {
             if (targetState == null)
