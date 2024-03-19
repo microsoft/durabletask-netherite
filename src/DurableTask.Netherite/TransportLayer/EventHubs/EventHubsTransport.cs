@@ -18,6 +18,7 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.Threading.Channels;
     using DurableTask.Netherite.Abstractions;
     using System.Diagnostics;
+    using Azure.Storage.Blobs.Specialized;
 
     /// <summary>
     /// The EventHubs transport implementation.
@@ -321,7 +322,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 TimeSpan longPollingInterval = TimeSpan.FromMinutes(1);
                 var backoffDelay = TimeSpan.Zero;
                 string context = $"Client{this.shortClientId}.ch{index}";
-                var blobBatchReceiver = new BlobBatchReceiver<ClientEvent>(context, this.traceHelper, this.settings, keepUntilConfirmed: false);
+                var blobBatchReceiver = new BlobBatchReceiver<ClientEvent>(context, this.traceHelper, this.settings);
 
                 await this.clientConnectionsEstablished[index];
 
@@ -354,10 +355,11 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                     if (packets != null)
                     {
+                        List<BlockBlobClient> blobBatches = null;
                         int totalEvents = 0;
                         var stopwatch = Stopwatch.StartNew();
 
-                        await foreach ((EventData eventData, ClientEvent[] events, long seqNo) in blobBatchReceiver.ReceiveEventsAsync(clientGuid, packets, this.shutdownSource.Token))
+                        await foreach ((EventData eventData, ClientEvent[] events, long seqNo, BlockBlobClient blob) in blobBatchReceiver.ReceiveEventsAsync(clientGuid, packets, this.shutdownSource.Token))
                         {
                             for (int i = 0; i < events.Length; i++)
                             {
@@ -376,8 +378,18 @@ namespace DurableTask.Netherite.EventHubsTransport
                                     this.traceHelper.LogError("Client.{clientId}.ch{index} received packet #{seqno}.{subSeqNo} for client {otherClient}", this.shortClientId, index, seqNo, i, Client.GetShortId(clientEvent.ClientId));
                                 }
                             }
+
+                            if (blob != null)
+                            {
+                                (blobBatches ??= new()).Add(blob);  
+                            }
                         }
                         this.traceHelper.LogDebug("Client{clientId}.ch{index} received {totalEvents} events in {latencyMs:F2}ms", this.shortClientId, index, totalEvents, stopwatch.Elapsed.TotalMilliseconds);
+
+                        if (blobBatches != null)
+                        {
+                            Task backgroundTask = Task.Run(() => blobBatchReceiver.DeleteBlobBatchesAsync(blobBatches));
+                        }
                     }
                     else
                     {

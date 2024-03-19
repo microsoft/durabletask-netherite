@@ -11,6 +11,7 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Storage.Blobs.Specialized;
     using DurableTask.Core.Common;
     using DurableTask.Netherite.Abstractions;
     using Microsoft.Azure.EventHubs;
@@ -47,8 +48,15 @@ namespace DurableTask.Netherite.EventHubsTransport
         // since EventProcessorHost does not redeliver packets, we need to keep them around until we are sure
         // they are processed durably, so we can redeliver them when recycling/recovering a partition
         // we make this a concurrent queue so we can remove confirmed events concurrently with receiving new ones
-        readonly ConcurrentQueue<(PartitionEvent[] events, long offset, long seqno)> pendingDelivery;
+        readonly ConcurrentQueue<EventEntry> pendingDelivery;
         AsyncLock deliveryLock;
+
+        record struct EventEntry(long SeqNo, long BatchPos, PartitionEvent Event, bool LastInBatch, long Offset, BlockBlobClient BatchBlob)
+        {
+            public EventEntry(long seqNo, long batchPos, PartitionEvent evt) : this(seqNo, batchPos, evt, false, 0, null) { }
+
+            public EventEntry(long seqNo, long batchPos, PartitionEvent evt, long offset, BlockBlobClient blob) : this(seqNo, batchPos, evt, true, 0, blob) { }
+        }
 
         // this points to the latest incarnation of this partition; it gets
         // updated as we recycle partitions (create new incarnations after failures)
@@ -83,7 +91,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.host = host;
             this.sender = sender;
             this.parameters = parameters;
-            this.pendingDelivery = new ConcurrentQueue<(PartitionEvent[] events, long offset, long seqno)>();
+            this.pendingDelivery = new();
             this.partitionContext = partitionContext;
             this.settings = settings;
             this.eventHubsTransport = eventHubsTransport;
@@ -94,7 +102,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.traceHelper = new EventHubsTraceHelper(traceHelper, this.partitionId);
             this.shutdownToken = shutdownToken;
             string traceContext = $"EventHubsProcessor {this.eventHubName}/{this.eventHubPartition}";
-            this.blobBatchReceiver = new BlobBatchReceiver<PartitionEvent>(traceContext, this.traceHelper, this.settings, keepUntilConfirmed: true);
+            this.blobBatchReceiver = new BlobBatchReceiver<PartitionEvent>(traceContext, this.traceHelper, this.settings);
 
             var _ = shutdownToken.Register(
               () => { var _ = Task.Run(() => this.IdempotentShutdown("shutdownToken", eventHubsTransport.FatalExceptionObserved)); },
@@ -122,16 +130,33 @@ namespace DurableTask.Netherite.EventHubsTransport
 
         public void ConfirmDurable(Event evt)
         {
+            List<BlockBlobClient> obsoleteBatches = null;
+
             // this is called after an event has committed (i.e. has been durably persisted in the recovery log).
-            // so we know we will never need to deliver it again. We remove it from the local buffer, and also checkpoint
-            // with EventHubs occasionally.
-            while (this.pendingDelivery.TryPeek(out var front) && front.events[front.events.Length - 1].NextInputQueuePosition <= ((PartitionEvent)evt).NextInputQueuePosition)
+            // so we know we will never need to deliver it again. We remove it from the local buffer, update the fields that
+            // track the last persisted position, and delete the blob batch if this was the last event in the batch.
+            while (this.pendingDelivery.TryPeek(out var front) 
+                && front.Event.NextInputQueuePositionTuple.CompareTo(((PartitionEvent) evt).NextInputQueuePositionTuple) <= 0)
             {
-                if (this.pendingDelivery.TryDequeue(out var candidate))
+                if (this.pendingDelivery.TryDequeue(out var confirmed))
                 {
-                    this.persistedOffset = Math.Max(this.persistedOffset, candidate.offset);
-                    this.persistedSequenceNumber = Math.Max(this.persistedSequenceNumber, candidate.seqno);
+                    Debug.Assert(front == confirmed);
+                    if (confirmed.LastInBatch)
+                    {
+                        this.persistedOffset = Math.Max(this.persistedOffset, confirmed.Offset);
+                        this.persistedSequenceNumber = Math.Max(this.persistedSequenceNumber, confirmed.SeqNo);
+
+                        if (confirmed.BatchBlob != null)
+                        {
+                            (obsoleteBatches ??= new()).Add(confirmed.BatchBlob);
+                        }
+                    }
                 }
+            }
+
+            if (obsoleteBatches != null)
+            {
+                Task backgroundTask = Task.Run(() => this.blobBatchReceiver.DeleteBlobBatchesAsync(obsoleteBatches));
             }
         }
 
@@ -225,7 +250,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} checking for packets requiring redelivery (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, c.Incarnation);
                     var batch = this.pendingDelivery
-                        .SelectMany(x => x.Item1)
+                        .Select(x => x.Event)
                         .Where(evt => (evt.NextInputQueuePosition, evt.NextInputQueueBatchPosition).CompareTo(c.NextPacketToReceive) > 0)
                         .ToList();
                     if (batch.Count > 0)
@@ -432,38 +457,36 @@ namespace DurableTask.Netherite.EventHubsTransport
                     // iterators do not support ref arguments, so we use a simple wrapper class to work around this limitation
                     MutableLong nextPacketToReceive = new MutableLong() { Value = current.NextPacketToReceive.seqNo };
 
-                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, this.shutdownToken, nextPacketToReceive))
+                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo, BlockBlobClient blob) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, this.shutdownToken, nextPacketToReceive))
                     {
                         for (int i = 0; i < events.Length; i++)
                         {
                             PartitionEvent evt = events[i];
-
+                            
                             if (i < events.Length - 1)
                             {
                                 evt.NextInputQueuePosition = seqNo;
                                 evt.NextInputQueueBatchPosition = i + 1;
+                                this.pendingDelivery.Enqueue(new EventEntry(seqNo, i, evt));
                             }
                             else
                             {
                                 evt.NextInputQueuePosition = seqNo + 1;
+                                evt.NextInputQueueBatchPosition = 0;
+                                this.pendingDelivery.Enqueue(new EventEntry(seqNo, i, evt, long.Parse(eventData.SystemProperties.Offset), blob));
                             }
 
                             if (this.traceHelper.IsEnabled(LogLevel.Trace))
                             {
-                                this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received packet #{seqno}.{subSeqNo} {event} id={eventId}", this.eventHubName, this.eventHubPartition, current.Incarnation, seqNo, i, evt, evt.EventIdString);
+                                this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received packet #({seqno},{subSeqNo}) {event} id={eventId}", this.eventHubName, this.eventHubPartition, current.Incarnation, seqNo, i, evt, evt.EventIdString);
+                            }
+
+                            if (evt is PartitionUpdateEvent partitionUpdateEvent)
+                            {
+                                DurabilityListeners.Register(evt, this);
                             }
 
                             totalEvents++;
-                        }
- 
-                        // add events to redelivery queue, and attach durability listener to last update event in the batch
-                        this.pendingDelivery.Enqueue((events, long.Parse(eventData.SystemProperties.Offset), eventData.SystemProperties.SequenceNumber));
-                        for (int i = events.Length - 1; i >= 0; i--)
-                        {
-                            if (events[i] is PartitionUpdateEvent partitionUpdateEvent)
-                            {
-                                DurabilityListeners.Register(partitionUpdateEvent, this);
-                            }
                         }
 
                         if (current.NextPacketToReceive.batchPos == 0)

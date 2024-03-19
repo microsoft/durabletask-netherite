@@ -11,6 +11,7 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Storage.Blobs.Specialized;
     using DurableTask.Core.Common;
     using DurableTask.Netherite.Abstractions;
     using Microsoft.Azure.EventHubs;
@@ -57,7 +58,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.partitionId = uint.Parse(this.eventHubPartition);
             this.traceHelper = new EventHubsTraceHelper(traceHelper, this.partitionId);
             this.shutdownToken = shutdownToken;
-            this.blobBatchReceiver = new BlobBatchReceiver<LoadMonitorEvent>("LoadMonitor", traceHelper, settings, keepUntilConfirmed: false);
+            this.blobBatchReceiver = new BlobBatchReceiver<LoadMonitorEvent>("LoadMonitor", traceHelper, settings);
         }
 
         Task IEventProcessor.OpenAsync(PartitionContext context)
@@ -104,9 +105,10 @@ namespace DurableTask.Netherite.EventHubsTransport
                 EventData last = null;
 
                 int totalEvents = 0;
+                List<BlockBlobClient> blobBatches = null;
                 var stopwatch = Stopwatch.StartNew();
              
-                await foreach ((EventData eventData, LoadMonitorEvent[] events, long seqNo) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, this.shutdownToken))
+                await foreach ((EventData eventData, LoadMonitorEvent[] events, long seqNo, BlockBlobClient blob) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, this.shutdownToken))
                 {
                     for (int i = 0; i < events.Length; i++)
                     {
@@ -117,8 +119,12 @@ namespace DurableTask.Netherite.EventHubsTransport
                     }
                     
                     last = eventData;
-                }
 
+                    if (blob != null)
+                    {
+                        (blobBatches ??= new()).Add(blob);
+                    }
+                }
 
                 if (last != null)
                 {
@@ -127,6 +133,11 @@ namespace DurableTask.Netherite.EventHubsTransport
                 else
                 {
                     this.traceHelper.LogDebug("LoadMonitor received no new events in {latencyMs:F2}ms", stopwatch.Elapsed.TotalMilliseconds);
+                }
+
+                if (blobBatches != null)
+                {
+                    Task backgroundTask = Task.Run(() => this.blobBatchReceiver.DeleteBlobBatchesAsync(blobBatches));
                 }
 
                 this.PeriodicGarbageCheck();
@@ -142,7 +153,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
             finally
             {
-                this.traceHelper.LogInformation("LoadMonitor exits receive loop");
+                this.traceHelper.LogDebug("LoadMonitor exits receive loop");
             }
         }
 

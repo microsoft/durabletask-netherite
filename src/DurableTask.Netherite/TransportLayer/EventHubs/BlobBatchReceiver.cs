@@ -26,15 +26,12 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly EventHubsTraceHelper traceHelper;
         readonly EventHubsTraceHelper lowestTraceLevel;
         readonly BlobContainerClient containerClient;
-        readonly bool keepUntilConfirmed;
         readonly bool isClientReceiver;
 
         // Event Hubs discards messages after 24h, so we can throw away batches that are older than that
         readonly static TimeSpan expirationTimeSpan = TimeSpan.FromHours(24) + TimeSpan.FromMinutes(1);
 
-        BlobDeletions blobDeletions;
-
-        public BlobBatchReceiver(string traceContext, EventHubsTraceHelper traceHelper, NetheriteOrchestrationServiceSettings settings, bool keepUntilConfirmed)
+        public BlobBatchReceiver(string traceContext, EventHubsTraceHelper traceHelper, NetheriteOrchestrationServiceSettings settings)
         {
             this.traceContext = traceContext;
             this.traceHelper = traceHelper;
@@ -42,12 +39,10 @@ namespace DurableTask.Netherite.EventHubsTransport
             var serviceClient = BlobUtilsV12.GetServiceClients(settings.BlobStorageConnection).WithRetries;
             string containerName = BlobManager.GetContainerName(settings.HubName);
             this.containerClient = serviceClient.GetBlobContainerClient(containerName);
-            this.keepUntilConfirmed = keepUntilConfirmed;
-            this.blobDeletions = this.keepUntilConfirmed ? new BlobDeletions(this) : null;
             this.isClientReceiver = typeof(TEvent) == typeof(ClientEvent);
         }
 
-        public async IAsyncEnumerable<(EventData eventData, TEvent[] events, long)> ReceiveEventsAsync(
+        public async IAsyncEnumerable<(EventData eventData, TEvent[] events, long, BlockBlobClient)> ReceiveEventsAsync(
             byte[] guid, 
             IEnumerable<EventData> hubMessages,
             [EnumeratorCancellation] CancellationToken token,
@@ -96,7 +91,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     }
                     else
                     {
-                        yield return (eventData, new TEvent[1] { evt }, seqno);
+                        yield return (eventData, new TEvent[1] { evt }, seqno, null);
                     }
                 }
                 else // we have to read messages from a blob batch
@@ -155,31 +150,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                             throw;
                         }
                     }
-                    yield return (eventData, result, seqno);
-
-                    // we issue a deletion task; there is no strong guarantee that deletion will successfully complete
-                    // which means some blobs can be left behind temporarily.
-                    // This is fine because we have a second deletion path, a scan that removes old 
-                    // blobs that are past EH's expiration date.
-
-                    if (!this.keepUntilConfirmed)
-                    {
-                        var bgTask = Task.Run(() => this.DeleteBlobAsync(new BlockBlobClient[1] { blobClient }));
-                    }
-                    else
-                    {
-                        // we cannot delete the blob until the partition has persisted an input queue position
-                        // past this blob, so that we know we will not need to read it again
-                        if (this.blobDeletions.TryRegister(result, blobClient))
-                        {
-                            this.blobDeletions = new BlobDeletions(this);
-                        }
-                        else
-                        {
-                            // the current batch will be registered along with the next
-                            // batch that successfully registers
-                        }
-                    }
+                    yield return (eventData, result, seqno, blobClient);
                 }
 
                 if (nextPacketToReceive != null)
@@ -203,7 +174,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
         }
 
-        public async Task<int> DeleteBlobAsync(IEnumerable<BlockBlobClient> blobClients)
+        public async Task<int> DeleteBlobBatchesAsync(IEnumerable<BlockBlobClient> blobClients)
         {
             int deletedCount = 0;
 
@@ -215,7 +186,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     this.lowestTraceLevel?.LogTrace("{context} deleting blob {blobName}", this.traceContext, blobClient.Name);
                     Azure.Response response = await blobClient.DeleteAsync();
-                    this.lowestTraceLevel?.LogTrace("{context} deleted blob {blobName}", this.traceContext, blobClient.Name);
+                    this.traceHelper.LogDebug("{context} deleted blob {blobName}", this.traceContext, blobClient.Name);
                     deletedCount++;
                 }
                 catch (Azure.RequestFailedException e) when (BlobUtilsV12.BlobDoesNotExist(e))
@@ -233,41 +204,6 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
 
             return deletedCount;
-        }
-
-        class BlobDeletions : TransportAbstraction.IDurabilityListener
-        {
-            readonly BlobBatchReceiver<TEvent> blobBatchReceiver;
-            readonly List<BlockBlobClient> blobClients;
-
-            public BlobDeletions(BlobBatchReceiver<TEvent> blobBatchReceiver)
-            {
-                this.blobBatchReceiver = blobBatchReceiver;
-                this.blobClients = new List<BlockBlobClient>();
-            }
-
-            public bool TryRegister(TEvent[] events, BlockBlobClient blobClient)
-            {
-                this.blobClients.Add(blobClient);
-
-                for(int i = events.Length - 1; i >= 0; i--)
-                {
-                    if (events[i] is PartitionUpdateEvent e)
-                    {
-                        // we can register a callback 
-                        // to be invoked after the event has been persisted in the log
-                        DurabilityListeners.Register(e, this);
-                        return true;
-                    }
-                }
-
-                return false; // only read or query events in this batch, cannot register a callback
-            }
-
-            public void ConfirmDurable(Event evt)
-            {
-                Task.Run(() => this.blobBatchReceiver.DeleteBlobAsync(this.blobClients));
-            }
         }
 
         public async Task<int> RemoveGarbageAsync(CancellationToken token)
@@ -321,7 +257,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                             completed = true;
                         }
 
-                        deletedCount += await this.DeleteBlobAsync(blobs);
+                        deletedCount += await this.DeleteBlobBatchesAsync(blobs);
 
                         if (completed)
                         {
