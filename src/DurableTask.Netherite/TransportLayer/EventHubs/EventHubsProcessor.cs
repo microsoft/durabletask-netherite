@@ -453,15 +453,20 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) is processing packets", this.eventHubName, this.eventHubPartition, current.Incarnation);
 
-                    // we need to update the next expected seqno even if the iterator returns nothing, since it may have discarded some packets.
-                    // iterators do not support ref arguments, so we use a simple wrapper class to work around this limitation
-                    MutableLong nextPacketToReceive = new MutableLong() { Value = current.NextPacketToReceive.seqNo };
+                    // we need to update the next expected position tuple (seqno,batchpos) even if the iterator returns nothing, since it may have discarded some packets.
+                    // iterators do not support ref arguments, so we define a Position object with mutable fields to work around this limitation
+                    Position nextPacketToReceive = new Position() { SeqNo = current.NextPacketToReceive.seqNo, BatchPos = current.NextPacketToReceive.batchPos };
 
-                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo, BlockBlobClient blob) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, this.shutdownToken, nextPacketToReceive))
+                    await foreach ((EventData eventData, PartitionEvent[] events, long seqNo, BlockBlobClient blob) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, this.shutdownToken, current.ErrorHandler, nextPacketToReceive))
                     {
                         for (int i = 0; i < events.Length; i++)
                         {
                             PartitionEvent evt = events[i];
+
+                            if (evt == null)
+                            {
+                                continue; // was skipped over by the batch receiver because it is already processed
+                            }
                             
                             if (i < events.Length - 1)
                             {
@@ -489,21 +494,13 @@ namespace DurableTask.Netherite.EventHubsTransport
                             totalEvents++;
                         }
 
-                        if (current.NextPacketToReceive.batchPos == 0)
-                        {
-                            current.Partition.SubmitEvents(events);
-                        }
-                        else
-                        {
-                            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) skipping {batchPos} events in batch #{seqno} because they are already processed", this.eventHubName, this.eventHubPartition, current.Incarnation, current.NextPacketToReceive.batchPos, seqNo);
-                            current.Partition.SubmitEvents(events.Skip(current.NextPacketToReceive.batchPos).ToList());
-                        }
+                        current.Partition.SubmitEvents(events);
                     }
 
-                    current.NextPacketToReceive = (nextPacketToReceive.Value, 0);
+                    current.NextPacketToReceive = (nextPacketToReceive.SeqNo, nextPacketToReceive.BatchPos);
                 }
 
-                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received {totalEvents} events in {latencyMs:F2}ms, starting with #{seqno}, next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, current.Incarnation, totalEvents, stopwatch.Elapsed.TotalMilliseconds, firstSequenceNumber, current.NextPacketToReceive.seqNo);
+                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition}({incarnation}) received {totalEvents} events in {latencyMs:F2}ms, starting with #{seqno}, next expected packet is #{nextSeqno}", this.eventHubName, this.eventHubPartition, current.Incarnation, totalEvents, stopwatch.Elapsed.TotalMilliseconds, firstSequenceNumber, current.NextPacketToReceive);
 
                 await this.SaveEventHubsReceiverCheckpoint(context, 600000);
             }

@@ -46,7 +46,8 @@ namespace DurableTask.Netherite.EventHubsTransport
             byte[] guid, 
             IEnumerable<EventData> hubMessages,
             [EnumeratorCancellation] CancellationToken token,
-            MutableLong nextPacketToReceive = null)
+            IPartitionErrorHandler errorHandler = null,
+            Position nextPacketToReceive = null)
         {
             int ignoredPacketCount = 0;
 
@@ -56,14 +57,14 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                 if (nextPacketToReceive != null)
                 {
-                    if (seqno < nextPacketToReceive.Value)
+                    if (seqno < nextPacketToReceive.SeqNo)
                     {
                         this.lowestTraceLevel?.LogTrace("{context} discarded packet #{seqno} because it is already processed", this.traceContext, seqno);
                         continue;
                     }
-                    else if (seqno > nextPacketToReceive.Value)
+                    else if (seqno > nextPacketToReceive.SeqNo)
                     {
-                        this.traceHelper.LogError("{context} received wrong packet, #{seqno} instead of #{expected} ", this.traceContext, seqno, nextPacketToReceive.Value);
+                        this.traceHelper.LogError("{context} received wrong packet, #{seqno} instead of #{expected} ", this.traceContext, seqno, nextPacketToReceive.SeqNo);
                         // this should never happen, as EventHubs guarantees in-order delivery of packets
                         throw new InvalidOperationException("EventHubs Out-Of-Order Packet");
                     }
@@ -120,6 +121,11 @@ namespace DurableTask.Netherite.EventHubsTransport
                         // normal during shutdown
                         throw;
                     }
+                    catch (Azure.RequestFailedException exception) when (BlobUtilsV12.BlobDoesNotExist(exception) && errorHandler?.IsTerminated == true)
+                    {
+                        // a download can fail if the lease is lost and the next owner processes and then deletes it first
+                        throw new OperationCanceledException("blob already deleted", exception, token);
+                    }
                     catch (Exception exception)
                     {
                         this.traceHelper.LogError("{context} failed to read blob {blobName} for #{seqno}: {exception}", this.traceContext, blobClient.Name, seqno, exception);
@@ -136,6 +142,13 @@ namespace DurableTask.Netherite.EventHubsTransport
                         var offset = i == 0 ? 0 : blobReference.PacketOffsets[i - 1];
                         var nextOffset = i < blobReference.PacketOffsets.Count ? blobReference.PacketOffsets[i] : blobContent.Length;
                         var length = nextOffset - offset;
+
+                        if (nextPacketToReceive?.BatchPos > i)
+                        {
+                            this.lowestTraceLevel?.LogTrace("{context} skipped over event #({seqno},{subSeqNo}) because it is already processed", this.traceContext, seqno, i);
+                            continue;
+                        }
+
                         using var m = new MemoryStream(blobContent, offset, length, writable: false);
 
                         token.ThrowIfCancellationRequested();
@@ -155,7 +168,8 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                 if (nextPacketToReceive != null)
                 {
-                    nextPacketToReceive.Value = seqno + 1;
+                    nextPacketToReceive.SeqNo = seqno + 1;
+                    nextPacketToReceive.BatchPos = 0;
                 }
             }
 
@@ -299,8 +313,9 @@ namespace DurableTask.Netherite.EventHubsTransport
         }
     }
 
-    public class MutableLong
+    public class Position
     {
-        public long Value;
+        public long SeqNo;
+        public int BatchPos;
     }
 }
