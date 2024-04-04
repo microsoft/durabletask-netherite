@@ -106,6 +106,16 @@ namespace DurableTask.Netherite
                 return true;
             }
 
+            // Empirically observed: socket exceptions under heavy stress, such as
+            // - "Only one usage of each socket address (protocol/network address/port) is normally permitted"
+            // - "An operation on a socket could not be performed because the system lacked sufficient buffer space or because a queue was full"
+            if (exception is Azure.RequestFailedException 
+                && (exception.InnerException is System.Net.Http.HttpRequestException e3)
+                && e3.InnerException is System.Net.Sockets.SocketException)
+            {
+                return true;
+            }
+
             return false;
         }
 

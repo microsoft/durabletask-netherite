@@ -115,7 +115,7 @@ namespace DurableTask.Netherite.Faster
             if (this.partition.Settings.TestHooks?.ReplayChecker == null)
             {
                 this.hangCheckTimer = new Timer(this.CheckForStuckWorkers, null, 0, 20000);
-                errorHandler.AddDisposeTask("DisposeHangTimer", TimeSpan.FromSeconds(10), () => this.hangCheckTimer.Dispose());
+                errorHandler.AddDisposeTask("DisposeHangTimer", TimeSpan.FromSeconds(120), () => this.hangCheckTimer.Dispose());
             }
 
             bool hasCheckpoint = false;
@@ -235,6 +235,7 @@ namespace DurableTask.Netherite.Faster
 
             if (this.blobManager.PartitionErrorHandler.IsTerminated)
             {
+                this.hangCheckTimer.Dispose();
                 return; // partition is already terminated, no point in checking for hangs
             }
 
