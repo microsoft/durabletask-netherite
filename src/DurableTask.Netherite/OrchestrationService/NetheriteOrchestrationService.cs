@@ -290,7 +290,7 @@ namespace DurableTask.Netherite
         /// <inheritdoc />
         Task IOrchestrationService.StartAsync()
         {
-            // We discard exception state, as Functions Host may retry the StartAsync operation.
+            // We discard exception state, as hosts (like Azure Functions) may retry the StartAsync operation multiple times.
             // See: https://github.com/microsoft/durabletask-netherite/issues/352
             this.startupException = null;
 
