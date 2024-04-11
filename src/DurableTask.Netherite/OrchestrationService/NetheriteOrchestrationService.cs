@@ -24,7 +24,7 @@ namespace DurableTask.Netherite
     /// Local partition of the distributed orchestration service.
     /// </summary>
     public class NetheriteOrchestrationService :
-        DurableTask.Core.IOrchestrationService, 
+        DurableTask.Core.IOrchestrationService,
         DurableTask.Core.IOrchestrationServiceClient,
         DurableTask.Core.IOrchestrationServicePurgeClient,
         DurableTask.Netherite.IOrchestrationServiceQueryClient,
@@ -41,7 +41,7 @@ namespace DurableTask.Netherite
         public StorageChoices StorageChoice { get; }
 
 
-        readonly ITransportLayer transport;
+        ITransportLayer transport;
         readonly IStorageLayer storage;
 
         readonly WorkItemTraceHelper workItemTraceHelper;
@@ -113,7 +113,7 @@ namespace DurableTask.Netherite
             : this(settings, loggerFactory, null)
         {
         }
-        
+
         /// <summary>
         /// Creates a new instance of the OrchestrationService with default settings
         /// </summary>
@@ -124,7 +124,7 @@ namespace DurableTask.Netherite
             this.Settings = settings;
             this.TraceHelper = new OrchestrationServiceTraceHelper(loggerFactory, settings.LogLevelLimit, settings.WorkerId, settings.HubName);
             this.workItemTraceHelper = new WorkItemTraceHelper(loggerFactory, settings.WorkItemLogLevelLimit, settings.HubName);
-           
+
             try
             {
                 this.TraceHelper.TraceProgress("Reading configuration for transport and storage layers");
@@ -159,27 +159,8 @@ namespace DurableTask.Netherite
                         this.storage = storageLayerFactory.Create(this);
                         break;
                 }
-          
-                // construct the transport layer
-                switch (this.Settings.TransportChoice)
-                {
-                    case TransportChoices.SingleHost:
-                        this.transport = new SingleHostTransport.SingleHostTransportLayer(this, settings, this.storage, this.TraceHelper.Logger);
-                        break;
 
-                    case TransportChoices.EventHubs:
-                        this.transport = new EventHubsTransport.EventHubsTransport(this, settings, this.storage, loggerFactory);
-                        break;
-
-                    case TransportChoices.Custom:
-                        var transportLayerFactory = this.ServiceProvider?.GetService<ITransportLayerFactory>();
-                        if (transportLayerFactory == null)
-                        {
-                            throw new NetheriteConfigurationException("could not find injected ITransportLayerFactory");
-                        }
-                        this.transport = transportLayerFactory.Create(this);
-                        break;
-                }
+                this.ConstructTransportLayer();
 
                 this.workItemStopwatch.Start();
 
@@ -199,6 +180,31 @@ namespace DurableTask.Netherite
                 throw;
             }
         }
+
+        void ConstructTransportLayer()
+        {
+            // construct the transport layer
+            switch (this.Settings.TransportChoice)
+            {
+                case TransportChoices.SingleHost:
+                    this.transport = new SingleHostTransport.SingleHostTransportLayer(this, this.Settings, this.storage, this.TraceHelper.Logger);
+                    break;
+
+                case TransportChoices.EventHubs:
+                    this.transport = new EventHubsTransport.EventHubsTransport(this, this.Settings, this.storage, this.LoggerFactory);
+                    break;
+
+                case TransportChoices.Custom:
+                    var transportLayerFactory = this.ServiceProvider?.GetService<ITransportLayerFactory>();
+                    if (transportLayerFactory == null)
+                    {
+                        throw new NetheriteConfigurationException("could not find injected ITransportLayerFactory");
+                    }
+                    this.transport = transportLayerFactory.Create(this);
+                    break;
+            }
+        }
+
 
         /// <summary>
         /// Get a scaling monitor for autoscaling.
@@ -247,7 +253,7 @@ namespace DurableTask.Netherite
                 System.Environment.Exit(333);
             }
         }
-       
+
 
         /******************************/
         // management methods
@@ -290,9 +296,17 @@ namespace DurableTask.Netherite
         /// <inheritdoc />
         Task IOrchestrationService.StartAsync()
         {
-            // We discard exception state, as hosts (like Azure Functions) may retry the StartAsync operation multiple times.
-            // See: https://github.com/microsoft/durabletask-netherite/issues/352
-            this.startupException = null;
+            // Some hosts (like Azure Functions) may retry the StartAsync operation multiple times.
+            // See: https://github.com/microsoft/durabletask-netherite/issues/352//
+            // therefore, we first check if this is a retry, i.e. startup has already failed,
+            // in which case we reset the state first.
+
+            var lastTransition = this.currentTransition;
+            if (lastTransition.IsFaulted) 
+            {
+                // We use the TryTransition helper to ensure that only one thread resets the state, if there are races.
+                TryTransition(ref this.currentTransition, lastTransition, this.ResetAsync);
+            }
 
             return this.TryStartAsync(false);
         }
@@ -311,7 +325,7 @@ namespace DurableTask.Netherite
             None, Client, Full
         }
 
-        Task<ServiceState> currentTransition = Task.FromResult(ServiceState.None);        
+        Task<ServiceState> currentTransition = Task.FromResult(ServiceState.None);
 
         public async Task TryStartAsync(bool clientOnly)
         {
@@ -319,15 +333,12 @@ namespace DurableTask.Netherite
 
             while (true)
             {
-                var currentTransition = this.currentTransition;
-                var currentState = await currentTransition;
+                var lastTransition = this.currentTransition;
+                var currentState = await lastTransition;
 
                 if (currentState == ServiceState.None)
                 {
-                    var greenLight = new TaskCompletionSource<bool>();
-                    var startTask = this.StartClientAsync(greenLight.Task);
-                    var nextTransition = Interlocked.CompareExchange<Task<ServiceState>>(ref this.currentTransition, startTask, currentTransition);
-                    greenLight.SetResult(nextTransition == currentTransition);
+                    TryTransition(ref this.currentTransition, lastTransition, this.StartClientAsync);
 
                     continue;
                 }
@@ -339,10 +350,7 @@ namespace DurableTask.Netherite
                         return;
                     }
 
-                    var greenLight = new TaskCompletionSource<bool>();
-                    var startTask = this.StartWorkersAsync(greenLight.Task);
-                    var nextTransition = Interlocked.CompareExchange<Task<ServiceState>>(ref this.currentTransition, startTask, currentTransition);
-                    greenLight.SetResult(nextTransition == currentTransition);
+                    TryTransition(ref this.currentTransition, lastTransition, this.StartWorkersAsync);
 
                     continue;
                 }
@@ -351,20 +359,39 @@ namespace DurableTask.Netherite
             }
         }
 
-        async Task<ServiceState> StartClientAsync(Task<bool> greenLight)
+        static void TryTransition<T>(ref Task<T> transition, Task<T> lastTransition, Func<Task<T>> nextTransition)
         {
-            if (!await greenLight) return ServiceState.None; 
+            var greenLight = new TaskCompletionSource<bool>();
+            var task = conditionalTransition();
+            var interlockedResult = Interlocked.CompareExchange<Task<T>>(ref transition, task, lastTransition);
+            bool success = interlockedResult == lastTransition;
+            greenLight.SetResult(success);
 
+            async Task<T> conditionalTransition()
+            {
+                if (await greenLight.Task)
+                {
+                    return await nextTransition();
+                }
+                else
+                {
+                    return default; // this thread lost the race so the task does nothing
+                }
+            }
+        }
+
+        async Task<ServiceState> StartClientAsync()
+        {
             try
             {
-               this.TraceHelper.TraceProgress("Starting Client");
+                this.TraceHelper.TraceProgress("Starting Client");
 
                 if (this.Settings.TestHooks != null)
                 {
                     this.TraceHelper.TraceProgress(this.Settings.TestHooks.ToString());
                 }
 
-                this.serviceShutdownSource = new CancellationTokenSource();
+                this.serviceShutdownSource ??= new CancellationTokenSource();
 
                 this.TaskhubParameters = await this.transport.StartAsync();
                 (this.ContainerName, this.PathPrefix) = this.storage.GetTaskhubPathPrefix(this.TaskhubParameters);
@@ -378,7 +405,7 @@ namespace DurableTask.Netherite
                 await this.transport.StartClientAsync();
 
                 System.Diagnostics.Debug.Assert(this.client != null, "transport layer should have added client");
-               
+
                 this.checkedClient = this.client;
 
                 this.ActivityWorkItemQueue = new WorkItemQueue<ActivityWorkItem>();
@@ -409,11 +436,9 @@ namespace DurableTask.Netherite
                 throw;
             }
         }
-        
-        async Task<ServiceState> StartWorkersAsync(Task<bool> greenLight)
-        {
-            if (!await greenLight) return ServiceState.Client;
 
+        async Task<ServiceState> StartWorkersAsync()
+        {
             try
             {
                 System.Diagnostics.Debug.Assert(this.client != null, "transport layer should have added client");
@@ -460,6 +485,18 @@ namespace DurableTask.Netherite
 
                 throw;
             }
+        }
+
+        Task<ServiceState> ResetAsync()
+        {
+            this.TraceHelper.TraceProgress("Resetting Orchestration Service");
+
+            this.client = null;
+            this.checkedClient = null;
+            this.startupException = null;
+            this.ConstructTransportLayer(); // we need to recreate the transport layer because it was not designed to be retried
+
+            return Task.FromResult(ServiceState.None);
         }
 
         async Task<ServiceState> TryStopAsync(bool quickly)
@@ -510,7 +547,7 @@ namespace DurableTask.Netherite
             int placementSeparatorPosition = instanceId.LastIndexOf('!');
 
             // if the instance id ends with !nn, where nn is a two-digit number, it indicates explicit partition placement
-            if (placementSeparatorPosition != -1 
+            if (placementSeparatorPosition != -1
                 && placementSeparatorPosition <= instanceId.Length - 2
                 && uint.TryParse(instanceId.Substring(placementSeparatorPosition + 1), out uint index))
             {
@@ -645,7 +682,7 @@ namespace DurableTask.Netherite
                     // we do not want wait requests to remain in the system for a very long time
                     // (because it could potentially cause issues with partition state size)
                     // so we break long timeouts into 5 minute chunks
-                    nextTimeout = TimeSpan.FromMinutes(5); 
+                    nextTimeout = TimeSpan.FromMinutes(5);
                 }
 
                 OrchestrationState response = await client.WaitForOrchestrationAsync(
@@ -664,7 +701,7 @@ namespace DurableTask.Netherite
 
         /// <inheritdoc />
         async Task<OrchestrationState> IOrchestrationServiceClient.GetOrchestrationStateAsync(
-            string instanceId, 
+            string instanceId,
             string executionId)
         {
             var state = await (await this.GetClientAsync().ConfigureAwait(false)).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, true).ConfigureAwait(false);
@@ -675,29 +712,29 @@ namespace DurableTask.Netherite
 
         /// <inheritdoc />
         async Task<IList<OrchestrationState>> IOrchestrationServiceClient.GetOrchestrationStateAsync(
-            string instanceId, 
+            string instanceId,
             bool allExecutions)
         {
             // note: allExecutions is always ignored because storage contains never more than one execution.
             var state = await (await this.GetClientAsync().ConfigureAwait(false)).GetOrchestrationStateAsync(this.GetPartitionId(instanceId), instanceId, true).ConfigureAwait(false);
-            return state != null 
-                ? (new[] { state }) 
+            return state != null
+                ? (new[] { state })
                 : (new OrchestrationState[0]);
         }
 
         /// <inheritdoc />
         async Task IOrchestrationServiceClient.ForceTerminateTaskOrchestrationAsync(
-                string instanceId, 
+                string instanceId,
                 string message)
             => await (await this.GetClientAsync().ConfigureAwait(false)).ForceTerminateTaskOrchestrationAsync(this.GetPartitionId(instanceId), instanceId, message).ConfigureAwait(false);
 
         /// <inheritdoc />
         async Task<string> IOrchestrationServiceClient.GetOrchestrationHistoryAsync(
-            string instanceId, 
+            string instanceId,
             string executionId)
         {
             var client = await this.GetClientAsync().ConfigureAwait(false);
-            (string actualExecutionId, IList<HistoryEvent> history) = 
+            (string actualExecutionId, IList<HistoryEvent> history) =
                 await client.GetOrchestrationHistoryAsync(this.GetPartitionId(instanceId), instanceId).ConfigureAwait(false);
 
             if (history != null && (executionId == null || executionId == actualExecutionId))
@@ -712,8 +749,8 @@ namespace DurableTask.Netherite
 
         /// <inheritdoc />
         async Task IOrchestrationServiceClient.PurgeOrchestrationHistoryAsync(
-            DateTime thresholdDateTimeUtc, 
-            OrchestrationStateTimeRangeFilterType 
+            DateTime thresholdDateTimeUtc,
+            OrchestrationStateTimeRangeFilterType
             timeRangeFilterType)
         {
             if (timeRangeFilterType != OrchestrationStateTimeRangeFilterType.OrchestrationCreatedTimeFilter)
@@ -769,12 +806,12 @@ namespace DurableTask.Netherite
         {
             var nextOrchestrationWorkItem = await this.OrchestrationWorkItemQueue.GetNext(receiveTimeout, cancellationToken).ConfigureAwait(false);
 
-            if (nextOrchestrationWorkItem != null) 
+            if (nextOrchestrationWorkItem != null)
             {
                 nextOrchestrationWorkItem.MessageBatch.WaitingSince = null;
 
                 this.workItemTraceHelper.TraceWorkItemStarted(
-                    nextOrchestrationWorkItem.Partition.PartitionId, 
+                    nextOrchestrationWorkItem.Partition.PartitionId,
                     WorkItemTraceHelper.WorkItemType.Orchestration,
                     nextOrchestrationWorkItem.MessageBatch.WorkItemId,
                     nextOrchestrationWorkItem.MessageBatch.InstanceId,
@@ -782,7 +819,7 @@ namespace DurableTask.Netherite
                     WorkItemTraceHelper.FormatMessageIdList(nextOrchestrationWorkItem.MessageBatch.TracedMessages));
 
                 nextOrchestrationWorkItem.StartedAt = this.workItemStopwatch.Elapsed.TotalMilliseconds;
-            } 
+            }
 
             return nextOrchestrationWorkItem;
         }
@@ -868,7 +905,7 @@ namespace DurableTask.Netherite
                     "partition was terminated");
 
                 return Task.CompletedTask;
-            }  
+            }
 
             // if this orchestration is not done, and extended sessions are enabled, we keep the work item so we can reuse the execution cursor
             bool cacheWorkItemForReuse = partition.Settings.CacheOrchestrationCursors && state.OrchestrationStatus == OrchestrationStatus.Running;
@@ -918,7 +955,7 @@ namespace DurableTask.Netherite
                 {
                     this.workItemTraceHelper.TraceTaskMessageSent(partition.PartitionId, taskMessage, messageBatch.WorkItemId, null, null);
                 }
-            }           
+            }
 
             return Task.CompletedTask;
         }
@@ -951,7 +988,7 @@ namespace DurableTask.Netherite
             return Task.FromResult(workItem);
         }
 
-        BehaviorOnContinueAsNew IOrchestrationService.EventBehaviourForContinueAsNew 
+        BehaviorOnContinueAsNew IOrchestrationService.EventBehaviourForContinueAsNew
             => this.Settings.EventBehaviourForContinueAsNew;
 
         bool IOrchestrationService.IsMaxMessageCountExceeded(int currentMessageCount, OrchestrationRuntimeState runtimeState)
@@ -1062,16 +1099,16 @@ namespace DurableTask.Netherite
                 // we get here if the partition was terminated. The work is thrown away. 
                 // It's unavoidable by design, but let's at least create a warning.
                 partition.ErrorHandler.HandleError(
-                    nameof(IOrchestrationService.CompleteTaskActivityWorkItemAsync), 
-                    "Canceling already-completed activity work item because of partition termination", 
-                    e, 
-                    false, 
+                    nameof(IOrchestrationService.CompleteTaskActivityWorkItemAsync),
+                    "Canceling already-completed activity work item because of partition termination",
+                    e,
+                    false,
                     true);
             }
 
             return Task.CompletedTask;
         }
-        
+
         Task<TaskActivityWorkItem> IOrchestrationService.RenewTaskActivityWorkItemLockAsync(TaskActivityWorkItem workItem)
         {
             // no renewal required. Work items never time out.
