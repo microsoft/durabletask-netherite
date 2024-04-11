@@ -459,12 +459,15 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                     await foreach ((EventData eventData, PartitionEvent[] events, long seqNo, BlockBlobClient blob) in this.blobBatchReceiver.ReceiveEventsAsync(this.taskHubGuid, packets, this.shutdownToken, current.ErrorHandler, nextPacketToReceive))
                     {
+                        int numSkipped = 0;
+
                         for (int i = 0; i < events.Length; i++)
                         {
                             PartitionEvent evt = events[i];
 
                             if (evt == null)
                             {
+                                numSkipped++;
                                 continue; // was skipped over by the batch receiver because it is already processed
                             }
                             
@@ -494,7 +497,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                             totalEvents++;
                         }
 
-                        current.Partition.SubmitEvents(events);
+                        current.Partition.SubmitEvents(numSkipped == 0 ? events : events.Skip(numSkipped).ToList());
                     }
 
                     current.NextPacketToReceive = (nextPacketToReceive.SeqNo, nextPacketToReceive.BatchPos);
