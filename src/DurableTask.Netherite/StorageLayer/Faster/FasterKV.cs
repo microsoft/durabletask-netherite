@@ -742,6 +742,7 @@ namespace DurableTask.Netherite.Faster
             catch (OperationCanceledException) when (this.terminationToken.IsCancellationRequested)
             {
                 // partition is terminating
+                this.blobManager.TraceHelper.FasterProgress($"PrefetchSession {sessionId} cancelled");
             }
             catch (Exception e)
             {
