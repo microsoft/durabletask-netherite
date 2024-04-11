@@ -124,7 +124,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     catch (Azure.RequestFailedException exception) when (BlobUtilsV12.BlobDoesNotExist(exception) && errorHandler?.IsTerminated == true)
                     {
                         // a download can fail if the lease is lost and the next owner processes and then deletes it first
-                        throw new OperationCanceledException("blob already deleted", exception, token);
+                        throw new OperationCanceledException("blob not found, likely already deleted", exception, token);
                     }
                     catch (Exception exception)
                     {
