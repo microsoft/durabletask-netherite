@@ -74,13 +74,19 @@ namespace DurableTask.Netherite
         void ProcessClientRequestEventWithPrefetch(ClientRequestEventWithPrefetch clientRequestEvent, EffectTracker effects)
         {
             if (clientRequestEvent.Phase == ClientRequestEventWithPrefetch.ProcessingPhase.Read)
-            {           
-                this.Partition.Assert(!this.PendingPrefetches.ContainsKey(clientRequestEvent.EventIdString), "PendingPrefetches.ContainsKey(clientRequestEvent.EventIdString)");
+            {
+                if (!this.PendingPrefetches.ContainsKey(clientRequestEvent.EventIdString))
+                        {
+                    // Issue a read request that fetches the instance state.
+                    // We buffer this request in the pending list so we can recover it, and can filter duplicates
+                    // (as long as the duplicates appear soon after the original)
 
-                // Issue a read request that fetches the instance state.
-                // We have to buffer this request in the pending list so we can recover it.
-
-                this.PendingPrefetches.Add(clientRequestEvent.EventIdString, clientRequestEvent);
+                    this.PendingPrefetches.Add(clientRequestEvent.EventIdString, clientRequestEvent);
+                }
+                else
+                {
+                    return; // this is a duplicate. Ignore it.
+                }
             }
             else 
             {
