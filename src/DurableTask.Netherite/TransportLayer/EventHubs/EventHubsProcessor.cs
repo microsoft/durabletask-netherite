@@ -132,15 +132,24 @@ namespace DurableTask.Netherite.EventHubsTransport
         {
             List<BlockBlobClient> obsoleteBatches = null;
 
+            if (this.traceHelper.IsEnabled(LogLevel.Trace))
+            {
+                this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} confirmed event nextInputQueuePosition={nextInputQueuePosition}", this.eventHubName, this.eventHubPartition, ((PartitionEvent)evt).NextInputQueuePositionTuple);
+            }
+
             // this is called after an event has committed (i.e. has been durably persisted in the recovery log).
             // so we know we will never need to deliver it again. We remove it from the local buffer, update the fields that
             // track the last persisted position, and delete the blob batch if this was the last event in the batch.
             while (this.pendingDelivery.TryPeek(out var front) 
-                && front.Event.NextInputQueuePositionTuple.CompareTo(((PartitionEvent) evt).NextInputQueuePositionTuple) <= 0)
+                && (front.Event == evt || front.Event.NextInputQueuePositionTuple.CompareTo(((PartitionEvent) evt).NextInputQueuePositionTuple) < 0))
             {
-                if (this.pendingDelivery.TryDequeue(out var confirmed))
+                if (this.pendingDelivery.TryDequeue(out var confirmed) && front == confirmed)
                 {
-                    Debug.Assert(front == confirmed);
+                    if (this.traceHelper.IsEnabled(LogLevel.Trace))
+                    {
+                        this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} discarding buffered event nextInputQueuePosition={nextInputQueuePosition} lastInBatch={lastInBatch} seqno={seqNo} offset={offset} batchBlob={batchBlob}", this.eventHubName, this.eventHubPartition, front.Event.NextInputQueuePositionTuple, evt.EventIdString, confirmed.LastInBatch, confirmed.SeqNo, confirmed.Offset, confirmed.BatchBlob);
+                    }
+
                     if (confirmed.LastInBatch)
                     {
                         this.persistedOffset = Math.Max(this.persistedOffset, confirmed.Offset);
