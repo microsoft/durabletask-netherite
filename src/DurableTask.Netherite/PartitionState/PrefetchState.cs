@@ -87,7 +87,9 @@ namespace DurableTask.Netherite
                 }
                 else
                 {
-                    return; // this is a duplicate. Ignore it.
+                    // this is a duplicate. Ignore it.
+                    effects.EventTraceHelper?.TraceEventProcessingWarning($"Dropped duplicate client request {clientRequestEvent} id={clientRequestEvent.EventIdString}");
+                    return; 
                 }
             }
             else 
