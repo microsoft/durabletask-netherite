@@ -111,16 +111,17 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                     try
                     {
-                        this.lowestTraceLevel?.LogTrace("{context} downloading blob {blobName}", this.traceContext, blobClient.Name);
+                        this.lowestTraceLevel?.LogTrace("{context} downloading blob {blobName} for #{seqno}", this.traceContext, blobClient.Name, seqno);
 
                         Azure.Response<BlobDownloadResult> downloadResult = await blobClient.DownloadContentAsync(token);
                         blobContent = downloadResult.Value.Content.ToArray();
 
-                        this.lowestTraceLevel?.LogTrace("{context} downloaded blob {blobName} ({size} bytes, {count} packets)", this.traceContext, blobClient.Name, blobContent.Length, blobReference.PacketOffsets.Count + 1);
+                        this.lowestTraceLevel?.LogTrace("{context} downloaded blob {blobName} for #{seqno} ({size} bytes, {count} packets)", this.traceContext, blobClient.Name, seqno, blobContent.Length, blobReference.PacketOffsets.Count + 1);
                     }
                     catch (OperationCanceledException) when (token.IsCancellationRequested)
                     {
                         // normal during shutdown
+                        this.lowestTraceLevel?.LogTrace("{context} cancelled downloading blob {blobName} for #{seqno}", this.traceContext, blobClient.Name, seqno);
                         throw;
                     }
                     catch (Azure.RequestFailedException exception) when (BlobUtilsV12.BlobDoesNotExist(exception) && errorHandler?.IsTerminated == true)
