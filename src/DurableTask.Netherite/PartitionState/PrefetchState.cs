@@ -78,7 +78,7 @@ namespace DurableTask.Netherite
                 // It's possible for EventHubs to duplicate client-to-partition events. Therefore, we perform a best-effort
                 // de-duplication of EH messages. For more details, see: https://github.com/microsoft/durabletask-netherite/pull/379
                 if (!this.PendingPrefetches.ContainsKey(clientRequestEvent.EventIdString))
-                        {
+                {
                     // Issue a read request that fetches the instance state.
                     // We buffer this request in the pending list so we can recover it, and can filter duplicates
                     // (as long as the duplicates appear soon after the original)
