@@ -147,7 +147,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     if (this.traceHelper.IsEnabled(LogLevel.Trace))
                     {
-                        this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} discarding buffered event nextInputQueuePosition={nextInputQueuePosition} lastInBatch={lastInBatch} seqno={seqNo} offset={offset} batchBlob={batchBlob}", this.eventHubName, this.eventHubPartition, front.Event.NextInputQueuePositionTuple, evt.EventIdString, confirmed.LastInBatch, confirmed.SeqNo, confirmed.Offset, confirmed.BatchBlob);
+                        this.traceHelper.LogTrace("EventHubsProcessor {eventHubName}/{eventHubPartition} discarding buffered event nextInputQueuePosition={nextInputQueuePosition} lastInBatch={lastInBatch} seqno={seqNo} offset={offset} batchBlob={batchBlob}", this.eventHubName, this.eventHubPartition, front.Event.NextInputQueuePositionTuple, confirmed.LastInBatch, confirmed.SeqNo, confirmed.Offset, confirmed.BatchBlob);
                     }
 
                     if (confirmed.LastInBatch)
