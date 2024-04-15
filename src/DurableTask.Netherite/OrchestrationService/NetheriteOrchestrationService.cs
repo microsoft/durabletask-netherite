@@ -876,7 +876,7 @@ namespace DurableTask.Netherite
                 InstanceId = workItem.InstanceId,
                 BatchStartPosition = messageBatch.BatchStartPosition,
                 BatchLength = messageBatch.BatchLength,
-                NewEvents = newOrchestrationRuntimeState.NewEvents.ToList(),
+                NewEvents = newOrchestrationRuntimeState.NewEvents.ToList(), // `NewEvents` in `newOrchestrationRuntimeState` may be mutated, so we copy to avoid a surprise change.
                 WorkItemForReuse = cacheWorkItemForReuse ? orchestrationWorkItem : null,
                 PackPartitionTaskMessages = partition.Settings.PackPartitionTaskMessages,
                 PersistFirst = partition.Settings.PersistStepsFirst ? BatchProcessed.PersistFirstStatus.Required : BatchProcessed.PersistFirstStatus.NotRequired,
