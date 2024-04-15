@@ -103,9 +103,11 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                     await BlobManager.AsynchronousStorageReadMaxConcurrency.WaitAsync();
 
-                    byte[] blobContent;
+                    byte[] blobContent = null;
 
                     token.ThrowIfCancellationRequested();
+
+                    bool skipEntireBatch = false;
 
                     try
                     {
@@ -124,7 +126,8 @@ namespace DurableTask.Netherite.EventHubsTransport
                     catch (Azure.RequestFailedException exception) when (BlobUtilsV12.BlobDoesNotExist(exception) && errorHandler?.IsTerminated == true)
                     {
                         // a download can fail if the lease is lost and the next owner processes and then deletes it first
-                        throw new OperationCanceledException("blob not found, likely already deleted", exception, token);
+                        this.traceHelper.LogWarning("{context} blob {blobName} for batch #{seqno} was not found. Likely already deleted by next owner - skipping entire batch.", this.traceContext, blobClient.Name, seqno);
+                        skipEntireBatch = true;
                     }
                     catch (Exception exception)
                     {
@@ -137,32 +140,37 @@ namespace DurableTask.Netherite.EventHubsTransport
                     }
 
                     TEvent[] result = new TEvent[blobReference.PacketOffsets.Count + 1];
-                    for (int i = 0; i < result.Length; i++)
+
+                    if (!skipEntireBatch)
                     {
-                        var offset = i == 0 ? 0 : blobReference.PacketOffsets[i - 1];
-                        var nextOffset = i < blobReference.PacketOffsets.Count ? blobReference.PacketOffsets[i] : blobContent.Length;
-                        var length = nextOffset - offset;
-
-                        if (nextPacketToReceive?.BatchPos > i)
+                        for (int i = 0; i < result.Length; i++)
                         {
-                            this.lowestTraceLevel?.LogTrace("{context} skipped over event #({seqno},{subSeqNo}) because it is already processed", this.traceContext, seqno, i);
-                            continue;
-                        }
+                            var offset = i == 0 ? 0 : blobReference.PacketOffsets[i - 1];
+                            var nextOffset = i < blobReference.PacketOffsets.Count ? blobReference.PacketOffsets[i] : blobContent.Length;
+                            var length = nextOffset - offset;
 
-                        using var m = new MemoryStream(blobContent, offset, length, writable: false);
+                            if (nextPacketToReceive?.BatchPos > i)
+                            {
+                                this.lowestTraceLevel?.LogTrace("{context} skipped over event #({seqno},{subSeqNo}) because it is already processed", this.traceContext, seqno, i);
+                                continue;
+                            }
 
-                        token.ThrowIfCancellationRequested();
+                            using var m = new MemoryStream(blobContent, offset, length, writable: false);
 
-                        try
-                        {
-                            Packet.Deserialize(m, out result[i], out _, null); // no need to check task hub match again
-                        }
-                        catch (Exception)
-                        {
-                            this.traceHelper.LogError("{context} could not deserialize packet from blob {blobName} at #{seqno}.{subSeqNo} offset={offset} length={length}", this.traceContext, blobClient.Name, seqno, i, offset, length);
-                            throw;
+                            token.ThrowIfCancellationRequested();
+
+                            try
+                            {
+                                Packet.Deserialize(m, out result[i], out _, null); // no need to check task hub match again
+                            }
+                            catch (Exception)
+                            {
+                                this.traceHelper.LogError("{context} could not deserialize packet from blob {blobName} at #{seqno}.{subSeqNo} offset={offset} length={length}", this.traceContext, blobClient.Name, seqno, i, offset, length);
+                                throw;
+                            }
                         }
                     }
+
                     yield return (eventData, result, seqno, blobClient);
                 }
 
