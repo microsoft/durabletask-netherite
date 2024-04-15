@@ -152,6 +152,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                     if (confirmed.LastInBatch)
                     {
+                        // to create EH checkpoints we need to record both the EH sequence number and the EH offset (see SaveEventHubsReceiverCheckpoint)
                         this.persistedOffset = Math.Max(this.persistedOffset, confirmed.Offset);
                         this.persistedSequenceNumber = Math.Max(this.persistedSequenceNumber, confirmed.SeqNo);
 
@@ -486,14 +487,16 @@ namespace DurableTask.Netherite.EventHubsTransport
                                 continue; // was skipped over by the batch receiver because it is already processed
                             }
                             
-                            if (i < events.Length - 1)
+                            if (i < events.Length - 1) // this is not the last event in the batch
                             {
+                                // the next input queue position is the next position within the same batch
                                 evt.NextInputQueuePosition = seqNo;
                                 evt.NextInputQueueBatchPosition = i + 1;
                                 this.pendingDelivery.Enqueue(new EventEntry(seqNo, i, evt));
                             }
-                            else
+                            else // this is the last event in the batch
                             {
+                                // the next input queue position is the first entry of of the next batch
                                 evt.NextInputQueuePosition = seqNo + 1;
                                 evt.NextInputQueueBatchPosition = 0;
                                 this.pendingDelivery.Enqueue(new EventEntry(seqNo, i, evt, long.Parse(eventData.SystemProperties.Offset), blob));
