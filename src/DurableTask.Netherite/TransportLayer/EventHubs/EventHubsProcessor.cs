@@ -422,6 +422,12 @@ namespace DurableTask.Netherite.EventHubsTransport
             
             this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} is receiving events starting with #{seqno}", this.eventHubName, this.eventHubPartition, firstSequenceNumber);
 
+            if (this.shutdownToken.IsCancellationRequested)
+            {
+                this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} already shut down", this.eventHubName, this.eventHubPartition);
+                return;
+            }
+
             PartitionIncarnation current = await this.currentIncarnation;
 
             while (current != null && current.ErrorHandler.IsTerminated)
