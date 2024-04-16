@@ -238,7 +238,15 @@ namespace DurableTask.Netherite.Faster
 
         void CancelAllRequests()
         {
-            foreach (var id in this.pendingReadWriteOperations.Keys.ToList())
+            var pendingReadWriteOperations = this.pendingReadWriteOperations.Keys.ToList();
+            var pendingRemoveOperations = this.pendingRemoveOperations.Keys.ToList();
+
+            this.BlobManager.TraceHelper.FasterProgress($"Cancelling device operations ({pendingReadWriteOperations.Count} read/write, {pendingRemoveOperations.Count} remove)");
+
+            int cancelledReadWrite = 0;
+            int cancelledRemove = 0;
+
+            foreach (var id in pendingReadWriteOperations)
             {
                 if (this.pendingReadWriteOperations.TryRemove(id, out var request))
                 {
@@ -252,9 +260,10 @@ namespace DurableTask.Netherite.Faster
                     {
                         this.BlobManager.StorageTracer?.FasterStorageError($"FasterCallbackCancellation Failed id={id}", ex);
                     }
+                    cancelledReadWrite++;
                 }
             }
-            foreach (var id in this.pendingRemoveOperations.Keys.ToList())
+            foreach (var id in pendingRemoveOperations)
             {
                 if (this.pendingRemoveOperations.TryRemove(id, out var request))
                 {
@@ -268,8 +277,11 @@ namespace DurableTask.Netherite.Faster
                     {
                         this.BlobManager.StorageTracer?.FasterStorageError($"FasterCallbackCancellation Failed id={id}", ex);
                     }
+                    cancelledRemove++;
                 }
             }
+
+            this.BlobManager.TraceHelper.FasterProgress($"Cancelled device operations ({cancelledReadWrite} read/write,  {cancelledRemove} remove)");
         }
 
         //---- the overridden methods represent the interface for a generic storage device
