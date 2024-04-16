@@ -107,7 +107,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                     token.ThrowIfCancellationRequested();
 
-                    bool skipEntireBatch = false;
+                    bool ignoreBatch = false;
 
                     try
                     {
@@ -124,11 +124,11 @@ namespace DurableTask.Netherite.EventHubsTransport
                         this.lowestTraceLevel?.LogTrace("{context} cancelled downloading blob {blobName} for #{seqno}", this.traceContext, blobClient.Name, seqno);
                         throw;
                     }
-                    catch (Azure.RequestFailedException exception) when (BlobUtilsV12.BlobDoesNotExist(exception) && errorHandler?.IsTerminated == true)
+                    catch (Azure.RequestFailedException exception) when (BlobUtilsV12.BlobDoesNotExist(exception))
                     {
-                        // a download can fail if the lease is lost and the next owner processes and then deletes it first
-                        this.traceHelper.LogWarning("{context} blob {blobName} for batch #{seqno} was not found. Likely already deleted by next owner - skipping entire batch.", this.traceContext, blobClient.Name, seqno);
-                        skipEntireBatch = true;
+                        // the blob may be already deleted if (a) the next owner already received it, or (b) EH internally duplicated the message and the original was already delivered.
+                        // in either case, the correct action is to skip the entire batch, i.e. not process any of its contents, since all the events were already delivered.
+                        ignoreBatch = true;
                     }
                     catch (Exception exception)
                     {
@@ -140,10 +140,16 @@ namespace DurableTask.Netherite.EventHubsTransport
                         BlobManager.AsynchronousStorageReadMaxConcurrency.Release();
                     }
 
-                    TEvent[] result = new TEvent[blobReference.PacketOffsets.Count + 1];
-
-                    if (!skipEntireBatch)
+                    if (ignoreBatch)
                     {
+                        this.traceHelper.LogWarning("{context} blob {blobName} for batch #{seqno} was not found. Ignoring batch since it must have been already delivered.", this.traceContext, blobClient.Name, seqno);
+
+                        yield return (eventData, new TEvent[0], seqno, null);
+                    }
+                    else
+                    {
+                        TEvent[] result = new TEvent[blobReference.PacketOffsets.Count + 1];
+
                         for (int i = 0; i < result.Length; i++)
                         {
                             var offset = i == 0 ? 0 : blobReference.PacketOffsets[i - 1];
@@ -169,10 +175,10 @@ namespace DurableTask.Netherite.EventHubsTransport
                                 this.traceHelper.LogError("{context} could not deserialize packet from blob {blobName} at #{seqno}.{subSeqNo} offset={offset} length={length}", this.traceContext, blobClient.Name, seqno, i, offset, length);
                                 throw;
                             }
-                        }
-                    }
+                        }             
 
-                    yield return (eventData, result, seqno, blobClient);
+                        yield return (eventData, result, seqno, blobClient);
+                    }
                 }
 
                 if (nextPacketToReceive != null)
