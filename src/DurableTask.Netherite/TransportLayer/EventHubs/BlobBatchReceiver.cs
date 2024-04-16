@@ -144,6 +144,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     {
                         this.traceHelper.LogWarning("{context} blob {blobName} for batch #{seqno} was not found. Ignoring batch since it must have been already delivered.", this.traceContext, blobClient.Name, seqno);
 
+                        // return an empty batch, no events should be processed 
                         yield return (eventData, new TEvent[0], seqno, null);
                     }
                     else
