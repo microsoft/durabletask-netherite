@@ -11,11 +11,12 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Messaging.EventHubs;
+    using Azure.Messaging.EventHubs.Consumer;
+    using Azure.Messaging.EventHubs.Processor;
     using Azure.Storage.Blobs.Specialized;
     using DurableTask.Core.Common;
     using DurableTask.Netherite.Abstractions;
-    using Microsoft.Azure.EventHubs;
-    using Microsoft.Azure.EventHubs.Processor;
     using Microsoft.Extensions.Logging;
 
     class LoadMonitorProcessor : IEventProcessor
@@ -24,14 +25,15 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly TransportAbstraction.ISender sender;
         readonly TaskhubParameters parameters;
         readonly EventHubsTraceHelper traceHelper;
+        readonly EventHubsTransport eventHubsTransport;
         readonly NetheriteOrchestrationServiceSettings settings;
-        readonly PartitionContext partitionContext;
         readonly string eventHubName;
         readonly string eventHubPartition;
         readonly byte[] taskHubGuid;
         readonly uint partitionId;
         readonly CancellationToken shutdownToken;
         readonly BlobBatchReceiver<LoadMonitorEvent> blobBatchReceiver;
+        readonly EventProcessorClient client;
 
         TransportAbstraction.ILoadMonitor loadMonitor;
         DateTime lastGarbageCheck = DateTime.MinValue;
@@ -42,64 +44,68 @@ namespace DurableTask.Netherite.EventHubsTransport
             TransportAbstraction.IHost host,
             TransportAbstraction.ISender sender,
             TaskhubParameters parameters,
-            PartitionContext partitionContext,
+            EventProcessorClient client,
+            string partitionId,
             NetheriteOrchestrationServiceSettings settings,
+            EventHubsTransport eventHubsTransport,
             EventHubsTraceHelper traceHelper,
             CancellationToken shutdownToken)
         {
             this.host = host;
             this.sender = sender;
             this.parameters = parameters;
-            this.partitionContext = partitionContext;
             this.settings = settings;
-            this.eventHubName = this.partitionContext.EventHubPath;
-            this.eventHubPartition = this.partitionContext.PartitionId;
+            this.client = client;
+            this.eventHubName = this.client.EventHubName;
+            this.eventHubPartition = partitionId;
             this.taskHubGuid = parameters.TaskhubGuid.ToByteArray();
             this.partitionId = uint.Parse(this.eventHubPartition);
             this.traceHelper = new EventHubsTraceHelper(traceHelper, this.partitionId);
+            this.eventHubsTransport = eventHubsTransport;
             this.shutdownToken = shutdownToken;
             this.blobBatchReceiver = new BlobBatchReceiver<LoadMonitorEvent>("LoadMonitor", traceHelper, settings);
         }
 
-        Task IEventProcessor.OpenAsync(PartitionContext context)
+        Task<EventPosition> IEventProcessor.OpenAsync(CancellationToken cancellationToken)
         {
             this.traceHelper.LogInformation("LoadMonitor is opening", this.eventHubName, this.eventHubPartition);
             this.loadMonitor = this.host.AddLoadMonitor(this.parameters.TaskhubGuid, this.sender);
             this.traceHelper.LogInformation("LoadMonitor opened", this.eventHubName, this.eventHubPartition);
             this.PeriodicGarbageCheck();
-            return Task.CompletedTask;
+            return Task.FromResult(EventPosition.FromEnqueuedTime(DateTime.UtcNow - TimeSpan.FromSeconds(30)));
         }
 
-        async Task IEventProcessor.CloseAsync(PartitionContext context, CloseReason reason)
+        async Task IEventProcessor.CloseAsync(ProcessingStoppedReason reason, CancellationToken cancellationToken)
         {
             this.traceHelper.LogInformation("LoadMonitor is closing", this.eventHubName, this.eventHubPartition);
             await this.loadMonitor.StopAsync();
             this.traceHelper.LogInformation("LoadMonitor closed", this.eventHubName, this.eventHubPartition);
         }
 
-        Task IEventProcessor.ProcessErrorAsync(PartitionContext context, Exception exception)
+        async Task IEventProcessor.ProcessErrorAsync(Exception exception, CancellationToken cancellationToken)
         {
-            LogLevel logLevel;
-
-            switch (exception)
+            if (exception is Azure.Messaging.EventHubs.EventHubsException eventHubsException)
             {
-                case ReceiverDisconnectedException:
-                    // occurs when partitions are being rebalanced by EventProcessorHost
-                    logLevel = LogLevel.Information;
-                    break;
+                switch (eventHubsException.Reason)
+                {
+                    case EventHubsException.FailureReason.ConsumerDisconnected:
+                        this.traceHelper.LogInformation("LoadMonitor received ConsumerDisconnected notification");
+                        return;
 
-                default:
-                    logLevel = LogLevel.Warning;
-                    break;
+                    case EventHubsException.FailureReason.InvalidClientState:
+                        // something is permantently broken inside EH client, let's try to recover via restart 
+                        this.traceHelper.LogError("LoadMonitor received InvalidClientState notification, initiating recovery via restart");
+                        await this.eventHubsTransport.ExitProcess(false);
+                        return;
+                }
             }
-
-            this.traceHelper.Log(logLevel, "LoadMonitor received internal error indication from EventProcessorHost: {exception}", exception);
-            return Task.CompletedTask;
+       
+            this.traceHelper.LogWarning("LoadMonitor received internal error indication from EventProcessorHost: {exception}", exception);
         }
 
-        async Task IEventProcessor.ProcessEventsAsync(PartitionContext context, IEnumerable<EventData> packets)
+        async Task IEventProcessor.ProcessEventBatchAsync(IEnumerable<EventData> packets, CancellationToken cancellationToken)
         {         
-            this.traceHelper.LogTrace("LoadMonitor receiving #{seqno}", packets.First().SystemProperties.SequenceNumber);
+            this.traceHelper.LogTrace("LoadMonitor receiving #{seqno}", packets.First().SequenceNumber);
             try
             {         
                 EventData last = null;
@@ -128,7 +134,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                 if (last != null)
                 {
-                    this.traceHelper.LogDebug("LoadMonitor received {totalEvents} events in {latencyMs:F2}ms, through #{seqno}", totalEvents, stopwatch.Elapsed.TotalMilliseconds, last.SystemProperties.SequenceNumber);
+                    this.traceHelper.LogDebug("LoadMonitor received {totalEvents} events in {latencyMs:F2}ms, through #{seqno}", totalEvents, stopwatch.Elapsed.TotalMilliseconds, last.SequenceNumber);
                 }
                 else
                 {

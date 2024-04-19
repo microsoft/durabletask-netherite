@@ -7,25 +7,22 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.Collections.Generic;
     using System.Threading;
     using System.Threading.Tasks;
-    using Microsoft.Azure.EventHubs;
-    using Microsoft.Azure.EventHubs.Processor;
     using Microsoft.Extensions.Logging;
-    using Microsoft.Azure.Storage;
-    using Microsoft.Azure.Storage.Blob;
-    using Newtonsoft.Json;
     using DurableTask.Netherite.Faster;
     using System.Linq;
     using System.Threading.Channels;
     using DurableTask.Netherite.Abstractions;
     using System.Diagnostics;
     using Azure.Storage.Blobs.Specialized;
+    using Azure.Messaging.EventHubs;
+    using Azure.Messaging.EventHubs.Primitives;
+    using Azure.Storage.Blobs;
 
     /// <summary>
     /// The EventHubs transport implementation.
     /// </summary>
     class EventHubsTransport :
         ITransportLayer,
-        IEventProcessorFactory,
         TransportAbstraction.ISender
     {
         readonly TransportAbstraction.IHost host;
@@ -49,7 +46,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         Task[] clientConnectionsEstablished;
 
         CancellationTokenSource shutdownSource;
-        CloudBlobContainer cloudBlobContainer;
+        BlobContainerClient cloudBlobContainer;
         IPartitionManager partitionManager;
 
         int shutdownTriggered;
@@ -102,9 +99,8 @@ namespace DurableTask.Netherite.EventHubsTransport
             (string containerName, string path) = this.storage.GetTaskhubPathPrefix(this.parameters);
             this.pathPrefix = path;
 
-            var cloudStorageAccount = await this.settings.BlobStorageConnection.GetAzureStorageV11AccountAsync();
-            var cloudBlobClient = cloudStorageAccount.CreateCloudBlobClient();
-            this.cloudBlobContainer = cloudBlobClient.GetContainerReference(containerName);
+            var blobServiceClient = this.settings.BlobStorageConnection.GetAzureStorageV12BlobServiceClient(new Azure.Storage.Blobs.BlobClientOptions());
+            this.cloudBlobContainer = blobServiceClient.GetBlobContainerClient(containerName);
 
             // check that the storage format is supported, and load the relevant FASTER tuning parameters
             BlobManager.LoadAndCheckStorageFormat(this.parameters.StorageFormat, this.settings, this.host.TraceWarning);
@@ -214,8 +210,11 @@ namespace DurableTask.Netherite.EventHubsTransport
                 await this.connections.DeletePartitions();
             }
 
-            this.traceHelper.LogError("EventHubsTransport is killing process in 10 seconds");
-            await Task.Delay(TimeSpan.FromSeconds(10));
+            this.traceHelper.LogError("EventHubsTransport is killing process in 5 seconds");
+            
+            Task _ = ((ITransportLayer)this).StopAsync(true);
+
+            await Task.Delay(TimeSpan.FromSeconds(5));
             System.Environment.Exit(222);
         }
 
@@ -259,12 +258,6 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.traceHelper.LogDebug("EventHubsTransport stopped clients");
         }
 
-        IEventProcessor IEventProcessorFactory.CreateEventProcessor(PartitionContext partitionContext)
-        {
-            var processor = new EventHubsProcessor(this.host, this, this.parameters, partitionContext, this.settings, this, this.traceHelper, this.shutdownSource.Token);
-            return processor;
-        }
-
         void TransportAbstraction.ISender.Submit(Event evt)
         {
             if (!this.useRealEventHubsConnection)
@@ -304,7 +297,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 this.traceHelper.LogDebug("Client.{clientId}.ch{index} establishing connection", this.shortClientId, index);
                 // receive a dummy packet to establish connection
                 // (the packet, if any, cannot be for this receiver because it is fresh)
-                await receiver.ReceiveAsync(1, TimeSpan.FromMilliseconds(1));
+                await receiver.ReceiveBatchAsync(1, TimeSpan.FromMilliseconds(1), this.shutdownSource.Token);
                 this.traceHelper.LogDebug("Client.{clientId}.ch{index} connection established", this.shortClientId, index);
             }
             catch (Exception exception)
@@ -334,7 +327,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     {
                         this.traceHelper.LogTrace("Client{clientId}.ch{index} waiting for new packets", this.shortClientId, index);
 
-                        packets = await receiver.ReceiveAsync(1000, longPollingInterval);
+                        packets = await receiver.ReceiveBatchAsync(1000, longPollingInterval, this.shutdownSource.Token);
 
                         backoffDelay = TimeSpan.Zero;
                     }
