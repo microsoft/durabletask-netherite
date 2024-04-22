@@ -759,7 +759,7 @@ namespace DurableTask.Netherite.Faster
             // (note that it may not be the very next in the sequence since readonly events are not persisted in the log)
             if (partitionUpdateEvent.NextInputQueuePosition > 0 && partitionUpdateEvent.NextInputQueuePositionTuple.CompareTo(this.InputQueuePosition) <= 0)
             {
-                this.partition.ErrorHandler.HandleError(nameof(ProcessUpdate), "Duplicate event detected", null, false, false);
+                this.partition.ErrorHandler.HandleError(nameof(ProcessUpdate), $"Duplicate event detected: #{partitionUpdateEvent.NextInputQueuePositionTuple}", null, true, false);
                 return;
             }
 
