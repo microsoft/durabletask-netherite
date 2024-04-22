@@ -124,7 +124,7 @@ namespace DurableTask.Netherite.Faster
                 MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
                 SegmentSizeBits = segmentSizeBits,
                 PreallocateLog = false,
-                ReadFlags = ReadFlags.None,
+                ReadCopyOptions = default, // is overridden by the per-session configuration
                 ReadCacheSettings = null, // no read cache
                 MemorySizeBits = memorySizeBits,
             };
@@ -886,7 +886,7 @@ namespace DurableTask.Netherite.Faster
 
         #region ILogCommitManager
 
-        void ILogCommitManager.Commit(long beginAddress, long untilAddress, byte[] commitMetadata, long commitNum)
+        void ILogCommitManager.Commit(long beginAddress, long untilAddress, byte[] commitMetadata, long commitNum, bool forceWriteMetadata)
         {
             try
             {
@@ -1481,6 +1481,11 @@ namespace DurableTask.Netherite.Faster
                         this.CheckpointInfoETag = response.Value.ETag;
                     });
             }
+        }
+
+        public void CheckpointVersionShift(long oldVersion, long newVersion)
+        {
+            // no-op
         }
     }
 }
