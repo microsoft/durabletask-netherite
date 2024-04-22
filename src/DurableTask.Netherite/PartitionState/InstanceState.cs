@@ -54,7 +54,7 @@ namespace DurableTask.Netherite
                 && creationRequestReceived.DedupeStatuses != null
                 && creationRequestReceived.DedupeStatuses.Contains(this.OrchestrationState.OrchestrationStatus);
 
-            if (! previousExecutionWithDedupeStatus)
+            if (!previousExecutionWithDedupeStatus)
             {
                 var ee = creationRequestReceived.ExecutionStartedEvent;
 
