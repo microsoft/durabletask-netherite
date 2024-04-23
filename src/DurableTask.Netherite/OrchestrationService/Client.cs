@@ -303,7 +303,7 @@ namespace DurableTask.Netherite
         }
 
         static readonly TimeoutException timeoutException = new TimeoutException("Client request timed out.");
-        readonly OperationCanceledException shutdownException = new OperationCanceledException("Client request was cancelled because host is shutting down.");
+        static readonly OperationCanceledException shutdownException = new OperationCanceledException("Client request was cancelled because host is shutting down.");
 
         internal class PendingRequest : TransportAbstraction.IDurabilityOrExceptionListener
         {
