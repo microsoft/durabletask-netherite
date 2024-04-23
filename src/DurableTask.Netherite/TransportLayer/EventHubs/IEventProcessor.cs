@@ -11,6 +11,9 @@ namespace DurableTask.Netherite.EventHubsTransport
     using Azure.Messaging.EventHubs.Consumer;
     using Azure.Messaging.EventHubs.Processor;
 
+    /// <summary>
+    /// Processes events for a specific partition. Gets opened and closed by the EventProcessorHost.
+    /// </summary>
     interface IEventProcessor
     {
         Task<EventPosition> OpenAsync(CancellationToken cancellationToken);

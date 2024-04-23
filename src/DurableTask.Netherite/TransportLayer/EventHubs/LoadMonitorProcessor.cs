@@ -84,6 +84,11 @@ namespace DurableTask.Netherite.EventHubsTransport
 
         async Task IEventProcessor.ProcessErrorAsync(Exception exception, CancellationToken cancellationToken)
         {
+            if (exception is OperationCanceledException && this.shutdownToken.IsCancellationRequested)
+            {
+                // normal to see some cancellations during shutdown
+            }
+
             if (exception is Azure.Messaging.EventHubs.EventHubsException eventHubsException)
             {
                 switch (eventHubsException.Reason)

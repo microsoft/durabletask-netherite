@@ -139,7 +139,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             public IEventProcessor CreateEventProcessor(EventProcessorClient client, string partitionId)
             {
-                return new EventHubsProcessor(
+                return new PartitionProcessor(
                     this.manager.host,
                     this.manager.transport,
                     this.manager.parameters,

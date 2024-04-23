@@ -63,10 +63,10 @@ namespace DurableTask.Netherite.EventHubsTransport
             {
                 return;
             }
-
+      
             int partitionId = int.Parse(args.PartitionId);
             IEventProcessor processor = this.eventProcessors[partitionId];
-
+             
             if (processor == null)
             {
                 this.eventProcessors[partitionId] = processor = this.factory.CreateEventProcessor(this, args.PartitionId);
@@ -79,7 +79,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 // no point in rethrowing - EH cannot deal with exceptions
             }
         }
-
+             
         async Task ClosePartitionAsync(PartitionClosingEventArgs args)
         {
             int partitionId = int.Parse(args.PartitionId);
@@ -98,7 +98,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         }
 
         async Task ErrorAsync(ProcessErrorEventArgs args)
-        {
+        {     
             if (args.PartitionId != null)
             {
                 int partitionId = int.Parse(args.PartitionId);
