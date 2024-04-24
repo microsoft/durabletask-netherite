@@ -50,14 +50,15 @@ namespace DurableTask.Netherite
                 double queueLatencyMs = evt.IssuedTimestamp - evt.ReceivedTimestamp;
                 double fetchLatencyMs = startedTimestamp - evt.IssuedTimestamp;
                 double latencyMs = finishedTimestamp - startedTimestamp;
+                string nextInputQueuePosition = evt.NextInputQueuePosition > 0 ? $"({evt.NextInputQueuePosition},{evt.NextInputQueueBatchPosition})" : string.Empty;
 
                 if (this.logger.IsEnabled(LogLevel.Information))
                 {
                     var details = string.Format($"{(replaying ? "Replayed" : "Processed")} {(evt.NextInputQueuePosition > 0 ? "external" : "internal")} {category}");
-                    this.logger.LogInformation("Part{partition:D2}.{commitLogPosition:D10} {details} {event} eventId={eventId} instanceId={instanceId} pos=({nextCommitLogPosition},{nextInputQueuePosition}) latency=({queueLatencyMs:F0}, {fetchLatencyMs:F0}, {latencyMs:F0})", this.partitionId, commitLogPosition, details, evt, evt.EventIdString, evt.TracedInstanceId, nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs);
+                    this.logger.LogInformation("Part{partition:D2}.{commitLogPosition:D10} {details} {event} eventId={eventId} instanceId={instanceId} nextCommitLogPosition={nextCommitLogPosition} nextInputQueuePosition={nextInputQueuePosition} latency=({queueLatencyMs:F0}, {fetchLatencyMs:F0}, {latencyMs:F0})", this.partitionId, commitLogPosition, details, evt, evt.EventIdString, evt.TracedInstanceId, nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs);
                 }
 
-                this.etw?.PartitionEventProcessed(this.account, this.taskHub, this.partitionId, commitLogPosition, category.ToString(), evt.EventIdString, evt.ToString(), evt.TracedInstanceId ?? string.Empty, nextCommitLogPosition, evt.NextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs, replaying, TraceUtils.AppName, TraceUtils.ExtensionVersion) ;
+                this.etw?.PartitionEventProcessed(this.account, this.taskHub, this.partitionId, commitLogPosition, category.ToString(), evt.EventIdString, evt.ToString(), evt.TracedInstanceId ?? string.Empty, nextCommitLogPosition, nextInputQueuePosition, queueLatencyMs, fetchLatencyMs, latencyMs, replaying, TraceUtils.AppName, TraceUtils.ExtensionVersion) ;
             }
         }
 

@@ -13,6 +13,7 @@ namespace DurableTask.Netherite
     using System.Threading.Tasks;
     using Azure.Core;
     using DurableTask.Core;
+    using DurableTask.Core.Exceptions;
     using DurableTask.Core.History;
     using Microsoft.Azure.Storage;
     using Newtonsoft.Json;
@@ -473,7 +474,7 @@ namespace DurableTask.Netherite
                 // An instance in this state already exists.
                 if (this.host.Settings.ThrowExceptionOnInvalidDedupeStatus)
                 {
-                    throw new InvalidOperationException($"An Orchestration instance with the status {creationResponseReceived.ExistingInstanceOrchestrationStatus} already exists.");
+                    throw new OrchestrationAlreadyExistsException($"An Orchestration instance with the status {creationResponseReceived.ExistingInstanceOrchestrationStatus} already exists.");
                 }
             }
         }
@@ -522,6 +523,8 @@ namespace DurableTask.Netherite
             {
                 throw new ArgumentException(nameof(instanceId));
             }
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             var request = new WaitRequestReceived()
             {

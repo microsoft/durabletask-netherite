@@ -63,7 +63,7 @@ For some other considerations about how to choose the engine, see [the documenta
 
 ## Status
 
-The current version of Netherite is *1.4.1*. Netherite supports almost all of the DT and DF APIs. 
+The current version of Netherite is *1.5.0*. Netherite supports almost all of the DT and DF APIs. 
 
 Some notable differences to the default Azure Table storage provider include:
 - Instance queries and purge requests are not issued directly against Azure Storage, but are processed by the function app. Thus, the performance (latency and throughput) of queries heavily depends on 

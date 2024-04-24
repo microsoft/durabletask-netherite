@@ -124,6 +124,14 @@ namespace DurableTask.Netherite.Faster
 
         async Task<bool> IStorageLayer.CreateTaskhubIfNotExistsAsync()
         {
+            if (this.settings.PartitionManagement == PartitionManagementOptions.RecoveryTester)
+            {
+                // we do NOT create any resources during recovery testing
+                await ((IStorageLayer)this).TryLoadTaskhubAsync(true);
+                this.traceHelper.TraceProgress("Confirmed existing taskhub");
+                return false;
+            }
+
             bool containerCreated = await (await this.cloudBlobContainer).CreateIfNotExistsAsync();
             if (containerCreated)
             {
@@ -133,6 +141,7 @@ namespace DurableTask.Netherite.Faster
             {
                 this.traceHelper.TraceProgress($"Using existing blob container at {this.cloudBlobContainer.Result.Uri}");
             }
+
 
             var taskHubParameters = new TaskhubParameters()
             {
