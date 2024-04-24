@@ -58,7 +58,6 @@ namespace DurableTask.Netherite
         [DataMember]
         internal bool ExcludeEntities { get; set; }
 
-
         /// <summary>
         /// Construct an instance query with the given parameters.
         /// </summary>
