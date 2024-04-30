@@ -26,7 +26,7 @@
   <PropertyGroup>
 	<MajorVersion>1</MajorVersion>
 	<MinorVersion>5</MinorVersion>
-	<PatchVersion>0</PatchVersion>
+	<PatchVersion>1</PatchVersion>
 	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
     <VersionSuffix></VersionSuffix>
     <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
@@ -51,8 +51,8 @@
   </ItemGroup>
   
   <ItemGroup>
-    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.16.1" />
-    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.13.1" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.16.2" />
+    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.13.2" />
   </ItemGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' != 'netcoreapp2.2' ">
