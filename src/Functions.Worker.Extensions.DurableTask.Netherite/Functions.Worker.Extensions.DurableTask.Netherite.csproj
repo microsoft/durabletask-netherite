@@ -26,7 +26,7 @@
     <Import Project=".\..\..\common.props" />
 
 
-	<ItemGroup>
+    <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
@@ -50,9 +50,5 @@
 		  <_Parameter3_IsLiteral>true</_Parameter3_IsLiteral>
 	  </AssemblyAttribute>
   </ItemGroup>
-
-	<ItemGroup>
-      <Folder Include="Properties\" />
-    </ItemGroup>
 
 </Project>
