@@ -23,7 +23,7 @@
   </PropertyGroup>
 
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
-  <Import Project=".\..\..\common.props" />
+  <Import Project=".\..\common.props" />
 
 
   <!-- Our netcoreapp2.2 target is a non-functional dummy target, so we don't need the warning -->

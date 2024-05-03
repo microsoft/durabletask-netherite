@@ -23,7 +23,7 @@
   </PropertyGroup>
 
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
-  <Import Project=".\..\..\common.props" />
+  <Import Project=".\..\common.props" />
 
   <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="\" />
