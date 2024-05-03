@@ -23,18 +23,10 @@
   </PropertyGroup>
 
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
-  <PropertyGroup>
-	<MajorVersion>1</MajorVersion>
-	<MinorVersion>5</MinorVersion>
-	<PatchVersion>1</PatchVersion>
-	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
-    <VersionSuffix></VersionSuffix>
-    <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
-    <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
-    <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
-  </PropertyGroup>
+  <Import Project=".\..\..\common.props" />
 
-  <!-- Our netcoreapp2.2 target is a non-functional dummy target, so we don't need the warning -->
+
+	<!-- Our netcoreapp2.2 target is a non-functional dummy target, so we don't need the warning -->
   <PropertyGroup Condition=" '$(TargetFramework)' == 'netcoreapp2.2' ">
 	<NoWarn>NETSDK1138</NoWarn>
   </PropertyGroup>
