@@ -41,16 +41,17 @@
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Abstractions" Version="1.1.0" />
   </ItemGroup>
 
-    <!-- This tells the .NET Isolated Worker SDK which WebJobs extension this package depends on -->
-    <ItemGroup>
-	    <AssemblyAttribute Include="Microsoft.Azure.Functions.Worker.Extensions.Abstractions.ExtensionInformationAttribute">
-		    <_Parameter1>Microsoft.Azure.DurableTask.Netherite.AzureFunctions</_Parameter1>
-		    <_Parameter2>$(PackageVersion)</_Parameter2>
-		    <_Parameter3>true</_Parameter3>
-		    <_Parameter3_IsLiteral>true</_Parameter3_IsLiteral>
-	    </AssemblyAttribute>
-    </ItemGroup>
-    <ItemGroup>
+  <!-- This tells the .NET Isolated Worker SDK which WebJobs extension this package depends on -->
+  <ItemGroup>
+	  <AssemblyAttribute Include="Microsoft.Azure.Functions.Worker.Extensions.Abstractions.ExtensionInformationAttribute">
+		  <_Parameter1>Microsoft.Azure.DurableTask.Netherite.AzureFunctions</_Parameter1>
+		  <_Parameter2>$(PackageVersion)</_Parameter2>
+		  <_Parameter3>true</_Parameter3>
+		  <_Parameter3_IsLiteral>true</_Parameter3_IsLiteral>
+	  </AssemblyAttribute>
+  </ItemGroup>
+
+	<ItemGroup>
       <Folder Include="Properties\" />
     </ItemGroup>
 
