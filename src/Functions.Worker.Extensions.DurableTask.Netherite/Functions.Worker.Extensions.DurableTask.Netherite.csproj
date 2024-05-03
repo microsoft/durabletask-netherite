@@ -23,7 +23,7 @@
   </PropertyGroup>
 
   <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
-    <Import Project=".\..\..\common.props" />
+  <Import Project=".\..\..\common.props" />
 
 
   <ItemGroup>
@@ -43,12 +43,12 @@
 
   <!-- This tells the .NET Isolated Worker SDK which WebJobs extension this package depends on -->
   <ItemGroup>
-	  <AssemblyAttribute Include="Microsoft.Azure.Functions.Worker.Extensions.Abstractions.ExtensionInformationAttribute">
-		  <_Parameter1>Microsoft.Azure.DurableTask.Netherite.AzureFunctions</_Parameter1>
-		  <_Parameter2>$(PackageVersion)</_Parameter2>
-		  <_Parameter3>true</_Parameter3>
-		  <_Parameter3_IsLiteral>true</_Parameter3_IsLiteral>
-	  </AssemblyAttribute>
+    <AssemblyAttribute Include="Microsoft.Azure.Functions.Worker.Extensions.Abstractions.ExtensionInformationAttribute">
+	  <_Parameter1>Microsoft.Azure.DurableTask.Netherite.AzureFunctions</_Parameter1>
+	  <_Parameter2>$(PackageVersion)</_Parameter2>
+	  <_Parameter3>true</_Parameter3>
+	  <_Parameter3_IsLiteral>true</_Parameter3_IsLiteral>
+	</AssemblyAttribute>
   </ItemGroup>
 
 </Project>
