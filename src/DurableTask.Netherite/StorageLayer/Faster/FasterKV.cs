@@ -21,7 +21,6 @@ namespace DurableTask.Netherite.Faster
     using FASTER.core;
     using Microsoft.Azure.Storage.Blob.Protocol;
     using Newtonsoft.Json;
-    using static DurableTask.Netherite.SessionsState;
 
     class FasterKV : TrackedObjectStore
     {
