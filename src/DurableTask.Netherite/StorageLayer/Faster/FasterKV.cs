@@ -21,6 +21,7 @@ namespace DurableTask.Netherite.Faster
     using FASTER.core;
     using Microsoft.Azure.Storage.Blob.Protocol;
     using Newtonsoft.Json;
+    using static DurableTask.Netherite.SessionsState;
 
     class FasterKV : TrackedObjectStore
     {
@@ -47,17 +48,20 @@ namespace DurableTask.Netherite.Faster
         static readonly SemaphoreSlim availableQuerySessions = new SemaphoreSlim(queryParallelism);
         readonly ConcurrentBag<int> idleQuerySessions = new ConcurrentBag<int>(Enumerable.Range(0, queryParallelism));
 
-        async ValueTask<FasterKV<Key, Value>.ReadAsyncResult<EffectTracker, Output, object>> ReadOnQuerySessionAsync(string instanceId, CancellationToken cancellationToken)
+        async ValueTask<(Status, Output)> ReadWithFasterAsync(string instanceId, CancellationToken cancellationToken)
         {
             await availableQuerySessions.WaitAsync();
             try
             {
-                bool success = this.idleQuerySessions.TryTake(out var session);
+                bool success = this.idleQuerySessions.TryTake(out int session);
                 this.partition.Assert(success, "available sessions must be larger than or equal to semaphore count");
                 try
                 {
+                    // We need to call `.Complete.` before releasing the session, or else another thread may pick up the session and request a different IO operation,
+                    // which can cause FASTER errors.
                     var result = await this.querySessions[session].ReadAsync(TrackedObjectKey.Instance(instanceId), token: cancellationToken).ConfigureAwait(false);
-                    return result;
+                    (Status status, Output output)  = result.Complete();
+                    return (status, output);
                 }
                 finally
                 {
@@ -950,7 +954,7 @@ namespace DurableTask.Netherite.Faster
         async IAsyncEnumerable<(string,OrchestrationState)> QueryEnumeratedStates(
             EffectTracker effectTracker,
             PartitionQueryEvent queryEvent,
-            IEnumerator<string> enumerator,
+            IEnumerator<string> queryRequests,
             int pageSize,
             TimeSpan timeBudget,
             DateTime attempt
@@ -958,37 +962,48 @@ namespace DurableTask.Netherite.Faster
         {
             var instanceQuery = queryEvent.InstanceQuery;
             string queryId = queryEvent.EventIdString;
-            int? pageLimit = pageSize > 0 ? pageSize : null;
-            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration from {queryEvent.ContinuationToken} with pageLimit={(pageLimit.HasValue ? pageLimit.ToString() : "none")} timeBudget={timeBudget}");
-            Stopwatch stopwatch = Stopwatch.StartNew();
 
-            var channel = Channel.CreateBounded<(bool last, ValueTask<FasterKV<Key, Value>.ReadAsyncResult<EffectTracker, Output, object>> responseTask)>(200);
-            using var leftToFill = new SemaphoreSlim(pageLimit.HasValue ? pageLimit.Value : 100);
+            int? pageLimit = pageSize > 0 ? pageSize : null;
+            using var pageCapacity = new SemaphoreSlim(pageLimit.HasValue ? pageLimit.Value : 100);
+
             using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(this.partition.ErrorHandler.Token);
             var cancellationToken = cancellationTokenSource.Token;
 
-            Task readIssueLoop = Task.Run(ReadIssueLoop);
-            async Task ReadIssueLoop()
+            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration from {queryEvent.ContinuationToken} with pageLimit={(pageLimit.HasValue ? pageLimit.ToString() : "none")} timeBudget={timeBudget}");
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            // We have 'producer-consumer' pattern here, the producer issues requests to FASTER, and the consumer reads the responses.
+            // The channel mediates the communication between producer and consumer.
+            var channel = Channel.CreateBounded<(bool isDone, ValueTask<(Status status, Output output)> readTask)>(200);
+
+            // Producer loop
+            Task produceFasterReadsTask = Task.Run(ProduceFasterReadRequests);
+            async Task ProduceFasterReadRequests()
             {
                 try
                 {
-                    while (enumerator.MoveNext())
+                    // for each query, we issue a read command to FASTER, to be consumed in order by the reader
+                    while (queryRequests.MoveNext())
                     {
-                        if ((!string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix) && !enumerator.Current.StartsWith(instanceQuery.InstanceIdPrefix))
-                            || (instanceQuery.ExcludeEntities && DurableTask.Core.Common.Entities.IsEntityInstance(enumerator.Current)))
+                        if ((!string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix) && !queryRequests.Current.StartsWith(instanceQuery.InstanceIdPrefix))
+                            || (instanceQuery.ExcludeEntities && DurableTask.Core.Common.Entities.IsEntityInstance(queryRequests.Current)))
                         {
                             // the instance does not match the prefix
                             continue;
                         }
 
-                        await leftToFill.WaitAsync(cancellationToken);
+                        // Ensure there's still capacity in this query's result page, and in the channel (as it's bounded/limited)
+                        await pageCapacity.WaitAsync(cancellationToken);
                         await channel.Writer.WaitToWriteAsync(cancellationToken).ConfigureAwait(false);
-                        var readTask = this.ReadOnQuerySessionAsync(enumerator.Current, cancellationToken);
-                        await channel.Writer.WriteAsync((false, readTask), cancellationToken).ConfigureAwait(false);
+
+                        // Issue read command to FASTER (key'ed by the instanceId), and write them in the channel to be consumed by the 'reader'
+                        var readTask = this.ReadWithFasterAsync(queryRequests.Current, cancellationToken);
+                        await channel.Writer.WriteAsync((isDone: false, readTask), cancellationToken).ConfigureAwait(false);
                     }
 
-                    await channel.Writer.WriteAsync((true, default), cancellationToken).ConfigureAwait(false); // marks end of index
-                    channel.Writer.Complete();
+                    // Notify reader that we're done processing requests
+                    await channel.Writer.WriteAsync((isDone: true, default), cancellationToken).ConfigureAwait(false); // marks end of index
+                    channel.Writer.Complete(); // notify reader to stop waiting for more data
                     this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration finished because it reached end");
                 }
                 catch (OperationCanceledException)
@@ -1023,11 +1038,12 @@ namespace DurableTask.Netherite.Faster
 
             ReportProgress("start");
 
+            // Start of consumer loop
             while (await channel.Reader.WaitToReadAsync(this.partition.ErrorHandler.Token).ConfigureAwait(false))
             {
                 while (channel.Reader.TryRead(out var item))
                 {
-                    if (item.last)
+                    if (item.isDone)
                     {
                         ReportProgress("completed");
                         yield return (null, null);
@@ -1050,16 +1066,14 @@ namespace DurableTask.Netherite.Faster
 
                     try
                     {
-                        var response = await item.responseTask.ConfigureAwait(false);
-
-                        (Status status, Output output) = response.Complete();
+                        (Status status, Output output) = await item.readTask.ConfigureAwait(false);
 
                         scanned++;
 
                         if (status.NotFound)
                         {
                             // because we are running concurrently, the index can be out of sync with the actual store
-                            leftToFill.Release();
+                            pageCapacity.Release();
                             continue;
                         }
 
@@ -1100,7 +1114,7 @@ namespace DurableTask.Netherite.Faster
                     if (orchestrationState != null && instanceQuery.Matches(orchestrationState))
                     {
                         matched++;
-                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {enumerator.Current}");
+                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {queryRequests.Current}");
                         yield return (position, orchestrationState);
 
                         if (pageLimit.HasValue)
@@ -1113,12 +1127,12 @@ namespace DurableTask.Netherite.Faster
                         }
                         else
                         {
-                            leftToFill.Release();
+                            pageCapacity.Release();
                         }
                     }
                     else
                     {
-                        leftToFill.Release();
+                        pageCapacity.Release();
                     }
                 }
             }
@@ -1129,7 +1143,7 @@ namespace DurableTask.Netherite.Faster
 
         done:
             cancellationTokenSource.Cancel();
-            await readIssueLoop;
+            await produceFasterReadsTask;
             yield break;
         }
 
