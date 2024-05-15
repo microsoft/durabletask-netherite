@@ -968,160 +968,169 @@ namespace DurableTask.Netherite.Faster
             using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(this.partition.ErrorHandler.Token);
             var cancellationToken = cancellationTokenSource.Token;
 
-            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration from {queryEvent.ContinuationToken} with pageLimit={(pageLimit.HasValue ? pageLimit.ToString() : "none")} timeBudget={timeBudget}");
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            Task produceFasterReadsTask = Task.CompletedTask;
 
-            // We have 'producer-consumer' pattern here, the producer issues requests to FASTER, and the consumer reads the responses.
-            // The channel mediates the communication between producer and consumer.
-            var channel = Channel.CreateBounded<(bool isDone, ValueTask<(Status status, Output output)> readTask)>(200);
-
-            // Producer loop
-            Task produceFasterReadsTask = Task.Run(ProduceFasterReadRequests);
-            async Task ProduceFasterReadRequests()
+            try
             {
-                try
+                this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration from {queryEvent.ContinuationToken} with pageLimit={(pageLimit.HasValue ? pageLimit.ToString() : "none")} timeBudget={timeBudget}");
+                Stopwatch stopwatch = Stopwatch.StartNew();
+
+                // We have 'producer-consumer' pattern here, the producer issues requests to FASTER, and the consumer reads the responses.
+                // The channel mediates the communication between producer and consumer.
+                var channel = Channel.CreateBounded<(bool isDone, ValueTask<(Status status, Output output)> readTask)>(200);
+
+                // Producer loop
+                produceFasterReadsTask = Task.Run(ProduceFasterReadRequests);
+                async Task ProduceFasterReadRequests()
                 {
-                    // for each query, we issue a read command to FASTER, to be consumed in order by the reader
-                    while (queryRequests.MoveNext())
-                    {
-                        if ((!string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix) && !queryRequests.Current.StartsWith(instanceQuery.InstanceIdPrefix))
-                            || (instanceQuery.ExcludeEntities && DurableTask.Core.Common.Entities.IsEntityInstance(queryRequests.Current)))
-                        {
-                            // the instance does not match the prefix
-                            continue;
-                        }
-
-                        // Ensure there's still capacity in this query's result page, and in the channel (as it's bounded/limited)
-                        await pageCapacity.WaitAsync(cancellationToken);
-                        await channel.Writer.WaitToWriteAsync(cancellationToken).ConfigureAwait(false);
-
-                        // Issue read command to FASTER (key'ed by the instanceId), and write them in the channel to be consumed by the 'reader'
-                        var readTask = this.ReadWithFasterAsync(queryRequests.Current, cancellationToken);
-                        await channel.Writer.WriteAsync((isDone: false, readTask), cancellationToken).ConfigureAwait(false);
-                    }
-
-                    // Notify reader that we're done processing requests
-                    await channel.Writer.WriteAsync((isDone: true, default), cancellationToken).ConfigureAwait(false); // marks end of index
-                    channel.Writer.Complete(); // notify reader to stop waiting for more data
-                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration finished because it reached end");
-                }
-                catch (OperationCanceledException)
-                {
-                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration cancelled");
-                    channel.Writer.TryComplete();
-                }
-                catch (Exception exception) when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
-                {
-                    this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration cancelled due to partition termination");
-                    channel.Writer.TryComplete();
-                }
-                catch (Exception e)
-                {
-                    this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} attempt {attempt:o} enumeration failed with exception {e}");
-                    channel.Writer.TryComplete();
-                }
-            }
-
-            long scanned = 0;
-            long found = 0;
-            long matched = 0;
-            long lastReport;
-            string position = queryEvent.ContinuationToken ?? "";
-
-            void ReportProgress(string status)
-            {
-                this.partition.EventTraceHelper.TraceEventProcessingDetail(
-                $"query {queryId} attempt {attempt:o} {status} position={position} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} found={found} matched={matched}");
-                lastReport = stopwatch.ElapsedMilliseconds;
-            }
-
-            ReportProgress("start");
-
-            // Start of consumer loop
-            while (await channel.Reader.WaitToReadAsync(this.partition.ErrorHandler.Token).ConfigureAwait(false))
-            {
-                while (channel.Reader.TryRead(out var item))
-                {
-                    if (item.isDone)
-                    {
-                        ReportProgress("completed");
-                        yield return (null, null);
-                        goto done;
-                    }
-
-                    if (stopwatch.Elapsed > timeBudget)
-                    {
-                        // stop querying and just return what we have so far
-                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration finished because of time limit");
-                        goto pageDone;
-                    }
-
-                    if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
-                    {
-                        ReportProgress("underway");
-                    }
-
-                    OrchestrationState orchestrationState = null;
-
                     try
                     {
-                        (Status status, Output output) = await item.readTask.ConfigureAwait(false);
-
-                        scanned++;
-
-                        if (status.NotFound)
+                        // for each query, we issue a read command to FASTER, to be consumed in order by the reader
+                        while (queryRequests.MoveNext())
                         {
-                            // because we are running concurrently, the index can be out of sync with the actual store
-                            pageCapacity.Release();
-                            continue;
+                            if ((!string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix) && !queryRequests.Current.StartsWith(instanceQuery.InstanceIdPrefix))
+                                || (instanceQuery.ExcludeEntities && DurableTask.Core.Common.Entities.IsEntityInstance(queryRequests.Current)))
+                            {
+                                // the instance does not match the prefix
+                                continue;
+                            }
+
+                            // Ensure there's still capacity in this query's result page, and in the channel (as it's bounded/limited)
+                            await pageCapacity.WaitAsync(cancellationToken);
+                            await channel.Writer.WaitToWriteAsync(cancellationToken).ConfigureAwait(false);
+
+                            // Issue read command to FASTER (key'ed by the instanceId), and write them in the channel to be consumed by the 'reader'
+                            var readTask = this.ReadWithFasterAsync(queryRequests.Current, cancellationToken);
+                            await channel.Writer.WriteAsync((isDone: false, readTask), cancellationToken).ConfigureAwait(false);
                         }
 
-                        this.partition.Assert(status.Found, "FASTER did not complete the read");
-
-                        var instanceState = (InstanceState)output.Read(this, queryId);
-
-                        found++;
-
-                        //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {enumerator.Current}");
-
-                        // reading the orchestrationState may race with updating the orchestration state
-                        // but it is benign because the OrchestrationState object is immutable
-                        orchestrationState = instanceState?.OrchestrationState;
-
-                        position = instanceState.InstanceId;
-
-                        this.partition.Assert(orchestrationState == null || orchestrationState.OrchestrationInstance.InstanceId == instanceState.InstanceId, "wrong instance id");
+                        // Notify reader that we're done processing requests
+                        await channel.Writer.WriteAsync((isDone: true, default), cancellationToken).ConfigureAwait(false); // marks end of index
+                        channel.Writer.Complete(); // notify reader to stop waiting for more data
+                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration finished because it reached end");
                     }
                     catch (OperationCanceledException)
                     {
-                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} cancelled");
-                        goto done;
+                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration cancelled");
+                        channel.Writer.TryComplete();
                     }
                     catch (Exception exception) when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
                     {
-                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} cancelled due to partition termination");
-                        cancellationTokenSource.Cancel();
-                        goto done;
+                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration cancelled due to partition termination");
+                        channel.Writer.TryComplete();
                     }
                     catch (Exception e)
                     {
                         this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} attempt {attempt:o} enumeration failed with exception {e}");
-                        cancellationTokenSource.Cancel();
-                        goto done;
+                        channel.Writer.TryComplete();
                     }
+                }
 
-                    if (orchestrationState != null && instanceQuery.Matches(orchestrationState))
+                long scanned = 0;
+                long found = 0;
+                long matched = 0;
+                long lastReport;
+                string position = queryEvent.ContinuationToken ?? "";
+
+                void ReportProgress(string status)
+                {
+                    this.partition.EventTraceHelper.TraceEventProcessingDetail(
+                    $"query {queryId} attempt {attempt:o} {status} position={position} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} found={found} matched={matched}");
+                    lastReport = stopwatch.ElapsedMilliseconds;
+                }
+
+                ReportProgress("start");
+
+                // Start of consumer loop
+                while (await channel.Reader.WaitToReadAsync(this.partition.ErrorHandler.Token).ConfigureAwait(false))
+                {
+                    while (channel.Reader.TryRead(out var item))
                     {
-                        matched++;
-                        this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {queryRequests.Current}");
-                        yield return (position, orchestrationState);
-
-                        if (pageLimit.HasValue)
+                        if (item.isDone)
                         {
-                            if (matched >= pageLimit.Value)
+                            ReportProgress("completed");
+                            yield return (null, null);
+                            goto done;
+                        }
+
+                        if (stopwatch.Elapsed > timeBudget)
+                        {
+                            // stop querying and just return what we have so far
+                            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration finished because of time limit");
+                            goto pageDone;
+                        }
+
+                        if (stopwatch.ElapsedMilliseconds - lastReport > 5000)
+                        {
+                            ReportProgress("underway");
+                        }
+
+                        OrchestrationState orchestrationState = null;
+
+                        try
+                        {
+                            (Status status, Output output) = await item.readTask.ConfigureAwait(false);
+
+                            scanned++;
+
+                            if (status.NotFound)
                             {
-                                cancellationTokenSource.Cancel();
-                                break;
+                                // because we are running concurrently, the index can be out of sync with the actual store
+                                pageCapacity.Release();
+                                continue;
+                            }
+
+                            this.partition.Assert(status.Found, "FASTER did not complete the read");
+
+                            var instanceState = (InstanceState)output.Read(this, queryId);
+
+                            found++;
+
+                            //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {enumerator.Current}");
+
+                            // reading the orchestrationState may race with updating the orchestration state
+                            // but it is benign because the OrchestrationState object is immutable
+                            orchestrationState = instanceState?.OrchestrationState;
+
+                            position = instanceState.InstanceId;
+
+                            this.partition.Assert(orchestrationState == null || orchestrationState.OrchestrationInstance.InstanceId == instanceState.InstanceId, "wrong instance id");
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} cancelled");
+                            goto done;
+                        }
+                        catch (Exception exception) when (this.terminationToken.IsCancellationRequested && !Utils.IsFatal(exception))
+                        {
+                            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} cancelled due to partition termination");
+                            cancellationTokenSource.Cancel();
+                            goto done;
+                        }
+                        catch (Exception e)
+                        {
+                            this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} attempt {attempt:o} enumeration failed with exception {e}");
+                            cancellationTokenSource.Cancel();
+                            goto done;
+                        }
+
+                        if (orchestrationState != null && instanceQuery.Matches(orchestrationState))
+                        {
+                            matched++;
+                            this.partition.EventDetailTracer?.TraceEventProcessingDetail($"match instance {queryRequests.Current}");
+                            yield return (position, orchestrationState);
+
+                            if (pageLimit.HasValue)
+                            {
+                                if (matched >= pageLimit.Value)
+                                {
+                                    cancellationTokenSource.Cancel();
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                pageCapacity.Release();
                             }
                         }
                         else
@@ -1129,21 +1138,20 @@ namespace DurableTask.Netherite.Faster
                             pageCapacity.Release();
                         }
                     }
-                    else
-                    {
-                        pageCapacity.Release();
-                    }
                 }
+            pageDone:
+                yield return (position, null);
+                ReportProgress("completed-page");
+            done:
+                yield break;
+            }
+            finally
+            {
+                cancellationTokenSource.Cancel();
+                await produceFasterReadsTask;
             }
 
-        pageDone:
-            yield return (position, null);
-            ReportProgress("completed-page");
 
-        done:
-            cancellationTokenSource.Cancel();
-            await produceFasterReadsTask;
-            yield break;
         }
 
         IAsyncEnumerable<(string,OrchestrationState)> ScanOrchestrationStates(
