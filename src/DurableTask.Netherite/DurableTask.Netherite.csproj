@@ -22,18 +22,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
-  <PropertyGroup>
-    <MajorVersion>1</MajorVersion>
-	<MinorVersion>5</MinorVersion>
-	<PatchVersion>2</PatchVersion>
-	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
-    <VersionSuffix>clientQueryFix.2</VersionSuffix>
-    <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
-    <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
-    <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
-  </PropertyGroup>
-  
+  <!-- Version can be edited in common.props -->
+  <Import Project=".\..\common.props" />
   <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
