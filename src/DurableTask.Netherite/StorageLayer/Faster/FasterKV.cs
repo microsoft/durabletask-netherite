@@ -9,6 +9,7 @@ namespace DurableTask.Netherite.Faster
     using System.Diagnostics;
     using System.IO;
     using System.Linq;
+    using System.Reactive.Concurrency;
     using System.Runtime.CompilerServices;
     using System.Runtime.Serialization;
     using System.Text;
@@ -970,10 +971,23 @@ namespace DurableTask.Netherite.Faster
 
             Task produceFasterReadsTask = Task.CompletedTask;
 
+            long scanned = 0;
+            long found = 0;
+            long matched = 0;
+            long lastReport;
+            string position = queryEvent.ContinuationToken ?? "";
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            void ReportProgress(string status)
+            {
+                this.partition.EventTraceHelper.TraceEventProcessingDetail(
+                $"query {queryId} attempt {attempt:o} {status} position={position} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} found={found} matched={matched}");
+                lastReport = stopwatch.ElapsedMilliseconds;
+            }
+
             try
             {
                 this.partition.EventDetailTracer?.TraceEventProcessingDetail($"query {queryId} attempt {attempt:o} enumeration from {queryEvent.ContinuationToken} with pageLimit={(pageLimit.HasValue ? pageLimit.ToString() : "none")} timeBudget={timeBudget}");
-                Stopwatch stopwatch = Stopwatch.StartNew();
 
                 // We have 'producer-consumer' pattern here, the producer issues requests to FASTER, and the consumer reads the responses.
                 // The channel mediates the communication between producer and consumer.
@@ -1024,19 +1038,6 @@ namespace DurableTask.Netherite.Faster
                         this.partition.EventTraceHelper.TraceEventProcessingWarning($"query {queryId} attempt {attempt:o} enumeration failed with exception {e}");
                         channel.Writer.TryComplete();
                     }
-                }
-
-                long scanned = 0;
-                long found = 0;
-                long matched = 0;
-                long lastReport;
-                string position = queryEvent.ContinuationToken ?? "";
-
-                void ReportProgress(string status)
-                {
-                    this.partition.EventTraceHelper.TraceEventProcessingDetail(
-                    $"query {queryId} attempt {attempt:o} {status} position={position} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s scanned={scanned} found={found} matched={matched}");
-                    lastReport = stopwatch.ElapsedMilliseconds;
                 }
 
                 ReportProgress("start");
@@ -1148,7 +1149,8 @@ namespace DurableTask.Netherite.Faster
             finally
             {
                 cancellationTokenSource.Cancel();
-                await produceFasterReadsTask;
+                await produceFasterReadsTask.ConfigureAwait(false);
+                ReportProgress("finalizing-query");
             }
 
 
