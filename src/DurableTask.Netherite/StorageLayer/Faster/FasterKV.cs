@@ -182,7 +182,12 @@ namespace DurableTask.Netherite.Faster
         ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> CreateASession(string id, bool isScan)
         {
             var functions = new Functions(this.partition, this, this.cacheTracker, isScan);
-            return this.fht.NewSession(functions, id, readFlags: (isScan ? ReadFlags.None : ReadFlags.CopyReadsToTail));
+
+            ReadCopyOptions readCopyOptions = isScan
+                ? new ReadCopyOptions(ReadCopyFrom.None, ReadCopyTo.None)
+                : new ReadCopyOptions(ReadCopyFrom.AllImmutable, ReadCopyTo.MainLog);
+
+            return this.fht.NewSession(functions, id, default, readCopyOptions);
         }
 
         public IDisposable TrackTemporarySession(ClientSession<Key, Value, EffectTracker, Output, object, IFunctions<Key, Value, EffectTracker, Output, object>> session)
@@ -969,8 +974,8 @@ namespace DurableTask.Netherite.Faster
                 {
                     while (enumerator.MoveNext())
                     {
-                        if (!string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
-                            && !enumerator.Current.StartsWith(instanceQuery.InstanceIdPrefix))
+                        if ((!string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix) && !enumerator.Current.StartsWith(instanceQuery.InstanceIdPrefix))
+                            || (instanceQuery.ExcludeEntities && DurableTask.Core.Common.Entities.IsEntityInstance(enumerator.Current)))
                         {
                             // the instance does not match the prefix
                             continue;
@@ -1189,8 +1194,8 @@ namespace DurableTask.Netherite.Faster
                                 scanned++;
                                 //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"found instance {key.InstanceId}");
 
-                                if (string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix)
-                                    || key.Val.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
+                                if ((string.IsNullOrEmpty(instanceQuery?.InstanceIdPrefix) || key.Val.InstanceId.StartsWith(instanceQuery.InstanceIdPrefix))
+                                    || (instanceQuery.ExcludeEntities && DurableTask.Core.Common.Entities.IsEntityInstance(key.Val.InstanceId)))
                                 {
                                     //this.partition.EventDetailTracer?.TraceEventProcessingDetail($"reading instance {key.InstanceId}");
 

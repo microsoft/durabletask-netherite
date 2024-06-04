@@ -57,7 +57,8 @@ namespace DurableTask.Netherite
             None,
             Client,
             Activity,
-            Orchestration
+            Orchestration,
+            Entity,
         }
 
         public enum ClientStatus

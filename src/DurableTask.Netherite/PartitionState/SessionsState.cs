@@ -327,7 +327,7 @@ namespace DurableTask.Netherite
                 {
                     this.Partition.WorkItemTraceHelper.TraceWorkItemDiscarded(
                         this.Partition.PartitionId,
-                        WorkItemTraceHelper.WorkItemType.Orchestration,
+                        DurableTask.Core.Common.Entities.IsEntityInstance(evt.InstanceId) ? WorkItemTraceHelper.WorkItemType.Entity : WorkItemTraceHelper.WorkItemType.Orchestration,
                         evt.WorkItemId, evt.InstanceId,
                         session != null ? this.GetSessionPosition(session) : null,
                         "session was replaced");

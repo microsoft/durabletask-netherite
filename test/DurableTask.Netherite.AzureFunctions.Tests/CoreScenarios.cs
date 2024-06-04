@@ -63,6 +63,44 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
                 actual: status.Output?.ToString(Formatting.None));
         }
 
+        [Fact]
+        public async Task CanOrchestrateEntities()
+        {
+            DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.OrchestrateCounterEntity));
+            Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
+            Assert.Equal(7, (int)status.Output);
+        }
+
+        [Fact]
+        public async Task CanClientInteractWithEntities()
+        {
+            IDurableClient client = await this.GetDurableClientAsync();
+
+            var entityId = new EntityId(nameof(Functions.Counter), Guid.NewGuid().ToString("N"));
+            EntityStateResponse<int> result = await client.ReadEntityStateAsync<int>(entityId);
+            Assert.False(result.EntityExists);
+
+            await Task.WhenAll(
+                client.SignalEntityAsync(entityId, "incr"),
+                client.SignalEntityAsync(entityId, "incr"),
+                client.SignalEntityAsync(entityId, "incr"),
+                client.SignalEntityAsync(entityId, "add", 4));
+
+            await Task.Delay(TimeSpan.FromSeconds(5));
+
+            result = await client.ReadEntityStateAsync<int>(entityId);
+            Assert.True(result.EntityExists);
+            Assert.Equal(7, result.EntityState);
+        }
+
+        [Fact]
+        public async Task CanOrchestrationInteractWithEntities()
+        {
+            DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.IncrementThenGet));
+            Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
+            Assert.Equal(1, (int)status.Output);
+        }
+
         static class Functions
         {
             [FunctionName(nameof(Sequence))]
@@ -99,6 +137,72 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
 
             [FunctionName(nameof(IntToString))]
             public static string IntToString([ActivityTrigger] int input) => input.ToString();
+
+
+            [FunctionName(nameof(OrchestrateCounterEntity))]
+            public static async Task<int> OrchestrateCounterEntity(
+                [OrchestrationTrigger] IDurableOrchestrationContext ctx)
+            {
+                var entityId = new EntityId(nameof(Counter), ctx.NewGuid().ToString("N"));
+                ctx.SignalEntity(entityId, "incr");
+                ctx.SignalEntity(entityId, "incr");
+                ctx.SignalEntity(entityId, "incr");
+                ctx.SignalEntity(entityId, "add", 4);
+
+                using (await ctx.LockAsync(entityId))
+                {
+                    int result = await ctx.CallEntityAsync<int>(entityId, "get");
+                    return result;
+                }
+            }
+
+            [FunctionName(nameof(Counter))]
+            public static void Counter([EntityTrigger] IDurableEntityContext ctx)
+            {
+                int current = ctx.GetState<int>();
+                switch (ctx.OperationName)
+                {
+                    case "incr":
+                        ctx.SetState(current + 1);
+                        break;
+                    case "add":
+                        int amount = ctx.GetInput<int>();
+                        ctx.SetState(current + amount);
+                        break;
+                    case "get":
+                        ctx.Return(current);
+                        break;
+                    case "set":
+                        amount = ctx.GetInput<int>();
+                        ctx.SetState(amount);
+                        break;
+                    case "delete":
+                        ctx.DeleteState();
+                        break;
+                    default:
+                        throw new NotImplementedException("No such entity operation");
+                }
+            }
+
+            [FunctionName(nameof(IncrementThenGet))]
+            public static async Task<int> IncrementThenGet([OrchestrationTrigger] IDurableOrchestrationContext context)
+            {
+                // Key needs to be pseudo-random to avoid conflicts with multiple test runs.
+                string key = context.NewGuid().ToString().Substring(0, 8);
+                EntityId entityId = new EntityId(nameof(Counter), key);
+
+                context.SignalEntity(entityId, "add", 1);
+
+                // Invoking a sub-orchestration as a regression test for https://github.com/microsoft/durabletask-mssql/issues/146
+                return await context.CallSubOrchestratorAsync<int>(nameof(GetEntityAsync), entityId);
+            }
+
+            [FunctionName(nameof(GetEntityAsync))]
+            public static async Task<int> GetEntityAsync([OrchestrationTrigger] IDurableOrchestrationContext context)
+            {
+                EntityId entityId = context.GetInput<EntityId>();
+                return await context.CallEntityAsync<int>(entityId, "get");
+            }
         }
     }
 }

@@ -18,7 +18,8 @@ namespace DurableTask.Netherite
     public class NetheriteOrchestrationServiceSettings
     {
         /// <summary>
-        /// The name of the taskhub. Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
+        /// The name of the taskhub.
+        /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
         /// </summary>
         public string HubName { get; set; }
 
@@ -57,18 +58,39 @@ namespace DurableTask.Netherite
         public Faster.BlobManager.FasterTuningParameters FasterTuningParameters { get; set; } = null;
 
         /// <summary>
-        /// Gets or sets the maximum number of work items that can be processed concurrently on a single node.
+        /// Gets or sets the maximum number of activity work items that can be processed concurrently on a single node.
         /// The default value is 100.
-        /// Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
+        /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
         /// </summary>
         public int MaxConcurrentActivityFunctions { get; set; } = 100;
 
         /// <summary>
-        /// Gets or sets the maximum number of orchestrations that can be processed concurrently on a single node.
+        /// Gets or sets the maximum number of orchestration work items that can be processed concurrently on a single node.
         /// The default value is 100.
-        /// Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
+        /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
         /// </summary>
         public int MaxConcurrentOrchestratorFunctions { get; set; } = 100;
+
+        /// <summary>
+        /// Gets or sets the maximum number of entity work items that can be processed concurrently on a single node.
+        /// The default value is 100.
+        /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
+        /// </summary>
+        public int MaxConcurrentEntityFunctions { get; set; } = 100;
+
+        /// <summary>
+        /// Whether to use separate work item queues for entities and orchestrators.
+        /// This defaults to false, to maintain compatility with legacy front ends.
+        /// Newer front ends explicitly set this to true.
+        /// </summary>
+        public bool UseSeparateQueueForEntityWorkItems { get; set; } = false;
+
+        /// <summary>
+        /// Gets or sets the maximum number of entity operations that are processed as a single batch.
+        /// The default value is 1000.
+        /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
+        /// </summary>
+        public int MaxEntityOperationBatchSize { get; set; } = 1000;
 
         /// <summary>
         /// Gets or sets the number of dispatchers used to dispatch orchestrations.

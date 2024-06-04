@@ -22,17 +22,9 @@
     <PackageIcon>icon.png</PackageIcon>
   </PropertyGroup>
 
-  <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
-  <PropertyGroup>
-	<MajorVersion>1</MajorVersion>
-	<MinorVersion>4</MinorVersion>
-	<PatchVersion>3</PatchVersion>
-	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
-    <VersionSuffix></VersionSuffix>
-    <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
-    <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
-    <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
-  </PropertyGroup>
+  <!-- Version can be edited in common.props -->
+  <Import Project=".\..\common.props" />
+
 
   <!-- Our netcoreapp2.2 target is a non-functional dummy target, so we don't need the warning -->
   <PropertyGroup Condition=" '$(TargetFramework)' == 'netcoreapp2.2' ">
@@ -51,8 +43,8 @@
   </ItemGroup>
   
   <ItemGroup>
-    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.15.1" />
-    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.12.0" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.16.2" />
+    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.13.2" />
   </ItemGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' != 'netcoreapp2.2' ">

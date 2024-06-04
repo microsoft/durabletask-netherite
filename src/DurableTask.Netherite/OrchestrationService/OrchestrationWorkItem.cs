@@ -32,6 +32,8 @@ namespace DurableTask.Netherite
 
         public override bool RestoreOriginalRuntimeStateDuringCompletion => false;
 
+        public WorkItemTraceHelper.WorkItemType WorkItemType => DurableTask.Core.Common.Entities.IsEntityInstance(this.InstanceId) ? WorkItemTraceHelper.WorkItemType.Entity : WorkItemTraceHelper.WorkItemType.Orchestration;
+
         public OrchestrationWorkItem(Partition partition, OrchestrationMessageBatch messageBatch, List<HistoryEvent> previousHistory = null, string customStatus = null)
         {
             this.Partition = partition;

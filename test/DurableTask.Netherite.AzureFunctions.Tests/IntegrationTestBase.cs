@@ -140,7 +140,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             return await client.PurgeInstanceHistoryAsync(default, default, null);
         }
 
-        async Task<IDurableClient> GetDurableClientAsync()
+        protected async Task<IDurableClient> GetDurableClientAsync()
         {
             var clientRef = new IDurableClient[1];
             await this.CallFunctionAsync(nameof(ClientFunctions.GetDurableClient), "clientRef", clientRef);

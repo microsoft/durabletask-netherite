@@ -91,5 +91,10 @@ namespace DurableTask.Netherite.Faster
 
         void IDisposable.Dispose()
             => this.localCheckpointManager.Dispose();
+
+        public void CheckpointVersionShift(long oldVersion, long newVersion)
+        {
+            // no-op
+        }
     }
 }
