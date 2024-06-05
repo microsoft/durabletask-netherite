@@ -18,6 +18,33 @@ namespace DurableTask.Netherite.AzureFunctions
     using Microsoft.Extensions.Options;
     using Newtonsoft.Json;
 
+    /// <summary>
+    /// Utility class to disambiguate the right constructor to use for the NetheriteProviderFactory when using DI.
+    /// We need this class because there's two constructors of NetheriteProviderFactory, one of which is obsolete.
+    /// Starting in .NET8, this situation can lead to an ambiguous constructor resolution error even when the ActivatorUtilitiesConstructor attribute is used.
+    /// Therefore, this internal class help us narrow down the constructor selection.
+    /// </summary>
+    class UnambiguousNetheriteProviderFactory : NetheriteProviderFactory
+    {
+        /// <summary>
+        /// Constructors a NetheriteProviderFactory using the non-obsolete constructor from the parent class.
+        /// </summary>
+        [ActivatorUtilitiesConstructor]
+        internal UnambiguousNetheriteProviderFactory(
+            IOptions<DurableTaskOptions> extensionOptions,
+            ILoggerFactory loggerFactory,
+            IHostIdProvider hostIdProvider,
+            INameResolver nameResolver,
+            IServiceProvider serviceProvider,
+            DurableTask.Netherite.ConnectionResolver connectionResolver,
+#pragma warning disable CS0612 // Type or member is obsolete
+            IPlatformInformation platformInfo) : base(extensionOptions, loggerFactory, hostIdProvider, nameResolver, serviceProvider, connectionResolver, platformInfo)
+        {
+        }
+#pragma warning restore CS0612 // Type or member is obsolete
+
+    }
+
     public class NetheriteProviderFactory : IDurabilityProviderFactory
     {
         readonly static ConcurrentDictionary<(string taskhub, string storage, string transport), NetheriteProvider> CachedProviders
