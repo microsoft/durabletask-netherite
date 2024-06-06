@@ -30,7 +30,7 @@ namespace DurableTask.Netherite.AzureFunctions
         /// Constructors a NetheriteProviderFactory using the non-obsolete constructor from the parent class.
         /// </summary>
         [ActivatorUtilitiesConstructor]
-        internal UnambiguousNetheriteProviderFactory(
+        public UnambiguousNetheriteProviderFactory(
             IOptions<DurableTaskOptions> extensionOptions,
             ILoggerFactory loggerFactory,
             IHostIdProvider hostIdProvider,
