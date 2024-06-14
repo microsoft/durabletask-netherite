@@ -3,7 +3,7 @@ trigger:
     batch: true
     branches:
         include:
-            - vabachu/officialbuild
+            - main
 
 # CI only, does not trigger on PRs.
 pr: none
