@@ -11,12 +11,11 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Messaging.EventHubs;
     using Azure.Storage.Blobs;
     using Azure.Storage.Blobs.Models;
     using Azure.Storage.Blobs.Specialized;
     using DurableTask.Netherite.Faster;
-    using Microsoft.Azure.EventHubs;
-    using Microsoft.Azure.Storage;
     using Microsoft.Extensions.Azure;
     using Microsoft.Extensions.Logging;
 
@@ -53,7 +52,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             foreach (var eventData in hubMessages)
             {
-                var seqno = eventData.SystemProperties.SequenceNumber;
+                var seqno = eventData.SequenceNumber;
 
                 if (nextPacketToReceive != null)
                 {
@@ -75,11 +74,11 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                 try
                 {
-                    Packet.Deserialize(eventData.Body, out evt, out blobReference, guid);
+                    Packet.Deserialize(eventData.EventBody.ToStream(), out evt, out blobReference, guid);
                 }
                 catch (Exception)
                 {
-                    this.traceHelper.LogError("{context} could not deserialize packet #{seqno} ({size} bytes)", this.traceContext, seqno, eventData.Body.Count);
+                    this.traceHelper.LogError("{context} could not deserialize packet #{seqno} ({size} bytes)", this.traceContext, seqno, eventData.EventBody.ToMemory().Length);
                     throw;
                 }
 
@@ -87,7 +86,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 {
                     if (evt == null)
                     {
-                        this.lowestTraceLevel?.LogTrace("{context} ignored packet #{seqno} ({size} bytes) because its guid does not match taskhub/client", this.traceContext, seqno, eventData.Body.Count);
+                        this.lowestTraceLevel?.LogTrace("{context} ignored packet #{seqno} ({size} bytes) because its guid does not match taskhub/client", this.traceContext, seqno, eventData.EventBody.ToMemory().Length);
                         ignoredPacketCount++;
                     }
                     else
