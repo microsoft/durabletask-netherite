@@ -359,23 +359,30 @@ namespace DurableTask.Netherite
             }
         }
 
-        static void TryTransition<T>(ref Task<T> transition, Task<T> lastTransition, Func<Task<T>> nextTransition)
+        static void TryTransition<T>(ref Task<T> currentTransition, Task<T> lastTransition, Func<Task<T>> nextTransition)
         {
-            var greenLight = new TaskCompletionSource<bool>();
+            // some other thread could be trying to do a transition at the same time, creating a race.
+            var waitForRaceToBeDetermined = new TaskCompletionSource<bool>();
+            // wrap the transition in a async function that waits for the race to be won before executing the transition
             var task = conditionalTransition();
-            var interlockedResult = Interlocked.CompareExchange<Task<T>>(ref transition, task, lastTransition);
-            bool success = interlockedResult == lastTransition;
-            greenLight.SetResult(success);
+
+            // to resolve any potential races, we use an interlocked operation. This operation replaces the currentTransition
+            // ONLY if the lastTransition matches the lastTransition that was observed earlier. Otherwise it does nothing.
+            var interlockedResult = Interlocked.CompareExchange<Task<T>>(ref currentTransition, task, lastTransition);
+            bool interlockedWasEffective = interlockedResult == lastTransition; // interlocked exchange returns the value it read
+            waitForRaceToBeDetermined.SetResult(interlockedWasEffective);
 
             async Task<T> conditionalTransition()
             {
-                if (await greenLight.Task)
+                if (await waitForRaceToBeDetermined.Task)
                 {
+                    // this thread won the race so we are now executing the transition.
                     return await nextTransition();
                 }
                 else
                 {
-                    return default; // this thread lost the race so the task does nothing
+                    // this thread lost the race so the task does nothing.
+                    return default; 
                 }
             }
         }
