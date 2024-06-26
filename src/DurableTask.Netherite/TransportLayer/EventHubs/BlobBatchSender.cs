@@ -11,12 +11,12 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Messaging.EventHubs;
     using Azure.Storage.Blobs;
     using Azure.Storage.Blobs.Models;
     using Azure.Storage.Blobs.Specialized;
     using DurableTask.Netherite.Abstractions;
     using DurableTask.Netherite.Faster;
-    using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Logging;
 
     class BlobBatchSender

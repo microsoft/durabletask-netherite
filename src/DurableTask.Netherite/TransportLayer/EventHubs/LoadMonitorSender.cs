@@ -3,8 +3,9 @@
 
 namespace DurableTask.Netherite.EventHubsTransport
 {
+    using Azure.Messaging.EventHubs;
+    using Azure.Messaging.EventHubs.Producer;
     using DurableTask.Core.Common;
-    using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Logging;
     using System;
     using System.Collections.Generic;
@@ -15,26 +16,32 @@ namespace DurableTask.Netherite.EventHubsTransport
 
     class LoadMonitorSender : BatchWorker<LoadMonitorEvent>
     {
-        readonly PartitionSender sender;
+        readonly EventHubProducerClient client;
         readonly TransportAbstraction.IHost host;
         readonly byte[] taskHubGuid;
         readonly EventHubsTraceHelper traceHelper;
         readonly string eventHubName;
         readonly string eventHubPartition;
         readonly TimeSpan backoff = TimeSpan.FromSeconds(5);
-        const int maxFragmentSize = 500 * 1024; // account for very non-optimal serialization of event
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
         readonly Stopwatch stopwatch = new Stopwatch();
+        readonly List<EventData> events = new List<EventData>();
 
-        public LoadMonitorSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper)
-            : base($"EventHubsSender {sender.EventHubClient.EventHubName}/{sender.PartitionId}", false, 2000, shutdownToken, traceHelper)
+        public LoadMonitorSender(TransportAbstraction.IHost host, byte[] taskHubGuid, EventHubConnection connection, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper)
+            : base($"EventHubsSender {connection.EventHubName}/0", false, 2000, shutdownToken, traceHelper)
         {
             this.host = host;
             this.taskHubGuid = taskHubGuid;
-            this.sender = sender;
+            this.client = new EventHubProducerClient(connection);
             this.traceHelper = traceHelper;
-            this.eventHubName = this.sender.EventHubClient.EventHubName;
-            this.eventHubPartition = this.sender.PartitionId;
+            this.eventHubName = connection.EventHubName;
+            this.eventHubPartition = "0";
+        }
+
+        public override async Task WaitForShutdownAsync()
+        {
+            await base.WaitForShutdownAsync();
+            await this.client.CloseAsync(); 
         }
 
         protected override async Task Process(IList<LoadMonitorEvent> toSend)
@@ -54,8 +61,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                 bool[] sentLoadInformationReceived = new bool[32];
                 bool[] sentPositionsReceived = new bool[32];
 
-                this.stopwatch.Restart();
-                int numEvents = 0;
+                this.stopwatch.Restart();                
 
                 for (int i = toSend.Count - 1; i >= 0; i--)
                 {
@@ -85,20 +91,18 @@ namespace DurableTask.Netherite.EventHubsTransport
                         }
                     }
 
+                    int startPos = (int)this.stream.Position;
                     Packet.Serialize(evt, this.stream, this.taskHubGuid);
-                    int length = (int)(this.stream.Position);
-                    var arraySegment = new ArraySegment<byte>(this.stream.GetBuffer(), 0, length);
-                    var eventData = new EventData(arraySegment);
-                    this.cancellationToken.ThrowIfCancellationRequested();
-                    await this.sender.SendAsync(eventData);
-                    this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} sent packet ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, length, evt.EventIdString);
-                    this.stream.Seek(0, SeekOrigin.Begin);
-                    numEvents++;
+                    int length = (int)(this.stream.Position) - startPos;
+                    var arraySegment = new ArraySegment<byte>(this.stream.GetBuffer(), startPos, length);
+                    this.events.Add(new EventData(arraySegment));            
+                    this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} added packet ({size} bytes) id={eventId} to batch", this.eventHubName, this.eventHubPartition, length, evt.EventIdString);
                 }
 
+                await this.client.SendAsync(this.events, this.cancellationToken);
                 long elapsed = this.stopwatch.ElapsedMilliseconds;
-                this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent info numEvents={numEvents} latencyMs={latencyMs}", this.eventHubName, this.eventHubPartition, numEvents, elapsed);
-                
+                this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent info numEvents={numEvents} latencyMs={latencyMs}", this.eventHubName, this.eventHubPartition, this.events.Count, elapsed);
+
                 // rate limit this sender by making each iteration last at least 100ms duration
                 long toSpare = 100 - elapsed;
                 if (toSpare > 10)
@@ -121,6 +125,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             {
                 // we don't need the contents of the stream anymore.
                 this.stream.SetLength(0);
+                this.events.Clear();
             }
         }
     }
