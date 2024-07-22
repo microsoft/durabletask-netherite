@@ -54,7 +54,10 @@ if (-not ((az functionapp list -g $groupName --query "[].name"| ConvertFrom-Json
         az functionapp create --name  $functionAppName --storage-account $storageName --plan  $functionAppName --resource-group  $groupName --functions-version 4
     }
 
-	az functionapp config set -n $functionAppName -g $groupName --use-32bit-worker-process false
+	# it seems that freshly created function apps are not always immediately available
+	Start-Sleep -Seconds 10
+
+	set -n $functionAppName -g $groupName --use-32bit-worker-process false
     az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EventHubsConnection=$eventHubsConnectionString
     az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EHNamespace=$Env:EHNamespace
 }

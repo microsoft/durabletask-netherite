@@ -44,11 +44,11 @@
     },
     "durableTask": {
 
-      "hubName": "perftests",
+      "hubName": "squirrel",
 
       "UseGracefulShutdown": true, // helps to avoid lengthy waits for lease expiration
 
-      "maxConcurrentActivityFunctions": "100",
+      "maxConcurrentActivityFunctions": "50",
       "maxConcurrentOrchestratorFunctions": "100",
 
       "storageProvider": {
@@ -59,7 +59,7 @@
         "StorageConnectionName": "AzureWebJobsStorage",
         "EventHubsConnectionName": "EventHubsConnection",
 
-        "TakeStateCheckpointWhenStoppingPartition": "true",
+        "TakeStateCheckpointWhenStoppingPartition": "false",
         "MaxNumberBytesBetweenCheckpoints": "20000000",
         "MaxNumberEventsBetweenCheckpoints": "10000",
         "IdleCheckpointFrequencyMs": "60000",
@@ -111,8 +111,8 @@
         // it limits production, not just consumption, of the events, so it can be used to prevent overheads.
         // "Debug" is a reasonable setting, as it allows troubleshooting without impacting perf too much.
         "LogLevelLimit": "Debug",
-        "StorageLogLevelLimit": "Debug",
-        "TransportLogLevelLimit": "Debug",
+        "StorageLogLevelLimit": "Trace",
+        "TransportLogLevelLimit": "Trace",
         "EventLogLevelLimit": "Debug",
         "WorkItemLogLevelLimit": "Debug",
         "ClientLogLevelLimit": "Debug",
