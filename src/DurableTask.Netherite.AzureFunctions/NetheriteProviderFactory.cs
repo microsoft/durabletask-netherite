@@ -18,6 +18,33 @@ namespace DurableTask.Netherite.AzureFunctions
     using Microsoft.Extensions.Options;
     using Newtonsoft.Json;
 
+    /// <summary>
+    /// Utility class to disambiguate the right constructor to use for the NetheriteProviderFactory when using DI.
+    /// We need this class because there's two constructors of NetheriteProviderFactory, one of which is obsolete.
+    /// Starting in .NET8, this situation can lead to an ambiguous constructor resolution error even when the ActivatorUtilitiesConstructor attribute is used.
+    /// Therefore, this internal class help us narrow down the constructor selection.
+    /// </summary>
+    class UnambiguousNetheriteProviderFactory : NetheriteProviderFactory
+    {
+        /// <summary>
+        /// Constructors a NetheriteProviderFactory using the non-obsolete constructor from the parent class.
+        /// </summary>
+        [ActivatorUtilitiesConstructor]
+        public UnambiguousNetheriteProviderFactory(
+            IOptions<DurableTaskOptions> extensionOptions,
+            ILoggerFactory loggerFactory,
+            IHostIdProvider hostIdProvider,
+            INameResolver nameResolver,
+            IServiceProvider serviceProvider,
+            DurableTask.Netherite.ConnectionResolver connectionResolver,
+#pragma warning disable CS0612 // Type or member is obsolete
+            IPlatformInformation platformInfo) : base(extensionOptions, loggerFactory, hostIdProvider, nameResolver, serviceProvider, connectionResolver, platformInfo)
+        {
+        }
+#pragma warning restore CS0612 // Type or member is obsolete
+
+    }
+
     public class NetheriteProviderFactory : IDurabilityProviderFactory
     {
         readonly static ConcurrentDictionary<(string taskhub, string storage, string transport), NetheriteProvider> CachedProviders
@@ -32,6 +59,7 @@ namespace DurableTask.Netherite.AzureFunctions
         readonly IServiceProvider serviceProvider;
         readonly DurableTask.Netherite.ConnectionResolver connectionResolver;
 
+        readonly bool usesNewPassthroughMiddlewareForEntities;
         readonly bool inConsumption;
         
         // the following are boolean options that can be specified in host.json,
@@ -96,6 +124,14 @@ namespace DurableTask.Netherite.AzureFunctions
 
             this.TraceToConsole = ReadBooleanSetting(nameof(this.TraceToConsole));
             this.TraceToBlob = ReadBooleanSetting(nameof(this.TraceToBlob));
+
+            WorkerRuntimeType runtimeType = platformInfo.GetWorkerRuntimeType();
+            if (runtimeType == WorkerRuntimeType.DotNetIsolated ||
+                runtimeType == WorkerRuntimeType.Java ||
+                runtimeType == WorkerRuntimeType.Custom)
+            {
+                this.usesNewPassthroughMiddlewareForEntities = true;
+            }
         }
 
         NetheriteOrchestrationServiceSettings GetNetheriteOrchestrationServiceSettings(string taskHubNameOverride = null, string connectionName = null)
@@ -109,12 +145,19 @@ namespace DurableTask.Netherite.AzureFunctions
             // different defaults for key configuration values.
             int maxConcurrentOrchestratorsDefault = this.inConsumption ? 5 : 10 * Environment.ProcessorCount;
             int maxConcurrentActivitiesDefault = this.inConsumption ? 20 : 25 * Environment.ProcessorCount;
+            int maxConcurrentEntitiesDefault = this.inConsumption ? 20 : 25 * Environment.ProcessorCount;
             int maxEntityOperationBatchSizeDefault = this.inConsumption ? 50 : 5000;
 
             // The following defaults are only applied if the customer did not explicitely set them on `host.json`
-            this.options.MaxConcurrentOrchestratorFunctions = this.options.MaxConcurrentOrchestratorFunctions ?? maxConcurrentOrchestratorsDefault;
-            this.options.MaxConcurrentActivityFunctions = this.options.MaxConcurrentActivityFunctions ?? maxConcurrentActivitiesDefault;
-            this.options.MaxEntityOperationBatchSize = this.options.MaxEntityOperationBatchSize ?? maxEntityOperationBatchSizeDefault;
+            this.options.MaxConcurrentOrchestratorFunctions ??= maxConcurrentOrchestratorsDefault;
+            this.options.MaxConcurrentActivityFunctions ??= maxConcurrentActivitiesDefault;
+            this.options.MaxConcurrentEntityFunctions ??= maxConcurrentEntitiesDefault;
+            this.options.MaxEntityOperationBatchSize ??= maxEntityOperationBatchSizeDefault;
+
+            if (this.usesNewPassthroughMiddlewareForEntities)
+            {
+                netheriteSettings.UseSeparateQueueForEntityWorkItems = true;
+            }
 
             // copy all applicable fields from both the options and the storageProvider options
             JsonConvert.PopulateObject(JsonConvert.SerializeObject(this.options), netheriteSettings);

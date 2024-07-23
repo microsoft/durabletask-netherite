@@ -22,18 +22,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <!-- Version settings: https://andrewlock.net/version-vs-versionsuffix-vs-packageversion-what-do-they-all-mean/ -->
-  <PropertyGroup>
-    <MajorVersion>1</MajorVersion>
-	<MinorVersion>5</MinorVersion>
-	<PatchVersion>0</PatchVersion>
-	<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
-    <VersionSuffix></VersionSuffix>
-    <AssemblyVersion>$(MajorVersion).0.0.0</AssemblyVersion>
-    <BuildSuffix Condition="'$(GITHUB_RUN_NUMBER)' != ''">.$(GITHUB_RUN_NUMBER)</BuildSuffix>
-    <FileVersion>$(VersionPrefix)$(BuildSuffix)</FileVersion>
-  </PropertyGroup>
-  
+  <!-- Version can be edited in common.props -->
+  <Import Project=".\..\common.props" />
   <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
@@ -56,9 +46,9 @@
     <PackageReference Include="Microsoft.Azure.EventHubs.Processor" Version="4.3.2" />
     <PackageReference Include="Microsoft.Azure.Storage.Blob" Version="11.2.3" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.16.0" />
-	<PackageReference Include="Microsoft.FASTER.Core" Version="2.0.23" />
-    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.15.1" />
-	<PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.16.2" />
+    <PackageReference Include="Microsoft.FASTER.Core" Version="2.6.5" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
     <PackageReference Include="System.Threading.Channels" Version="4.7.1" />
   </ItemGroup>

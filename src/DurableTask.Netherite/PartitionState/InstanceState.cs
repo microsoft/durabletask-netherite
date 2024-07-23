@@ -27,6 +27,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public List<WaitRequestReceived> Waiters { get; set; }
 
+        [DataMember]
+        public string CreationRequestEventId { get; set; }
+
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Instance, this.InstanceId);
 
@@ -39,12 +42,19 @@ namespace DurableTask.Netherite
 
         public override void Process(CreationRequestReceived creationRequestReceived, EffectTracker effects)
         {
+            if (creationRequestReceived.EventIdString == this.CreationRequestEventId)
+            {
+                // we have already processed this event - it must be a duplicate delivery. Ignore it.
+                return;
+            };
+
             bool exists = this.OrchestrationState != null;
-            bool filterDuplicate = exists
+
+            bool previousExecutionWithDedupeStatus = exists
                 && creationRequestReceived.DedupeStatuses != null
                 && creationRequestReceived.DedupeStatuses.Contains(this.OrchestrationState.OrchestrationStatus);
 
-            if (!filterDuplicate)
+            if (!previousExecutionWithDedupeStatus)
             {
                 var ee = creationRequestReceived.ExecutionStartedEvent;
 
@@ -65,6 +75,7 @@ namespace DurableTask.Netherite
                     ScheduledStartTime = ee.ScheduledStartTime
                 };
                 this.OrchestrationStateSize = DurableTask.Netherite.SizeUtils.GetEstimatedSize(this.OrchestrationState);
+                this.CreationRequestEventId = creationRequestReceived.EventIdString;
 
                 // queue the message in the session, or start a timer if delayed
                 if (!ee.ScheduledStartTime.HasValue)
@@ -87,7 +98,7 @@ namespace DurableTask.Netherite
             {
                 ClientId = creationRequestReceived.ClientId,
                 RequestId = creationRequestReceived.RequestId,
-                Succeeded = !filterDuplicate,
+                Succeeded = !previousExecutionWithDedupeStatus,
                 ExistingInstanceOrchestrationStatus = this.OrchestrationState?.OrchestrationStatus,
             };
         }
@@ -211,6 +222,8 @@ namespace DurableTask.Netherite
             effects.AddDeletion(TrackedObjectKey.History(this.InstanceId));
 
             this.OrchestrationState = null;
+            this.OrchestrationStateSize = 0;
+            this.CreationRequestEventId = null;
             this.Waiters = null;
         }
 
