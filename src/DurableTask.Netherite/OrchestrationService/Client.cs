@@ -15,6 +15,7 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
     using DurableTask.Core.Exceptions;
     using DurableTask.Core.History;
+    using DurableTask.Netherite.Scaling;
     using Microsoft.Azure.Storage;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
@@ -30,6 +31,7 @@ namespace DurableTask.Netherite
         readonly WorkItemTraceHelper workItemTraceHelper;
         readonly Stopwatch workItemStopwatch;
         readonly CancellationTokenSource cts;
+        readonly ILoadPublisherService partitionLoadPublisher;
 
         static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
 
@@ -53,11 +55,13 @@ namespace DurableTask.Netherite
             Guid taskHubGuid, 
             TransportAbstraction.ISender batchSender, 
             WorkItemTraceHelper workItemTraceHelper,
-            CancellationToken shutdownToken)
+            CancellationToken shutdownToken,
+            ILoadPublisherService loadPublisher)
         {
             this.host = host;
             this.ClientId = clientId;
             this.taskHubGuid = taskHubGuid;
+            this.partitionLoadPublisher = loadPublisher;
             this.traceHelper = new ClientTraceHelper(host.LoggerFactory, host.Settings.ClientLogLevelLimit, host.StorageAccountName, host.Settings.HubName, this.ClientId);
             this.workItemTraceHelper = workItemTraceHelper;
             this.account = host.StorageAccountName;
@@ -419,12 +423,50 @@ namespace DurableTask.Netherite
 
             public void TryTimeout()
             {
+                // Obtain the client task for this client request ID
                 this.client.traceHelper.TraceTimerProgress($"firing ({this.timeoutKey.due:o},{this.timeoutKey.id})");
                 if (this.client.ResponseWaiters.TryRemove(this.requestId, out var pendingRequest))
                 {
                     this.client.traceHelper.TraceRequestTimeout(pendingRequest.partitionEventId, pendingRequest.partitionId);
-                    this.continuation.TrySetException(timeoutException);
+
+                    // a timeout may represent either a slow partition, or an unresponsive one.
+                    // we check the 'partitions load provider' (either blob or Azure Table) to determine what error to throw.
+                    // TODO: should we introduce a Query API that only searches for a given partitionID?
+                    this.client.partitionLoadPublisher.QueryAsync(CancellationToken.None).ContinueWith((task) =>
+                    {
+                        if (task.IsFaulted)
+                        {
+                            // TODO: consider logging that something went wrong in the partition table query
+                            this.continuation.TrySetException(timeoutException);
+                        }
+                        else
+                        {
+                            PartitionLoadInfo info = task.Result[pendingRequest.partitionId];
+                            if (info.Timestamp.HasValue)
+                            {
+                                // see how much time has gone by between the partition updating it's entry
+                                // and the timeout firing. We'll call this the 'heartbeat' of the partition.
+                                DateTime lastHeartBeatTime = info.Timestamp.Value.UtcDateTime;
+                                TimeSpan timeSinceLastHeartbeat = DateTimeOffset.UtcNow.Subtract(lastHeartBeatTime);
+                                if (timeSinceLastHeartbeat > TimeSpan.FromMinutes(10))
+                                {
+                                    // It's been over 10 minutes, the partition may be unavailable
+                                    // TODO: should this be made static?
+                                    TimeoutException exception = new TimeoutException($"Client request timed out. " +
+                                        $"The target partition's ({this.partitionId}) last heartbeat ocurred at {lastHeartBeatTime}." +
+                                        $"It's possible the partition is offline.");
+                                    this.continuation.TrySetException(new TimeoutException("Partition is unresponsive"));
+                                }
+                                else
+                                {
+                                    // report timeout, the partition may simply be slow
+                                    this.continuation.TrySetException(timeoutException);
+                                }
+                            }
+                        }
+                    });
                 }
+                // TODO: should we log if the request was not found?
             }
 
             public void TryCancel(OperationCanceledException exception)
