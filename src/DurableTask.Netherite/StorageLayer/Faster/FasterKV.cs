@@ -48,6 +48,8 @@ namespace DurableTask.Netherite.Faster
         static readonly SemaphoreSlim availableQuerySessions = new SemaphoreSlim(queryParallelism);
         readonly ConcurrentBag<int> idleQuerySessions = new ConcurrentBag<int>(Enumerable.Range(0, queryParallelism));
 
+        long observedMinimalLogSize;
+
         async ValueTask<(Status, Output)> ReadWithFasterAsync(string instanceId, CancellationToken cancellationToken)
         {
             await availableQuerySessions.WaitAsync();
@@ -488,7 +490,12 @@ namespace DurableTask.Netherite.Faster
             get
             {
                 var stats = (StatsState)this.singletons[(int)TrackedObjectKey.Stats.ObjectType];
-                return this.fht.Log.FixedRecordSize * stats.InstanceCount * 2;
+                long minimalLogSize = this.fht.Log.FixedRecordSize * stats.InstanceCount * 2;
+
+                // as a defensive measure, handle the situation where the log contains non-compactable stuff that is not accounted for
+                minimalLogSize = Math.Max(minimalLogSize, this.observedMinimalLogSize); 
+
+                return minimalLogSize;
             }
         }
 
@@ -535,6 +542,8 @@ namespace DurableTask.Netherite.Faster
             try
             {
                 long beginAddressBeforeCompaction = this.Log.BeginAddress;
+                long readOnlySizeBeforeCompaction = this.Log.SafeReadOnlyAddress - this.Log.BeginAddress;
+                long mutableSizeBeforeCompaction = this.Log.TailAddress - this.Log.SafeReadOnlyAddress;
 
                 this.TraceHelper.FasterCompactionProgress(
                     FasterTraceHelper.CompactionProgress.Started,
@@ -598,6 +607,18 @@ namespace DurableTask.Netherite.Faster
                                 this.MinimalLogSize,
                                 this.Log.BeginAddress - beginAddressBeforeCompaction,
                                 this.GetElapsedCompactionMilliseconds());
+
+
+                            long mutableSizeAfterCompaction = this.Log.TailAddress - this.Log.SafeReadOnlyAddress;
+
+                            if (this.Log.SafeReadOnlyAddress == compactedUntil && mutableSizeBeforeCompaction == 0 && readOnlySizeBeforeCompaction == mutableSizeAfterCompaction)
+                            {
+                                this.TraceHelper.FasterProgress($"Compaction was ineffective. Recording observed minimal log size {readOnlySizeBeforeCompaction}.");
+                                // we just performed a full compaction with zero effect. This indicates that the log contains non-compactable stuff
+                                // that is not accounted for by our instance count. As a defensive measure, we record the observed minimal log size.
+                                // TODO investigate root cause for non-compactable stuff appearing in log.
+                                this.observedMinimalLogSize = readOnlySizeBeforeCompaction;
+                            }
 
                             tcs.TrySetResult(compactedUntil);
                         }
