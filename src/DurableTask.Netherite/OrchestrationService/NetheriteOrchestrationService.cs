@@ -400,12 +400,17 @@ namespace DurableTask.Netherite
             {
                 this.TraceHelper.TraceProgress("Starting Client");
 
+                this.serviceShutdownSource ??= new CancellationTokenSource();
+
                 if (this.Settings.TestHooks != null)
                 {
                     this.TraceHelper.TraceProgress(this.Settings.TestHooks.ToString());
-                }
 
-                this.serviceShutdownSource ??= new CancellationTokenSource();
+                    if (this.Settings.TestHooks.FaultInjectionActive)
+                    {
+                        this.Settings.TestHooks.FaultInjector.StartClient();
+                    }
+                }
 
                 this.TaskhubParameters = await this.transport.StartAsync();
                 (this.ContainerName, this.PathPrefix) = this.storage.GetTaskhubPathPrefix(this.TaskhubParameters);

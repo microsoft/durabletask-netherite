@@ -22,6 +22,7 @@ namespace DurableTask.Netherite.Faster
         {
             None,
             IncrementSuccessRuns,
+            PermanentFail,
         }
 
         InjectionMode mode;
@@ -54,6 +55,10 @@ namespace DurableTask.Netherite.Faster
                     this.countdown = 0;
                     this.nextrun = 1;
                     break;
+                case InjectionMode.PermanentFail:
+                    this.countdown = -1;
+                    this.nextrun = -1;
+                    break;
 
                 default:
                     break;
@@ -77,6 +82,14 @@ namespace DurableTask.Netherite.Faster
 
         readonly Dictionary<int, TaskCompletionSource<object>> startupWaiters = new Dictionary<int, TaskCompletionSource<object>>();
         readonly HashSet<BlobManager> startedPartitions = new HashSet<BlobManager>();
+
+        public void StartClient()
+        {
+            if (this.mode == InjectionMode.PermanentFail)
+            {
+                throw new Exception("Injected failure when staring client!");
+            }
+        }
 
 
         public async Task WaitForStartup(int numPartitions, TimeSpan timeout)
@@ -145,6 +158,10 @@ namespace DurableTask.Netherite.Faster
                             pass = false;
                             this.countdown = this.nextrun++;
                         }
+                    }
+                    else if (this.mode == InjectionMode.PermanentFail)
+                    {
+                        pass = false;
                     }
                 }
             }
