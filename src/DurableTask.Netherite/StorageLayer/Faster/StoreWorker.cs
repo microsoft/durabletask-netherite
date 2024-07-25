@@ -6,6 +6,7 @@ namespace DurableTask.Netherite.Faster
     using DurableTask.Netherite.Scaling;
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Threading;
     using System.Threading.Tasks;
 
@@ -362,23 +363,23 @@ namespace DurableTask.Netherite.Faster
             {
                 trigger = CheckpointTrigger.EventCount;
             }
+            else if (this.store.CompactionIsDue(out long compactionTarget))
+            {
+                compactUntil = compactionTarget;
+                trigger = CheckpointTrigger.Compaction;            
+            }
             else if (this.loadInfo.IsBusy() == null && DateTime.UtcNow > this.timeOfNextIdleCheckpoint)
             {
                 // we have reached an idle point.
                 this.ScheduleNextIdleCheckpointTime();
-
-                compactUntil = this.store.GetCompactionTarget();
-                if (compactUntil.HasValue)
-                {
-                    trigger = CheckpointTrigger.Compaction;
-                }
-                else if (this.numberEventsSinceLastCheckpoint > 0 || inputQueuePositionLag > 0)
+ 
+                if (this.numberEventsSinceLastCheckpoint > 0 || inputQueuePositionLag > 0)
                 {
                     // we checkpoint even though not much has happened
                     trigger = CheckpointTrigger.Idle;
                 }
             }
-             
+
             return trigger != CheckpointTrigger.None;
         }
 
@@ -431,7 +432,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        async ValueTask RunCheckpointingStateMachine()
+        async ValueTask<bool> RunCheckpointingStateMachine()
         {
             // handle progression of checkpointing state machine:  none -> pendingCompaction -> pendingIndexCheckpoint ->  pendingStoreCheckpoint -> none)
             if (this.pendingStoreCheckpoint != null)
@@ -513,6 +514,13 @@ namespace DurableTask.Netherite.Faster
 
                 this.pendingCompaction = this.RunCompactionAsync(compactUntil);
             }
+            else
+            {
+                // there are no checkpoint or compaction operations in progress or due
+                return false; 
+            }
+
+            return true; // there is a checkpoint or compaction operation in progress. 
         }
 
         protected override async Task Process(IList<PartitionEvent> batch)
@@ -573,12 +581,6 @@ namespace DurableTask.Netherite.Faster
                     markPartitionAsActive = markPartitionAsActive || partitionEvent.CountsAsPartitionActivity;
                 }
 
-                // if we are processing events that count as activity, our latency category is at least "low"
-                if (markPartitionAsActive)
-                {
-                    this.loadInfo.MarkActive();
-                }
-
                 if (this.isShuttingDown || this.cancellationToken.IsCancellationRequested)
                 {
                     return;
@@ -587,8 +589,17 @@ namespace DurableTask.Netherite.Faster
                 this.store.AdjustCacheSize();
 
                 // handle progression of checkpointing state machine:  none -> pendingCompaction -> pendingIndexCheckpoint ->  pendingStoreCheckpoint -> none)
-                await this.RunCheckpointingStateMachine();
-                  
+                bool checkpointOrCompactionInProgress = await this.RunCheckpointingStateMachine();
+
+                // if a checkpoint or compaction is in progress, our latency category is at least "low"
+                markPartitionAsActive = markPartitionAsActive || checkpointOrCompactionInProgress;
+
+                if (markPartitionAsActive)
+                {
+                    // mark this partition as having activity; this shows up in the partition table, and influences the the scale controller
+                    this.loadInfo.MarkActive();
+                }
+
                 // periodically publish the partition load information and the send/receive positions
                 // also report checkpointing stats
                 if (this.lastPublished + PublishInterval < DateTime.UtcNow)
@@ -671,8 +682,22 @@ namespace DurableTask.Netherite.Faster
         {
             if (target.HasValue)
             {
+                Stopwatch stopWatch = Stopwatch.StartNew();
+
                 target = await this.store.RunCompactionAsync(target.Value);
+
                 this.partition.Settings.TestHooks?.CheckpointInjector?.CompactionComplete(this.partition.ErrorHandler);
+
+                // we mark the latency of the compaction in the partition table so that the scale controller
+                // will scale out if needed to handle the compaction load
+                if (stopWatch.Elapsed.TotalSeconds > 5)
+                {
+                    this.loadInfo.MarkHighLatency();
+                }
+                else if (stopWatch.Elapsed.TotalSeconds > 1)
+                {
+                    this.loadInfo.MarkMediumLatency();
+                }
             }
 
             this.Notify();

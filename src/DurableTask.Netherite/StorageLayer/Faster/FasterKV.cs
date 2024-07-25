@@ -79,6 +79,8 @@ namespace DurableTask.Netherite.Faster
         const int ReadRetryAfter = 20000;
         EffectTracker effectTracker;
 
+        DateTime lastTraceForSkippedCompaction = DateTime.MinValue;
+
         public FasterTraceHelper TraceHelper => this.blobManager.TraceHelper;
 
         public int PageSizeBits => this.storelogsettings.PageSizeBits;
@@ -492,33 +494,42 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public override long? GetCompactionTarget()
+        public override bool CompactionIsDue(out long target)
         {
             // TODO empiric validation of the heuristics
 
             var stats = (StatsState) this.singletons[(int)TrackedObjectKey.Stats.ObjectType];
             long actualLogSize = this.fht.Log.TailAddress - this.fht.Log.BeginAddress;
             long minimalLogSize = this.MinimalLogSize;
-            long compactionAreaSize = Math.Min(50000, this.fht.Log.SafeReadOnlyAddress - this.fht.Log.BeginAddress);
+            long compactionAreaSize = Math.Min(200000, this.fht.Log.SafeReadOnlyAddress - this.fht.Log.BeginAddress);
 
             if (actualLogSize > 2 * minimalLogSize            // there must be significant bloat
-                && compactionAreaSize >= 5000)                // and enough compaction area to justify the overhead
+                && compactionAreaSize >= 10000)                // and enough compaction area to justify the overhead
             {
-                return this.fht.Log.BeginAddress + compactionAreaSize;
+                target = this.fht.Log.BeginAddress + compactionAreaSize;
+                return true;
             }
             else
             {
-                this.TraceHelper.FasterCompactionProgress(
-                    FasterTraceHelper.CompactionProgress.Skipped,
-                    "",
-                    this.Log.BeginAddress,
-                    this.Log.SafeReadOnlyAddress,
-                    this.Log.TailAddress,
-                    minimalLogSize,
-                    compactionAreaSize,
-                    this.GetElapsedCompactionMilliseconds());
 
-                return null;
+                // trace the skipped compaction
+                // but this method is called quite frequently, so limit the traces to once per minute
+                if (this.lastTraceForSkippedCompaction + TimeSpan.FromMinutes(1) < DateTime.UtcNow)
+                {
+                    this.lastTraceForSkippedCompaction = DateTime.UtcNow;
+                    this.TraceHelper.FasterCompactionProgress(
+                        FasterTraceHelper.CompactionProgress.Skipped,
+                        "",
+                        this.Log.BeginAddress,
+                        this.Log.SafeReadOnlyAddress,
+                        this.Log.TailAddress,
+                        minimalLogSize,
+                        compactionAreaSize,
+                        this.GetElapsedCompactionMilliseconds());
+                }
+
+                target = 0;
+                return false;
             }
         }
 
