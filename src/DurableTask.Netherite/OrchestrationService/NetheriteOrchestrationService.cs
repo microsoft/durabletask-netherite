@@ -408,7 +408,7 @@ namespace DurableTask.Netherite
 
                     if (this.Settings.TestHooks.FaultInjectionActive)
                     {
-                        this.Settings.TestHooks.FaultInjector.StartClient();
+                        this.Settings.TestHooks.FaultInjector.ClientStartup();
                     }
                 }
 

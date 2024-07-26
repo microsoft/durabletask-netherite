@@ -71,17 +71,12 @@ namespace DurableTask.Netherite.Tests
             HostFixture fixture = null;
 
             // first force a permnanent failure
-            using (this.faultInjector.WithMode(Faster.FaultInjector.InjectionMode.PermanentFail, injectDuringStartup: true))
+            using (this.faultInjector.WithMode(Faster.FaultInjector.InjectionMode.FailClientStartup, injectDuringStartup: true))
             {
-                try
-                {
+                await Assert.ThrowsAsync<Exception>(async () => {
                     fixture = new HostFixture(this.settings, useCacheDebugger: true, useReplayChecker: true, restrictMemory: null, output: (msg) => this.outputHelper.WriteLine(msg));
                     await fixture.Host.StartAsync();
-                }
-                catch (Exception _)
-                {
-                    // expected
-                }
+                });
             }
 
             // now ensure it can recover
