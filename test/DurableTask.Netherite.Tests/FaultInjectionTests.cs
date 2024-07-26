@@ -75,8 +75,8 @@ namespace DurableTask.Netherite.Tests
             {
                 try
                 {
-                    fixture = await HostFixture.StartNew(this.settings, true, true, null, TimeSpan.FromMinutes(2), (msg) => this.outputHelper.WriteLine(msg));
-                    await this.faultInjector.WaitForStartup(this.settings.PartitionCount, TimeSpan.FromMinutes(2));
+                    fixture = new HostFixture(this.settings, useCacheDebugger: true, useReplayChecker: true, restrictMemory: null, output: (msg) => this.outputHelper.WriteLine(msg));
+                    await fixture.Host.StartAsync();
                 }
                 catch (Exception _)
                 {
@@ -87,8 +87,7 @@ namespace DurableTask.Netherite.Tests
             // now ensure it can recover
             using (this.faultInjector.WithMode(Faster.FaultInjector.InjectionMode.None, injectDuringStartup: true))
             {
-                fixture = await HostFixture.StartNew(this.settings, true, true, null, TimeSpan.FromMinutes(2), (msg) => this.outputHelper.WriteLine(msg));
-                await this.faultInjector.WaitForStartup(this.settings.PartitionCount, TimeSpan.FromMinutes(2));
+                await fixture.Host.StartAsync();
             }
 
             var client = await fixture.Host.StartOrchestrationAsync(typeof(ScenarioTests.Orchestrations.SayHelloWithActivity), "World");
