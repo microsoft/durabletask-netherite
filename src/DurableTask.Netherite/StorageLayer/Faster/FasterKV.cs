@@ -587,7 +587,7 @@ namespace DurableTask.Netherite.Faster
                         using (this.TrackTemporarySession(session))
                         {
                             this.blobManager.TraceHelper.FasterProgress($"Compaction {id} is invoking FASTER's compaction routine");
-                            long compactedUntil = session.Compact(target, CompactionType.Scan);
+                            long compactedUntil = session.Compact(target, CompactionType.Lookup);
 
                             this.TraceHelper.FasterCompactionProgress(
                                 FasterTraceHelper.CompactionProgress.Completed,
