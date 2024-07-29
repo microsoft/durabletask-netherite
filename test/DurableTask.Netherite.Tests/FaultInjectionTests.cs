@@ -64,6 +64,37 @@ namespace DurableTask.Netherite.Tests
             fixture?.Dispose();
         }
 
+
+        [Fact]
+        public async Task CanRecoverFromFailedStartup()
+        {
+            HostFixture fixture = null;
+
+            // first force a permnanent failure
+            using (this.faultInjector.WithMode(Faster.FaultInjector.InjectionMode.FailClientStartup, injectDuringStartup: true))
+            {
+                await Assert.ThrowsAsync<Exception>(async () => {
+                    fixture = new HostFixture(this.settings, useCacheDebugger: true, useReplayChecker: true, restrictMemory: null, output: (msg) => this.outputHelper.WriteLine(msg));
+                    await fixture.Host.StartAsync();
+                });
+            }
+
+            // now ensure it can recover
+            using (this.faultInjector.WithMode(Faster.FaultInjector.InjectionMode.None, injectDuringStartup: true))
+            {
+                await fixture.Host.StartAsync();
+            }
+
+            var client = await fixture.Host.StartOrchestrationAsync(typeof(ScenarioTests.Orchestrations.SayHelloWithActivity), "World");
+            var status = await client.WaitForCompletionAsync(TimeSpan.FromSeconds(30));
+
+            Assert.Equal(Core.OrchestrationStatus.Completed, status?.OrchestrationStatus);
+            Assert.Equal("World", JToken.Parse(status?.Input));
+            Assert.Equal("Hello, World!", JToken.Parse(status?.Output));
+
+            fixture?.Dispose();
+        }
+
         [Fact]
         public async Task InjectHelloCreation()
         {
