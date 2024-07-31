@@ -26,6 +26,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{D33AB157-04B9-4BAD-B580-C3C87C17828C}"
 	ProjectSection(SolutionItems) = preProject
 		src\common.props = src\common.props
+		Directory.Build.targets = Directory.Build.targets
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{4A7226CF-57BF-4CA3-A4AC-91A398A1D84B}"
