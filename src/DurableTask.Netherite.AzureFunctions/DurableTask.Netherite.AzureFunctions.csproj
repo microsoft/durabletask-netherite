@@ -20,7 +20,16 @@
     <PackageTags>Azure Task Durable Orchestration Workflow Activity Reliable EventHubs</PackageTags>
     <PackageId>Microsoft.Azure.DurableTask.Netherite.AzureFunctions</PackageId>
     <PackageIcon>icon.png</PackageIcon>
+	<PackageReadmeFile>.\README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <!-- Include the README.md at the root of the repo into the nupkg-->
+  <ItemGroup>
+    <None Include="..\..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
   <!-- Version can be edited in common.props -->
   <Import Project=".\..\common.props" />
