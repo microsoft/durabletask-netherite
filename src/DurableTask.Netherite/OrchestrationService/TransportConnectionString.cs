@@ -7,7 +7,7 @@ namespace DurableTask.Netherite
     using System.Collections.Generic;
     using System.Runtime;
     using System.Text;
-    using Microsoft.Azure.EventHubs;
+    using Azure.Messaging.EventHubs;
 
     /// <summary>
     /// Encapsulates how the transport connection string setting is interpreted.
@@ -63,8 +63,8 @@ namespace DurableTask.Netherite
         {
             try
             {
-                var builder = new EventHubsConnectionStringBuilder(transportConnectionString);
-                var host = builder.Endpoint.Host;
+                var properties = EventHubsConnectionStringProperties.Parse(transportConnectionString);
+                var host = properties.Endpoint.Host;
                 return host.Substring(0, host.IndexOf('.'));
             }
             catch(Exception e)
