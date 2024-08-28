@@ -134,6 +134,11 @@ namespace DurableTask.Netherite.Scaling
         public double CacheMB { get; set; }
 
         /// <summary>
+        /// The timestamp of the last write to this row. May be used to flag that partition as possibly unavailable.
+        /// </summary>
+        public DateTimeOffset? Timestamp { get; set; } // TODO: should this be a DataMember? Are we actually serializing this somewhere?
+
+        /// <summary>
         /// The character representing idle load.
         /// </summary>
         public const char Idle = 'I';
