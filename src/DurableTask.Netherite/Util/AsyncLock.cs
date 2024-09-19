@@ -30,7 +30,7 @@ namespace DurableTask.Netherite
         {
             try
             {
-                await base.WaitAsync();
+                await base.WaitAsync(this.shutdownToken);
             }
             catch (ObjectDisposedException) when (this.shutdownToken.IsCancellationRequested)
             {
