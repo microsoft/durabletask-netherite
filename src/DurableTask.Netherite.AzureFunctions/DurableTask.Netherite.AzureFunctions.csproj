@@ -20,16 +20,27 @@
     <PackageTags>Azure Task Durable Orchestration Workflow Activity Reliable EventHubs</PackageTags>
     <PackageId>Microsoft.Azure.DurableTask.Netherite.AzureFunctions</PackageId>
     <PackageIcon>icon.png</PackageIcon>
+	<PackageReadmeFile>.\README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <!-- Include the README.md at the root of the repo into the nupkg-->
+  <ItemGroup>
+    <None Include="..\..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
   <!-- Version can be edited in common.props -->
   <Import Project=".\..\common.props" />
 
-
-  <!-- Our netcoreapp2.2 target is a non-functional dummy target, so we don't need the warning -->
+	<!-- Our netcoreapp2.2 target is a non-functional dummy target. It does not contain any runnable code
+	     but we needed to have it at some point to keep the functions environment happy. Since the generated
+			 dll does not contain runnable code we can ignore deprecation warnings. -->
   <PropertyGroup Condition=" '$(TargetFramework)' == 'netcoreapp2.2' ">
-	<NoWarn>NETSDK1138</NoWarn>
-  </PropertyGroup>
+		<NoWarn>NETSDK1138</NoWarn>
+		<SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
+	</PropertyGroup>
   
   <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="\" />
