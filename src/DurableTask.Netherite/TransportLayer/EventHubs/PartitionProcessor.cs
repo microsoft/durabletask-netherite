@@ -114,7 +114,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         async Task<EventPosition> IEventProcessor.OpenAsync(CancellationToken cancellationToken)
         {
             this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} OpenAsync called", this.eventHubName, this.eventHubPartition);
-            this.deliveryLock = new AsyncLock();
+            this.deliveryLock = new AsyncLock(this.shutdownSource.Token);
 
             try
             {
@@ -354,8 +354,6 @@ namespace DurableTask.Netherite.EventHubsTransport
 
                     this.shutdownRegistration?.Dispose();
 
-                    // dispose the lock, after quickly acquiring and releasing it to make sure no one is still holding it
-                    (await this.deliveryLock.LockAsync()).Dispose();
                     this.deliveryLock.Dispose();
 
                     this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is shut down", this.eventHubName, this.eventHubPartition);

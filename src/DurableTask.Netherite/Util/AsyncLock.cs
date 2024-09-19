@@ -15,9 +15,11 @@ namespace DurableTask.Netherite
     class AsyncLock : SemaphoreSlim, IDisposable
     {
         readonly AcquisitionToken token; 
+        readonly CancellationToken shutdownToken;
 
-        public AsyncLock() : base(1, 1)
+        public AsyncLock(CancellationToken shutdownToken) : base(1, 1)
         {
+            this.shutdownToken = shutdownToken;
             this.token = new AcquisitionToken()
             {
                 AsyncLock = this
@@ -26,8 +28,28 @@ namespace DurableTask.Netherite
 
         public async ValueTask<AcquisitionToken> LockAsync()
         {
-            await base.WaitAsync();
+            try
+            {
+                await base.WaitAsync();
+            }
+            catch (ObjectDisposedException) when (this.shutdownToken.IsCancellationRequested)
+            {
+                this.shutdownToken.ThrowIfCancellationRequested();
+            }
+
             return this.token;
+        }
+
+        void ReleaseSemaphore()
+        {
+            try
+            {
+                base.Release();
+            }
+            catch (ObjectDisposedException) when (this.shutdownToken.IsCancellationRequested)
+            {
+                this.shutdownToken.ThrowIfCancellationRequested();
+            }
         }
 
         internal struct AcquisitionToken : IDisposable
@@ -36,7 +58,7 @@ namespace DurableTask.Netherite
 
             public void Dispose()
             {
-                this.AsyncLock.Release();
+                this.AsyncLock.ReleaseSemaphore();
             }
         }        
     }
