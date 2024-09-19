@@ -294,7 +294,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                             this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} has no packets requiring redelivery ", this.eventHubName, this.eventHubPartition);
                         }
                     }
-                }         
+                } 
 
                 this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} completed partition startup (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, c.Incarnation);
             }

@@ -149,7 +149,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     this.manager.transport,
                     this.manager.traceHelper,
                     this.manager.shutdownToken);
-            }        
+            } 
         }
 
         class LoadMonitorEventProcessorFactory : IEventProcessorFactory
