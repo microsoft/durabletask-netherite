@@ -118,11 +118,13 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             try
             {
-                // if the cancellation token fires, shut everything down
-                using var _ = cancellationToken.Register(() => this.IdempotentShutdown("PartitionProcessor.OpenAsync cancellationToken", true));
-
                 // we kick off the start-and-retry mechanism for the partition incarnations
                 this.currentIncarnation = Task.Run(() => this.StartPartitionAsync());
+
+                // if the cancellation token fires, shut everything down
+                // this must be registered AFTER the current incarnation is assigned
+                // since it may fire immediately if already canceled at this point
+                using var _ = cancellationToken.Register(() => this.IdempotentShutdown("PartitionProcessor.OpenAsync cancellationToken", true));
 
                 // then we wait for a successful partition creation or recovery so we can tell where to resume packet processing
                 var firstPacketToReceive = await this.firstPacketToReceive.Task;
