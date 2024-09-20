@@ -6,6 +6,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Netherite.Tests;
     using Microsoft.Azure.WebJobs;
@@ -25,80 +26,104 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             this.AddFunctions(typeof(Functions));
         }
 
-        [Fact]
-        public void HostCanStartAndStop()
-        {
-            // Ensure (via logs) that the Durable extension is loaded
-            IEnumerable<string> extensionLogs = this.GetExtensionLogs();
-            Assert.NotEmpty(extensionLogs);
+        static readonly TimeSpan defaultTimeout = TimeSpan.FromMinutes(1);
 
-            // Ensure (via logs) that the Netherite provider correctly loaded.
-            IEnumerable<string> providerLogs = this.GetProviderLogs();
-            Assert.NotEmpty(providerLogs);
+        [Fact]
+        public Task HostCanStartAndStop()
+        {
+            return Common.WithTimeoutAsync(defaultTimeout, () =>
+            {
+                // Ensure (via logs) that the Durable extension is loaded
+                IEnumerable<string> extensionLogs = this.GetExtensionLogs();
+                Assert.NotEmpty(extensionLogs);
+
+                // Ensure (via logs) that the Netherite provider correctly loaded.
+                IEnumerable<string> providerLogs = this.GetProviderLogs();
+                Assert.NotEmpty(providerLogs);
+            });
         }
 
         [Fact]
-        public async Task CanRunActivitySequences()
+        public Task CanRunActivitySequences()
         {
-            DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.Sequence));
-            Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
-            Assert.Equal(10, (int)status.Output);
+            return Common.WithTimeoutAsync(defaultTimeout, async () =>
+            {
+                DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.Sequence));
+                Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
+                Assert.Equal(10, (int)status.Output);
+            });
         }
 
         [Fact]
-        public async Task CanPurgeAndListInstances()
+        public Task CanPurgeAndListInstances()
         {
-            await this.PurgeAllAsync();
-            var results = await this.GetInstancesAsync(new OrchestrationStatusQueryCondition());  
-            Assert.Empty(results); 
+            return Common.WithTimeoutAsync(defaultTimeout, async () =>
+            {
+                await this.PurgeAllAsync();
+                var results = await this.GetInstancesAsync(new OrchestrationStatusQueryCondition());  
+                Assert.Empty(results);
+            });
+        }
+
+
+        [Fact]
+        public Task CanRunFanOutFanIn()
+        {
+            return Common.WithTimeoutAsync(defaultTimeout, async () =>
+            {
+                DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.FanOutFanIn));
+                Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
+                Assert.Equal(
+                    expected: @"[""9"",""8"",""7"",""6"",""5"",""4"",""3"",""2"",""1"",""0""]",
+                    actual: status.Output?.ToString(Formatting.None));
+            });
         }
 
         [Fact]
-        public async Task CanRunFanOutFanIn()
+        public Task CanOrchestrateEntities()
         {
-            DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.FanOutFanIn));
-            Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
-            Assert.Equal(
-                expected: @"[""9"",""8"",""7"",""6"",""5"",""4"",""3"",""2"",""1"",""0""]",
-                actual: status.Output?.ToString(Formatting.None));
+            return Common.WithTimeoutAsync(defaultTimeout, async () =>
+            {
+                DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.OrchestrateCounterEntity));
+                Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
+                Assert.Equal(7, (int)status.Output);
+            });
         }
 
         [Fact]
-        public async Task CanOrchestrateEntities()
+        public Task CanClientInteractWithEntities()
         {
-            DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.OrchestrateCounterEntity));
-            Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
-            Assert.Equal(7, (int)status.Output);
+            return Common.WithTimeoutAsync(defaultTimeout, async () =>
+            {
+                IDurableClient client = await this.GetDurableClientAsync();
+
+                var entityId = new EntityId(nameof(Functions.Counter), Guid.NewGuid().ToString("N"));
+                EntityStateResponse<int> result = await client.ReadEntityStateAsync<int>(entityId);
+                Assert.False(result.EntityExists);
+
+                await Task.WhenAll(
+                    client.SignalEntityAsync(entityId, "incr"),
+                    client.SignalEntityAsync(entityId, "incr"),
+                    client.SignalEntityAsync(entityId, "incr"),
+                    client.SignalEntityAsync(entityId, "add", 4));
+
+                await Task.Delay(TimeSpan.FromSeconds(5));
+
+                result = await client.ReadEntityStateAsync<int>(entityId);
+                Assert.True(result.EntityExists);
+                Assert.Equal(7, result.EntityState);
+            });
         }
 
         [Fact]
-        public async Task CanClientInteractWithEntities()
+        public Task CanOrchestrationInteractWithEntities()
         {
-            IDurableClient client = await this.GetDurableClientAsync();
-
-            var entityId = new EntityId(nameof(Functions.Counter), Guid.NewGuid().ToString("N"));
-            EntityStateResponse<int> result = await client.ReadEntityStateAsync<int>(entityId);
-            Assert.False(result.EntityExists);
-
-            await Task.WhenAll(
-                client.SignalEntityAsync(entityId, "incr"),
-                client.SignalEntityAsync(entityId, "incr"),
-                client.SignalEntityAsync(entityId, "incr"),
-                client.SignalEntityAsync(entityId, "add", 4));
-
-            await Task.Delay(TimeSpan.FromSeconds(5));
-
-            result = await client.ReadEntityStateAsync<int>(entityId);
-            Assert.True(result.EntityExists);
-            Assert.Equal(7, result.EntityState);
-        }
-
-        [Fact]
-        public async Task CanOrchestrationInteractWithEntities()
-        {
-            DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.IncrementThenGet));
-            Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
-            Assert.Equal(1, (int)status.Output);
+            return Common.WithTimeoutAsync(defaultTimeout, async () =>
+            {
+                DurableOrchestrationStatus status = await this.RunOrchestrationAsync(nameof(Functions.IncrementThenGet));
+                Assert.Equal(OrchestrationRuntimeStatus.Completed, status.RuntimeStatus);
+                Assert.Equal(1, (int)status.Output);
+            });
         }
 
         static class Functions

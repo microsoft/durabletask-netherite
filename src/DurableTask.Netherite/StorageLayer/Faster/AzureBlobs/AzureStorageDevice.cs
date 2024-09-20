@@ -82,12 +82,12 @@ namespace DurableTask.Netherite.Faster
             this.pageBlobDirectory = pageBlobDirectory;
             this.blobName = blobName;
             this.PartitionErrorHandler = blobManager.PartitionErrorHandler;
-            this.PartitionErrorHandler.Token.Register(this.CancelAllRequests);
             this.BlobManager = blobManager;
             this.underLease = underLease;
             this.hangCheckTimer = new Timer(this.DetectHangs, null, 0, 20000);
             this.singleWriterSemaphore = underLease ? new SemaphoreSlim(1) : null;
             this.limit = TimeSpan.FromSeconds(90);
+            this.PartitionErrorHandler.Token.Register(this.CancelAllRequests);
         }
 
         /// <inheritdoc/>

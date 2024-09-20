@@ -28,21 +28,27 @@ namespace DurableTask.Netherite.Tests
         }
 
         [Fact]
-        public async Task StopAsync_IsIdempotent()
+        public Task StopAsync_IsIdempotent()
         {
-            int numStops = 3;
-            IOrchestrationService service = TestConstants.GetTestOrchestrationService(this.loggerFactory);
-            for (int i =0; i < numStops; i++)
+            return Common.WithTimeoutAsync(TimeSpan.FromMinutes(1), async () =>
             {
-                await service.StopAsync();
-            }
+                int numStops = 3;
+                IOrchestrationService service = TestConstants.GetTestOrchestrationService(this.loggerFactory);
+                for (int i = 0; i < numStops; i++)
+                {
+                    await service.StopAsync();
+                }
+            });
         }
 
         [Fact]
-        public async Task UnstartedService_CanBeSafelyStopped()
+        public Task UnstartedService_CanBeSafelyStopped()
         {
-            IOrchestrationService service = TestConstants.GetTestOrchestrationService(this.loggerFactory);
-            await service.StopAsync();
+            return Common.WithTimeoutAsync(TimeSpan.FromMinutes(1), async () =>
+            {
+                IOrchestrationService service = TestConstants.GetTestOrchestrationService(this.loggerFactory);
+                await service.StopAsync();
+            });
         }
     }
 }

@@ -9,7 +9,7 @@ namespace DurableTask.Netherite.Tests
     using System.Threading;
     using System.Threading.Tasks;
 
-    static class Common
+    public static class Common
     {
         public static async Task<List<S>> ParallelForEachAsync<T,S>(this IEnumerable<T> items, int maxConcurrency, bool useThreadpool, Func<T, Task<S>> action)
         {
@@ -51,6 +51,45 @@ namespace DurableTask.Netherite.Tests
             {
                 semaphore.Release();
             }
+        }
+
+        public static async Task WithTimeoutAsync(TimeSpan timeout, Func<Task> taskFactory)
+        {
+            using CancellationTokenSource cts = new CancellationTokenSource();
+            Task timeoutTask =  RunTimeoutCheckerAsync();
+
+            async Task RunTimeoutCheckerAsync()
+            {
+                try
+                {
+                    await Task.Delay(timeout, cts.Token);
+                    throw new TimeoutException($"task did not complete within {timeout}");
+                }
+                catch (OperationCanceledException)
+                {
+                    // we cancel this if the task completes before the timeout
+                }
+            }
+
+            try
+            {
+                await Task.WhenAny(taskFactory(), timeoutTask);
+            }
+            finally
+            {
+                cts.Cancel();
+                await timeoutTask;
+            }
+        }
+
+        public static Task WithTimeoutAsync(TimeSpan timeout, Action action)
+        {
+            return WithTimeoutAsync(timeout, () => Task.Run(action));
+        }
+
+        public static void WithTimeout(TimeSpan timeout, Action action)
+        {
+            WithTimeoutAsync(timeout, action).Wait();
         }
     }
 }
