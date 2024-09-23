@@ -330,35 +330,42 @@ namespace DurableTask.Netherite.EventHubsTransport
             {
                 if (await waitForConfirmation.Task) // only the first shutdown should proceed
                 {
-                    this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is shutting down (reason: {reason}, quickly: {quickly})", this.eventHubName, this.eventHubPartition, reason, quickly);
-
-                    this.shutdownSource.Cancel(); // stops all reincarnations, among other things
-
-                    this.firstPacketToReceive.TrySetCanceled(); // cancel partition opening if we are still waiting for it
-
-                    PartitionIncarnation current = await this.currentIncarnation;
-
-                    while (current != null && current.ErrorHandler.IsTerminated)
+                    try
                     {
-                        current = await current.Next;
-                    }
+                        this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is shutting down (reason: {reason}, quickly: {quickly})", this.eventHubName, this.eventHubPartition, reason, quickly);
 
-                    if (current == null)
+                        this.shutdownSource.Cancel(); // stops all reincarnations, among other things
+
+                        this.firstPacketToReceive.TrySetCanceled(); // cancel partition opening if we are still waiting for it
+
+                        PartitionIncarnation current = await this.currentIncarnation;
+
+                        while (current != null && current.ErrorHandler.IsTerminated)
+                        {
+                            current = await current.Next;
+                        }
+
+                        if (current == null)
+                        {
+                            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} already canceled or terminated", this.eventHubName, this.eventHubPartition);
+                        }
+                        else
+                        {
+                            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopping partition (incarnation: {incarnation}, quickly: {quickly})", this.eventHubName, this.eventHubPartition, current.Incarnation, quickly);
+                            await current.Partition.StopAsync(quickly);
+                            this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopped partition (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, current.Incarnation);
+                        }
+
+                        this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} successfully shut down", this.eventHubName, this.eventHubPartition);
+                    }
+                    catch (Exception exception)
                     {
-                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} already canceled or terminated", this.eventHubName, this.eventHubPartition);
+                        this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} failed to shut down: {exception})", this.eventHubName, this.eventHubPartition, exception);
                     }
-                    else
+                    finally
                     {
-                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopping partition (incarnation: {incarnation}, quickly: {quickly})", this.eventHubName, this.eventHubPartition, current.Incarnation, quickly);
-                        await current.Partition.StopAsync(quickly);
-                        this.traceHelper.LogDebug("EventHubsProcessor {eventHubName}/{eventHubPartition} stopped partition (incarnation {incarnation})", this.eventHubName, this.eventHubPartition, current.Incarnation);
+                        this.deliveryLock.Dispose();
                     }
-
-                    this.shutdownRegistration?.Dispose();
-
-                    this.deliveryLock.Dispose();
-
-                    this.traceHelper.LogInformation("EventHubsProcessor {eventHubName}/{eventHubPartition} is shut down", this.eventHubName, this.eventHubPartition);
                 }
             }
         }
