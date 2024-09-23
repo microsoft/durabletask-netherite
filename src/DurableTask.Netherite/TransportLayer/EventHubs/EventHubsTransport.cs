@@ -211,7 +211,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             }
 
             this.traceHelper.LogError("EventHubsTransport is killing process in 5 seconds");
-            
+            // release leases before exiting the process. This speeds up subsequent recovery.
             Task _ = ((ITransportLayer)this).StopAsync(true);
 
             await Task.Delay(TimeSpan.FromSeconds(5));
