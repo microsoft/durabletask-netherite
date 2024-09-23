@@ -84,53 +84,50 @@ namespace DurableTask.Netherite.Tests
         [Theory]
         [InlineData(false)]
         [InlineData(true)]
-        public Task EachScenarioOnce(bool restrictMemory)
+        public async Task EachScenarioOnce(bool restrictMemory)
         {
-            return Common.WithTimeoutAsync(TimeSpan.FromMinutes(5), async () =>
+            var orchestrationTimeout = TimeSpan.FromMinutes(restrictMemory ? 10 : 5);
+            var startupTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 1 : 3.5);
+            var shutDownTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 0.1 : 3);
+            var totalTimeout = startupTimeout + orchestrationTimeout + shutDownTimeout;
+
+            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
+
+            async Task RunAsync()
             {
-                var orchestrationTimeout = TimeSpan.FromMinutes(restrictMemory ? 10 : 5);
-                var startupTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 1 : 3.5);
-                var shutDownTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 0.1 : 3);
-                var totalTimeout = startupTimeout + orchestrationTimeout + shutDownTimeout;
+                Trace.WriteLine($"TestProgress: Started RunAsync");
 
-                using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(restrictMemory ? 10 : 5));
-
-                async Task RunAsync()
+                using (var fixture = await HostFixture.StartNew(
+                    this.settings,
+                    useCacheDebugger: true,
+                    useReplayChecker: false,
+                    restrictMemory ? (int?)0 : null,
+                    startupTimeout,
+                    (msg) => this.outputHelper?.WriteLine(msg)))
                 {
-                    Trace.WriteLine($"TestProgress: Started RunAsync");
+                    var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
-                    using (var fixture = await HostFixture.StartNew(
-                        this.settings,
-                        useCacheDebugger: true,
-                        useReplayChecker: false,
-                        restrictMemory ? (int?)0 : null,
-                        startupTimeout,
-                        (msg) => this.outputHelper?.WriteLine(msg)))
+                    var tests = new List<(string, Task)>();
+
+                    foreach ((string name, Task task) in scenarios.StartAllScenarios(includeTimers: true, includeLarge: true))
                     {
-                        var scenarios = new ScenarioTests(fixture, this.outputHelper);
-
-                        var tests = new List<(string, Task)>();
-
-                        foreach ((string name, Task task) in scenarios.StartAllScenarios(includeTimers: true, includeLarge: true))
-                        {
-                            Trace.WriteLine($"TestProgress: Adding {name}");
-                            tests.Add((name, task));
-                        }
-
-                        await this.WaitForCompletion(tests, orchestrationTimeout);
-
-                        Trace.WriteLine($"TestProgress: Shutting Down");
+                        Trace.WriteLine($"TestProgress: Adding {name}");
+                        tests.Add((name, task));
                     }
 
-                    Trace.WriteLine($"TestProgress: Completed RunAsync");
+                    await this.WaitForCompletion(tests, orchestrationTimeout);
+
+                    Trace.WriteLine($"TestProgress: Shutting Down");
                 }
 
-                var task = Task.Run(RunAsync);
-                var timeoutTask = Task.Delay(totalTimeout);
-                await Task.WhenAny(task, timeoutTask);
-                Assert.True(task.IsCompleted);
-                await task;
-            });
+                Trace.WriteLine($"TestProgress: Completed RunAsync");
+            }
+
+            var task = Task.Run(RunAsync);
+            var timeoutTask = Task.Delay(totalTimeout);
+            await Task.WhenAny(task, timeoutTask);
+            Assert.True(task.IsCompleted);
+            await task;
         }
 
         [Theory]
@@ -141,57 +138,54 @@ namespace DurableTask.Netherite.Tests
         [InlineData(false, false, 20)]
         [InlineData(false, true, 20)]
         [InlineData(true, false, 20)]
-        public Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
+        public async Task ScaleSmallScenarios(bool useReplayChecker, bool restrictMemory, int multiplicity)
         {
-            return Common.WithTimeoutAsync(TimeSpan.FromMinutes(5), async () =>
+            var orchestrationTimeout = TimeSpan.FromMinutes((restrictMemory ? 10 : 5) + multiplicity * (restrictMemory ? 0.5 : 0.1));
+            var startupTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 1 : 3.5);
+            var testTimeout = orchestrationTimeout + TimeSpan.FromMinutes(multiplicity * 0.2);
+            var shutDownTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 0.1 : 3);
+            var totalTimeout = startupTimeout + testTimeout + shutDownTimeout;
+
+            using var _ = TestOrchestrationClient.WithExtraTime(orchestrationTimeout);
+
+            async Task RunAsync()
             {
-                var orchestrationTimeout = TimeSpan.FromMinutes((restrictMemory ? 10 : 5) + multiplicity * (restrictMemory ? 0.5 : 0.1));
-                var startupTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 1 : 3.5);
-                var testTimeout = orchestrationTimeout + TimeSpan.FromMinutes(multiplicity * 0.2);
-                var shutDownTimeout = TimeSpan.FromMinutes(this.settings.UsesEmulation() ? 0.1 : 3);
-                var totalTimeout = startupTimeout + testTimeout + shutDownTimeout;
+                Trace.WriteLine($"TestProgress: Started RunAsync");
 
-                using var _ = TestOrchestrationClient.WithExtraTime(orchestrationTimeout);
-
-                async Task RunAsync()
+                using (var fixture = await HostFixture.StartNew(
+                    this.settings,
+                    true,
+                    useReplayChecker,
+                    restrictMemory ? (int?)0 : null,
+                    startupTimeout,
+                    (msg) => this.outputHelper?.WriteLine(msg)))
                 {
-                    Trace.WriteLine($"TestProgress: Started RunAsync");
+                    var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
-                    using (var fixture = await HostFixture.StartNew(
-                        this.settings,
-                        true,
-                        useReplayChecker,
-                        restrictMemory ? (int?)0 : null,
-                        startupTimeout,
-                        (msg) => this.outputHelper?.WriteLine(msg)))
+                    var tests = new List<(string, Task)>();
+
+                    for (int i = 0; i < multiplicity; i++)
                     {
-                        var scenarios = new ScenarioTests(fixture, this.outputHelper);
-
-                        var tests = new List<(string, Task)>();
-
-                        for (int i = 0; i < multiplicity; i++)
+                        foreach ((string name, Task task) in scenarios.StartAllScenarios(false, false))
                         {
-                            foreach ((string name, Task task) in scenarios.StartAllScenarios(false, false))
-                            {
-                                Trace.WriteLine($"TestProgress: Adding {name}");
-                                tests.Add((name, task));
-                            }
+                            Trace.WriteLine($"TestProgress: Adding {name}");
+                            tests.Add((name, task));
                         }
-
-                        await this.WaitForCompletion(tests, testTimeout);
-
-                        Trace.WriteLine($"TestProgress: Shutting Down");
                     }
 
-                    Trace.WriteLine($"TestProgress: Completed RunAsync");
+                    await this.WaitForCompletion(tests, testTimeout);
+
+                    Trace.WriteLine($"TestProgress: Shutting Down");
                 }
 
-                var task = Task.Run(RunAsync);
-                var timeoutTask = Task.Delay(totalTimeout);
-                await Task.WhenAny(task, timeoutTask);
-                Assert.True(task.IsCompleted);
-                await task;
-            });
+                Trace.WriteLine($"TestProgress: Completed RunAsync");
+            }
+
+            var task = Task.Run(RunAsync);
+            var timeoutTask = Task.Delay(totalTimeout);
+            await Task.WhenAny(task, timeoutTask);
+            Assert.True(task.IsCompleted);
+            await task;
         }
 
         [Theory]
