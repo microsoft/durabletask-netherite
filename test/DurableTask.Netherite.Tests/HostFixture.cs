@@ -86,7 +86,7 @@ namespace DurableTask.Netherite.Tests
 
         public void Dispose()
         {
-            this.Host.StopAsync(false).Wait();
+            this.Host.StopAsync(false).Wait(TimeSpan.FromMinutes(1));
             this.Host.Dispose();
             Trace.Listeners.Remove(this.traceListener);
         }

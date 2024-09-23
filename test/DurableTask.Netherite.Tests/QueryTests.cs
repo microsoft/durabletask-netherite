@@ -275,21 +275,24 @@ namespace DurableTask.Netherite.Tests
         /// This exercises what LinqPAD queries do.
         /// </summary>
         [Fact]
-        public async void SingleServiceQuery()
+        public Task SingleServiceQuery()
         {
-            Trace.WriteLine("Starting the orchestration service...");
-            var settings = TestConstants.GetNetheriteOrchestrationServiceSettings(emulationSpec: "SingleHost");
-            var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
-            var orchestrationService = (IOrchestrationService)service;
-            await orchestrationService.CreateAsync(true);
-            await orchestrationService.StartAsync();
-            Trace.WriteLine("Orchestration service is started.");
+            return Common.WithTimeoutAsync(TimeSpan.FromMinutes(1), async () =>
+            {
+                Trace.WriteLine("Starting the orchestration service...");
+                var settings = TestConstants.GetNetheriteOrchestrationServiceSettings(emulationSpec: "SingleHost");
+                var service = new NetheriteOrchestrationService(settings, this.loggerFactory);
+                var orchestrationService = (IOrchestrationService)service;
+                await orchestrationService.CreateAsync(true);
+                await orchestrationService.StartAsync();
+                Trace.WriteLine("Orchestration service is started.");
 
-            var _ = await ((IOrchestrationServiceQueryClient)service).GetOrchestrationStateAsync();
+                var _ = await ((IOrchestrationServiceQueryClient)service).GetOrchestrationStateAsync();
 
-            Trace.WriteLine("shutting down the orchestration service...");
-            await orchestrationService.StopAsync();
-            Trace.WriteLine("Orchestration service is shut down.");
+                Trace.WriteLine("shutting down the orchestration service...");
+                await orchestrationService.StopAsync();
+                Trace.WriteLine("Orchestration service is shut down.");
+            });
         }
     }
 }
