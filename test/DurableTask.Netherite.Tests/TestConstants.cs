@@ -64,8 +64,6 @@ namespace DurableTask.Netherite.Tests
         public static NetheriteOrchestrationService GetTestOrchestrationService(ILoggerFactory loggerFactory) 
             => new NetheriteOrchestrationService(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
-        internal static TestOrchestrationHost GetTestOrchestrationHost(ILoggerFactory loggerFactory)
-            => new TestOrchestrationHost(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
         internal static bool UsesEmulation(this NetheriteOrchestrationServiceSettings settings)
         {
