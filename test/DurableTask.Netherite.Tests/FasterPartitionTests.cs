@@ -63,6 +63,12 @@ namespace DurableTask.Netherite.Tests
             };
         }
 
+        // to more easily debug hangs in CI, we add progress messages to our unit tests so we can tell where it hangs
+        void Progress(string message)
+        {
+            this.output?.Invoke($"%%% {message}");
+        }
+
         public void Dispose()
         {
             this.outputHelper = null;
@@ -337,7 +343,7 @@ namespace DurableTask.Netherite.Tests
                         Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while executing orchestrations: {this.errorInTestHooks}");
                     }
 
-                    this.output?.Invoke("--- test progress: BEFORE SHUTDOWN ------------------------------------");
+                    this.Progress("shutting down");
                     foreach (var line in this.cacheDebugger.Dump())
                     {
                         this.output?.Invoke(line);
@@ -345,18 +351,19 @@ namespace DurableTask.Netherite.Tests
 
                     // shut down the service
                     await service.StopAsync();
+
+                    this.Progress("shut down");
                 }
 
                 {
-                    this.output?.Invoke("--- test progress: BEFORE RECOVERY ------------------------------------");
+                    this.Progress("recovering");
 
                     // recover the service 
                     var (service, client) = await this.StartService(recover: true, orchestrationType, activityType);
 
-                    this.output?.Invoke("--- test progress: AFTER RECOVERY ------------------------------------");
+                    this.Progress("recovered");
 
-
-                    // query the status of all orchestrations
+                    this.Progress("querying the status of all orchestrations");
                     {
                         var tasks = new Task[OrchestrationCount];
                         for (int i = 0; i < OrchestrationCount; i++)
@@ -364,8 +371,8 @@ namespace DurableTask.Netherite.Tests
                         await Task.WhenAll(tasks);
                         Assert.True(this.errorInTestHooks == null, $"TestHooks detected problem while querying orchestration states: {this.errorInTestHooks}");
                     }
+                    this.Progress("queries completed");
 
-                    this.output?.Invoke("--- test progress: AFTER QUERIES ------------------------------------");
                     foreach (var line in this.cacheDebugger.Dump())
                     {
                         this.output?.Invoke(line);
@@ -639,7 +646,7 @@ namespace DurableTask.Netherite.Tests
                 var orchestrationType2 = typeof(ScenarioTests.Orchestrations.SayHelloInline);
 
                 {
-                    // start the service 
+                    this.Progress("start the service");
                     var service = new NetheriteOrchestrationService(this.settings, this.loggerFactory);
                     var orchestrationService = (IOrchestrationService)service;
                     var orchestrationServiceClient = (IOrchestrationServiceClient)service;
@@ -656,60 +663,70 @@ namespace DurableTask.Netherite.Tests
 
                     int numExtraEntries = 0;
 
-                    // check that log contains no records
+                    this.Progress("check that log contains no records");
                     var log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.None, null));
+                    this.Progress("Injection complete");
                     Assert.Equal(0 * log.FixedRecordSize + numExtraEntries * extraLogEntrySize, log.TailAddress - log.BeginAddress);
 
-                    // create 100 instances
+                    this.Progress("create 100 instances");
                     var instance = await client.CreateOrchestrationInstanceAsync(orchestrationType, "parent", 99);
                     await client.WaitForOrchestrationAsync(instance, TimeSpan.FromSeconds(40));
                     var instances = await orchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken.None);
+                    this.Progress("Injection complete");
                     numExtraEntries += 2;
                     Assert.Equal(100, instances.Count);
 
-                    // check that log contains 200 records
+                    this.Progress("check that log contains 100 records");
                     log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.None, null));
+                    this.Progress("Injection complete");
                     Assert.Equal(200 * log.FixedRecordSize + numExtraEntries * extraLogEntrySize, log.TailAddress - log.BeginAddress);
                     Assert.Equal(log.ReadOnlyAddress, log.BeginAddress);
 
-                    // take a foldover checkpoint
+                    this.Progress("take a foldover checkpoint");
                     log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.Idle, null));
+                    this.Progress("Injection complete");
                     Assert.Equal(200 * log.FixedRecordSize + numExtraEntries * extraLogEntrySize, log.TailAddress - log.BeginAddress);
                     Assert.Equal(log.ReadOnlyAddress, log.TailAddress);
 
-                    // read all instances using a query and check that the log did not grow
-                    // (because queries do not copy to tail)
+                    this.Progress("read all instances using a query and check that the log did not grow");
+                    this.Progress("(because queries do not copy to tail)");
                     instances = await orchestrationServiceQueryClient.GetAllOrchestrationStatesAsync(CancellationToken.None);
+                    this.Progress("query complete");
                     Assert.Equal(100, instances.Count);
                     log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.None, null));
                     Assert.Equal(200 * log.FixedRecordSize + numExtraEntries * extraLogEntrySize, log.TailAddress - log.BeginAddress);
                     Assert.Equal(log.ReadOnlyAddress, log.TailAddress);
 
-                    // read all instances using point queries and check that the log grew by one record per instance
-                    // (because point queries read the InstanceState on the main session, which copies it to the tail)
+                    this.Progress("read all instances using point queries and check that the log grew by one record per instance");
+                    this.Progress("(because point queries read the InstanceState on the main session, which copies it to the tail)");
                     var tasks = instances.Select(instance => orchestrationServiceClient.GetOrchestrationStateAsync(instance.OrchestrationInstance.InstanceId, false));
                     await Task.WhenAll(tasks);
+                    this.Progress("queries complete");
                     log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.None, null));
+                    this.Progress("Injection complete");
                     numExtraEntries += 1;
                     Assert.Equal(300 * log.FixedRecordSize + numExtraEntries * extraLogEntrySize, log.TailAddress - log.BeginAddress);
                     Assert.Equal(log.ReadOnlyAddress, log.TailAddress - 100 * log.FixedRecordSize - 1 * extraLogEntrySize);
 
-                    // doing the same again has no effect
-                    // (because all instances are already in the mutable section)
+                    this.Progress("doing the same again has no effect");
+                    this.Progress("because all instances are already in the mutable section)");
                     tasks = instances.Select(instance => orchestrationServiceClient.GetOrchestrationStateAsync(instance.OrchestrationInstance.InstanceId, false));
                     await Task.WhenAll(tasks);
                     log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.None, null));
+                    this.Progress("Injection complete");
                     Assert.Equal(300 * log.FixedRecordSize + numExtraEntries * extraLogEntrySize, log.TailAddress - log.BeginAddress);
                     Assert.Equal(log.ReadOnlyAddress, log.TailAddress - 100 * log.FixedRecordSize - 1 * extraLogEntrySize);
 
-                    // take a foldover checkpoint
-                    // this moves the readonly section back to the end
+                    this.Progress("take a foldover checkpoint");
+                    this.Progress("this moves the readonly section back to the end");
                     log = await checkpointInjector.InjectAsync(log => (Faster.StoreWorker.CheckpointTrigger.Idle, null));
+                    this.Progress("Injection complete");
                     Assert.Equal(300 * log.FixedRecordSize + numExtraEntries * extraLogEntrySize, log.TailAddress - log.BeginAddress);
                     Assert.Equal(log.ReadOnlyAddress, log.TailAddress);
 
-                    // stop the service
+                    this.Progress("stop the service");
                     await orchestrationService.StopAsync();
+                    this.Progress("service stopped");
                 }
             });
         }
