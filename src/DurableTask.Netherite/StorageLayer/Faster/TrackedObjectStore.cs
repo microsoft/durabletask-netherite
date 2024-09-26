@@ -37,7 +37,7 @@ namespace DurableTask.Netherite.Faster
 
         public abstract Task FinalizeCheckpointCompletedAsync(Guid guid);
 
-        public abstract long? GetCompactionTarget();
+        public abstract bool CompactionIsDue(out long target);
 
         public abstract Task<long> RunCompactionAsync(long target);
 
