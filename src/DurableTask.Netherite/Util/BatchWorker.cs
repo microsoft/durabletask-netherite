@@ -95,7 +95,7 @@ namespace DurableTask.Netherite
             return tcs.Task;
         }
 
-        public Task WaitForShutdownAsync()
+        public virtual Task WaitForShutdownAsync()
         {
             if (!this.cancellationToken.IsCancellationRequested)
             {

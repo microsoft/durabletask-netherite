@@ -3,13 +3,8 @@
 
 namespace DurableTask.Netherite.EventHubsTransport
 {
-    using DurableTask.Core.Common;
-    using Microsoft.Azure.EventHubs;
-    using Microsoft.Extensions.Logging;
+    using Azure.Messaging.EventHubs;
     using System;
-    using System.Collections.Generic;
-    using System.Diagnostics;
-    using System.IO;
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
@@ -19,12 +14,12 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly EventHubsSender<ClientEvent>[] channels;
         int roundRobin;
 
-        public EventHubsClientSender(TransportAbstraction.IHost host, Guid clientId, PartitionSender[] senders, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper, NetheriteOrchestrationServiceSettings settings)
+        public EventHubsClientSender(TransportAbstraction.IHost host, Guid clientId, (EventHubConnection connection, string partitionId)[] partitions, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper, NetheriteOrchestrationServiceSettings settings)
         {
-            this.channels = new Netherite.EventHubsTransport.EventHubsSender<ClientEvent>[senders.Length];
-            for (int i = 0; i < senders.Length; i++)
+            this.channels = new Netherite.EventHubsTransport.EventHubsSender<ClientEvent>[partitions.Length];
+            for (int i = 0; i < partitions.Length; i++)
             {
-                this.channels[i] = new EventHubsSender<ClientEvent>(host, clientId.ToByteArray(), senders[i], shutdownToken, traceHelper, settings);
+                this.channels[i] = new EventHubsSender<ClientEvent>(host, clientId.ToByteArray(), partitions[i].connection, partitions[i].partitionId, shutdownToken, traceHelper, settings);
             }
         }
 
@@ -44,7 +39,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
         public Task WaitForShutdownAsync()
         {
-            return Task.WhenAll(this.channels.Select(sender => sender.WaitForShutdownAsync()));
+            return Task.WhenAll(this.channels.Select(sender => sender.WaitForShutdownAsync()).ToList());
         }
     }
 }

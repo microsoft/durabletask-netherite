@@ -9,14 +9,14 @@ namespace DurableTask.Netherite.EventHubsTransport
     using System.IO;
     using System.Threading;
     using System.Threading.Tasks;
-    using Azure.Messaging.EventHubs.Consumer;
+    using Azure.Messaging.EventHubs;
+    using Azure.Messaging.EventHubs.Producer;
     using DurableTask.Core.Common;
-    using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Logging;
 
     class EventHubsSender<T> : BatchWorker<Event> where T : Event
     {
-        readonly PartitionSender sender;
+        readonly EventHubProducerClient client;
         readonly TransportAbstraction.IHost host;
         readonly byte[] guid;
         readonly EventHubsTraceHelper traceHelper;
@@ -26,20 +26,38 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly TimeSpan backoff = TimeSpan.FromSeconds(5);
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
         readonly Stopwatch stopwatch = new Stopwatch();
-        readonly BlobBatchSender blobBatchSender;    
+        readonly BlobBatchSender blobBatchSender;
+        readonly CreateBatchOptions batchOptions;
+        readonly SendEventOptions sendOptions;
 
-        public EventHubsSender(TransportAbstraction.IHost host, byte[] guid, PartitionSender sender, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper, NetheriteOrchestrationServiceSettings settings)
-           : base($"EventHubsSender {sender.EventHubClient.EventHubName}/{sender.PartitionId}", false, 2000, shutdownToken, traceHelper)
+        public EventHubsSender(TransportAbstraction.IHost host, byte[] guid, EventHubConnection connection, string partitionId, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper, NetheriteOrchestrationServiceSettings settings)
+           : base($"EventHubsSender {connection.EventHubName}/{partitionId}", false, 2000, shutdownToken, traceHelper)
         {
             this.host = host;
             this.guid = guid;
-            this.sender = sender;
+            this.client = new EventHubProducerClient(connection);
             this.traceHelper = traceHelper;
             this.lowestTraceLevel = traceHelper.IsEnabled(LogLevel.Trace) ? traceHelper : null;
-            this.eventHubName = this.sender.EventHubClient.EventHubName;
-            this.eventHubPartition = this.sender.PartitionId;
+            this.eventHubName = connection.EventHubName;
+            this.eventHubPartition = partitionId;
             this.blobBatchSender = new BlobBatchSender($"EventHubsSender {this.eventHubName}/{this.eventHubPartition}", this.traceHelper, settings);
+            this.batchOptions = new CreateBatchOptions()
+            {
+                PartitionId = partitionId,
+            };
+            this.sendOptions = new SendEventOptions()
+            {
+                PartitionId = partitionId,
+            };
         }
+
+        public override async Task WaitForShutdownAsync()
+        {
+            await base.WaitForShutdownAsync();
+            await this.client.CloseAsync();
+        }
+
+        public string EventHubsClientIdentifier => this.client.Identifier;
 
         protected override async Task Process(IList<Event> toSend)
         {
@@ -106,7 +124,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                         {
                             // we don't have a lot of bytes or messages to send
                             // send them all in a single EH batch
-                            using var batch = this.sender.CreateBatch();
+                            using var batch = await this.client.CreateBatchAsync(this.batchOptions, this.cancellationToken).ConfigureAwait(false);
                             long maxPosition = this.stream.Position;
                             this.stream.Seek(0, SeekOrigin.Begin);
                             var buffer = this.stream.GetBuffer();
@@ -129,10 +147,10 @@ namespace DurableTask.Netherite.EventHubsTransport
                             }
                             maybeSent = index - 1;
                             this.stopwatch.Restart();
-                            await this.sender.SendAsync(batch).ConfigureAwait(false);
+                            await this.client.SendAsync(batch, this.cancellationToken).ConfigureAwait(false);
                             this.stopwatch.Stop();
                             sentSuccessfully = index - 1;
-                            this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent batch of {numPackets} packets ({size} bytes) in {latencyMs:F2}ms, throughput={throughput:F2}MB/s", this.eventHubName, this.eventHubPartition, batch.Count, batch.Size, this.stopwatch.Elapsed.TotalMilliseconds, batch.Size / (1024 * 1024 * this.stopwatch.Elapsed.TotalSeconds));
+                            this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent batch of {numPackets} packets ({size} bytes) in {latencyMs:F2}ms, throughput={throughput:F2}MB/s", this.eventHubName, this.eventHubPartition, batch.Count, batch.SizeInBytes, this.stopwatch.Elapsed.TotalMilliseconds, batch.SizeInBytes / (1024 * 1024 * this.stopwatch.Elapsed.TotalSeconds));
                             break; // all messages were sent
                         }
                         else
@@ -145,7 +163,7 @@ namespace DurableTask.Netherite.EventHubsTransport
                     this.stopwatch.Restart();
                     EventData blobMessage = await this.blobBatchSender.UploadEventsAsync(this.stream, packetOffsets, this.guid, this.cancellationToken);
                     maybeSent = index - 1;
-                    await this.sender.SendAsync(blobMessage);
+                    await this.client.SendAsync(new EventData[] { blobMessage }, this.sendOptions, this.cancellationToken);
                     this.stopwatch.Stop();
                     sentSuccessfully = index - 1;
                     this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent blob-batch of {numPackets} packets ({size} bytes) in {latencyMs:F2}ms, throughput={throughput:F2}MB/s", this.eventHubName, this.eventHubPartition, packetOffsets.Count + 1, this.stream.Position, this.stopwatch.Elapsed.TotalMilliseconds, this.stream.Position / (1024 * 1024 * this.stopwatch.Elapsed.TotalSeconds));

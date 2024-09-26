@@ -3,11 +3,13 @@
 
 namespace DurableTask.Netherite.EventHubsTransport
 {
+    using Azure.Messaging.EventHubs;
+    using Azure.Messaging.EventHubs.Primitives;
+    using Azure.Messaging.EventHubs.Processor;
+    using Azure.Storage.Blobs;
     using DurableTask.Core.Common;
     using DurableTask.Netherite.Abstractions;
-    using Microsoft.Azure.EventHubs;
-    using Microsoft.Azure.EventHubs.Processor;
-    using Microsoft.Azure.Storage.Blob;
+    //using Microsoft.Azure.Storage.Blob;
     using Microsoft.Extensions.Logging;
     using System;
     using System.Collections.Generic;
@@ -26,7 +28,7 @@ namespace DurableTask.Netherite.EventHubsTransport
         readonly TaskhubParameters parameters;
         readonly NetheriteOrchestrationServiceSettings settings;
         readonly EventHubsTraceHelper traceHelper;
-        readonly CloudBlobContainer cloudBlobContainer;
+        readonly BlobContainerClient cloudBlobContainer;
         readonly string pathPrefix;
         readonly EventHubsTransport transport;
         readonly CancellationToken shutdownToken;
@@ -40,7 +42,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             TaskhubParameters parameters,
             NetheriteOrchestrationServiceSettings settings,
             EventHubsTraceHelper traceHelper,
-            CloudBlobContainer cloudBlobContainer,
+            BlobContainerClient cloudBlobContainer,
             string pathPrefix,
             EventHubsTransport transport,
             CancellationToken shutdownToken)
@@ -65,7 +67,7 @@ namespace DurableTask.Netherite.EventHubsTransport
 
         public Task StopHostingAsync()
         {
-            return Task.WhenAll(this.eventProcessorHost.UnregisterEventProcessorAsync(), this.loadMonitorHost.UnregisterEventProcessorAsync());
+            return Task.WhenAll(this.StopHostingPartitionsAsync(), this.StopHostingLoadMonitorAsync());
         }
 
         async Task StartHostingPartitionsAsync()
@@ -74,23 +76,17 @@ namespace DurableTask.Netherite.EventHubsTransport
 
             string formattedCreationDate = this.connections.CreationTimestamp.ToString("o").Replace("/", "-");
 
-            this.eventProcessorHost = await this.settings.EventHubsConnection.GetEventProcessorHostAsync(
-                Guid.NewGuid().ToString(),
-                EventHubsTransport.PartitionHub,
-                EventHubsTransport.PartitionConsumerGroup,
-                this.settings.BlobStorageConnection,
-                this.cloudBlobContainer.Name,
-                $"{this.pathPrefix}eh-checkpoints/{(EventHubsTransport.PartitionHub)}/{formattedCreationDate}");
-
-            var processorOptions = new EventProcessorOptions()
+            this.eventProcessorHost = this.settings.EventHubsConnection.CreateEventProcessorHost(new EventProcessorHost.ConstructorArguments()
             {
-                MaxBatchSize = 300,
-                PrefetchCount = 500,
-            };
+                EventHubName = EventHubsTransport.PartitionHub,
+                ClientOptions = new Azure.Messaging.EventHubs.EventProcessorClientOptions() { PrefetchCount = 500 },
+                ConsumerGroup = EventHubsTransport.PartitionConsumerGroup,
+                BlobContainerClient = this.cloudBlobContainer,
+                Factory = new PartitionEventProcessorFactory(this),
+                TraceHelper = this.traceHelper,
+            });
 
-            await this.eventProcessorHost.RegisterEventProcessorFactoryAsync(
-                new PartitionEventProcessorFactory(this),
-                processorOptions);
+            await this.eventProcessorHost.StartProcessingAsync(this.shutdownToken).ConfigureAwait(false);
 
             this.traceHelper.LogInformation($"EventHubsTransport started EventProcessorHost");
         }
@@ -99,29 +95,40 @@ namespace DurableTask.Netherite.EventHubsTransport
         {
             this.traceHelper.LogInformation("EventHubsTransport is registering LoadMonitorHost");
 
-            this.loadMonitorHost = await this.settings.EventHubsConnection.GetEventProcessorHostAsync(
-                    Guid.NewGuid().ToString(),
-                    EventHubsTransport.LoadMonitorHub,
-                    EventHubsTransport.LoadMonitorConsumerGroup,
-                    this.settings.BlobStorageConnection,
-                    this.cloudBlobContainer.Name,
-                    $"{this.pathPrefix}eh-checkpoints/{EventHubsTransport.LoadMonitorHub}");
-
-            var processorOptions = new EventProcessorOptions()
+            this.loadMonitorHost = this.settings.EventHubsConnection.CreateEventProcessorHost(new EventProcessorHost.ConstructorArguments()
             {
-                InitialOffsetProvider = (s) => EventPosition.FromEnqueuedTime(DateTime.UtcNow - TimeSpan.FromSeconds(30)),
-                MaxBatchSize = 500,
-                PrefetchCount = 500,
-            };
+                EventHubName = EventHubsTransport.LoadMonitorHub,
+                ClientOptions = new Azure.Messaging.EventHubs.EventProcessorClientOptions() { PrefetchCount = 500 },
+                ConsumerGroup = EventHubsTransport.LoadMonitorConsumerGroup,
+                BlobContainerClient = this.cloudBlobContainer,
+                Factory = new LoadMonitorEventProcessorFactory(this),
+                TraceHelper = this.traceHelper,
+            });
 
-            await this.loadMonitorHost.RegisterEventProcessorFactoryAsync(
-                new LoadMonitorEventProcessorFactory(this),
-                processorOptions);
+            await this.loadMonitorHost.StartProcessingAsync(this.shutdownToken).ConfigureAwait(false);
 
             this.traceHelper.LogInformation($"EventHubsTransport started LoadMonitorHost");
         }
+ 
+        async Task StopHostingPartitionsAsync()
+        {
+            this.traceHelper.LogInformation($"EventHubsTransport is stopping EventProcessorHost");
 
-        class PartitionEventProcessorFactory : IEventProcessorFactory
+            await this.eventProcessorHost.StopProcessingAsync();
+
+            this.traceHelper.LogInformation($"EventHubsTransport stopped EventProcessorHost");
+        }
+
+        async Task StopHostingLoadMonitorAsync()
+        {
+            this.traceHelper.LogInformation($"EventHubsTransport is stopping LoadMonitorHost");
+
+            await this.loadMonitorHost.StopProcessingAsync();
+
+            this.traceHelper.LogInformation($"EventHubsTransport stopped LoadMonitorHost");
+        }
+
+        public class PartitionEventProcessorFactory : IEventProcessorFactory
         {
             readonly EventHubsPartitionManager manager;
 
@@ -130,18 +137,19 @@ namespace DurableTask.Netherite.EventHubsTransport
                 this.manager = transport;
             }
 
-            public IEventProcessor CreateEventProcessor(PartitionContext context)
+            public IEventProcessor CreateEventProcessor(EventProcessorClient client, string partitionId)
             {
-                return new EventHubsProcessor(
+                return new PartitionProcessor(
                     this.manager.host,
                     this.manager.transport,
                     this.manager.parameters,
-                    context,
+                    client,
+                    partitionId,
                     this.manager.settings,
                     this.manager.transport,
                     this.manager.traceHelper,
                     this.manager.shutdownToken);
-            }
+            } 
         }
 
         class LoadMonitorEventProcessorFactory : IEventProcessorFactory
@@ -153,16 +161,18 @@ namespace DurableTask.Netherite.EventHubsTransport
                 this.manager = transport;
             }
 
-            public IEventProcessor CreateEventProcessor(PartitionContext context)
+            public IEventProcessor CreateEventProcessor(EventProcessorClient client, string partitionId)
             {
-                return new LoadMonitorProcessor(
-                    this.manager.host,
-                    this.manager.transport,
-                    this.manager.parameters,
-                    context,
-                    this.manager.settings,
-                    this.manager.traceHelper,
-                    this.manager.shutdownToken);
+                return  new LoadMonitorProcessor(
+                     this.manager.host,
+                     this.manager.transport,
+                     this.manager.parameters,
+                     client,
+                     partitionId,
+                     this.manager.settings,
+                     this.manager.transport,
+                     this.manager.traceHelper,
+                     this.manager.shutdownToken);
             }
         }    
     }

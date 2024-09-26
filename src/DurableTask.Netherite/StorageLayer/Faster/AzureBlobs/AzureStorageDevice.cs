@@ -82,12 +82,12 @@ namespace DurableTask.Netherite.Faster
             this.pageBlobDirectory = pageBlobDirectory;
             this.blobName = blobName;
             this.PartitionErrorHandler = blobManager.PartitionErrorHandler;
-            this.PartitionErrorHandler.Token.Register(this.CancelAllRequests);
             this.BlobManager = blobManager;
             this.underLease = underLease;
             this.hangCheckTimer = new Timer(this.DetectHangs, null, 0, 20000);
             this.singleWriterSemaphore = underLease ? new SemaphoreSlim(1) : null;
             this.limit = TimeSpan.FromSeconds(90);
+            this.PartitionErrorHandler.Token.Register(this.CancelAllRequests);
         }
 
         /// <inheritdoc/>
@@ -106,7 +106,7 @@ namespace DurableTask.Netherite.Faster
                 var prefix = $"{this.blockBlobDirectory}{this.blobName}.";
 
                 string continuationToken = null;
-                IEnumerable<BlobItem> pageResults = null;
+                List<BlobItem> pageResults = null;
 
                 do
                 {
@@ -124,25 +124,15 @@ namespace DurableTask.Netherite.Faster
                         {
                             var client = this.pageBlobDirectory.Client.WithRetries;
 
-                            var enumerator = client.GetBlobsAsync(
+                            Azure.AsyncPageable<BlobItem> pageable = client.GetBlobsAsync(
                                 prefix: prefix,
-                                cancellationToken: this.PartitionErrorHandler.Token)
-                                .AsPages(continuationToken, 100)
-                                .GetAsyncEnumerator(cancellationToken: this.PartitionErrorHandler.Token);
+                                cancellationToken: this.PartitionErrorHandler.Token);
 
-                            if (await enumerator.MoveNextAsync())
-                            {
-                                var page = enumerator.Current;
-                                pageResults = page.Values;
-                                continuationToken = page.ContinuationToken;
-                                return page.Values.Count; // not accurate, in terms of bytes, but still useful for tracing purposes
-                            }
-                            else
-                            {
-                                pageResults = Enumerable.Empty<BlobItem>();
-                                continuationToken = null;
-                                return 0;
-                            };
+                            IAsyncEnumerable<Azure.Page<BlobItem>> pages = pageable.AsPages(continuationToken, 100);
+                            Azure.Page<BlobItem> firstPage = await pages.FirstAsync();
+                            pageResults = firstPage.Values.ToList();
+                            continuationToken = firstPage.ContinuationToken;
+                            return pageResults.Count; // not accurate, in terms of bytes, but still useful for tracing purposes
                         });
 
                     foreach (var item in pageResults)
