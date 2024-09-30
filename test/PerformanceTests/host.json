@@ -100,6 +100,8 @@
         // "PartitionManagement": "RecoveryTester",
         // "PartitionManagementParameters": "7",
 
+        //"TaskhubParametersFilePath": "preserved-hub.json",
+
         // set this to "Local" to disable the global activity distribution algorithm
         // options: "Local", "Static", "Locavore"
         "ActivityScheduler": "Locavore",

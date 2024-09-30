@@ -19,6 +19,7 @@ namespace DurableTask.Netherite.Scaling
     {
         readonly string taskHubName;
         readonly Task<CloudBlobContainer> blobContainer;
+        readonly string taskhubParametersFilePath;      
         TaskhubParameters parameters;
 
         readonly static JsonSerializerSettings serializerSettings = new JsonSerializerSettings() 
@@ -27,10 +28,11 @@ namespace DurableTask.Netherite.Scaling
             MissingMemberHandling = MissingMemberHandling.Ignore,
         };
 
-        public AzureBlobLoadPublisher(ConnectionInfo connectionInfo, string taskHubName)
+        public AzureBlobLoadPublisher(ConnectionInfo connectionInfo, string taskHubName, string taskHubParametersFilePath)
         {
             this.blobContainer = this.GetBlobContainer(connectionInfo, taskHubName);
             this.taskHubName = taskHubName;
+            this.taskhubParametersFilePath = taskHubParametersFilePath;
         }
 
         async Task<CloudBlobContainer> GetBlobContainer(ConnectionInfo connectionInfo, string taskHubName)
@@ -54,7 +56,7 @@ namespace DurableTask.Netherite.Scaling
             if (this.parameters == null)
             {
                 this.parameters = await this.ReadJsonBlobAsync<Netherite.Abstractions.TaskhubParameters>(
-                    (await this.blobContainer).GetBlockBlobReference("taskhubparameters.json"),
+                    (await this.blobContainer).GetBlockBlobReference(this.taskhubParametersFilePath),
                     throwIfNotFound: throwIfNotFound,
                     throwOnParseError: throwIfNotFound,
                     cancellationToken).ConfigureAwait(false);
