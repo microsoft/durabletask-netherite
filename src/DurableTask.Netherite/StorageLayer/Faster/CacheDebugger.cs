@@ -49,6 +49,7 @@ namespace DurableTask.Netherite.Faster
             PostCopyUpdate,
             SingleWriterUpsert,
             SingleWriterCopyToTail,
+            SingleWriterCopyToTailFromOutput,
             SingleWriterCopyToReadCache,
             SingleWriterCompaction,
             PostSingleWriterUpsert,
