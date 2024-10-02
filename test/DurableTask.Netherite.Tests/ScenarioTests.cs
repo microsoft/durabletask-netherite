@@ -277,7 +277,7 @@ namespace DurableTask.Netherite.Tests
             Assert.Equal(3, JToken.Parse(state?.Output));
 
             // When using ContinueAsNew, the original input is discarded and replaced with the most recent state.
-            Assert.NotEqual(initialValue, JToken.Parse(state?.Input));
+            Assert.NotEqual(initialValue, (int) JToken.Parse(state?.Input));
         }
 
         /// <summary>
