@@ -1828,6 +1828,7 @@ namespace DurableTask.Netherite.Faster
         public struct Output
         {
             public object Val;
+            public int Version;
 
             public TrackedObject Read(FasterKV store, string eventId)
             {
@@ -2024,6 +2025,7 @@ namespace DurableTask.Netherite.Faster
                     dst.Val = trackedObject;
                 }
 
+                dst.Version = src.Version;
                 this.stats.Read++;
                 return true;
             }
@@ -2054,12 +2056,15 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 dst.Val = trackedObject;
+                dst.Version = value.Version;
                 this.stats.Read++;
                 return true;
             }
 
             bool IFunctions<Key, Value, EffectTracker, Output, object>.SingleWriter(ref Key key, ref EffectTracker input, ref Value src, ref Value dst, ref Output output, ref UpsertInfo info, WriteReason reason)
             {
+                bool takeValueFromOutput = false;
+
                 switch (reason)
                 {
                     case WriteReason.Upsert:
@@ -2076,7 +2081,18 @@ namespace DurableTask.Netherite.Faster
                         break;
 
                     case WriteReason.CopyToTail:
-                        this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCopyToTail, src.Version, default, info.Address);
+                        // we have empirically observed that src does sometimes not contain the correct value (is null)
+                        // we are not sure if this is a bug in FASTER or intended behavior
+                        // as a workaround for those situations, we are passing the source value in the output parameter, which seems to work o.k.
+                        takeValueFromOutput = (output.Val != null);
+                        if (takeValueFromOutput)
+                        {
+                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCopyToTailFromOutput, output.Version, default, info.Address);
+                        }
+                        else
+                        {
+                            this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCopyToTail, src.Version, default, info.Address);
+                        }
                         break;
 
                     case WriteReason.Compaction:
@@ -2088,8 +2104,16 @@ namespace DurableTask.Netherite.Faster
                         this.cacheDebugger?.Fail("Invalid WriteReason in SingleWriter", key);
                         break;
                 }
-                dst.Val = output.Val ?? src.Val;
-                dst.Version = src.Version;
+                if (takeValueFromOutput)
+                {
+                    dst.Val = output.Val;
+                    dst.Version = output.Version;
+                }
+                else
+                {
+                    dst.Val = src.Val;
+                    dst.Version = src.Version;
+                }
                 this.cacheDebugger?.ValidateObjectVersion(dst, key.Val);
                 return true;
             }
