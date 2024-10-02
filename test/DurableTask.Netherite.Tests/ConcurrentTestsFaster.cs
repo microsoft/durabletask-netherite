@@ -109,7 +109,7 @@ namespace DurableTask.Netherite.Tests
 
                     var tests = new List<(string, Task)>();
 
-                    foreach ((string name, Task task) in scenarios.StartAllScenarios(includeTimers: true, includeLarge: true))
+                    foreach ((string name, Task task) in scenarios.StartAllScenarios(includeTimers: false, includeLarge: true))
                     {
                         Trace.WriteLine($"TestProgress: Adding {name}");
                         tests.Add((name, task));

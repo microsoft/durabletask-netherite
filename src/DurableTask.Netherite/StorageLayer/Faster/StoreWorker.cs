@@ -345,7 +345,7 @@ namespace DurableTask.Netherite.Faster
             // in a test setting, let the test decide when to checkpoint or compact
             if (this.partition.Settings.TestHooks?.CheckpointInjector != null)
             {
-                return this.partition.Settings.TestHooks.CheckpointInjector.CheckpointDue((this.store as FasterKV).Log, out trigger, out compactUntil);
+                return this.partition.Settings.TestHooks.CheckpointInjector.CheckpointDue((this.store as FasterKV).Log, out trigger, out compactUntil, this.traceHelper);
             }
 
             trigger = CheckpointTrigger.None;
@@ -446,11 +446,13 @@ namespace DurableTask.Netherite.Faster
                     GC.Collect();
 
                     this.traceHelper.FasterProgress("Checkpointing state machine: resetting to initial state");
+
+                    this.partition.Settings.TestHooks?.CheckpointInjector?.SequenceComplete((this.store as FasterKV).Log, this.traceHelper);
+
                     // we have reached the end of the state machine transitions
                     this.pendingStoreCheckpoint = null;
                     this.pendingCheckpointTrigger = CheckpointTrigger.None;
                     this.ScheduleNextIdleCheckpointTime();
-                    this.partition.Settings.TestHooks?.CheckpointInjector?.SequenceComplete((this.store as FasterKV).Log);
                 }
             }
             else if (this.pendingIndexCheckpoint != null)
@@ -672,7 +674,7 @@ namespace DurableTask.Netherite.Faster
             if (target.HasValue)
             {
                 target = await this.store.RunCompactionAsync(target.Value);
-                this.partition.Settings.TestHooks?.CheckpointInjector?.CompactionComplete(this.partition.ErrorHandler);
+                this.partition.Settings.TestHooks?.CheckpointInjector?.CompactionComplete(this.partition.ErrorHandler, this.traceHelper);
             }
 
             this.Notify();
