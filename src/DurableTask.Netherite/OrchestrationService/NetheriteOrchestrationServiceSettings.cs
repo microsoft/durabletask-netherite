@@ -119,6 +119,11 @@ namespace DurableTask.Netherite
         public string PartitionManagementParameters { get; set; } = null;
 
         /// <summary>
+        /// The path to the file containing the taskhub parameters.
+        /// </summary>
+        public string TaskhubParametersFilePath { get; set; } = "taskhubparameters.json";
+
+        /// <summary>
         /// Gets or sets the activity scheduler option
         /// </summary>
         [JsonConverter(typeof(StringEnumConverter))]

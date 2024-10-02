@@ -73,7 +73,7 @@ namespace DurableTask.Netherite.Faster
             async Task<CloudBlockBlob> GetTaskhubParametersAsync()
             {
                 var cloudBlobContainer = await this.cloudBlobContainer;
-                return cloudBlobContainer.GetBlockBlobReference("taskhubparameters.json");
+                return cloudBlobContainer.GetBlockBlobReference(settings.TaskhubParametersFilePath);
             }
 
             this.traceHelper.TraceProgress("Creating LoadPublisher Service");
@@ -83,7 +83,7 @@ namespace DurableTask.Netherite.Faster
             }
             else
             {
-                this.LoadPublisher = new AzureBlobLoadPublisher(settings.BlobStorageConnection, settings.HubName);
+                this.LoadPublisher = new AzureBlobLoadPublisher(settings.BlobStorageConnection, settings.HubName, settings.TaskhubParametersFilePath);
             }
         }
 
