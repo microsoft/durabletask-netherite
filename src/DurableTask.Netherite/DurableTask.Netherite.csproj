@@ -58,8 +58,7 @@
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.17.1" />
     <PackageReference Include="Microsoft.FASTER.Core" Version="2.6.5" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
-    <PackageReference Include="System.Threading.Channels" Version="4.7.1" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
 
 </Project>
