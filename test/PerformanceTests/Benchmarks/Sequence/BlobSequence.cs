@@ -11,9 +11,9 @@ namespace PerformanceTests.Sequence
     using Microsoft.Azure.WebJobs.Extensions.Http;
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
-    using Microsoft.Azure.Storage.Blob;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Newtonsoft.Json;
+    using Azure.Storage.Blobs;
 
     /// <summary>
     /// An orchestration that runs the sequence using blob triggers.
@@ -39,14 +39,14 @@ namespace PerformanceTests.Sequence
         [FunctionName(nameof(SequenceTaskStart))]
         public static async Task SequenceTaskStart(
             [ActivityTrigger] IDurableActivityContext context,
-            [Blob("blobtriggers/blobs")] CloudBlobDirectory directory,
+            [Blob("blobtriggers/blobs")] BlobContainerClient containerClient,
             ILogger logger)
         {
             Sequence.Input input = context.GetInput<Sequence.Input>();
-            await directory.Container.CreateIfNotExistsAsync();
+            await containerClient.CreateIfNotExistsAsync();
             string content = JsonConvert.SerializeObject(input);
-            var blob = directory.GetBlockBlobReference(Guid.NewGuid().ToString());
-            await blob.UploadTextAsync(content);
+            var blob = containerClient.GetBlobClient(Guid.NewGuid().ToString());
+            await blob.UploadAsync(content);
             logger.LogWarning($"blob sequence {context.InstanceId} started.");
         }
 
@@ -54,7 +54,7 @@ namespace PerformanceTests.Sequence
         [FunctionName(nameof(BlobSequenceTask1))]
         public static async Task BlobSequenceTask1(
            [BlobTrigger("blobtriggers/blobs/{blobname}")] Stream inputStream,
-           [Blob("blobtriggers/blobs")] CloudBlobDirectory directory,
+           [Blob("blobtriggers/blobs")] BlobContainerClient containerClient,
            [DurableClient] IDurableClient client,
            string blobname,
            ILogger logger)
@@ -72,8 +72,8 @@ namespace PerformanceTests.Sequence
             {
                 // write the blob to trigger the next task
                 string content = JsonConvert.SerializeObject(input);
-                var blob = directory.GetBlockBlobReference(Guid.NewGuid().ToString());
-                await blob.UploadTextAsync(content);
+                var blob = containerClient.GetBlobClient(Guid.NewGuid().ToString());
+                await blob.UploadAsync(content);
             }
             else
             {
