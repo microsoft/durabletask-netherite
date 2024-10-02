@@ -2081,7 +2081,10 @@ namespace DurableTask.Netherite.Faster
                         break;
 
                     case WriteReason.CopyToTail:
-                        takeValueFromOutput = (output.Val != null); // we have observed that src.Val is null sometimes, so if present, we use output instead
+                        // we have empirically observed that src does sometimes not contain the correct value (is null)
+                        // we are not sure if this is a bug in FASTER or intended behavior
+                        // as a workaround for those situations, we are passing the source value in the output parameter, which seems to work o.k.
+                        takeValueFromOutput = (output.Val != null);
                         if (takeValueFromOutput)
                         {
                             this.cacheDebugger?.Record(key.Val, CacheDebugger.CacheEvent.SingleWriterCopyToTailFromOutput, output.Version, default, info.Address);
