@@ -14,7 +14,6 @@ namespace PerformanceTests.EventHubs
     using System.Threading.Tasks;
     using Azure.Messaging.EventHubs;
     using Azure.Messaging.EventHubs.Producer;
-    using Microsoft.Azure.Documents.SystemFunctions;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Extensions.Logging;

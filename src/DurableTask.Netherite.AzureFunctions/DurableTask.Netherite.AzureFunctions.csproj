@@ -1,8 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-	<!--The target netcoreapp2.2 is not functional, but just generates runtime error when used.-->
-    <TargetFrameworks>netstandard2.1;netstandard2.0;netcoreapp2.2;netcoreapp3.1</TargetFrameworks>
+    <TargetFrameworks>netstandard2.1;netstandard2.0;netcoreapp3.1</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeSymbols>true</IncludeSymbols>
@@ -33,14 +32,6 @@
 
   <!-- Version can be edited in common.props -->
   <Import Project=".\..\common.props" />
-
-	<!-- Our netcoreapp2.2 target is a non-functional dummy target. It does not contain any runnable code
-	     but we needed to have it at some point to keep the functions environment happy. Since the generated
-			 dll does not contain runnable code we can ignore deprecation warnings. -->
-  <PropertyGroup Condition=" '$(TargetFramework)' == 'netcoreapp2.2' ">
-		<NoWarn>NETSDK1138</NoWarn>
-		<SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
-	</PropertyGroup>
   
   <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="\" />
@@ -54,12 +45,12 @@
   </ItemGroup>
   
   <ItemGroup>
-    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.16.2" />
-    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.13.2" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Core" Version="2.17.1" />
+    <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="2.13.6" />
   </ItemGroup>
 
-  <ItemGroup Condition=" '$(TargetFramework)' != 'netcoreapp2.2' ">
-	<ProjectReference Include="..\DurableTask.Netherite\DurableTask.Netherite.csproj" />
+  <ItemGroup>
+	  <ProjectReference Include="..\DurableTask.Netherite\DurableTask.Netherite.csproj" />
   </ItemGroup>
 	
 </Project>

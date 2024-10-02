@@ -10,7 +10,7 @@ namespace PerformanceTests.Sequence
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Microsoft.Azure.Storage.Queue;
+    using Azure.Storage.Queues;
 
     /// <summary>
     /// An orchestration that runs the sequence using queue triggers.
@@ -36,13 +36,13 @@ namespace PerformanceTests.Sequence
         [FunctionName(nameof(QueueSequenceTaskStart))]
         public static async Task QueueSequenceTaskStart(
             [ActivityTrigger] IDurableActivityContext context,
-            [Queue("sequence")] CloudQueue queue,
+            [Queue("sequence")] QueueClient queue,
             ILogger logger)
         {
             Sequence.Input input = context.GetInput<Sequence.Input>();
             string content = JsonConvert.SerializeObject(input);
             await queue.CreateIfNotExistsAsync();
-            await queue.AddMessageAsync(new CloudQueueMessage(content));
+            await queue.SendMessageAsync(content);
             logger.LogWarning($"queue sequence {context.InstanceId} started.");
         }
 
@@ -50,7 +50,7 @@ namespace PerformanceTests.Sequence
         [FunctionName(nameof(QueueSequenceTask1))]
         public static async Task QueueSequenceTask1(
            [QueueTrigger("sequence")] string serialized,
-           [Queue("sequence")] CloudQueue queue,
+           [Queue("sequence")] QueueClient queue,
            [DurableClient] IDurableClient client,
            ILogger logger)
         {
@@ -64,7 +64,7 @@ namespace PerformanceTests.Sequence
             {
                 // write to the queue to trigger the next task
                 string content = JsonConvert.SerializeObject(input);
-                await queue.AddMessageAsync(new CloudQueueMessage(content));
+                await queue.SendMessageAsync(content);
             }
             else
             {
