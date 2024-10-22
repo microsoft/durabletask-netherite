@@ -74,7 +74,7 @@ namespace DurableTask.Netherite
             request.Headers.Add("Host", info.HostName);
 
             // add an authorization header to the request
-            await info.AuthorizeHttpRequestMessage(request, cancellationToken);
+            await info.AuthorizeHttpRequestMessage(ConnectionResolver.ResourceType.EventHubsNamespace, request, cancellationToken);
 
             return await client.SendAsync(request);
         }

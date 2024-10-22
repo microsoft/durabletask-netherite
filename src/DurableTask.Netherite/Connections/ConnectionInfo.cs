@@ -4,8 +4,9 @@
 namespace DurableTask.Netherite
 {
     using System;
+    using System.Threading;
     using System.Threading.Tasks;
-    using Microsoft.Azure.Storage;
+    using Azure.Core;
 
     /// <summary>
     /// Internal abstraction used for capturing connection information and credentials.
@@ -72,10 +73,11 @@ namespace DurableTask.Netherite
         /// <returns>The connection info.</returns>
         public static ConnectionInfo FromStorageConnectionString(string connectionString, ConnectionResolver.ResourceType resourceType)
         {
-            var cloudStorageAccount = CloudStorageAccount.Parse(connectionString);
+            BlobUtilsV11.ParseStorageConnectionString(connectionString, out string accountName, out Uri tableEndpoint, out Uri blobEndpoint, out Uri queueEndpoint);
+            
             return new ConnectionInfo()
             {
-                ResourceName = cloudStorageAccount.Credentials.AccountName,
+                ResourceName = accountName,
                 ConnectionString = connectionString,
                 TokenCredential = null,
                 HostName = GetEndpoint().Host,
@@ -83,7 +85,7 @@ namespace DurableTask.Netherite
             };
 
             Uri GetEndpoint() => resourceType == ConnectionResolver.ResourceType.TableStorage 
-                ? cloudStorageAccount.TableEndpoint : cloudStorageAccount.BlobEndpoint;
+                ? tableEndpoint : blobEndpoint;
         }
 
         /// <summary>
@@ -140,9 +142,40 @@ namespace DurableTask.Netherite
         }
 
         /// <summary>
-        /// When converting to a classic storage account, a renewal timer is associated with each CloudStorageAccount instance. We therefore use
-        /// a single instance to be shared by all.
+        /// Creates a connection info from a token credential and a endpoint.
         /// </summary>
-        internal Task<Microsoft.Azure.Storage.CloudStorageAccount> CachedStorageAccountTask;
+        /// <param name="tokenCredential">The token credential.</param>
+        /// <param name="host">The name of the host (which must always start with the resource name).</param>
+        /// <param name="resourceType">The type of the resource.</param>
+        /// <returns></returns>
+        /// <returns>The connection info.</returns>
+        public static ConnectionInfo FromTokenCredentialAndHost(Azure.Core.TokenCredential tokenCredential, string host, ConnectionResolver.ResourceType resourceType)
+        {
+            return new ConnectionInfo()
+            {
+                ResourceName = host.Split('.')[0],
+                ConnectionString = null,
+                TokenCredential = tokenCredential,
+                HostName = host,
+                Scopes = resourceType == ConnectionResolver.ResourceType.EventHubsNamespace ? s_eventhubs_scopes : s_storage_scopes,
+            };
+        }
+
+        /// <summary>
+        /// Get an access token for the resource.
+        /// </summary>
+        /// <param name="resourceType"></param>
+        /// <returns></returns>
+        public ValueTask<AccessToken> GetTokenAsync(ConnectionResolver.ResourceType resourceType, CancellationToken cancellation)
+        {
+            if (this.TokenCredential == null)
+            {
+                throw new InvalidOperationException("missing token credential");
+            }
+
+            TokenRequestContext requestContext = new(resourceType == ConnectionResolver.ResourceType.EventHubsNamespace ? s_eventhubs_scopes : s_storage_scopes);
+
+            return this.TokenCredential.GetTokenAsync(requestContext, cancellation);
+        }
     }
 }

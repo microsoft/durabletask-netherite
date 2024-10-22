@@ -9,7 +9,6 @@ namespace DurableTask.Netherite.Faster
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
-    using Microsoft.Azure.Storage;
     using Microsoft.Extensions.Logging;
 
     class PartitionStorage : IPartitionState

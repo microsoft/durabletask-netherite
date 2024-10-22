@@ -27,49 +27,6 @@ namespace DurableTask.Netherite
     static class ConnectionInfoExtensions
     {
         /// <summary>
-        /// Returns a classic (v11 SDK) storage account object.
-        /// </summary>
-        /// <param name="connectionInfo">The connection info.</param>
-        /// <returns>A task for the storage account object.</returns>
-        /// <exception cref="FormatException">Thrown if the host name of the connection info is not of the expected format {ResourceName}.{HostNameSuffix}.</exception>
-        public static Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAzureStorageV11AccountAsync(this ConnectionInfo connectionInfo)
-        {
-            // storage accounts run a token renewal timer, so we want to share a single instance
-            if (connectionInfo.CachedStorageAccountTask == null)
-            {
-                connectionInfo.CachedStorageAccountTask = GetAsync();
-            }
-            return connectionInfo.CachedStorageAccountTask;
-
-            async Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAsync()
-            {
-                if (connectionInfo.ConnectionString != null)
-                {
-                    return Microsoft.Azure.Storage.CloudStorageAccount.Parse(connectionInfo.ConnectionString);
-                }
-                else
-                {
-                    var credentials = new Microsoft.Azure.Storage.Auth.StorageCredentials(await connectionInfo.ToLegacyCredentialAsync(CancellationToken.None));
-
-                    // hostnames are generally structured like
-                    //    accountname.blob.core.windows.net
-                    //    accountname.table.core.windows.net
-                    //    databasename.table.cosmos.azure.com
-
-                    int firstDot = connectionInfo.HostName.IndexOf('.');
-                    int secondDot = connectionInfo.HostName.IndexOf('.', firstDot + 1);
-                    string hostNameSuffix = connectionInfo.HostName.Substring(secondDot + 1);
-
-                    return new Microsoft.Azure.Storage.CloudStorageAccount(
-                            storageCredentials: credentials,
-                            accountName: connectionInfo.ResourceName,
-                            endpointSuffix: hostNameSuffix,
-                            useHttps: true);
-                }
-            }
-        }
-
-        /// <summary>
         /// Creates an Azure Storage table client for the v12 SDK.
         /// </summary>
         /// <param name="connectionInfo">The connection info.</param>
@@ -154,7 +111,7 @@ namespace DurableTask.Netherite
         /// <param name="request">The request object.</param>
         /// <param name="cancellationToken">A cancellation token.</param>
         /// <returns></returns>
-        public static async Task AuthorizeHttpRequestMessage(this ConnectionInfo connectionInfo, HttpRequestMessage request, CancellationToken cancellationToken)
+        public static async Task AuthorizeHttpRequestMessage(this ConnectionInfo connectionInfo, ConnectionResolver.ResourceType resourceType, HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (connectionInfo.ConnectionString != null)
             {
@@ -178,8 +135,8 @@ namespace DurableTask.Netherite
             }
             else
             {
-                var bearerToken = (await connectionInfo.ToLegacyCredentialAsync(cancellationToken)).Token;
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
+                AccessToken accessToken = await connectionInfo.GetTokenAsync(resourceType, cancellationToken);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken.Token);
             }
         }
     }
