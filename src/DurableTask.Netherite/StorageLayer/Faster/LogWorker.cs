@@ -207,7 +207,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public async Task ReplayCommitLog(long from, StoreWorker worker)
+        public async Task ReplayCommitLog(long from, StoreWorker worker, bool enablePrefetch)
         {
             // this procedure is called by StoreWorker during recovery. It replays all the events
             // that were committed to the log but are not reflected in the loaded store checkpoint.
@@ -220,7 +220,11 @@ namespace DurableTask.Netherite.Faster
 
                 var fetchTask = this.FetchEvents(from, replayChannel.Writer, prefetchChannel.Writer);
                 var replayTask = Task.Run(() => this.ReplayEvents(replayChannel.Reader, worker));
-                var prefetchTask = Task.Run(() => worker.RunPrefetchSession(prefetchChannel.Reader.ReadAllAsync(this.cancellationToken)));
+
+                if (enablePrefetch)
+                {
+                    var prefetchTask = Task.Run(() => worker.RunPrefetchSession(prefetchChannel.Reader.ReadAllAsync(this.cancellationToken)));
+                }
 
                 await fetchTask;
                 await replayTask;

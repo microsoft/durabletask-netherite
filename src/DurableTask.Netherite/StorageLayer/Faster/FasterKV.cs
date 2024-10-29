@@ -380,7 +380,7 @@ namespace DurableTask.Netherite.Faster
 
         public override async Task FinalizeCheckpointCompletedAsync(Guid guid)
         {
-            await this.blobManager.FinalizeCheckpointCompletedAsync();
+            await this.blobManager.WriteCheckpointMetadataAsync();
 
             if (this.cacheDebugger == null)
             {
@@ -739,7 +739,7 @@ namespace DurableTask.Netherite.Faster
             long lastReport = 0;
             void ReportProgress(int elapsedMillisecondsThreshold)
             {
-                if (stopwatch.ElapsedMilliseconds - lastReport >= elapsedMillisecondsThreshold)
+                if (stopwatch.ElapsedMilliseconds - lastReport >= elapsedMillisecondsThreshold || this.TraceHelper.BoostTracing)
                 {
                     this.blobManager.TraceHelper.FasterProgress(
                         $"FasterKV PrefetchSession {sessionId} elapsed={stopwatch.Elapsed.TotalSeconds:F2}s issued={numberIssued} pending={maxConcurrency - prefetchSemaphore.CurrentCount} hits={numberHits} misses={numberMisses}");

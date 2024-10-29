@@ -42,6 +42,8 @@ namespace DurableTask.Netherite.Faster
         BlobUtilsV12.BlockBlobClients eventLogCommitBlob;
         BlobLeaseClient leaseClient;
 
+        BlobUtilsV12.BlockBlobClients checkpointCompletedBlob;
+
         BlobUtilsV12.BlobDirectory pageBlobPartitionDirectory;
         BlobUtilsV12.BlobDirectory blockBlobPartitionDirectory;
 
@@ -419,6 +421,7 @@ namespace DurableTask.Netherite.Faster
 
                 this.eventLogCommitBlob = this.blockBlobPartitionDirectory.GetBlockBlobClient(CommitBlobName);
                 this.leaseClient = this.eventLogCommitBlob.WithRetries.GetBlobLeaseClient();
+                this.checkpointCompletedBlob = this.blockBlobPartitionDirectory.GetBlockBlobClient(this.GetCheckpointCompletedBlobName());
 
                 AzureStorageDevice createDevice(string name) =>
                      new AzureStorageDevice(name, this.blockBlobPartitionDirectory.GetSubDirectory(name), this.pageBlobPartitionDirectory.GetSubDirectory(name), this, true);
@@ -1057,10 +1060,11 @@ namespace DurableTask.Netherite.Faster
 
         internal async Task<bool> FindCheckpointsAsync(bool logIsEmpty)
         {
-            BlobUtilsV12.BlockBlobClients checkpointCompletedBlob = default;
+            string jsonString = null;
+            DateTimeOffset lastModified = default;
+
             try
             {
-                string jsonString = null;
 
                 if (this.UseLocalFiles)
                 {
@@ -1076,7 +1080,6 @@ namespace DurableTask.Netherite.Faster
                 else
                 {
                     var partDir = this.blockBlobPartitionDirectory;
-                    checkpointCompletedBlob = partDir.GetBlockBlobClient(this.GetCheckpointCompletedBlobName());
 
                     await this.PerformWithRetriesAsync(
                         semaphore: null,
@@ -1084,7 +1087,7 @@ namespace DurableTask.Netherite.Faster
                         "BlockBlobClient.DownloadContentAsync",
                         "FindCheckpointsAsync",
                         "",
-                        checkpointCompletedBlob.Name,
+                        this.checkpointCompletedBlob.Name,
                         1000,
                         true,
                         failIfReadonly: false, 
@@ -1092,8 +1095,9 @@ namespace DurableTask.Netherite.Faster
                         {
                             try
                             {
-                                Azure.Response<BlobDownloadResult> downloadResult = await checkpointCompletedBlob.WithRetries.DownloadContentAsync();
+                                Azure.Response<BlobDownloadResult> downloadResult = await this.checkpointCompletedBlob.WithRetries.DownloadContentAsync();
                                 jsonString = downloadResult.Value.Content.ToString();
+                                lastModified = downloadResult.Value.Details.LastModified;
                                 this.CheckpointInfoETag = downloadResult.Value.Details.ETag;
                                 return 1;
                             }
@@ -1105,21 +1109,57 @@ namespace DurableTask.Netherite.Faster
                         });
                 }
 
-                if (jsonString == null)
-                {
-                    return false;
-                }
-                else
-                {
-                    // read the fields from the json to update the checkpoint info
-                    JsonConvert.PopulateObject(jsonString, this.CheckpointInfo);
-                    return true;
-                }
             }
             catch (Exception e)
             {
-                this.HandleStorageError(nameof(FindCheckpointsAsync), "could not find any checkpoint", checkpointCompletedBlob.Name, e, true, this.PartitionErrorHandler.IsTerminated);
+                this.HandleStorageError(nameof(FindCheckpointsAsync), "could not find any checkpoint", this.checkpointCompletedBlob.Name, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
+            }
+
+            if (jsonString == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                // read the fields from the json to update the checkpoint info
+                JsonConvert.PopulateObject(jsonString, this.CheckpointInfo);
+            }
+            catch (JsonException e)
+            {
+                this.HandleStorageError(nameof(FindCheckpointsAsync), "could not parse json file describing last checkpoint", this.checkpointCompletedBlob.Name, e, true, false);
+                throw;
+            }
+
+            if (this.CheckpointInfo.RecoveryAttempts > 0 || DateTimeOffset.UtcNow - lastModified > TimeSpan.FromMinutes(5))
+            {
+                this.CheckpointInfo.RecoveryAttempts++;
+
+                this.TraceHelper.FasterProgress($"Incremented recovery attempt counter to {this.CheckpointInfo.RecoveryAttempts} in {this.checkpointCompletedBlob.Name}.");
+
+                await this.WriteCheckpointMetadataAsync();
+
+                if (this.CheckpointInfo.RecoveryAttempts > 3 && this.CheckpointInfo.RecoveryAttempts < 30)
+                {
+                    this.TraceHelper.BoostTracing = true;
+                }
+            }
+
+            return true;
+        }
+
+        public async Task ClearRecoveryAttempts()
+        {
+            if (this.CheckpointInfo.RecoveryAttempts > 0)
+            {
+                this.CheckpointInfo.RecoveryAttempts = 0;
+
+                this.TraceHelper.BoostTracing = false;
+
+                await this.WriteCheckpointMetadataAsync();
+
+                this.TraceHelper.FasterProgress($"Cleared recovery attempt counter in {this.checkpointCompletedBlob.Name}.");
             }
         }
 
@@ -1436,7 +1476,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        internal async Task FinalizeCheckpointCompletedAsync()
+        internal async Task WriteCheckpointMetadataAsync()
         {
             var jsonText = JsonConvert.SerializeObject(this.CheckpointInfo, Formatting.Indented);
             if (this.UseLocalFiles)

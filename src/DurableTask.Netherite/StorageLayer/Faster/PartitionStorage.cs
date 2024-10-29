@@ -20,9 +20,6 @@ namespace DurableTask.Netherite.Faster
         readonly ILogger logger;
         readonly ILogger performanceLogger;
         readonly MemoryTracker memoryTracker;
-        //readonly CloudStorageAccount storageAccount;
-        //readonly string localFileDirectory;
-        //readonly CloudStorageAccount pageBlobStorageAccount;
 
         Partition partition;
         BlobManager blobManager;
@@ -193,7 +190,10 @@ namespace DurableTask.Netherite.Faster
                     if (this.log.TailAddress > (long)this.storeWorker.CommitLogPosition)
                     {
                         // replay log as the store checkpoint lags behind the log
-                        await this.TerminationWrapper(this.storeWorker.ReplayCommitLog(this.logWorker));
+
+                        bool disablePrefetch = this.blobManager.CheckpointInfo.RecoveryAttempts > 6 || this.settings.DisablePrefetchDuringReplay;
+
+                        await this.TerminationWrapper(this.storeWorker.ReplayCommitLog(this.logWorker, prefetch: !disablePrefetch));
                     }
                 }
                 catch (OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
@@ -215,6 +215,8 @@ namespace DurableTask.Netherite.Faster
                 }
 
                 this.TraceHelper.FasterProgress("Recovery complete");
+
+                await this.blobManager.ClearRecoveryAttempts();
             }
             this.blobManager.FaultInjector?.Started(this.blobManager);
             return this.storeWorker.InputQueuePosition;
