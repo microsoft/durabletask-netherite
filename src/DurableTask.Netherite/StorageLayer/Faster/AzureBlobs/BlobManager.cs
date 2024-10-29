@@ -1140,6 +1140,9 @@ namespace DurableTask.Netherite.Faster
 
                 await this.WriteCheckpointMetadataAsync();
 
+                // we boost the tracing after three failed attempts. This boosting applies to the recovery part only.
+                // After thirty attempts, we stop boosting since it seems unlikely
+                // that there is any more information after that that cannot be found in the logs for the first 30 attempts.
                 if (this.CheckpointInfo.RecoveryAttempts > 3 && this.CheckpointInfo.RecoveryAttempts < 30)
                 {
                     this.TraceHelper.BoostTracing = true;

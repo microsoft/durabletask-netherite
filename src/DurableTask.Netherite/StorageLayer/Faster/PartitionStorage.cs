@@ -191,6 +191,8 @@ namespace DurableTask.Netherite.Faster
                     {
                         // replay log as the store checkpoint lags behind the log
 
+                        // disable prefetch if we have had many unsuccessful recovery attempts, or if the settings say so    
+                        // We choose 6 as the threshold since the tracing gets boosted after 3 attempts, and we want to see 3 attempts with boosted tracing before we disable prefetch
                         bool disablePrefetch = this.blobManager.CheckpointInfo.RecoveryAttempts > 6 || this.settings.DisablePrefetchDuringReplay;
 
                         await this.TerminationWrapper(this.storeWorker.ReplayCommitLog(this.logWorker, prefetch: !disablePrefetch));
