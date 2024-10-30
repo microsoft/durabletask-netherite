@@ -684,7 +684,7 @@ namespace DurableTask.Netherite.Faster
         public async Task ReplayCommitLog(LogWorker logWorker, bool prefetch)
         {
             var startPosition = this.CommitLogPosition;
-            this.traceHelper.FasterProgress($"Replaying log from {startPosition} prefetch={prefetch}");
+            this.traceHelper.FasterProgress($"Replaying log from {startPosition} prefetch={prefetch} boostTracing={this.traceHelper.BoostTracing}");
 
             var stopwatch = new System.Diagnostics.Stopwatch();
             stopwatch.Start();
