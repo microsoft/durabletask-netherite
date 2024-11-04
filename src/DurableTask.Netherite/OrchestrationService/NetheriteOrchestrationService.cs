@@ -10,7 +10,6 @@ namespace DurableTask.Netherite
     using DurableTask.Netherite.Abstractions;
     using DurableTask.Netherite.Faster;
     using DurableTask.Netherite.Scaling;
-    using Microsoft.Azure.Storage;
     using Microsoft.Extensions.DependencyInjection;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;

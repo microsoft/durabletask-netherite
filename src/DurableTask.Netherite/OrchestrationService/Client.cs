@@ -15,7 +15,6 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
     using DurableTask.Core.Exceptions;
     using DurableTask.Core.History;
-    using Microsoft.Azure.Storage;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
     using static DurableTask.Netherite.TransportAbstraction;

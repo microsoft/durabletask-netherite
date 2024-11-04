@@ -10,7 +10,6 @@ namespace DurableTask.Netherite.Faster
     using System.Text;
     using System.Threading.Tasks;
     using FASTER.core;
-    using Microsoft.Azure.Storage;
 
     /// <summary>
     /// Injects checkpoint and compaction decisions into the store worker. 

@@ -10,7 +10,6 @@ namespace DurableTask.Netherite.Faster
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Core.Common;
-    using Microsoft.Azure.Storage;
 
     public partial class BlobManager
     {
@@ -94,11 +93,11 @@ namespace DurableTask.Netherite.Faster
                         this.StorageTracer?.FasterStorageProgress(message);
                         throw new OperationCanceledException(message, e);
                     }
-                    catch (Exception e) when (BlobUtils.IsTransientStorageError(e) && numAttempts < BlobManager.MaxRetries)
+                    catch (Exception e) when (BlobUtilsV12.IsTransientStorageError(e) && numAttempts < BlobManager.MaxRetries)
                     {
                         stopwatch.Stop();
 
-                        if (BlobUtils.IsTimeout(e))
+                        if (BlobUtilsV12.IsTimeout(e))
                         {
                             this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) timed out on attempt {numAttempts} after {stopwatch.Elapsed.TotalSeconds:F1}s, retrying now; target={target} {details}");
                         }
@@ -204,10 +203,10 @@ namespace DurableTask.Netherite.Faster
                     this.StorageTracer?.FasterStorageProgress(message);
                     throw new OperationCanceledException(message, e);  
                 }
-                catch (Exception e) when (numAttempts < BlobManager.MaxRetries && BlobUtils.IsTransientStorageError(e))
+                catch (Exception e) when (numAttempts < BlobManager.MaxRetries && BlobUtilsV12.IsTransientStorageError(e))
                 {
                     stopwatch.Stop();
-                    if (BlobUtils.IsTimeout(e))
+                    if (BlobUtilsV12.IsTimeout(e))
                     {
                         this.TraceHelper.FasterPerfWarning($"storage operation {name} ({intent}) timed out on attempt {numAttempts} after {stopwatch.Elapsed.TotalSeconds:F1}s, retrying now; target={target} {details}");
                     }

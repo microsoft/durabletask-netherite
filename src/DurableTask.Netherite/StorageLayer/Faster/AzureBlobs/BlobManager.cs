@@ -630,9 +630,9 @@ namespace DurableTask.Netherite.Faster
                     throw new OperationCanceledException(message, e);
                 }
                 catch (Exception ex) when (numAttempts < BlobManager.MaxRetries
-                    && !this.PartitionErrorHandler.IsTerminated && BlobUtils.IsTransientStorageError(ex))
+                    && !this.PartitionErrorHandler.IsTerminated && BlobUtilsV12.IsTransientStorageError(ex))
                 {
-                    if (BlobUtils.IsTimeout(ex))
+                    if (BlobUtilsV12.IsTimeout(ex))
                     {
                         this.TraceHelper.FasterPerfWarning($"Lease acquisition timed out, retrying now");
                     }
@@ -716,7 +716,7 @@ namespace DurableTask.Netherite.Faster
                 // it's o.k. to cancel while waiting
                 this.TraceHelper.LeaseProgress("Lease renewal loop cleanly canceled");
             }
-            catch (Azure.RequestFailedException e) when (e.InnerException != null && e.InnerException is OperationCanceledException)
+            catch (Azure.RequestFailedException e) when (BlobUtilsV12.IsCancelled(e))
             {
                 // it's o.k. to cancel a lease renewal
                 this.TraceHelper.LeaseProgress("Lease renewal storage operation canceled");
