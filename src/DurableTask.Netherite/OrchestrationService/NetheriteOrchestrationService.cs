@@ -593,8 +593,7 @@ namespace DurableTask.Netherite
         TransportAbstraction.IClient TransportAbstraction.IHost.AddClient(Guid clientId, Guid taskHubGuid, TransportAbstraction.ISender batchSender)
         {
             System.Diagnostics.Debug.Assert(this.client == null, "Backend should create only 1 client");
-
-            this.client = new Client(this, clientId, taskHubGuid, batchSender, this.workItemTraceHelper, this.serviceShutdownSource.Token);
+            this.client = new Client(this, clientId, taskHubGuid, batchSender, this.workItemTraceHelper, this.serviceShutdownSource.Token, this.storage.LoadPublisher);
             return this.client;
         }
 

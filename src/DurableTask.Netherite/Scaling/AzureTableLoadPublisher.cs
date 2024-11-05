@@ -94,6 +94,7 @@ namespace DurableTask.Netherite.Scaling
                     MissRate = double.Parse(e.MissRate.Substring(0, e.MissRate.Length - 1)) / 100,
                     CachePct = int.Parse(e.CachePct.Substring(0, e.CachePct.Length - 1)),
                     CacheMB = e.CacheMB,
+                    Timestamp = e.Timestamp,
                 });
             }
             return result;
