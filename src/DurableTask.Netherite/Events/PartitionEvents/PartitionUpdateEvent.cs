@@ -23,6 +23,9 @@ namespace DurableTask.Netherite
         [IgnoreDataMember]
         public OutboxState.Batch OutboxBatch { get; set; }
 
+        /// <summary>
+        /// Used to determine which partition state objects should be modified by an event.
+        /// </summary>
         public abstract void DetermineEffects(EffectTracker effects);
 
         public abstract void ApplyTo(TrackedObject trackedObject, EffectTracker effectTracker);
