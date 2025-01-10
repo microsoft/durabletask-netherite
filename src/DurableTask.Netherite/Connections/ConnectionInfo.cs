@@ -7,6 +7,7 @@ namespace DurableTask.Netherite
     using System.Threading;
     using System.Threading.Tasks;
     using Azure.Core;
+    using DurableTask.Netherite.Util;
 
     /// <summary>
     /// Internal abstraction used for capturing connection information and credentials.
@@ -73,7 +74,7 @@ namespace DurableTask.Netherite
         /// <returns>The connection info.</returns>
         public static ConnectionInfo FromStorageConnectionString(string connectionString, ConnectionResolver.ResourceType resourceType)
         {
-            BlobUtilsV11.ParseStorageConnectionString(connectionString, out string accountName, out Uri tableEndpoint, out Uri blobEndpoint, out Uri queueEndpoint);
+            ConnectionStringParser.ParseStorageConnectionString(connectionString, out string accountName, out Uri tableEndpoint, out Uri blobEndpoint);
             
             return new ConnectionInfo()
             {

@@ -130,7 +130,7 @@ namespace DurableTask.Netherite.Faster
             }
 
             Response<Azure.Storage.Blobs.Models.BlobContainerInfo> response = await this.containerClient.CreateIfNotExistsAsync();
-            if (response.HasValue)
+            if (response != null)
             {
                 this.traceHelper.TraceProgress($"Created new blob container at {this.containerClient.Uri}");
             }

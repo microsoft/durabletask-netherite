@@ -7,8 +7,6 @@ namespace PerformanceTests.FileHash
     using System.Threading.Tasks;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Microsoft.Azure.Storage;
-    using Microsoft.Azure.Storage.Blob;
     using System.Linq;
     using Azure.Storage.Blobs;
     using Azure.Storage.Blobs.Models;

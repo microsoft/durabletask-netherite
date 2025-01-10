@@ -14,7 +14,6 @@ namespace DurableTask.Netherite.Tests
     using DurableTask.Core;
     using DurableTask.Netherite.Faster;
     using DurableTask.Netherite.Scaling;
-    using Microsoft.Azure.Storage.Blob;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json.Linq;
     using Newtonsoft.Json.Serialization;
@@ -47,11 +46,11 @@ namespace DurableTask.Netherite.Tests
                 {
                     // there should not be anything left inside the blob container
                     var blobContainerName = taskHub.ToLowerInvariant() + "-storage";
-                    var cloudBlobClient = Microsoft.Azure.Storage.CloudStorageAccount.Parse(Environment.GetEnvironmentVariable(TestConstants.StorageConnectionName)).CreateCloudBlobClient();
-                    var cloudBlobContainer = cloudBlobClient.GetContainerReference(blobContainerName);
-                    if (await cloudBlobContainer.ExistsAsync())
+                    var blobServiceClient = new Azure.Storage.Blobs.BlobServiceClient(Environment.GetEnvironmentVariable(TestConstants.StorageConnectionName));
+                    var blobContainerClient = blobServiceClient.GetBlobContainerClient(blobContainerName);
+                    if (await blobContainerClient.ExistsAsync())
                     {
-                        var allBlobs = cloudBlobContainer.ListBlobs().ToList();
+                        var allBlobs = await blobContainerClient.GetBlobsAsync().ToListAsync();
                         Assert.Empty(allBlobs);
                     }
                 }
@@ -243,7 +242,7 @@ namespace DurableTask.Netherite.Tests
         public async Task PublishToMissingTaskHub()
         {
             IStorageLayer taskhub = this.GetFreshTaskHub(null);
-            await Assert.ThrowsAnyAsync<Microsoft.Azure.Storage.StorageException>(() => taskhub.LoadPublisher.PublishAsync(new Dictionary<uint, PartitionLoadInfo>() { { 1, this.Create("Y") } }, CancellationToken.None));
+            await Assert.ThrowsAnyAsync<Azure.RequestFailedException>(() => taskhub.LoadPublisher.PublishAsync(new Dictionary<uint, PartitionLoadInfo>() { { 1, this.Create("Y") } }, CancellationToken.None));
         }
 
         [Fact]
@@ -257,7 +256,7 @@ namespace DurableTask.Netherite.Tests
         public async Task QueryFromMissingTaskHub()
         {
             IStorageLayer taskhub = this.GetFreshTaskHub(null);
-            await Assert.ThrowsAnyAsync<Microsoft.Azure.Storage.StorageException>(() => taskhub.LoadPublisher.QueryAsync(CancellationToken.None));
+            await Assert.ThrowsAnyAsync<Azure.RequestFailedException>(() => taskhub.LoadPublisher.QueryAsync(CancellationToken.None));
         }
     }
 }

@@ -56,6 +56,8 @@ namespace DurableTask.Netherite.Scaling
 
         async ValueTask<bool> LoadParameters(bool throwIfNotFound, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (this.parameters == null)
             {
                 this.parameters = await ReadJsonBlobAsync<Netherite.Abstractions.TaskhubParameters>(
@@ -76,7 +78,7 @@ namespace DurableTask.Netherite.Scaling
                 return JsonConvert.DeserializeObject<T>(blobContents);
             }
             catch (RequestFailedException ex)
-                when (BlobUtilsV12.BlobDoesNotExist(ex) && !throwIfNotFound)
+                when (BlobUtilsV12.BlobOrContainerDoesNotExist(ex) && !throwIfNotFound)
             {
                 // container or blob does not exist
             }

@@ -502,8 +502,8 @@ namespace DurableTask.Netherite
 
             try
             {
-                BlobUtilsV11.ValidateContainerName(taskhubName.ToLowerInvariant());
-                BlobUtilsV11.ValidateBlobName(taskhubName);
+                Util.NameValidator.ValidateContainerName(taskhubName.ToLowerInvariant());
+                Util.NameValidator.ValidateBlobName(taskhubName);
             }
             catch (ArgumentException e)
             {
