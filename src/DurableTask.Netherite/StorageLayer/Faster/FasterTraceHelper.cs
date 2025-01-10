@@ -25,7 +25,9 @@ namespace DurableTask.Netherite.Faster
             this.partitionId = (int) partitionId;
         }
 
-        public bool IsTracingAtMostDetailedLevel => this.logLevelLimit == LogLevel.Trace;
+        public bool IsTracingAtMostDetailedLevel => this.logLevelLimit == LogLevel.Trace || this.BoostTracing;
+
+        public bool BoostTracing { get; set; }
 
         // ----- faster storage layer events
 
@@ -139,7 +141,7 @@ namespace DurableTask.Netherite.Faster
 
         public void FasterStorageProgress(string details)
         {
-            if (this.logLevelLimit <= LogLevel.Trace)
+            if (this.logLevelLimit <= LogLevel.Trace || this.BoostTracing)
             {
                 this.logger.LogTrace("Part{partition:D2} {details}", this.partitionId, details);
                 EtwSource.Log.FasterStorageProgress(this.account, this.taskHub, this.partitionId, details, TraceUtils.AppName, TraceUtils.ExtensionVersion);

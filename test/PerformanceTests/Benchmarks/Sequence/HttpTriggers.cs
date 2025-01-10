@@ -4,16 +4,13 @@
 namespace PerformanceTests.Sequence
 {
     using System;
-    using System.IO;
     using System.Threading.Tasks;
+    using Microsoft.AspNetCore.Http;
     using Microsoft.AspNetCore.Mvc;
     using Microsoft.Azure.WebJobs;
-    using Microsoft.Azure.WebJobs.Extensions.Http;
-    using Microsoft.AspNetCore.Http;
-    using Microsoft.Extensions.Logging;
-    using Newtonsoft.Json;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Microsoft.WindowsAzure.Storage.Queue;
+    using Microsoft.Azure.WebJobs.Extensions.Http;
+    using Microsoft.Extensions.Logging;
 
     /// <summary>
     /// A microbenchmark that runs a sequence of tasks. The point is to compare sequence construction using blob-triggers

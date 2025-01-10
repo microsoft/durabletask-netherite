@@ -43,6 +43,7 @@ namespace DurableTask.Netherite.EventHubsTransport
             this.factory = args.Factory;
             this.traceHelper = args.TraceHelper;
             this.PartitionInitializingAsync += this.OpenPartitionAsync;
+            this.ProcessEventAsync += this.ProcessPartitionEventAsync;
             this.PartitionClosingAsync += this.ClosePartitionAsync;
             this.ProcessErrorAsync += this.ErrorAsync;
         }

@@ -207,6 +207,11 @@ namespace DurableTask.Netherite
         public int PartitionStartupTimeoutMinutes { get; set; } = 15;
 
         /// <summary>
+        /// If true, disables the prefetching during replay.
+        /// </summary>
+        public bool DisablePrefetchDuringReplay { get; set; } = false;
+
+        /// <summary>
         /// Allows attaching additional checkers and debuggers during testing.
         /// </summary>
         [JsonIgnore]

@@ -207,7 +207,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public async Task ReplayCommitLog(long from, StoreWorker worker)
+        public async Task ReplayCommitLog(long from, StoreWorker worker, bool enablePrefetch)
         {
             // this procedure is called by StoreWorker during recovery. It replays all the events
             // that were committed to the log but are not reflected in the loaded store checkpoint.
@@ -215,12 +215,16 @@ namespace DurableTask.Netherite.Faster
             {
                 // we create a pipeline where the fetch task obtains a stream of events and then duplicates the
                 // stream, so it can get replayed and prefetched in parallel.
-                var prefetchChannel = Channel.CreateBounded<TrackedObjectKey>(1000);
+                var prefetchChannel = enablePrefetch ? Channel.CreateBounded<TrackedObjectKey>(1000) : null;
                 var replayChannel = Channel.CreateBounded<PartitionUpdateEvent>(1000);
 
-                var fetchTask = this.FetchEvents(from, replayChannel.Writer, prefetchChannel.Writer);
+                var fetchTask = this.FetchEvents(from, replayChannel.Writer, prefetchChannel?.Writer);
                 var replayTask = Task.Run(() => this.ReplayEvents(replayChannel.Reader, worker));
-                var prefetchTask = Task.Run(() => worker.RunPrefetchSession(prefetchChannel.Reader.ReadAllAsync(this.cancellationToken)));
+
+                if (enablePrefetch)
+                {
+                    var prefetchTask = Task.Run(() => worker.RunPrefetchSession(prefetchChannel.Reader.ReadAllAsync(this.cancellationToken)));
+                }
 
                 await fetchTask;
                 await replayTask;
@@ -241,23 +245,33 @@ namespace DurableTask.Netherite.Faster
 
                 await replayChannelWriter.WriteAsync(partitionEvent);
 
-                if (partitionEvent is IRequiresPrefetch evt)
+                if (prefetchChannelWriter != null && partitionEvent is IRequiresPrefetch evt)
                 {
                     foreach (var key in evt.KeysToPrefetch)
                     {
+                        if (this.traceHelper.BoostTracing)
+                        {
+                            this.traceHelper.FasterProgress($"Replay Prefetches {key}");
+                        }
+
                         await prefetchChannelWriter.WriteAsync(key);
                     }
                 }
             }
 
             replayChannelWriter.Complete();
-            prefetchChannelWriter.Complete();
+            prefetchChannelWriter?.Complete();
         }
 
         async Task ReplayEvents(ChannelReader<PartitionUpdateEvent> reader, StoreWorker worker)
         {
             await foreach (var partitionEvent in reader.ReadAllAsync(this.cancellationToken))
             {
+                if (this.traceHelper.BoostTracing)
+                {
+                    this.traceHelper.FasterProgress($"Replaying PartitionEvent {partitionEvent.NextCommitLogPosition}");
+                }
+
                 await worker.ReplayUpdate(partitionEvent);
             }
         }
@@ -285,7 +299,7 @@ namespace DurableTask.Netherite.Faster
                         await iter.WaitAsync(this.cancellationToken);
                     }
 
-                    if (this.traceLogDetails)
+                    if (this.traceHelper.IsTracingAtMostDetailedLevel)
                     {
                         this.TraceLogDetail("Read", iter.NextAddress, new ReadOnlySpan<byte>(result, 0, entryLength));
                     }
