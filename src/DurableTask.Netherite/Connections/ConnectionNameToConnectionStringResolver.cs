@@ -7,7 +7,6 @@ namespace DurableTask.Netherite
     using System.Collections.Generic;
     using System.Data;
     using System.Text;
-    using Microsoft.Azure.Storage;
     using Microsoft.Extensions.Logging.Abstractions;
 
     /// <summary>

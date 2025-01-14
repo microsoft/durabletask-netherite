@@ -8,8 +8,6 @@ namespace PerformanceTests.FileHash
     using Microsoft.Extensions.Logging;
     using System.Collections.Generic;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Microsoft.Azure.Storage;
-    using Microsoft.Azure.Storage.Blob;
     using System.Linq;
 
     /// <summary>

@@ -188,7 +188,7 @@ namespace DurableTask.Netherite.AzureFunctions
             
             if (!string.IsNullOrEmpty(connectionName))
             {
-                if (this.connectionResolver is NameResolverBasedConnectionNameResolver)
+                if (this.connectionResolver is ConfigurationSectionBasedConnectionNameResolver)
                 {
                     // the application does not define a custom connection resolver.
                     // We split the connection name into two connection names, one for storage and one for event hubs

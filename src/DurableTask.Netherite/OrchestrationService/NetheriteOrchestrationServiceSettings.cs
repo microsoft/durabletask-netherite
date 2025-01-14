@@ -502,8 +502,8 @@ namespace DurableTask.Netherite
 
             try
             {
-                Microsoft.Azure.Storage.NameValidator.ValidateContainerName(taskhubName.ToLowerInvariant());
-                Microsoft.Azure.Storage.NameValidator.ValidateBlobName(taskhubName);
+                Util.NameValidator.ValidateContainerName(taskhubName.ToLowerInvariant());
+                Util.NameValidator.ValidateBlobName(taskhubName);
             }
             catch (ArgumentException e)
             {

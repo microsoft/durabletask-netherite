@@ -12,7 +12,6 @@ namespace PerformanceTests.WordCount
     using Microsoft.AspNetCore.Http;
     using Microsoft.Extensions.Logging;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
-    using Microsoft.Azure.Storage;
     using System.Collections.Generic;
     using System.Text;
     using DurableTask.Netherite.Faster;

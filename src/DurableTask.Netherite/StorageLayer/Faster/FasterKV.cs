@@ -20,7 +20,6 @@ namespace DurableTask.Netherite.Faster
     using DurableTask.Core.Common;
     using DurableTask.Core.Tracing;
     using FASTER.core;
-    using Microsoft.Azure.Storage.Blob.Protocol;
     using Newtonsoft.Json;
 
     class FasterKV : TrackedObjectStore

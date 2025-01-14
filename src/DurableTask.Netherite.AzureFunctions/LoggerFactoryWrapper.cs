@@ -7,8 +7,6 @@ namespace DurableTask.Netherite.AzureFunctions
     using System;
     using System.IO;
     using System.Threading;
-    using Microsoft.Azure.Storage;
-    using Microsoft.Azure.Storage.Blob;
     using Microsoft.Extensions.Logging;
 
     class LoggerFactoryWrapper : ILoggerFactory
