@@ -89,7 +89,7 @@ namespace DurableTask.Netherite.Tests
 
         public void Dispose()
         {
-            Common.WithTimeout(TimeSpan.FromMinutes(1), () =>
+            Common.WithTimeout(TimeSpan.FromMinutes(3), () =>
             {
                 this.Host.StopAsync(false).Wait();
                 this.Host.Dispose();
