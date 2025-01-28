@@ -10,6 +10,9 @@ namespace DurableTask.Netherite
     using DurableTask.Core;
     using DurableTask.Core.History;
 
+    /// <summary>
+    /// Update event that executes when a orchestration work item is completed.
+    /// </summary>
     [DataContract]
     class BatchProcessed : PartitionUpdateEvent, IRequiresPrefetch
     {
