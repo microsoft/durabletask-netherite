@@ -4,9 +4,10 @@
 	  <AzureFunctionsVersion>v4</AzureFunctionsVersion>
   </PropertyGroup>
   <ItemGroup>
-	<PackageReference Include="Microsoft.Azure.DurableTask.Netherite.AzureFunctions" />
-	<PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" />
-	<PackageReference Include="Microsoft.NET.Sdk.Functions" />
+    <!-- Override version since this app is based on deprecated AzureStorage SDK WindowsAzure.Storage -->
+	  <PackageReference Include="Microsoft.Azure.DurableTask.Netherite.AzureFunctions" VersionOverride ="1.1.1"/>
+	  <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" VersionOverride = "2.13.6"/>
+	  <PackageReference Include="Microsoft.NET.Sdk.Functions" />
     <PackageReference Include="Newtonsoft.Json" />
   </ItemGroup>
   <ItemGroup>
