@@ -29,8 +29,9 @@ namespace DurableTask.Netherite
         readonly WorkItemTraceHelper workItemTraceHelper;
         readonly Stopwatch workItemStopwatch;
         readonly CancellationTokenSource cts;
-
-        static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
+        readonly TimeSpan defaultTimeout;
+        readonly TimeSpan createOrchestrationTimeout;
+        readonly TimeSpan sendMessageTimeout;
 
         public Guid ClientId { get; private set; }
         TransportAbstraction.ISender BatchSender { get; set; }
@@ -62,6 +63,10 @@ namespace DurableTask.Netherite
             this.account = host.StorageAccountName;
             this.BatchSender = batchSender;
             this.cts = CancellationTokenSource.CreateLinkedTokenSource(shutdownToken);
+            this.defaultTimeout = host.Settings.ClientTimeout;
+            this.createOrchestrationTimeout = host.Settings.CreateOrchestrationTimeout ?? this.defaultTimeout;
+            this.sendMessageTimeout = host.Settings.SendOrchestrationMessageTimeout ?? this.defaultTimeout;
+
             this.ResponseTimeouts = new BatchTimer<PendingRequest>(this.cts.Token, this.Timeout, this.traceHelper.TraceTimerProgress);
             this.ResponseWaiters = new ConcurrentDictionary<long, PendingRequest>();
             this.Fragments = new Dictionary<string, (MemoryStream, int)>();
@@ -244,7 +249,17 @@ namespace DurableTask.Netherite
 
         // we align timeouts into buckets so we can process timeout storms more efficiently
         const long ticksPerBucket = 2 * TimeSpan.TicksPerSecond;
-        DateTime GetTimeoutBucket(TimeSpan timeout) => new DateTime((((DateTime.UtcNow + timeout).Ticks / ticksPerBucket) * ticksPerBucket), DateTimeKind.Utc);
+        DateTime GetTimeoutBucket(TimeSpan timeout)
+        {
+            var timeAtTimeOut = DateTime.UtcNow + timeout;
+
+            // Do not align if doing so would have a significant effect on timeout duration
+            if (timeout.Ticks < ticksPerBucket * 5)
+                return timeAtTimeOut;
+
+            return new DateTime(((timeAtTimeOut.Ticks / ticksPerBucket) * ticksPerBucket), DateTimeKind.Utc);
+        }
+
 
         Task<ClientEvent> PerformRequestWithTimeout(IClientRequestEvent request)
         {
@@ -455,7 +470,7 @@ namespace DurableTask.Netherite
                 RequestId = Interlocked.Increment(ref this.SequenceNumber),
                 TaskMessage = creationMessage,
                 DedupeStatuses = dedupeStatuses,
-                TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                TimeoutUtc = this.GetTimeoutBucket(this.createOrchestrationTimeout),
             };
 
             this.workItemTraceHelper.TraceWorkItemStarted(
@@ -486,7 +501,7 @@ namespace DurableTask.Netherite
                 ClientId = this.ClientId,
                 RequestId = Interlocked.Increment(ref this.SequenceNumber),
                 TaskMessages = messages.ToArray(),
-                TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                TimeoutUtc = this.GetTimeoutBucket(this.sendMessageTimeout),
             };
 
             // we number the messages in this batch in order to create unique message ids for tracing purposes
@@ -562,7 +577,7 @@ namespace DurableTask.Netherite
                 InstanceId = instanceId,
                 IncludeInput = fetchInput,
                 IncludeOutput = fetchOutput,
-                TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                TimeoutUtc = this.GetTimeoutBucket(this.defaultTimeout),
             };
 
             var response = await this.PerformRequestWithTimeout(request).ConfigureAwait(false);
@@ -582,7 +597,7 @@ namespace DurableTask.Netherite
                 ClientId = this.ClientId,
                 RequestId = Interlocked.Increment(ref this.SequenceNumber),
                 InstanceId = instanceId,
-                TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                TimeoutUtc = this.GetTimeoutBucket(this.defaultTimeout),
             };
 
             var response = (HistoryResponseReceived)await this.PerformRequestWithTimeout(request).ConfigureAwait(false);
@@ -976,7 +991,7 @@ namespace DurableTask.Netherite
                 ClientId = this.ClientId,
                 RequestId = Interlocked.Increment(ref this.SequenceNumber),
                 TaskMessages = taskMessages,
-                TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                TimeoutUtc = this.GetTimeoutBucket(this.defaultTimeout),
             };
 
             return this.PerformRequestWithTimeout(request);
@@ -995,7 +1010,7 @@ namespace DurableTask.Netherite
                 ClientId = this.ClientId,
                 RequestId = Interlocked.Increment(ref this.SequenceNumber),
                 InstanceId = instanceId,
-                TimeoutUtc = this.GetTimeoutBucket(DefaultTimeout),
+                TimeoutUtc = this.GetTimeoutBucket(this.defaultTimeout),
             };
 
             var response = await this.PerformRequestWithTimeout(request).ConfigureAwait(false);
