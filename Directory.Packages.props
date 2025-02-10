@@ -15,34 +15,33 @@
     <PackageVersion Include="Azure.Messaging.EventHubs.Processor" Version="5.11.5" />
     <PackageVersion Include="Azure.Storage.Blobs" Version="12.22.1" />
     <PackageVersion Include="Microsoft.Azure.DurableTask.Core" Version="3.0.0" />
-    <PackageVersion Include="Microsoft.FASTER.Core" Version="2.6.5" />
-    <PackageVersion Include="Newtonsoft.Json" Version="13.0.1" />
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
-    <PackageVersion Include="Microsoft.Azure.DurableTask.Core" Version="3.0.0" />
-    <PackageVersion Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="3.0.0" />
     <PackageVersion Include="Microsoft.Azure.Functions.Worker.Extensions.Abstractions" Version="1.3.0" />
+    <PackageVersion Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" Version="3.0.0" />
+    <PackageVersion Include="Microsoft.FASTER.Core" Version="2.6.5" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.1" />
   </ItemGroup>
 
   <!-- Tests dependencies -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
-    <PackageVersion Include="xunit" Version="2.9.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2"/>
     <PackageVersion Include="coverlet.collector" Version="6.0.2"/>
     <PackageVersion Include="Microsoft.Azure.DurableTask.Netherite.AzureFunctions" Version="3.0.0" />
-	<PackageVersion Include="Microsoft.NET.Sdk.Functions" Version="4.4.1" />
     <PackageVersion Include="Microsoft.Azure.WebJobs.Extensions" Version="5.0.0" />
     <PackageVersion Include="Microsoft.Azure.WebJobs.Extensions.EventHubs" Version="6.3.5" />
     <PackageVersion Include="Microsoft.Azure.WebJobs.Extensions.Storage" Version="5.3.2" />
+    <PackageVersion Include="Microsoft.NET.Sdk.Functions" Version="4.4.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2"/>
   </ItemGroup>
 
   <!-- Samples dependencies -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.Azure.WebJobs.Script.ExtensionsMetadataGenerator" Version="4.0.1" />
-    <PackageVersion Include="Microsoft.Azure.DurableTask.Netherite" Version="3.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="6.0.0" />
-	<PackageVersion Include="Microsoft.Azure.Functions.Extensions" Version="1.1.0" />
     <PackageVersion Include="Azure.Identity" Version="1.12.1" />
+    <PackageVersion Include="Microsoft.Azure.DurableTask.Netherite" Version="3.0.0" />
+    <PackageVersion Include="Microsoft.Azure.Functions.Extensions" Version="1.1.0" />
+    <PackageVersion Include="Microsoft.Azure.WebJobs.Script.ExtensionsMetadataGenerator" Version="4.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="6.0.0" />
   </ItemGroup>
 
 </Project>
