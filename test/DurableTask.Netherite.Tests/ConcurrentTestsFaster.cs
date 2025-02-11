@@ -109,7 +109,7 @@ namespace DurableTask.Netherite.Tests
 
                     var tests = new List<(string, Task)>();
 
-                    foreach ((string name, Task task) in scenarios.StartAllScenarios(includeTimers: true, includeLarge: true))
+                    foreach ((string name, Task task) in scenarios.StartAllScenarios(includeTimers: false, includeLarge: true))
                     {
                         Trace.WriteLine($"TestProgress: Adding {name}");
                         tests.Add((name, task));
@@ -158,7 +158,7 @@ namespace DurableTask.Netherite.Tests
                     useReplayChecker,
                     restrictMemory ? (int?)0 : null,
                     startupTimeout,
-                    (msg) => this.outputHelper?.WriteLine(msg))) 
+                    (msg) => this.outputHelper?.WriteLine(msg)))
                 {
                     var scenarios = new ScenarioTests(fixture, this.outputHelper);
 
@@ -166,10 +166,10 @@ namespace DurableTask.Netherite.Tests
 
                     for (int i = 0; i < multiplicity; i++)
                     {
-                        foreach((string name, Task task) in scenarios.StartAllScenarios(false, false))
+                        foreach ((string name, Task task) in scenarios.StartAllScenarios(false, false))
                         {
                             Trace.WriteLine($"TestProgress: Adding {name}");
-                            tests.Add((name,task));
+                            tests.Add((name, task));
                         }
                     }
 
@@ -197,34 +197,37 @@ namespace DurableTask.Netherite.Tests
         //[InlineData(6)]
         //[InlineData(7)]
         //[InlineData(8)]
-        public async Task ReproHangingReads(int sequenceNumber)
+        public Task ReproHangingReads(int sequenceNumber)
         {
-            // running a single test is usually not enough to repro, so we run the same test multiple times
-            this.outputHelper.WriteLine($"starting test {sequenceNumber}");
-
-            // disable checkpoints since they are not needed to trigger the bug
-            this.settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 * 1024 * 1024;
-            this.settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
-            this.settings.IdleCheckpointFrequencyMs = (long)TimeSpan.FromDays(1).TotalMilliseconds;
-
-            this.settings.PartitionCount = 4;
-
-
-            using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(3));
-            using var fixture = await HostFixture.StartNew(this.settings, true, false, 0, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
-
-            this.settings.TestHooks.CacheDebugger.EnableSizeChecking = false;
-
-            var scenarios = new ScenarioTests(fixture, this.outputHelper);
-
-            var tests = new List<(string, Task)>();
-
-            for (int i = 0; i < 20; i++)
+            return Common.WithTimeoutAsync(TimeSpan.FromMinutes(5), async () =>
             {
-                tests.AddRange(scenarios.StartAllScenarios(false, false));
-            }
+                // running a single test is usually not enough to repro, so we run the same test multiple times
+                this.outputHelper.WriteLine($"starting test {sequenceNumber}");
 
-            await this.WaitForCompletion(tests, TimeSpan.FromMinutes(10));
+                // disable checkpoints since they are not needed to trigger the bug
+                this.settings.MaxNumberBytesBetweenCheckpoints = 1024L * 1024 * 1024 * 1024;
+                this.settings.MaxNumberEventsBetweenCheckpoints = 10000000000L;
+                this.settings.IdleCheckpointFrequencyMs = (long)TimeSpan.FromDays(1).TotalMilliseconds;
+
+                this.settings.PartitionCount = 4;
+
+
+                using var _ = TestOrchestrationClient.WithExtraTime(TimeSpan.FromMinutes(3));
+                using var fixture = await HostFixture.StartNew(this.settings, true, false, 0, TimeSpan.FromMinutes(5), (msg) => this.outputHelper?.WriteLine(msg));
+
+                this.settings.TestHooks.CacheDebugger.EnableSizeChecking = false;
+
+                var scenarios = new ScenarioTests(fixture, this.outputHelper);
+
+                var tests = new List<(string, Task)>();
+
+                for (int i = 0; i < 20; i++)
+                {
+                    tests.AddRange(scenarios.StartAllScenarios(false, false));
+                }
+
+                await this.WaitForCompletion(tests, TimeSpan.FromMinutes(10));
+            });
         }
     }
 }

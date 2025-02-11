@@ -11,6 +11,7 @@ namespace DurableTask.Netherite.Faster
     using System.Threading.Tasks;
     using System.Threading.Channels;
     using FASTER.core;
+    using System.IO.Hashing;
 
     class LogWorker : BatchWorker<PartitionUpdateEvent>
     {
@@ -19,6 +20,7 @@ namespace DurableTask.Netherite.Faster
         readonly Partition partition;
         readonly StoreWorker storeWorker;
         readonly FasterTraceHelper traceHelper;
+        readonly bool traceLogDetails;
         bool isShuttingDown;
 
         readonly IntakeWorker intakeWorker;
@@ -34,6 +36,7 @@ namespace DurableTask.Netherite.Faster
             this.storeWorker = storeWorker;
             this.traceHelper = traceHelper;
             this.intakeWorker = new IntakeWorker(cancellationToken, this, partition.TraceHelper);
+            this.traceLogDetails = traceHelper.IsTracingAtMostDetailedLevel;
 
             this.maxFragmentSize = (int) this.blobManager.GetEventLogSettings(partition.Settings.UseSeparatePageBlobStorage, partition.Settings.FasterTuningParameters).PageSize - 64; // faster needs some room for header, 64 bytes is conservative
         }
@@ -112,7 +115,7 @@ namespace DurableTask.Netherite.Faster
         {
             if (bytes.Length <= this.maxFragmentSize)
             {
-                this.log.Enqueue(bytes);
+                this.AppendToLog(bytes);
             }
             else
             {
@@ -123,10 +126,28 @@ namespace DurableTask.Netherite.Faster
                     bool isLastFragment = 1 + bytes.Length - pos <= this.maxFragmentSize;
                     int packetSize = isLastFragment ? 1 + bytes.Length - pos : this.maxFragmentSize;
                     bytes[pos - 1] = (byte)(((pos == 1) ? first : none) | (isLastFragment ? last : none));
-                    this.log.Enqueue(new ReadOnlySpan<byte>(bytes, pos - 1, packetSize));
+                    this.AppendToLog(new ReadOnlySpan<byte>(bytes, pos - 1, packetSize));
                     pos += packetSize - 1;
                 }
             }
+        }
+
+        void AppendToLog(ReadOnlySpan<byte> span)
+        {
+            this.log.Enqueue(span);
+            if (this.traceLogDetails)
+            {
+                this.TraceLogDetail("Appended", this.log.TailAddress, span);
+            }
+        }
+
+        void TraceLogDetail(string operation, long nextCommitLogPosition, ReadOnlySpan<byte> span)
+        {
+            byte firstByte = span[0];
+            char f = ((firstByte & first) != 0) ? 'F' : '.';
+            char l = ((firstByte & last) != 0) ? 'L' : '.';
+            byte[] crc = Crc32.Hash(span);
+            this.traceHelper.FasterStorageProgress($"CommitLogEntry {operation} {nextCommitLogPosition} {f}{l} length={span.Length} crc={crc[0]:X2}{crc[1]:X2}{crc[2]:X2}{crc[3]:X2}");
         }
 
         public async Task PersistAndShutdownAsync()
@@ -186,7 +207,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        public async Task ReplayCommitLog(long from, StoreWorker worker)
+        public async Task ReplayCommitLog(long from, StoreWorker worker, bool enablePrefetch)
         {
             // this procedure is called by StoreWorker during recovery. It replays all the events
             // that were committed to the log but are not reflected in the loaded store checkpoint.
@@ -194,12 +215,16 @@ namespace DurableTask.Netherite.Faster
             {
                 // we create a pipeline where the fetch task obtains a stream of events and then duplicates the
                 // stream, so it can get replayed and prefetched in parallel.
-                var prefetchChannel = Channel.CreateBounded<TrackedObjectKey>(1000);
+                var prefetchChannel = enablePrefetch ? Channel.CreateBounded<TrackedObjectKey>(1000) : null;
                 var replayChannel = Channel.CreateBounded<PartitionUpdateEvent>(1000);
 
-                var fetchTask = this.FetchEvents(from, replayChannel.Writer, prefetchChannel.Writer);
+                var fetchTask = this.FetchEvents(from, replayChannel.Writer, prefetchChannel?.Writer);
                 var replayTask = Task.Run(() => this.ReplayEvents(replayChannel.Reader, worker));
-                var prefetchTask = Task.Run(() => worker.RunPrefetchSession(prefetchChannel.Reader.ReadAllAsync(this.cancellationToken)));
+
+                if (enablePrefetch)
+                {
+                    var prefetchTask = Task.Run(() => worker.RunPrefetchSession(prefetchChannel.Reader.ReadAllAsync(this.cancellationToken)));
+                }
 
                 await fetchTask;
                 await replayTask;
@@ -220,23 +245,33 @@ namespace DurableTask.Netherite.Faster
 
                 await replayChannelWriter.WriteAsync(partitionEvent);
 
-                if (partitionEvent is IRequiresPrefetch evt)
+                if (prefetchChannelWriter != null && partitionEvent is IRequiresPrefetch evt)
                 {
                     foreach (var key in evt.KeysToPrefetch)
                     {
+                        if (this.traceHelper.BoostTracing)
+                        {
+                            this.traceHelper.FasterProgress($"Replay Prefetches {key}");
+                        }
+
                         await prefetchChannelWriter.WriteAsync(key);
                     }
                 }
             }
 
             replayChannelWriter.Complete();
-            prefetchChannelWriter.Complete();
+            prefetchChannelWriter?.Complete();
         }
 
         async Task ReplayEvents(ChannelReader<PartitionUpdateEvent> reader, StoreWorker worker)
         {
             await foreach (var partitionEvent in reader.ReadAllAsync(this.cancellationToken))
             {
+                if (this.traceHelper.BoostTracing)
+                {
+                    this.traceHelper.FasterProgress($"Replaying PartitionEvent {partitionEvent.NextCommitLogPosition}");
+                }
+
                 await worker.ReplayUpdate(partitionEvent);
             }
         }
@@ -264,11 +299,17 @@ namespace DurableTask.Netherite.Faster
                         await iter.WaitAsync(this.cancellationToken);
                     }
 
+                    if (this.traceHelper.IsTracingAtMostDetailedLevel)
+                    {
+                        this.TraceLogDetail("Read", iter.NextAddress, new ReadOnlySpan<byte>(result, 0, entryLength));
+                    }
+
                     if ((result[0] & first) != none)
                     {
                         if ((result[0] & last) != none)
                         {
-                            partitionEvent = (PartitionUpdateEvent)Serializer.DeserializeEvent(new ArraySegment<byte>(result, 1, entryLength - 1));
+                            partitionEvent = TryDeserializePartitionEvent(new MemoryStream(result, 1, entryLength - 1), reassembled:false);                 
+                            reassembly = null;
                         }
                         else
                         {
@@ -283,7 +324,7 @@ namespace DurableTask.Netherite.Faster
                         if ((result[0] & last) != none)
                         {
                             reassembly.Position = 0;
-                            partitionEvent = (PartitionUpdateEvent)Serializer.DeserializeEvent(reassembly);
+                            partitionEvent = TryDeserializePartitionEvent(reassembly, reassembled:true);
                             reassembly = null;
                         }
                     }
@@ -292,6 +333,20 @@ namespace DurableTask.Netherite.Faster
                     {
                         partitionEvent.NextCommitLogPosition = iter.NextAddress;
                         yield return partitionEvent;
+                    }
+                }
+
+                PartitionUpdateEvent TryDeserializePartitionEvent(MemoryStream from, bool reassembled)
+                {
+                    try
+                    {
+                        return (PartitionUpdateEvent)Serializer.DeserializeEvent(from);
+                    }
+                    catch (System.Runtime.Serialization.SerializationException serializationException)
+                    {
+                        string message = $"Could not deserialize partition event (nextCommitLogPosition={iter.NextAddress}, reassembled={reassembled}): {serializationException.Message}";
+                        this.blobManager.PartitionErrorHandler.HandleError("ReplayCommitLog", message, serializationException, false, false);
+                        return null; // continue even if it leads to incorrect state... as that is still better than no function (retries do not help here)
                     }
                 }
             }

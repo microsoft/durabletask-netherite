@@ -26,7 +26,11 @@ if ($DeployCode)
 	}
 	if (-not ($MaxA -eq ""))
 	{
-	    $hostconf.extensions.durableTask | Add-Member -NotePropertyName "maxConcurrentActivityFunctions" -NotePropertyValue $MaxA
+	    $hostconf.extensions.durableTask | Add-Member -Force -NotePropertyName "maxConcurrentActivityFunctions" -NotePropertyValue $MaxA
+	}
+	if (-not ($MaxO -eq ""))
+	{
+	    $hostconf.extensions.durableTask | Add-Member -Force -NotePropertyName "maxConcurrentOrchestratorFunctions" -NotePropertyValue $MaxO
 	}
 
 	$hostconf | ConvertTo-Json -depth 32 | set-content "./bin/$Configuration/net6.0/host.json"
@@ -52,7 +56,7 @@ if (-not ((az functionapp list -g $groupName --query "[].name"| ConvertFrom-Json
 
 	az functionapp config set -n $functionAppName -g $groupName --use-32bit-worker-process false
     az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EventHubsConnection=$eventHubsConnectionString
-    az functionapp config appsettings set -n $functionAppName -g  $groupName --settings CorpusConnection=$corpusConnectionString
+    az functionapp config appsettings set -n $functionAppName -g  $groupName --settings EHNamespace=$Env:EHNamespace
 }
 else
 {

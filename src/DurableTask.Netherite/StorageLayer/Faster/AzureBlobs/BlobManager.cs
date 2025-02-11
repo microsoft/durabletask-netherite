@@ -31,6 +31,7 @@ namespace DurableTask.Netherite.Faster
         readonly uint partitionId;
         readonly CancellationTokenSource shutDownOrTermination;
         readonly string taskHubPrefix;
+        readonly bool readOnlyMode;
 
         BlobUtilsV12.ServiceClients blockBlobAccount;
         BlobUtilsV12.ServiceClients pageBlobAccount;
@@ -40,6 +41,8 @@ namespace DurableTask.Netherite.Faster
 
         BlobUtilsV12.BlockBlobClients eventLogCommitBlob;
         BlobLeaseClient leaseClient;
+
+        BlobUtilsV12.BlockBlobClients checkpointCompletedBlob;
 
         BlobUtilsV12.BlobDirectory pageBlobPartitionDirectory;
         BlobUtilsV12.BlobDirectory blockBlobPartitionDirectory;
@@ -62,6 +65,8 @@ namespace DurableTask.Netherite.Faster
 
         public string ContainerName { get; }
 
+        public bool ReadonlyMode => this.readOnlyMode;
+
         internal BlobUtilsV12.ContainerClients BlockBlobContainer => this.blockBlobContainer;
         internal BlobUtilsV12.ContainerClients PageBlobContainer => this.pageBlobContainer;
 
@@ -69,8 +74,8 @@ namespace DurableTask.Netherite.Faster
 
         public IPartitionErrorHandler PartitionErrorHandler { get; private set; }
 
-        internal static SemaphoreSlim AsynchronousStorageReadMaxConcurrency = new SemaphoreSlim(Math.Min(100, Environment.ProcessorCount * 10));
-        internal static SemaphoreSlim AsynchronousStorageWriteMaxConcurrency = new SemaphoreSlim(Math.Min(50, Environment.ProcessorCount * 7));
+        internal static SemaphoreSlim AsynchronousStorageReadMaxConcurrency = new SemaphoreSlim(Math.Min(100, Environment.ProcessorCount * 20));
+        internal static SemaphoreSlim AsynchronousStorageWriteMaxConcurrency = new SemaphoreSlim(Math.Min(50, Environment.ProcessorCount * 10));
 
         internal volatile int LeaseUsers;
 
@@ -121,7 +126,7 @@ namespace DurableTask.Netherite.Faster
                 MutableFraction = tuningParameters?.StoreLogMutableFraction ?? 0.9,
                 SegmentSizeBits = segmentSizeBits,
                 PreallocateLog = false,
-                ReadFlags = ReadFlags.None,
+                ReadCopyOptions = default, // is overridden by the per-session configuration
                 ReadCacheSettings = null, // no read cache
                 MemorySizeBits = memorySizeBits,
             };
@@ -144,7 +149,7 @@ namespace DurableTask.Netherite.Faster
         {
             int pageSizeBits =    tuningParameters?.StoreLogPageSizeBits    ?? 10; // 1kB
             int segmentSizeBits = tuningParameters?.StoreLogSegmentSizeBits ?? 19; // 512 kB
-            int memorySizeBits = tuningParameters?.StoreLogMemorySizeBits ?? 29; // 512 MB - that is just the max, not what we actually use
+            int memorySizeBits = tuningParameters?.StoreLogMemorySizeBits ?? 20; // 1 MB max. Holds 88k records.
 
             return (pageSizeBits, segmentSizeBits, memorySizeBits);
         }
@@ -176,7 +181,6 @@ namespace DurableTask.Netherite.Faster
 
             return JsonConvert.SerializeObject(new StorageFormatSettings()
                 {
-                    UseAlternateObjectStore = settings.UseAlternateObjectStore,
                     FormatVersion = StorageFormatVersion.Last(),
                     PageAndSegmentSizes = pageAndSegmentSizes,
                     MemorySizes = memorySizes,
@@ -193,9 +197,6 @@ namespace DurableTask.Netherite.Faster
             public int FormatVersion { get; set; }
 
             // the following can be changed between versions
-
-            [JsonProperty("UseAlternateObjectStore", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool? UseAlternateObjectStore { get; set; }
 
             [JsonProperty("PageAndSegmentSizes", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public int[] PageAndSegmentSizes { get; set; }
@@ -218,10 +219,6 @@ namespace DurableTask.Netherite.Faster
             {
                 var taskhubFormat = JsonConvert.DeserializeObject<StorageFormatSettings>(format, serializerSettings);
 
-                if (taskhubFormat.UseAlternateObjectStore != settings.UseAlternateObjectStore)
-                {
-                    throw new NetheriteConfigurationException("The Netherite configuration setting 'UseAlternateObjectStore' is incompatible with the existing taskhub.");
-                }
                 if (taskhubFormat.FormatVersion != StorageFormatVersion.Last())
                 {
                     throw new NetheriteConfigurationException($"The current storage format version (={StorageFormatVersion.Last()}) is incompatible with the existing taskhub (={taskhubFormat.FormatVersion}).");
@@ -357,6 +354,11 @@ namespace DurableTask.Netherite.Faster
             this.TraceHelper = new FasterTraceHelper(logger, logLevelLimit, performanceLogger, this.partitionId, this.UseLocalFiles ? "none" : this.settings.StorageAccountName, taskHubName);
             this.PartitionErrorHandler = errorHandler;
             this.shutDownOrTermination = CancellationTokenSource.CreateLinkedTokenSource(errorHandler.Token);
+
+            if (this.settings.PartitionManagement == PartitionManagementOptions.RecoveryTester)
+            {
+                this.readOnlyMode = true;
+            }
         }
 
         string PartitionFolderName => $"{this.taskHubPrefix}p{this.partitionId:D2}";
@@ -419,6 +421,7 @@ namespace DurableTask.Netherite.Faster
 
                 this.eventLogCommitBlob = this.blockBlobPartitionDirectory.GetBlockBlobClient(CommitBlobName);
                 this.leaseClient = this.eventLogCommitBlob.WithRetries.GetBlobLeaseClient();
+                this.checkpointCompletedBlob = this.blockBlobPartitionDirectory.GetBlockBlobClient(this.GetCheckpointCompletedBlobName());
 
                 AzureStorageDevice createDevice(string name) =>
                      new AzureStorageDevice(name, this.blockBlobPartitionDirectory.GetSubDirectory(name), this.pageBlobPartitionDirectory.GetSubDirectory(name), this, true);
@@ -597,6 +600,7 @@ namespace DurableTask.Netherite.Faster
                         this.eventLogCommitBlob.Default.Name,
                         2000,
                         true,
+                        failIfReadonly: true,
                         async (numAttempts) =>
                         {
                             try
@@ -626,9 +630,9 @@ namespace DurableTask.Netherite.Faster
                     throw new OperationCanceledException(message, e);
                 }
                 catch (Exception ex) when (numAttempts < BlobManager.MaxRetries
-                    && !this.PartitionErrorHandler.IsTerminated && BlobUtils.IsTransientStorageError(ex))
+                    && !this.PartitionErrorHandler.IsTerminated && BlobUtilsV12.IsTransientStorageError(ex))
                 {
-                    if (BlobUtils.IsTimeout(ex))
+                    if (BlobUtilsV12.IsTimeout(ex))
                     {
                         this.TraceHelper.FasterPerfWarning($"Lease acquisition timed out, retrying now");
                     }
@@ -640,7 +644,7 @@ namespace DurableTask.Netherite.Faster
                     }
                     continue;
                 }
-                catch (Exception e) when (!Utils.IsFatal(e))
+                catch (Exception e)
                 {
                     this.PartitionErrorHandler.HandleError(nameof(AcquireOwnership), "Could not acquire partition lease", e, true, false);
                     throw;
@@ -685,6 +689,8 @@ namespace DurableTask.Netherite.Faster
 
         public async Task MaintenanceLoopAsync()
         {
+            bool releaseLeaseAtEnd = !this.UseLocalFiles;
+
             this.TraceHelper.LeaseProgress("Started lease maintenance loop");
             try
             {
@@ -710,7 +716,7 @@ namespace DurableTask.Netherite.Faster
                 // it's o.k. to cancel while waiting
                 this.TraceHelper.LeaseProgress("Lease renewal loop cleanly canceled");
             }
-            catch (Azure.RequestFailedException e) when (e.InnerException != null && e.InnerException is OperationCanceledException)
+            catch (Azure.RequestFailedException e) when (BlobUtilsV12.IsCancelled(e))
             {
                 // it's o.k. to cancel a lease renewal
                 this.TraceHelper.LeaseProgress("Lease renewal storage operation canceled");
@@ -719,8 +725,9 @@ namespace DurableTask.Netherite.Faster
             {
                 // We lost the lease to someone else. Terminate ownership immediately.
                 this.PartitionErrorHandler.HandleError(nameof(MaintenanceLoopAsync), "Lost partition lease", ex, true, true);
+                releaseLeaseAtEnd = false;
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.PartitionErrorHandler.HandleError(nameof(MaintenanceLoopAsync), "Could not maintain partition lease", e, true, false);
             }
@@ -737,23 +744,21 @@ namespace DurableTask.Netherite.Faster
             this.TraceHelper.LeaseProgress("Waited for lease users to complete");
 
             // release the lease
-            if (!this.UseLocalFiles)
+            if (releaseLeaseAtEnd)
             {
                 try
                 {
                     this.TraceHelper.LeaseProgress("Releasing lease");
 
                     this.FaultInjector?.StorageAccess(this, "ReleaseLeaseAsync", "ReleaseLease", this.eventLogCommitBlob.Name);
-                    await this.leaseClient.ReleaseAsync(null, this.PartitionErrorHandler.Token).ConfigureAwait(false);
+
+                    // we must always release the lease here, whether the partition has already been terminated or not.
+                    // otherwise, the recovery of this partition (on this host or another host) has to wait for up
+                    // to 40s for the lease to expire. During this time, the partition is stalled (cannot process any work
+                    // items or client requests). In particular, client requests targeting this partition may be heavily delayed.
+                    await this.leaseClient.ReleaseAsync(conditions: null, CancellationToken.None).ConfigureAwait(false);
+
                     this.TraceHelper.LeaseReleased(this.leaseTimer.Elapsed.TotalSeconds);
-                }
-                catch (OperationCanceledException)
-                {
-                    // it's o.k. if termination is triggered while waiting
-                }
-                catch (Azure.RequestFailedException e) when (e.InnerException != null && e.InnerException is OperationCanceledException)
-                {
-                    // it's o.k. if termination is triggered while we are releasing the lease
                 }
                 catch (Exception e)
                 {
@@ -762,9 +767,11 @@ namespace DurableTask.Netherite.Faster
                 }
             }
 
+            this.TraceHelper.FasterProgress("Blob manager is terminating partition normally");
+
             this.PartitionErrorHandler.TerminateNormally();
 
-            this.TraceHelper.LeaseProgress("Blob manager stopped");
+            this.TraceHelper.FasterProgress("Blob manager stopped");
         }
 
         public async Task RemoveObsoleteCheckpoints()
@@ -774,7 +781,7 @@ namespace DurableTask.Netherite.Faster
                 //TODO
                 return;
             }
-            else
+            else if (!this.readOnlyMode)
             {
                 string token1 = this.CheckpointInfo.LogToken.ToString();
                 string token2 = this.CheckpointInfo.IndexToken.ToString();
@@ -809,6 +816,7 @@ namespace DurableTask.Netherite.Faster
                         directory.Prefix,
                         1000,
                         false,
+                        failIfReadonly: true,
                         async (numAttempts) =>
                         {
                             results = await directory.GetBlobsAsync(this.shutDownOrTermination.Token);
@@ -846,6 +854,7 @@ namespace DurableTask.Netherite.Faster
                                     blobName,
                                     1000,
                                     false,
+                                    failIfReadonly: true,
                                     async (numAttempts) => (await BlobUtilsV12.ForceDeleteAsync(directory.Client.Default, blobName) ? 1 : 0)));
                         }
                         await Task.WhenAll(deletionTasks);
@@ -880,7 +889,7 @@ namespace DurableTask.Netherite.Faster
 
         #region ILogCommitManager
 
-        void ILogCommitManager.Commit(long beginAddress, long untilAddress, byte[] commitMetadata, long commitNum)
+        void ILogCommitManager.Commit(long beginAddress, long untilAddress, byte[] commitMetadata, long commitNum, bool forceWriteMetadata)
         {
             try
             {
@@ -894,6 +903,7 @@ namespace DurableTask.Netherite.Faster
                     this.eventLogCommitBlob.Default.Name,
                     1000,
                     true,
+                    failIfReadonly: true,
                     (int numAttempts) =>
                     {
                         try
@@ -972,6 +982,7 @@ namespace DurableTask.Netherite.Faster
                    this.eventLogCommitBlob.Name,
                    1000,
                    true,
+                   failIfReadonly: false,
                    (int numAttempts) =>
                    {
                        if (numAttempts > 0)
@@ -983,7 +994,7 @@ namespace DurableTask.Netherite.Faster
                        {
                            var client = numAttempts > 2 ? this.eventLogCommitBlob.Default : this.eventLogCommitBlob.Aggressive;
 
-                           client.DownloadTo(
+                           using var response = client.DownloadTo(
                                destination: stream,
                                conditions: new BlobRequestConditions() { LeaseId = this.leaseClient.LeaseId },
                                cancellationToken: this.PartitionErrorHandler.Token);
@@ -1049,10 +1060,11 @@ namespace DurableTask.Netherite.Faster
 
         internal async Task<bool> FindCheckpointsAsync(bool logIsEmpty)
         {
-            BlobUtilsV12.BlockBlobClients checkpointCompletedBlob = default;
+            string jsonString = null;
+            DateTimeOffset lastModified = default;
+
             try
             {
-                string jsonString = null;
 
                 if (this.UseLocalFiles)
                 {
@@ -1068,7 +1080,6 @@ namespace DurableTask.Netherite.Faster
                 else
                 {
                     var partDir = this.blockBlobPartitionDirectory;
-                    checkpointCompletedBlob = partDir.GetBlockBlobClient(this.GetCheckpointCompletedBlobName());
 
                     await this.PerformWithRetriesAsync(
                         semaphore: null,
@@ -1076,15 +1087,17 @@ namespace DurableTask.Netherite.Faster
                         "BlockBlobClient.DownloadContentAsync",
                         "FindCheckpointsAsync",
                         "",
-                        checkpointCompletedBlob.Name,
+                        this.checkpointCompletedBlob.Name,
                         1000,
                         true,
+                        failIfReadonly: false, 
                         async (numAttempts) =>
                         {
                             try
                             {
-                                Azure.Response<BlobDownloadResult> downloadResult = await checkpointCompletedBlob.WithRetries.DownloadContentAsync();
+                                Azure.Response<BlobDownloadResult> downloadResult = await this.checkpointCompletedBlob.WithRetries.DownloadContentAsync();
                                 jsonString = downloadResult.Value.Content.ToString();
+                                lastModified = downloadResult.Value.Details.LastModified;
                                 this.CheckpointInfoETag = downloadResult.Value.Details.ETag;
                                 return 1;
                             }
@@ -1096,21 +1109,64 @@ namespace DurableTask.Netherite.Faster
                         });
                 }
 
-                if (jsonString == null)
-                {
-                    return false;
-                }
-                else
-                {
-                    // read the fields from the json to update the checkpoint info
-                    JsonConvert.PopulateObject(jsonString, this.CheckpointInfo);
-                    return true;
-                }
             }
             catch (Exception e)
             {
-                this.HandleStorageError(nameof(FindCheckpointsAsync), "could not find any checkpoint", checkpointCompletedBlob.Name, e, true, this.PartitionErrorHandler.IsTerminated);
+                this.HandleStorageError(nameof(FindCheckpointsAsync), "could not find any checkpoint", this.checkpointCompletedBlob.Name, e, true, this.PartitionErrorHandler.IsTerminated);
                 throw;
+            }
+
+            if (jsonString == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                // read the fields from the json to update the checkpoint info
+                JsonConvert.PopulateObject(jsonString, this.CheckpointInfo);
+            }
+            catch (JsonException e)
+            {
+                this.HandleStorageError(nameof(FindCheckpointsAsync), "could not parse json file describing last checkpoint", this.checkpointCompletedBlob.Name, e, true, false);
+                throw;
+            }
+
+            if (this.CheckpointInfo.RecoveryAttempts > 0 || DateTimeOffset.UtcNow - lastModified > TimeSpan.FromMinutes(5))
+            {
+                this.CheckpointInfo.RecoveryAttempts++;
+
+                this.TraceHelper.FasterProgress($"Incremented recovery attempt counter to {this.CheckpointInfo.RecoveryAttempts} in {this.checkpointCompletedBlob.Name}.");
+
+                await this.WriteCheckpointMetadataAsync();
+
+                // we start to boost the tracing after three failed attempts. This boosting applies to the recovery part only.
+                int StartBoostingAfter = 3;
+
+                // After some number of boosted attempts, we stop boosting since it seems unlikely that we will find new information.
+                int BoostFor = 10;
+
+                if (this.CheckpointInfo.RecoveryAttempts > StartBoostingAfter
+                    && this.CheckpointInfo.RecoveryAttempts <= StartBoostingAfter + BoostFor)
+                {
+                    this.TraceHelper.BoostTracing = true;
+                }
+            }
+
+            return true;
+        }
+
+        public async Task ClearRecoveryAttempts()
+        {
+            if (this.CheckpointInfo.RecoveryAttempts > 0)
+            {
+                this.CheckpointInfo.RecoveryAttempts = 0;
+
+                this.TraceHelper.BoostTracing = false;
+
+                await this.WriteCheckpointMetadataAsync();
+
+                this.TraceHelper.FasterProgress($"Cleared recovery attempt counter in {this.checkpointCompletedBlob.Name}.");
             }
         }
 
@@ -1123,23 +1179,24 @@ namespace DurableTask.Netherite.Faster
                 var metaFileBlob = partDir.GetBlockBlobClient(this.GetIndexCheckpointMetaBlobName(indexToken));
 
                 this.PerformWithRetries(
-                 false,
-                 "BlockBlobClient.OpenWrite",
-                 "WriteIndexCheckpointMetadata",
-                 $"token={indexToken} size={commitMetadata.Length}",
-                 metaFileBlob.Name,
-                 1000,
-                 true,
-                 (numAttempts) =>
-                 {
-                     var client = metaFileBlob.WithRetries;
-                     using var blobStream = client.OpenWrite(overwrite: true);
-                     using var writer = new BinaryWriter(blobStream);
-                     writer.Write(commitMetadata.Length);
-                     writer.Write(commitMetadata);
-                     writer.Flush();
-                     return (commitMetadata.Length, true);
-                 });
+                    false,
+                    "BlockBlobClient.OpenWrite",
+                    "WriteIndexCheckpointMetadata",
+                    $"token={indexToken} size={commitMetadata.Length}",
+                    metaFileBlob.Name,
+                    1000,
+                    true,
+                    failIfReadonly: true,
+                    (numAttempts) =>
+                    {
+                        var client = metaFileBlob.WithRetries;
+                        using var blobStream = client.OpenWrite(overwrite: true);
+                        using var writer = new BinaryWriter(blobStream);
+                        writer.Write(commitMetadata.Length);
+                        writer.Write(commitMetadata);
+                        writer.Flush();
+                        return (commitMetadata.Length, true);
+                    });
 
                 this.CheckpointInfo.IndexToken = indexToken;
                 this.StorageTracer?.FasterStorageProgress($"StorageOpReturned ICheckpointManager.CommitIndexCheckpoint, target={metaFileBlob.Name}");
@@ -1167,6 +1224,7 @@ namespace DurableTask.Netherite.Faster
                     metaFileBlob.Name,
                     1000,
                     true,
+                    failIfReadonly: true,
                     (numAttempts) =>
                     {
                         var client = metaFileBlob.WithRetries;
@@ -1210,6 +1268,7 @@ namespace DurableTask.Netherite.Faster
                    metaFileBlob.Name,
                    1000,
                    true,
+                   failIfReadonly: false, 
                    (numAttempts) =>
                    {
                        var client = metaFileBlob.WithRetries;
@@ -1247,6 +1306,7 @@ namespace DurableTask.Netherite.Faster
                     metaFileBlob.Name,
                     1000,
                     true,
+                    failIfReadonly: false,
                     (numAttempts) =>
                     {
                         var client = metaFileBlob.WithRetries;
@@ -1374,6 +1434,7 @@ namespace DurableTask.Netherite.Faster
                    singletonsBlob.Name,
                    1000 + singletons.Length / 5000,
                    false,
+                   failIfReadonly: true,
                    async (numAttempts) =>
                    {
                        var client = singletonsBlob.WithRetries;
@@ -1407,6 +1468,7 @@ namespace DurableTask.Netherite.Faster
                     singletonsBlob.Name,
                     20000,
                     true,
+                    failIfReadonly: false,
                     async (numAttempts) =>
                     {
 
@@ -1421,7 +1483,7 @@ namespace DurableTask.Netherite.Faster
             }
         }
 
-        internal async Task FinalizeCheckpointCompletedAsync()
+        internal async Task WriteCheckpointMetadataAsync()
         {
             var jsonText = JsonConvert.SerializeObject(this.CheckpointInfo, Formatting.Indented);
             if (this.UseLocalFiles)
@@ -1440,6 +1502,7 @@ namespace DurableTask.Netherite.Faster
                     checkpointCompletedBlob.Name,
                     1000,
                     true,
+                    failIfReadonly: true,
                     async (numAttempts) =>
                     {
                         var client = numAttempts > 1 ? checkpointCompletedBlob.Default : checkpointCompletedBlob.Aggressive;
@@ -1465,6 +1528,11 @@ namespace DurableTask.Netherite.Faster
                         this.CheckpointInfoETag = response.Value.ETag;
                     });
             }
+        }
+
+        public void CheckpointVersionShift(long oldVersion, long newVersion)
+        {
+            // no-op
         }
     }
 }

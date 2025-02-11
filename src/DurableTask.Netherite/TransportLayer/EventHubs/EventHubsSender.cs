@@ -3,40 +3,61 @@
 
 namespace DurableTask.Netherite.EventHubsTransport
 {
-    using DurableTask.Core.Common;
-    using Microsoft.Azure.EventHubs;
-    using Microsoft.Extensions.Logging;
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure.Messaging.EventHubs;
+    using Azure.Messaging.EventHubs.Producer;
+    using DurableTask.Core.Common;
+    using Microsoft.Extensions.Logging;
 
-    class EventHubsSender<T> : BatchWorker<Event> where T: Event
+    class EventHubsSender<T> : BatchWorker<Event> where T : Event
     {
-        readonly PartitionSender sender;
+        readonly EventHubProducerClient client;
         readonly TransportAbstraction.IHost host;
-        readonly byte[] taskHubGuid;
+        readonly byte[] guid;
         readonly EventHubsTraceHelper traceHelper;
+        readonly EventHubsTraceHelper lowestTraceLevel;
         readonly string eventHubName;
         readonly string eventHubPartition;
         readonly TimeSpan backoff = TimeSpan.FromSeconds(5);
-        int maxMessageSize = 900 * 1024; // we keep this slightly below the official limit since we have observed exceptions
-        int maxFragmentSize => this.maxMessageSize / 2; // we keep this lower than maxMessageSize because of serialization overhead
         readonly MemoryStream stream = new MemoryStream(); // reused for all packets
         readonly Stopwatch stopwatch = new Stopwatch();
+        readonly BlobBatchSender blobBatchSender;
+        readonly CreateBatchOptions batchOptions;
+        readonly SendEventOptions sendOptions;
 
-        public EventHubsSender(TransportAbstraction.IHost host, byte[] taskHubGuid, PartitionSender sender, EventHubsTraceHelper traceHelper)
-            : base($"EventHubsSender {sender.EventHubClient.EventHubName}/{sender.PartitionId}", false, 2000, CancellationToken.None, traceHelper)
+        public EventHubsSender(TransportAbstraction.IHost host, byte[] guid, EventHubConnection connection, string partitionId, CancellationToken shutdownToken, EventHubsTraceHelper traceHelper, NetheriteOrchestrationServiceSettings settings)
+           : base($"EventHubsSender {connection.EventHubName}/{partitionId}", false, 2000, shutdownToken, traceHelper)
         {
             this.host = host;
-            this.taskHubGuid = taskHubGuid;
-            this.sender = sender;
+            this.guid = guid;
+            this.client = new EventHubProducerClient(connection);
             this.traceHelper = traceHelper;
-            this.eventHubName = this.sender.EventHubClient.EventHubName;
-            this.eventHubPartition = this.sender.PartitionId;
+            this.lowestTraceLevel = traceHelper.IsEnabled(LogLevel.Trace) ? traceHelper : null;
+            this.eventHubName = connection.EventHubName;
+            this.eventHubPartition = partitionId;
+            this.blobBatchSender = new BlobBatchSender($"EventHubsSender {this.eventHubName}/{this.eventHubPartition}", this.traceHelper, settings);
+            this.batchOptions = new CreateBatchOptions()
+            {
+                PartitionId = partitionId,
+            };
+            this.sendOptions = new SendEventOptions()
+            {
+                PartitionId = partitionId,
+            };
         }
+
+        public override async Task WaitForShutdownAsync()
+        {
+            await base.WaitForShutdownAsync();
+            await this.client.CloseAsync();
+        }
+
+        public string EventHubsClientIdentifier => this.client.Identifier;
 
         protected override async Task Process(IList<Event> toSend)
         {
@@ -50,105 +71,130 @@ namespace DurableTask.Netherite.EventHubsTransport
             var maybeSent = -1;
             Exception senderException = null;
 
-            EventDataBatch CreateBatch() => this.sender.CreateBatch(new BatchOptions() { MaxMessageSize = maxMessageSize });
+            // track current position in toSend
+            int index = 0;
 
-            try
+            // track offsets of the packets in the stream
+            // since the first offset is always zero, there is one fewer than the number of packets
+            List<int> packetOffsets = new List<int>(Math.Min(toSend.Count, this.blobBatchSender.MaxBlobBatchEvents) - 1);
+
+            void CollectBatchContent(bool specificallyForBlob)
             {
-                var batch = CreateBatch();
+                int maxEvents = specificallyForBlob ? this.blobBatchSender.MaxBlobBatchEvents : this.blobBatchSender.MaxEventHubsBatchEvents;
+                int maxBytes = specificallyForBlob ? this.blobBatchSender.MaxBlobBatchBytes : this.blobBatchSender.MaxEventHubsBatchBytes;
 
-                async Task SendBatch(int lastPosition)
+                this.stream.Seek(0, SeekOrigin.Begin);
+                packetOffsets.Clear();
+                for (; index < toSend.Count && index < maxEvents && this.stream.Position < maxBytes; index++)
                 {
-                    maybeSent = lastPosition;
-                    this.stopwatch.Restart();
-                    await this.sender.SendAsync(batch).ConfigureAwait(false);
-                    this.stopwatch.Stop();
-                    sentSuccessfully = lastPosition;
-                    this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent batch of {numPackets} packets ({size} bytes) in {latencyMs:F2}ms, throughput={throughput:F2}MB/s", this.eventHubName, this.eventHubPartition, batch.Count, batch.Size, this.stopwatch.Elapsed.TotalMilliseconds, batch.Size/(1024*1024*this.stopwatch.Elapsed.TotalSeconds));
-                    batch.Dispose();
-                }
-
-                for (int i = 0; i < toSend.Count; i++)
-                {
-                    long startPos = this.stream.Position;
-                    var evt = toSend[i];
-
-                    this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} is sending event {evt} id={eventId}", this.eventHubName, this.eventHubPartition, evt, evt.EventIdString);
-                    Packet.Serialize(evt, this.stream, this.taskHubGuid);
-                    int length = (int)(this.stream.Position - startPos);
-                    var arraySegment = new ArraySegment<byte>(this.stream.GetBuffer(), (int)startPos, length);
-                    var eventData = new EventData(arraySegment);
-                    bool tooBig = length > this.maxFragmentSize;
-
-                    if (!tooBig && batch.TryAdd(eventData))
+                    int currentOffset = (int) this.stream.Position;
+                    if (currentOffset > 0)
                     {
-                        this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} added packet to batch ({size} bytes) {evt} id={eventId}", this.eventHubName, this.eventHubPartition, eventData.Body.Count, evt, evt.EventIdString);
-                        continue;
+                        packetOffsets.Add(currentOffset);
+                    }
+
+                    var evt = toSend[index];
+                    this.lowestTraceLevel?.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} is sending event {evt} id={eventId}", this.eventHubName, this.eventHubPartition, evt, evt.EventIdString);
+                    if (!specificallyForBlob)
+                    {
+                        Packet.Serialize(evt, this.stream, this.guid);
                     }
                     else
                     {
-                        if (batch.Count > 0)
-                        {
-                            // send the batch we have so far
-                            await SendBatch(i - 1);
+                        // we don't need to include the task hub guid if the event is sent via blob
+                        Packet.Serialize(evt, this.stream);
+                    }                 
+                }
+            }
 
-                            // create a fresh batch
-                            batch = CreateBatch();
-                        }
+            try
+            {
+                // unless the total number of events is above the max already, we always check first if we can avoid using a blob
+                bool usingBlobBatches = toSend.Count > this.blobBatchSender.MaxEventHubsBatchEvents; 
 
-                        if (tooBig)
+                while (index < toSend.Count)
+                {
+                    CollectBatchContent(usingBlobBatches);
+
+                    if (!usingBlobBatches)
+                    {
+                        if (index == toSend.Count
+                            && index <= this.blobBatchSender.MaxEventHubsBatchEvents
+                            && this.stream.Position <= this.blobBatchSender.MaxEventHubsBatchBytes)
                         {
-                            // the message is too big. Break it into fragments, and send each individually.
-                            Guid groupId = Guid.NewGuid();
-                            this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} fragmenting large event ({size} bytes) id={eventId} groupId={group:N}", this.eventHubName, this.eventHubPartition, length, evt.EventIdString, groupId);
-                            var fragments = FragmentationAndReassembly.Fragment(arraySegment, evt, groupId, this.maxFragmentSize);
-                            maybeSent = i;
-                            for (int k = 0; k < fragments.Count; k++)
+                            // we don't have a lot of bytes or messages to send
+                            // send them all in a single EH batch
+                            using var batch = await this.client.CreateBatchAsync(this.batchOptions, this.cancellationToken).ConfigureAwait(false);
+                            long maxPosition = this.stream.Position;
+                            this.stream.Seek(0, SeekOrigin.Begin);
+                            var buffer = this.stream.GetBuffer();
+                            for (int j = 0; j < index; j++)
                             {
-                                //TODO send bytes directly instead of as events (which causes significant space overhead)
-                                this.stream.Seek(0, SeekOrigin.Begin);
-                                var fragment = fragments[k];
-                                Packet.Serialize((Event)fragment, this.stream, this.taskHubGuid);
-                                this.traceHelper.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} sending fragment {index}/{total} ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, k, fragments.Count, length, ((Event)fragment).EventIdString);
-                                length = (int)this.stream.Position;
-                                await this.sender.SendAsync(new EventData(new ArraySegment<byte>(this.stream.GetBuffer(), 0, length))).ConfigureAwait(false);
-                                this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent fragment {index}/{total} ({size} bytes) id={eventId}", this.eventHubName, this.eventHubPartition, k, fragments.Count, length, ((Event)fragment).EventIdString);
+                                int offset = j == 0 ? 0 : packetOffsets[j - 1];
+                                int nextOffset = j < packetOffsets.Count ? packetOffsets[j] : (int) maxPosition;
+                                var length = nextOffset - offset;
+                                var arraySegment = new ArraySegment<byte>(buffer, offset, length);
+                                var eventData = new EventData(arraySegment);
+                                if (batch.TryAdd(eventData))
+                                {
+                                    Event evt = toSend[j];
+                                    this.lowestTraceLevel?.LogTrace("EventHubsSender {eventHubName}/{eventHubPartitionId} added packet to batch offset={offset} length={length} {evt} id={eventId}", this.eventHubName, this.eventHubPartition, offset, length, evt, evt.EventIdString);
+                                }
+                                else
+                                {
+                                    throw new InvalidOperationException("could not add event to batch"); // should never happen as max send size is very small
+                                }
                             }
-                            sentSuccessfully = i;
+                            maybeSent = index - 1;
+                            this.stopwatch.Restart();
+                            await this.client.SendAsync(batch, this.cancellationToken).ConfigureAwait(false);
+                            this.stopwatch.Stop();
+                            sentSuccessfully = index - 1;
+                            this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent batch of {numPackets} packets ({size} bytes) in {latencyMs:F2}ms, throughput={throughput:F2}MB/s", this.eventHubName, this.eventHubPartition, batch.Count, batch.SizeInBytes, this.stopwatch.Elapsed.TotalMilliseconds, batch.SizeInBytes / (1024 * 1024 * this.stopwatch.Elapsed.TotalSeconds));
+                            break; // all messages were sent
                         }
                         else
                         {
-                            // back up one
-                            i--;
+                            usingBlobBatches = true;
                         }
-
-                        // the buffer can be reused now
-                        this.stream.Seek(0, SeekOrigin.Begin);
                     }
-                }
 
-                if (batch.Count > 0)
-                {
-                    await SendBatch(toSend.Count - 1);
-                    
-                    // the buffer can be reused now
-                    this.stream.Seek(0, SeekOrigin.Begin);
+                    // send the event(s) as a blob batch
+                    this.stopwatch.Restart();
+                    EventData blobMessage = await this.blobBatchSender.UploadEventsAsync(this.stream, packetOffsets, this.guid, this.cancellationToken);
+                    maybeSent = index - 1;
+                    await this.client.SendAsync(new EventData[] { blobMessage }, this.sendOptions, this.cancellationToken);
+                    this.stopwatch.Stop();
+                    sentSuccessfully = index - 1;
+                    this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} sent blob-batch of {numPackets} packets ({size} bytes) in {latencyMs:F2}ms, throughput={throughput:F2}MB/s", this.eventHubName, this.eventHubPartition, packetOffsets.Count + 1, this.stream.Position, this.stopwatch.Elapsed.TotalMilliseconds, this.stream.Position / (1024 * 1024 * this.stopwatch.Elapsed.TotalSeconds));
                 }
             }
-            catch(Microsoft.Azure.EventHubs.MessageSizeExceededException)
+            catch (OperationCanceledException) when (this.cancellationToken.IsCancellationRequested)
             {
-                this.maxMessageSize = 200 * 1024;
-                this.traceHelper.LogWarning("EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send due to message size, reducing to {maxMessageSize}kB",
-                    this.eventHubName, this.eventHubPartition, this.maxMessageSize / 1024);
+                // normal during shutdown
+                this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} was cancelled", this.eventHubName, this.eventHubPartition);
+                return;
+            }
+            catch (OperationCanceledException) when (this.cancellationToken.IsCancellationRequested)
+            {
+                // normal during shutdown
+                this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} was cancelled", this.eventHubName, this.eventHubPartition);
+                return;
             }
             catch (Exception e)
             {
-                this.traceHelper.LogWarning(e, "EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send", this.eventHubName, this.eventHubPartition);
+                this.traceHelper.LogWarning("EventHubsSender {eventHubName}/{eventHubPartitionId} failed to send: {e}", this.eventHubName, this.eventHubPartition, e);
                 senderException = e;
+
+                if (Utils.IsFatal(e))
+                {
+                    this.host.OnFatalExceptionObserved(e);
+                }
             }
             finally
             {
                 // we don't need the contents of the stream anymore.
-                this.stream.SetLength(0); 
+                this.stream.SetLength(0);
             }
 
             // Confirm all sent events, and retry or report maybe-sent ones
@@ -198,9 +244,14 @@ namespace DurableTask.Netherite.EventHubsTransport
                 else
                     this.traceHelper.LogDebug("EventHubsSender {eventHubName}/{eventHubPartitionId} has confirmed {confirmed}, requeued {requeued}, dropped {dropped} outbound events", this.eventHubName, this.eventHubPartition, confirmed, requeued, dropped);
             }
-            catch (Exception exception) when (!Utils.IsFatal(exception))
+            catch (Exception exception)
             {
                 this.traceHelper.LogError("EventHubsSender {eventHubName}/{eventHubPartitionId} encountered an error while trying to confirm messages: {exception}", this.eventHubName, this.eventHubPartition, exception);
+
+                if (Utils.IsFatal(exception))
+                {
+                    this.host.OnFatalExceptionObserved(exception);
+                }
             }
         }
     }

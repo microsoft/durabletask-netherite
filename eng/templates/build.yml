@@ -1,0 +1,86 @@
+jobs:
+    - job: Build
+
+      templateContext:
+        outputs:
+            - output: pipelineArtifact
+              path: $(build.artifactStagingDirectory)
+              artifact: drop
+              sbomBuildDropPath: $(build.artifactStagingDirectory)
+              sbomPackageName: 'DurableTask Netherite SBOM'
+
+      steps:
+
+      # Install specific .NET sdk required by build or signing tasks
+      - task: UseDotNet@2
+        displayName: 'Use the .NET Core 2.1 SDK (required for build signing)'
+        inputs:
+            packageType: 'sdk'
+            version: '2.1.x'
+      - task: UseDotNet@2
+        displayName: 'Install .NET Core 2.2 SDK'
+        inputs:
+            packageType: 'sdk'
+            version: '2.2.x'
+      - task: UseDotNet@2
+        displayName: 'Install .NET Core 3.1 SDK'
+        inputs:
+            packageType: 'sdk'
+            version: '3.1.x'
+      - task: UseDotNet@2
+        displayName: 'Install .NET Core 5.0 SDK'
+        inputs:
+            packageType: 'sdk'
+            version: '5.0.x'
+      - task: UseDotNet@2
+        displayName: 'Install .NET Core 6.0 SDK (required for build signing)'
+        inputs:
+            packageType: 'sdk'
+            version: '6.0.x'
+      - task: UseDotNet@2
+        displayName: 'Install .NET Core 7.0 SDK'
+        inputs:
+            packageType: 'sdk'
+            version: '7.0.x'
+
+      # Start by restoring all the dependencies.
+      - task: DotNetCoreCLI@2
+        displayName: 'Restore nuget dependencies'
+        inputs:
+            command: restore
+            verbosityRestore: Minimal
+            projects: 'src/dirs.proj'
+
+      # Build the filtered solution in release mode, specifying the continuous integration flag.
+      - task: DotNetCoreCLI@2
+        displayName: 'Build'
+        inputs:
+            command: build
+            arguments: --no-restore -c release -p:GITHUB_RUN_NUMBER=$(Build.BuildId) -p:ContinuousIntegrationBuild=true
+            projects: 'src/dirs.proj'
+
+      - template: ci/sign-files.yml@eng
+        parameters:
+            displayName: Sign assemblies
+            folderPath: src
+            pattern: DurableTask.*.dll
+            signType: dll
+      
+      # Packaging needs to be a separate step from build.
+      # This will automatically pick up the signed DLLs.
+      - task: DotNetCoreCLI@2
+        displayName: Generate nuget packages
+        inputs:
+            command: pack
+            verbosityPack: Minimal
+            configuration: Release
+            nobuild: true
+            packDirectory: $(build.artifactStagingDirectory)
+            packagesToPack: 'src/dirs.proj'
+
+      - template: ci/sign-files.yml@eng
+        parameters:
+            displayName: Sign NugetPackages
+            folderPath: $(build.artifactStagingDirectory)
+            pattern: '*.nupkg'
+            signType: nuget

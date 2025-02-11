@@ -43,7 +43,6 @@ namespace DurableTask.Netherite.Tests
                 ThrowExceptionOnInvalidDedupeStatus = true,
                 KeepInstanceIdsInMemory = true,
                 TakeStateCheckpointWhenStoppingPartition = true,  // set to false for testing recovery from log
-                UseAlternateObjectStore = false,                  // set to true to bypass FasterKV; default is false
                 IdleCheckpointFrequencyMs = 1000000000,         // set this low for testing frequent checkpointing
                 //MaxNumberBytesBetweenCheckpoints = 10000000, // set this low for testing frequent checkpointing
                 //MaxNumberEventsBetweenCheckpoints = 10, // set this low for testing frequent checkpointing
@@ -65,8 +64,6 @@ namespace DurableTask.Netherite.Tests
         public static NetheriteOrchestrationService GetTestOrchestrationService(ILoggerFactory loggerFactory) 
             => new NetheriteOrchestrationService(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
-        internal static TestOrchestrationHost GetTestOrchestrationHost(ILoggerFactory loggerFactory)
-            => new TestOrchestrationHost(GetNetheriteOrchestrationServiceSettings(), loggerFactory);
 
         internal static bool UsesEmulation(this NetheriteOrchestrationServiceSettings settings)
         {

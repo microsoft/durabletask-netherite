@@ -119,7 +119,7 @@ namespace DurableTask.Netherite.AzureFunctions
         {
             if (this.Service.TryGetScalingMonitor(out var monitor))
             {
-                scaleMonitor = new ScaleMonitor(monitor, functionId);
+                scaleMonitor = new ScaleMonitor(monitor, $"{functionId}-{functionName}-{hubName}");
                 monitor.InformationTracer($"ScaleMonitor Constructed, Descriptor.Id={scaleMonitor.Descriptor.Id}");
                 return true;
             }
@@ -159,16 +159,11 @@ namespace DurableTask.Netherite.AzureFunctions
             readonly DataContractSerializer serializer  = new DataContractSerializer(typeof(ScalingMonitor.Metrics));
             static Tuple<DateTime, NetheriteScaleMetrics> cachedMetrics;
 
-            public ScaleMonitor(ScalingMonitor scalingMonitor, string functionId)
+            public ScaleMonitor(ScalingMonitor scalingMonitor, string uniqueIdentifier)
             {
                 this.scalingMonitor = scalingMonitor;
-                var descriptorId = $"DurableTaskTrigger-Netherite-{this.scalingMonitor.TaskHubName}".ToLower();
-
-#if NETCOREAPP3_1_OR_GREATER
-                this.descriptor = new ScaleMonitorDescriptor(descriptorId, functionId);
-#else
-                this.descriptor = new ScaleMonitorDescriptor(descriptorId);
-#endif
+                string descriptorString = $"DurableTaskTrigger-Netherite-{uniqueIdentifier}".ToLower();   
+                this.descriptor = new ScaleMonitorDescriptor(descriptorString);
             }
 
             public ScaleMonitorDescriptor Descriptor => this.descriptor;
@@ -228,14 +223,16 @@ namespace DurableTask.Netherite.AzureFunctions
             {
                 ScaleRecommendation recommendation;               
                 try
-                { 
-                    if (metrics == null || metrics.Length == 0)
+                {
+                    var lastMetric = metrics?.LastOrDefault(m => m?.Metrics != null);
+
+                    if (lastMetric == null)
                     {
                         recommendation = new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: "missing metrics");
                     }
                     else
                     {
-                        var stream = new MemoryStream(metrics[metrics.Length - 1].Metrics);
+                        var stream = new MemoryStream(lastMetric.Metrics);
                         var collectedMetrics = (ScalingMonitor.Metrics) this.serializer.ReadObject(stream);                 
                         recommendation = this.scalingMonitor.GetScaleRecommendation(workerCount, collectedMetrics);
                     }

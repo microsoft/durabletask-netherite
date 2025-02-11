@@ -11,7 +11,6 @@ namespace DurableTask.Netherite.SingleHostTransport
     using System.Threading.Tasks;
     using DurableTask.Netherite.Abstractions;
     using DurableTask.Netherite.Faster;
-    using Microsoft.Azure.EventHubs;
     using Microsoft.Extensions.Logging;
 
     /// <summary>
@@ -95,7 +94,7 @@ namespace DurableTask.Netherite.SingleHostTransport
             return Task.CompletedTask;
         }
 
-        async Task ITransportLayer.StopAsync()
+        async Task ITransportLayer.StopAsync(bool fatalExceptionObserved)
         {
             var tasks = new List<Task>();
             tasks.Add(this.clientQueue.Client.StopAsync());

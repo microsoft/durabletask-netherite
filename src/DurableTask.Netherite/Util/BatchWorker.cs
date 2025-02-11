@@ -39,6 +39,8 @@ namespace DurableTask.Netherite
         bool processingBatch;
         public TimeSpan? ProcessingBatchSince => this.processingBatch ? this.stopwatch.Elapsed : null;
 
+        volatile TaskCompletionSource<object> shutdownCompletionSource;
+
         /// <summary>
         /// Constructor including a cancellation token.
         /// </summary>
@@ -91,6 +93,22 @@ namespace DurableTask.Netherite
             this.work.Enqueue(tcs);
             this.Notify();
             return tcs.Task;
+        }
+
+        public virtual Task WaitForShutdownAsync()
+        {
+            if (!this.cancellationToken.IsCancellationRequested)
+            {
+                throw new InvalidOperationException("must call this only after canceling the token");
+            }
+
+            if (this.shutdownCompletionSource == null)
+            {
+                Interlocked.CompareExchange(ref this.shutdownCompletionSource, new TaskCompletionSource<object>(), null);
+                this.NotifyInternal();
+            }
+
+            return this.shutdownCompletionSource.Task;
         }
 
         readonly List<T> batch = new List<T>();
@@ -225,6 +243,11 @@ namespace DurableTask.Netherite
                 this.stopwatch.Stop();
                 this.processingBatch = false;
                 previousBatch = this.batch.Count;
+            }
+
+            if (this.cancellationToken.IsCancellationRequested)
+            {
+                this.shutdownCompletionSource?.TrySetResult(null);
             }
         }
 

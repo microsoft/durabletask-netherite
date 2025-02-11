@@ -6,14 +6,18 @@ namespace DurableTask.Netherite.Faster
     using System;
     using System.Collections.Generic;
     using System.Diagnostics;
+    using System.IO;
     using System.Linq;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
+    using Azure;
+    using Azure.Storage.Blobs;
+    using Azure.Storage.Blobs.Models;
+    using Azure.Storage.Blobs.Specialized;
     using DurableTask.Netherite.Abstractions;
     using DurableTask.Netherite.EventHubsTransport;
     using DurableTask.Netherite.Scaling;
-    using Microsoft.Azure.Storage;
-    using Microsoft.Azure.Storage.Blob;
     using Microsoft.Extensions.Logging;
     using Newtonsoft.Json;
 
@@ -26,8 +30,9 @@ namespace DurableTask.Netherite.Faster
         readonly ILogger performanceLogger;
         readonly MemoryTracker memoryTracker;
 
-        readonly Task<CloudBlobContainer> cloudBlobContainer;
-        readonly Task<CloudBlockBlob> taskhubParameters;
+        readonly BlobServiceClient serviceClient;
+        readonly BlobContainerClient containerClient;
+        readonly BlockBlobClient taskhubParameters;
 
         public ILoadPublisherService LoadPublisher { get;}
 
@@ -61,20 +66,10 @@ namespace DurableTask.Netherite.Faster
                 settings.TestHooks.CacheDebugger.MemoryTracker = this.memoryTracker;
             }
 
-            this.cloudBlobContainer = GetBlobContainerAsync();
-            async Task<CloudBlobContainer> GetBlobContainerAsync()
-            {
-                var blobContainerName = GetContainerName(settings.HubName);
-                var cloudBlobClient = (await settings.BlobStorageConnection.GetAzureStorageV11AccountAsync()).CreateCloudBlobClient();
-                return cloudBlobClient.GetContainerReference(blobContainerName);
-            }
-
-            this.taskhubParameters = GetTaskhubParametersAsync();
-            async Task<CloudBlockBlob> GetTaskhubParametersAsync()
-            {
-                var cloudBlobContainer = await this.cloudBlobContainer;
-                return cloudBlobContainer.GetBlockBlobReference("taskhubparameters.json");
-            }
+            this.serviceClient = settings.BlobStorageConnection.GetAzureStorageV12BlobServiceClient(new Azure.Storage.Blobs.BlobClientOptions());
+            string blobContainerName = GetContainerName(settings.HubName);
+            this.containerClient = this.serviceClient.GetBlobContainerClient(blobContainerName);
+            this.taskhubParameters = this.containerClient.GetBlockBlobClient(settings.TaskhubParametersFilePath);
 
             this.traceHelper.TraceProgress("Creating LoadPublisher Service");
             if (!string.IsNullOrEmpty(settings.LoadInformationAzureTableName))
@@ -83,7 +78,7 @@ namespace DurableTask.Netherite.Faster
             }
             else
             {
-                this.LoadPublisher = new AzureBlobLoadPublisher(settings.BlobStorageConnection, settings.HubName);
+                this.LoadPublisher = new AzureBlobLoadPublisher(settings.BlobStorageConnection, settings.HubName, settings.TaskhubParametersFilePath);
             }
         }
 
@@ -99,18 +94,20 @@ namespace DurableTask.Netherite.Faster
                 throw new NotSupportedException("Netherite backend requires 64bit, but current process is 32bit.");
             }
         }
-        
+
         async Task<TaskhubParameters> IStorageLayer.TryLoadTaskhubAsync(bool throwIfNotFound)
         {
             // try load the taskhub parameters
             try
             {
-                var blob = await this.taskhubParameters;
-                var jsonText = await blob.DownloadTextAsync();
-                return JsonConvert.DeserializeObject<TaskhubParameters>(jsonText);
+                var downloadResult = await this.taskhubParameters.DownloadContentAsync();
+                string blobContents = downloadResult.Value.Content.ToString();
+                return JsonConvert.DeserializeObject<TaskhubParameters>(blobContents);
             }
-            catch (StorageException ex) when (ex.RequestInformation.HttpStatusCode == (int)System.Net.HttpStatusCode.NotFound)
+            catch (RequestFailedException ex)
+                when (BlobUtilsV12.BlobOrContainerDoesNotExist(ex))
             {
+                // container or blob does not exist
                 if (throwIfNotFound)
                 {
                     throw new NetheriteConfigurationException($"The specified taskhub does not exist (TaskHub={this.settings.HubName}, StorageConnectionName={this.settings.StorageConnectionName}");
@@ -120,19 +117,28 @@ namespace DurableTask.Netherite.Faster
                     return null;
                 }
             }
-        }       
+        }
 
         async Task<bool> IStorageLayer.CreateTaskhubIfNotExistsAsync()
         {
-            bool containerCreated = await (await this.cloudBlobContainer).CreateIfNotExistsAsync();
-            if (containerCreated)
+            if (this.settings.PartitionManagement == PartitionManagementOptions.RecoveryTester)
             {
-                this.traceHelper.TraceProgress($"Created new blob container at {this.cloudBlobContainer.Result.Uri}");
+                // we do NOT create any resources during recovery testing
+                await ((IStorageLayer)this).TryLoadTaskhubAsync(true);
+                this.traceHelper.TraceProgress("Confirmed existing taskhub");
+                return false;
+            }
+
+            Response<Azure.Storage.Blobs.Models.BlobContainerInfo> response = await this.containerClient.CreateIfNotExistsAsync();
+            if (response != null)
+            {
+                this.traceHelper.TraceProgress($"Created new blob container at {this.containerClient.Uri}");
             }
             else
             {
-                this.traceHelper.TraceProgress($"Using existing blob container at {this.cloudBlobContainer.Result.Uri}");
+                this.traceHelper.TraceProgress($"Using existing blob container at {this.containerClient.Uri}");
             }
+
 
             var taskHubParameters = new TaskhubParameters()
             {
@@ -154,8 +160,12 @@ namespace DurableTask.Netherite.Faster
                     Newtonsoft.Json.Formatting.Indented,
                     new JsonSerializerSettings() { TypeNameHandling = TypeNameHandling.None });
 
-                var noOverwrite = AccessCondition.GenerateIfNoneMatchCondition("*");
-                await (await this.taskhubParameters).UploadTextAsync(jsonText, null, noOverwrite, null, null);
+                await this.taskhubParameters.UploadAsync(
+                    content: new MemoryStream(Encoding.UTF8.GetBytes(jsonText)),
+                    options: new BlobUploadOptions() { Conditions = new BlobRequestConditions() { IfNoneMatch = ETag.All } },
+                    cancellationToken: CancellationToken.None)
+                    .ConfigureAwait(false);
+                  
                 this.traceHelper.TraceProgress("Created new taskhub");
 
                 // zap the partition hub so we start from zero queue positions
@@ -164,7 +174,7 @@ namespace DurableTask.Netherite.Faster
                     await EventHubsUtil.DeleteEventHubIfExistsAsync(this.settings.EventHubsConnection, EventHubsTransport.PartitionHub, CancellationToken.None);
                 }
             }
-            catch (StorageException e) when (BlobUtils.BlobAlreadyExists(e))
+            catch (RequestFailedException e) when (BlobUtilsV12.BlobAlreadyExists(e))
             {
                 // taskhub already exists, possibly because a different node created it faster
                 this.traceHelper.TraceProgress("Confirmed existing taskhub");
@@ -186,7 +196,7 @@ namespace DurableTask.Netherite.Faster
                 await this.LoadPublisher.DeleteIfExistsAsync(CancellationToken.None).ConfigureAwait(false);
 
                 // delete the parameters file which deletes the taskhub logically
-                await BlobUtils.ForceDeleteAsync(await this.taskhubParameters);
+                await BlobUtilsV12.ForceDeleteAsync(this.containerClient, this.settings.TaskhubParametersFilePath);
 
                 // delete all the files/blobs in the directory/container that represents this taskhub
                 // If this does not complete successfully, some garbage may be left behind.

@@ -14,62 +14,18 @@ namespace DurableTask.Netherite
     using System.Security.Cryptography;
     using System.Web;
     using DurableTask.Netherite.EventHubsTransport;
-    using Microsoft.Azure.EventHubs;
     using Azure.Core;
     using System.Runtime.CompilerServices;
-    using Microsoft.Azure.EventHubs.Processor;
     using Newtonsoft.Json.Serialization;
     using DurableTask.Netherite.Faster;
     using Azure.Storage.Blobs;
+    using Azure.Messaging.EventHubs;
 
     /// <summary>
     /// Utilities for constructing various SDK objects from a connection information.
     /// </summary>
     static class ConnectionInfoExtensions
     {
-        /// <summary>
-        /// Returns a classic (v11 SDK) storage account object.
-        /// </summary>
-        /// <param name="connectionInfo">The connection info.</param>
-        /// <returns>A task for the storage account object.</returns>
-        /// <exception cref="FormatException">Thrown if the host name of the connection info is not of the expected format {ResourceName}.{HostNameSuffix}.</exception>
-        public static Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAzureStorageV11AccountAsync(this ConnectionInfo connectionInfo)
-        {
-            // storage accounts run a token renewal timer, so we want to share a single instance
-            if (connectionInfo.CachedStorageAccountTask == null)
-            {
-                connectionInfo.CachedStorageAccountTask = GetAsync();
-            }
-            return connectionInfo.CachedStorageAccountTask;
-
-            async Task<Microsoft.Azure.Storage.CloudStorageAccount> GetAsync()
-            {
-                if (connectionInfo.ConnectionString != null)
-                {
-                    return Microsoft.Azure.Storage.CloudStorageAccount.Parse(connectionInfo.ConnectionString);
-                }
-                else
-                {
-                    var credentials = new Microsoft.Azure.Storage.Auth.StorageCredentials(await connectionInfo.ToLegacyCredentialAsync(CancellationToken.None));
-
-                    // hostnames are generally structured like
-                    //    accountname.blob.core.windows.net
-                    //    accountname.table.core.windows.net
-                    //    databasename.table.cosmos.azure.com
-
-                    int firstDot = connectionInfo.HostName.IndexOf('.');
-                    int secondDot = connectionInfo.HostName.IndexOf('.', firstDot + 1);
-                    string hostNameSuffix = connectionInfo.HostName.Substring(secondDot + 1);
-
-                    return new Microsoft.Azure.Storage.CloudStorageAccount(
-                            storageCredentials: credentials,
-                            accountName: connectionInfo.ResourceName,
-                            endpointSuffix: hostNameSuffix,
-                            useHttps: true);
-                }
-            }
-        }
-
         /// <summary>
         /// Creates an Azure Storage table client for the v12 SDK.
         /// </summary>
@@ -106,28 +62,25 @@ namespace DurableTask.Netherite
             }
         }
 
-
         /// <summary>
-        /// Creates an Event Hub client for the given connection info.
+        /// Creates an Event Hub connection.
         /// </summary>
         /// <param name="connectionInfo">The connection info.</param>
         /// <param name="eventHub">The event hub name.</param>
         /// <returns></returns>
-        public static EventHubClient CreateEventHubClient(this ConnectionInfo connectionInfo, string eventHub)
+        public static EventHubConnection CreateEventHubConnection(this ConnectionInfo connectionInfo, string eventHub)
         {
             if (connectionInfo.ConnectionString != null)
             {
-                var connectionStringBuilder = new EventHubsConnectionStringBuilder(connectionInfo.ConnectionString)
-                {
-                    EntityPath = eventHub
-                };
-                return EventHubClient.CreateFromConnectionString(connectionStringBuilder.ToString());
+                return new Azure.Messaging.EventHubs.EventHubConnection(connectionInfo.ConnectionString, eventHub);
             }
             else
             {
-                Uri uri = new Uri($"sb://{connectionInfo.HostName}");
-                var tokenProvider = new EventHubsTokenProvider(connectionInfo);
-                return EventHubClient.CreateWithTokenProvider(uri, eventHub, tokenProvider);
+                return new Azure.Messaging.EventHubs.EventHubConnection(
+                    fullyQualifiedNamespace: connectionInfo.HostName,
+                    eventHubName: eventHub,
+                    credential: connectionInfo.TokenCredential,
+                    connectionOptions: null);
             }
         }
 
@@ -135,67 +88,19 @@ namespace DurableTask.Netherite
         /// Creates an event processor host for the given connection info.
         /// </summary>
         /// <param name="connectionInfo">The connection info.</param>
-        /// <param name="hostName">The host name.</param>
-        /// <param name="eventHubPath">The event hub name.</param>
-        /// <param name="consumerGroupName">The consumer group name.</param>
-        /// <param name="checkpointStorage">A connection info for the checkpoint storage.</param>
-        /// <param name="leaseContainerName">The name of the lease container.</param>
-        /// <param name="storageBlobPrefix">A prefix for storing the blobs.</param>
+        /// <param name="args">The constructor arguments.</param>
         /// <returns>An event processor host.</returns>
-        public static async Task<EventProcessorHost> GetEventProcessorHostAsync(
-            this ConnectionInfo connectionInfo, 
-            string hostName,
-            string eventHubPath,
-            string consumerGroupName,
-            ConnectionInfo checkpointStorage,
-            string leaseContainerName,
-            string storageBlobPrefix)
-        {
+        public static EventProcessorHost CreateEventProcessorHost(
+            this ConnectionInfo connectionInfo,
+            EventProcessorHost.ConstructorArguments args)
+        {       
             if (connectionInfo.ConnectionString != null)
             {
-                return new EventProcessorHost(
-                       hostName,
-                       eventHubPath,
-                       consumerGroupName,
-                       connectionInfo.ConnectionString,
-                       checkpointStorage.ConnectionString,
-                       leaseContainerName,
-                       storageBlobPrefix);
+                return new EventProcessorHost(args, connectionInfo.ConnectionString);
             }
             else
             {
-                var storageAccount = await checkpointStorage.GetAzureStorageV11AccountAsync();
-                return new EventProcessorHost(
-                      new Uri($"sb://{connectionInfo.HostName}"),
-                      eventHubPath,
-                      consumerGroupName,
-                      (ITokenProvider) (new EventHubsTokenProvider(connectionInfo)),
-                      storageAccount,
-                      leaseContainerName,
-                      storageBlobPrefix);
-            }
-        }
-
-        class EventHubsTokenProvider : Microsoft.Azure.EventHubs.ITokenProvider
-        {
-            readonly ConnectionInfo info;
-
-            public EventHubsTokenProvider(ConnectionInfo info)
-            {
-                this.info = info;
-            }
-
-            static TimeSpan NextRefresh(AccessToken token)
-            {
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-                return token.ExpiresOn - now - TimeSpan.FromMinutes(1); // refresh it a bit early.
-            }
-
-            async Task<SecurityToken> ITokenProvider.GetTokenAsync(string appliesTo, TimeSpan timeout)
-            {
-                TokenRequestContext request = new(this.info.Scopes);
-                AccessToken accessToken = await this.info.TokenCredential.GetTokenAsync(request, CancellationToken.None);
-                return new JsonSecurityToken(accessToken.Token, appliesTo);
+                return new EventProcessorHost(args, connectionInfo.HostName, connectionInfo.TokenCredential);
             }
         }
 
@@ -206,7 +111,7 @@ namespace DurableTask.Netherite
         /// <param name="request">The request object.</param>
         /// <param name="cancellationToken">A cancellation token.</param>
         /// <returns></returns>
-        public static async Task AuthorizeHttpRequestMessage(this ConnectionInfo connectionInfo, HttpRequestMessage request, CancellationToken cancellationToken)
+        public static async Task AuthorizeHttpRequestMessage(this ConnectionInfo connectionInfo, ConnectionResolver.ResourceType resourceType, HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (connectionInfo.ConnectionString != null)
             {
@@ -230,8 +135,8 @@ namespace DurableTask.Netherite
             }
             else
             {
-                var bearerToken = (await connectionInfo.ToLegacyCredentialAsync(cancellationToken)).Token;
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
+                AccessToken accessToken = await connectionInfo.GetTokenAsync(resourceType, cancellationToken);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken.Token);
             }
         }
     }

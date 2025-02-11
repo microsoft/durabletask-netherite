@@ -30,6 +30,9 @@ namespace DurableTask.Netherite
         [DataMember]
         public int Version { get; set;  } // we use this validate consistency of read/write updates in FASTER, it is not otherwise needed
 
+        [IgnoreDataMember]
+        public long LastUpdate { get; set; } // workaround for filtering out occasional duplicate RMW invocations (#236)
+
         /// <summary>
         /// The collection of all types of tracked objects and polymorphic members of tracked objects. Can be
         /// used by serializers to compute a type map.

@@ -17,9 +17,9 @@ namespace DurableTask.Netherite.Tests
     /// </summary>
     public class HostFixture : IDisposable
     {
-        readonly TestTraceListener traceListener;
-        readonly XunitLoggerProvider loggerProvider;
-        readonly CacheDebugger cacheDebugger;
+        TestTraceListener traceListener;
+        XunitLoggerProvider loggerProvider;
+        CacheDebugger cacheDebugger;
 
         internal TestOrchestrationHost Host { get; private set; }
         internal ILoggerFactory LoggerFactory { get; private set; }
@@ -33,32 +33,35 @@ namespace DurableTask.Netherite.Tests
             this.Host.StartAsync().Wait();
         }
 
-        HostFixture(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, Action<string> output)
+        internal HostFixture(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, Action<string> output)
         {
-            this.LoggerFactory = new LoggerFactory();
-            this.loggerProvider = new XunitLoggerProvider();
-            this.LoggerFactory.AddProvider(this.loggerProvider);
-            this.traceListener = new TestTraceListener() { Output = output };
-            Trace.Listeners.Add(this.traceListener);
-            string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
-            settings.HubName = $"HostFixture-{timestamp}";
-            settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
-            settings.InstanceCacheSizeMB = restrictMemory;
-            if (useCacheDebugger)
+            Common.WithTimeout(TimeSpan.FromMinutes(1), () =>
             {
-                this.cacheDebugger = settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(settings.TestHooks);
-            }
-            if (useReplayChecker)
-            {
-                settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
-            }
-            settings.TestHooks.OnError += (message) =>
-            {
-                Trace.WriteLine($"TESTHOOKS: {message}");
-                this.TestHooksError ??= message;
-            };
-            // start the host
-            this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
+                this.LoggerFactory = new LoggerFactory();
+                this.loggerProvider = new XunitLoggerProvider();
+                this.LoggerFactory.AddProvider(this.loggerProvider);
+                this.traceListener = new TestTraceListener() { Output = output };
+                Trace.Listeners.Add(this.traceListener);
+                string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff");
+                settings.HubName = $"HostFixture-{timestamp}";
+                settings.PartitionManagement = PartitionManagementOptions.EventProcessorHost;
+                settings.InstanceCacheSizeMB = restrictMemory;
+                if (useCacheDebugger)
+                {
+                    this.cacheDebugger = settings.TestHooks.CacheDebugger = new Faster.CacheDebugger(settings.TestHooks);
+                }
+                if (useReplayChecker)
+                {
+                    settings.TestHooks.ReplayChecker = new Faster.ReplayChecker(settings.TestHooks);
+                }
+                settings.TestHooks.OnError += (message) =>
+                {
+                    Trace.WriteLine($"TESTHOOKS: {message}");
+                    this.TestHooksError ??= message;
+                };
+                // start the host
+                this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
+            });
         }
 
         public static async Task<HostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, TimeSpan timeout, Action<string> output)
@@ -86,9 +89,12 @@ namespace DurableTask.Netherite.Tests
 
         public void Dispose()
         {
-            this.Host.StopAsync(false).Wait();
-            this.Host.Dispose();
-            Trace.Listeners.Remove(this.traceListener);
+            Common.WithTimeout(TimeSpan.FromMinutes(3), () =>
+            {
+                this.Host.StopAsync(false).Wait();
+                this.Host.Dispose();
+                Trace.Listeners.Remove(this.traceListener);
+            });
         }
 
         public bool HasError(out string error)

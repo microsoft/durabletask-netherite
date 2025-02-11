@@ -17,7 +17,7 @@
       "routePrefix": ""
     },
     "durableTask": {
-      "hubName": "tokencredentialsample",
+      "hubName": "TokenCredentialDF",
       "UseGracefulShutdown": true,
       "storageProvider": {
         "type": "Netherite",

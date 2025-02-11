@@ -4,8 +4,11 @@
 namespace DurableTask.Netherite
 {
     using System;
+    using System.Collections.Generic;
+    using System.Net;
     using System.Threading;
     using System.Threading.Tasks;
+    using DurableTask.Core.Common;
     using Microsoft.Extensions.Logging;
 
     // For indicating and initiating termination, and for tracing errors and warnings relating to a partition.
@@ -19,8 +22,8 @@ namespace DurableTask.Netherite
         readonly string account;
         readonly string taskHub;
         readonly TaskCompletionSource<object> shutdownComplete;
-
-        public event Action OnShutdown;
+        readonly TransportAbstraction.IHost host;
+        readonly List<Task> disposeTasks;
 
         public CancellationToken Token
         {
@@ -41,12 +44,17 @@ namespace DurableTask.Netherite
 
         public bool NormalTermination =>  this.terminationStatus == TerminatedNormally;
 
+        public bool WaitForDisposeTasks(TimeSpan timeout)
+        {
+            return Task.WhenAll(this.disposeTasks).Wait(timeout);
+        }
+
         volatile int terminationStatus = NotTerminated;
         const int NotTerminated = 0;
         const int TerminatedWithError = 1;
         const int TerminatedNormally = 2;
 
-        public PartitionErrorHandler(int partitionId, ILogger logger, LogLevel logLevelLimit, string storageAccountName, string taskHubName)
+        public PartitionErrorHandler(int partitionId, ILogger logger, LogLevel logLevelLimit, string storageAccountName, string taskHubName, TransportAbstraction.IHost host)
         {
             this.cts = new CancellationTokenSource();
             this.partitionId = partitionId;
@@ -55,20 +63,32 @@ namespace DurableTask.Netherite
             this.account = storageAccountName;
             this.taskHub = taskHubName;
             this.shutdownComplete = new TaskCompletionSource<object>();
+            this.host = host;
+            this.disposeTasks = new List<Task>();
         }
      
         public void HandleError(string context, string message, Exception exception, bool terminatePartition, bool isWarning)
         {
+            bool isFatal = exception != null && Utils.IsFatal(exception);
+
+            isWarning = isWarning && !isFatal;
+            terminatePartition = terminatePartition || isFatal;
+
             this.TraceError(isWarning, context, message, exception, terminatePartition);
 
-            // terminate this partition in response to the error
-
+            // if necessary, terminate this partition in response to the error
             if (terminatePartition && this.terminationStatus == NotTerminated)
             {
                 if (Interlocked.CompareExchange(ref this.terminationStatus, TerminatedWithError, NotTerminated) == NotTerminated)
                 {
                     this.Terminate();
                 }
+            }
+
+            // if fatal, notify host, because it may start a quick shutdown path in response
+            if (isFatal)
+            {
+                this.host.OnFatalExceptionObserved(exception); 
             }
         }
 
@@ -105,9 +125,8 @@ namespace DurableTask.Netherite
         {
             try
             {
-                this.logger?.LogDebug("Part{partition:D2} Started PartitionCancellation", this.partitionId);
+                // this immediately cancels all activities depending on the error handler token
                 this.cts.Cancel();
-                this.logger?.LogDebug("Part{partition:D2} Completed PartitionCancellation", this.partitionId);
             }
             catch (AggregateException aggregate)
             {
@@ -120,47 +139,45 @@ namespace DurableTask.Netherite
             {
                 this.HandleError("PartitionErrorHandler.Terminate", "Exception in PartitionCancellation", e, false, true);
             }
-
-            // we use a dedicated shutdown thread to help debugging and to contain damage if there are hangs
-            Thread shutdownThread = TrackedThreads.MakeTrackedThread(Shutdown, "PartitionShutdown");
-            shutdownThread.Start();
-
-            void Shutdown()
+            finally
             {
-                try
-                {
-                    this.logger?.LogDebug("Part{partition:D2} Started PartitionShutdown", this.partitionId);
-
-                    if (this.OnShutdown != null)
-                    {
-                        this.OnShutdown();
-                    }
-
-                    this.cts.Dispose();
-
-                    this.logger?.LogDebug("Part{partition:D2} Completed PartitionShutdown", this.partitionId);
-                }
-                catch (AggregateException aggregate)
-                {
-                    foreach (var e in aggregate.InnerExceptions)
-                    {
-                        this.HandleError("PartitionErrorHandler.Shutdown", "Exception in PartitionShutdown", e, false, true);
-                    }
-                }
-                catch (Exception e)
-                {
-                    this.HandleError("PartitionErrorHandler.Shutdown", "Exception in PartitionShutdown", e, false, true);
-                }
-
-                this.shutdownComplete.TrySetResult(null);
+                // now that the partition is dead, run all the dispose tasks
+                Task.Run(this.DisposeAsync);
             }
         }
 
-        public async Task<bool> WaitForTermination(TimeSpan timeout)
+        public void AddDisposeTask(string name, TimeSpan timeout, Action action)
         {
-            Task timeoutTask = Task.Delay(timeout);
-            var first = await Task.WhenAny(timeoutTask, this.shutdownComplete.Task);
-            return first == this.shutdownComplete.Task;
+            this.disposeTasks.Add(new Task(() =>
+            {
+                Task disposeTask = Task.Run(action);
+                try
+                {
+                    bool completedInTime = disposeTask.Wait(timeout);
+                    if (!completedInTime)
+                    {
+                        this.HandleError("PartitionErrorHandler.DisposeAsync", $"Dispose Task {name} timed out after {timeout}", null, false, false);
+                    }
+                }
+                catch(Exception exception)
+                {
+                    this.HandleError("PartitionErrorHandler.DisposeAsync", $"Dispose Task {name} threw exception {exception}", null, false, false);
+                }
+            }));
+        }
+
+        async Task DisposeAsync()
+        {
+            // execute all the dispose tasks in parallel
+            var tasks = this.disposeTasks;
+            foreach (var task in tasks)
+            {
+                task.Start();
+            }
+            await Task.WhenAll(tasks);
+
+            // we can now dispose the cancellation token source itself
+            this.cts.Dispose();
         }
     }
 }

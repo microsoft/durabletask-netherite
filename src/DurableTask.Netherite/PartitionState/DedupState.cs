@@ -18,9 +18,6 @@ namespace DurableTask.Netherite
         [DataMember]
         public Dictionary<uint, (long Position, int SubPosition)> LastProcessed { get; set; } = new Dictionary<uint, (long,int)>();
 
-        [DataMember]
-        public (long, long) Positions; // used by FasterAlt to persist positions
-
         [IgnoreDataMember]
         public override TrackedObjectKey Key => new TrackedObjectKey(TrackedObjectKey.TrackedObjectType.Dedup);
 

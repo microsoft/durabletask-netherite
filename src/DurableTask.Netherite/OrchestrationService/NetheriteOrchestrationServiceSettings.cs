@@ -18,7 +18,8 @@ namespace DurableTask.Netherite
     public class NetheriteOrchestrationServiceSettings
     {
         /// <summary>
-        /// The name of the taskhub. Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
+        /// The name of the taskhub.
+        /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
         /// </summary>
         public string HubName { get; set; }
 
@@ -57,18 +58,39 @@ namespace DurableTask.Netherite
         public Faster.BlobManager.FasterTuningParameters FasterTuningParameters { get; set; } = null;
 
         /// <summary>
-        /// Gets or sets the maximum number of work items that can be processed concurrently on a single node.
+        /// Gets or sets the maximum number of activity work items that can be processed concurrently on a single node.
         /// The default value is 100.
-        /// Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
+        /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
         /// </summary>
         public int MaxConcurrentActivityFunctions { get; set; } = 100;
 
         /// <summary>
-        /// Gets or sets the maximum number of orchestrations that can be processed concurrently on a single node.
+        /// Gets or sets the maximum number of orchestration work items that can be processed concurrently on a single node.
         /// The default value is 100.
-        /// Matches Microsoft.Azure.WebJobs.Extensions.DurableTask.
+        /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
         /// </summary>
         public int MaxConcurrentOrchestratorFunctions { get; set; } = 100;
+
+        /// <summary>
+        /// Gets or sets the maximum number of entity work items that can be processed concurrently on a single node.
+        /// The default value is 100.
+        /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
+        /// </summary>
+        public int MaxConcurrentEntityFunctions { get; set; } = 100;
+
+        /// <summary>
+        /// Whether to use separate work item queues for entities and orchestrators.
+        /// This defaults to false, to maintain compatility with legacy front ends.
+        /// Newer front ends explicitly set this to true.
+        /// </summary>
+        public bool UseSeparateQueueForEntityWorkItems { get; set; } = false;
+
+        /// <summary>
+        /// Gets or sets the maximum number of entity operations that are processed as a single batch.
+        /// The default value is 1000.
+        /// Matches corresponding property in Microsoft.Azure.WebJobs.Extensions.DurableTask.DurableTaskOptions.
+        /// </summary>
+        public int MaxEntityOperationBatchSize { get; set; } = 1000;
 
         /// <summary>
         /// Gets or sets the number of dispatchers used to dispatch orchestrations.
@@ -90,6 +112,16 @@ namespace DurableTask.Netherite
         /// </summary>
         [JsonConverter(typeof(StringEnumConverter))]
         public PartitionManagementOptions PartitionManagement { get; set; } = PartitionManagementOptions.EventProcessorHost;
+
+        /// <summary>
+        /// Additional parameters for the partition management, if necessary
+        /// </summary>
+        public string PartitionManagementParameters { get; set; } = null;
+
+        /// <summary>
+        /// The path to the file containing the taskhub parameters.
+        /// </summary>
+        public string TaskhubParametersFilePath { get; set; } = "taskhubparameters.json";
 
         /// <summary>
         /// Gets or sets the activity scheduler option
@@ -115,9 +147,10 @@ namespace DurableTask.Netherite
 
         /// <summary>
         /// Whether to checkpoint the current state of a partition when it is stopped. This improves recovery time but
-        /// lengthens shutdown time.
+        /// lengthens shutdown time and can cause memory pressure if many partitions are stopped at the same time,
+        /// for example if a host is shutting down.
         /// </summary>
-        public bool TakeStateCheckpointWhenStoppingPartition { get; set; } = true;
+        public bool TakeStateCheckpointWhenStoppingPartition { get; set; } = false;
 
         /// <summary>
         /// A limit on how many bytes to append to the log before initiating a state checkpoint. The default is 20MB.
@@ -141,14 +174,15 @@ namespace DurableTask.Netherite
         public string UseLocalDirectoryForPartitionStorage { get; set; } = null;
 
         /// <summary>
-        /// Whether to use the alternate object store implementation.
-        /// </summary>
-        public bool UseAlternateObjectStore { get; set; } = false;
-
-        /// <summary>
         /// Whether to keep an in-memory set of all instance ids in memory. This is required for supporting paged queries.
         /// </summary>
         public bool KeepInstanceIdsInMemory = true;
+
+        /// <summary>
+        /// Whether to immediately shut down the transport layer and terminate the process when a fatal exception is observed.
+        /// This is true by default, to enable failing hosts to leave quickly which allows other hosts to recover the partitions more quickly.
+        /// </summary>
+        public bool EmergencyShutdownOnFatalExceptions = true;
 
         /// <summary>
         /// Forces steps to pe persisted before applying their effects, disabling all pipelining.
@@ -166,6 +200,16 @@ namespace DurableTask.Netherite
         /// Pack TaskMessages generated by a single work item for the same destination into a single event.
         /// </summary>
         public int PackPartitionTaskMessages { get; set; } = 100;
+
+        /// <summary>
+        /// Time limit for partition startup, in minutes.
+        /// </summary>
+        public int PartitionStartupTimeoutMinutes { get; set; } = 15;
+
+        /// <summary>
+        /// If true, disables the prefetching during replay.
+        /// </summary>
+        public bool DisablePrefetchDuringReplay { get; set; } = false;
 
         /// <summary>
         /// Allows attaching additional checkers and debuggers during testing.
@@ -458,8 +502,8 @@ namespace DurableTask.Netherite
 
             try
             {
-                Microsoft.Azure.Storage.NameValidator.ValidateContainerName(taskhubName.ToLowerInvariant());
-                Microsoft.Azure.Storage.NameValidator.ValidateBlobName(taskhubName);
+                Util.NameValidator.ValidateContainerName(taskhubName.ToLowerInvariant());
+                Util.NameValidator.ValidateBlobName(taskhubName);
             }
             catch (ArgumentException e)
             {

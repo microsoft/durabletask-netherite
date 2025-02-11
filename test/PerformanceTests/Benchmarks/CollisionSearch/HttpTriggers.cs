@@ -13,6 +13,7 @@ namespace PerformanceTests.CollisionSearch
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using System.Net.Http;
     using Newtonsoft.Json.Linq;
+    using System.Net;
 
     public static class HttpTriggers
     {
@@ -79,7 +80,7 @@ namespace PerformanceTests.CollisionSearch
             }
             catch (Exception e)
             {
-                return new ObjectResult(new { error = e.ToString() });
+                return new ObjectResult(new { error = e.ToString() }) { StatusCode = (int)HttpStatusCode.InternalServerError };
             }
         }
     }

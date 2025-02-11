@@ -4,13 +4,9 @@
 namespace DurableTask.Netherite.SingleHostTransport
 {
     using DurableTask.Netherite.Abstractions;
-    using Microsoft.Azure.EventHubs;
-    using Microsoft.Extensions.Azure;
     using Microsoft.Extensions.Logging;
     using System;
-    using System.Collections;
     using System.Collections.Generic;
-    using System.Diagnostics;
     using System.IO;
     using System.Linq;
     using System.Threading;
@@ -78,16 +74,16 @@ namespace DurableTask.Netherite.SingleHostTransport
             {
                 this.Partition = this.host.AddPartition(this.partitionId, this.sender);
                 var errorHandler = this.host.CreateErrorHandler(this.partitionId);
-                errorHandler.OnShutdown += () =>
+                errorHandler.AddDisposeTask("PartitionQueue.Termination", TimeSpan.FromSeconds(10), () =>
                 {
                     if (!this.isShuttingDown && this.testHooks?.FaultInjectionActive != true)
                     {
                         this.testHooks?.Error("MemoryTransport", "Unexpected partition termination");
                     }
                     this.Notify();
-                };
+                });
                 
-                var nextInputQueuePosition = await this.Partition.CreateOrRestoreAsync(errorHandler, this.parameters, this.fingerPrint);
+                var (nextInputQueuePosition, _) = await this.Partition.CreateOrRestoreAsync(errorHandler, this.parameters, this.fingerPrint);
 
                 while(this.redeliverQueuePosition < nextInputQueuePosition)
                 {
@@ -144,7 +140,7 @@ namespace DurableTask.Netherite.SingleHostTransport
                 stream.Seek(0, SeekOrigin.Begin);
                 Packet.Serialize(evt, stream, this.taskhubGuid);
                 stream.Seek(0, SeekOrigin.Begin);
-                Packet.Deserialize(stream, out PartitionEvent freshEvent, null);
+                Packet.Deserialize(stream, out PartitionEvent freshEvent, out _,  null);
                 DurabilityListeners.Register(freshEvent, this);
                 freshEvent.NextInputQueuePosition = ++position;
                 list.Add(freshEvent);

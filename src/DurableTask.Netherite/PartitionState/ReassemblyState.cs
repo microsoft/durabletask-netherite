@@ -64,7 +64,13 @@ namespace DurableTask.Netherite
 
             if (evt.IsLast)
             {
-                evt.ReassembledEvent =  FragmentationAndReassembly.Reassemble<PartitionEvent>(this.Fragments[group], evt, effects.Partition);
+                if (!this.Fragments.TryGetValue(group, out var list))
+                {
+                    effects.EventTraceHelper.TraceEventProcessingDetail($"Discarded fragment ${evt.Fragment} for expired group {group}");
+                    return;
+                }
+
+                evt.ReassembledEvent =  FragmentationAndReassembly.Reassemble<PartitionEvent>(list, evt, effects.Partition);
                 
                 effects.EventDetailTracer?.TraceEventProcessingDetail($"Reassembled {evt.ReassembledEvent}");
 
@@ -100,9 +106,13 @@ namespace DurableTask.Netherite
                 {
                     this.Fragments[group] = list = new List<PartitionEventFragment>();
                 }
-                else
+                else 
                 {
-                    list = this.Fragments[group];
+                    if (!this.Fragments.TryGetValue(group, out list))
+                    {
+                        effects.EventTraceHelper.TraceEventProcessingDetail($"Discarded fragment ${evt.Fragment} for expired group {group}");
+                        return;
+                    }
                 }
 
                 list.Add(evt);

@@ -30,9 +30,9 @@ If you have a .NET Durable Functions application already, and want to configure 
 - Configure `EventHubsConnection` with the connection string for the Event Hubs namespace. You can do this using an environment variable, or with a function app configuration settings.
 
 For more information, see the 
-[.NET sample](https://github.com/microsoft/durabletask-netherite/tree/dev/samples/Hello_Netherite_with_DotNetCore), the 
-[Python sample](https://github.com/microsoft/durabletask-netherite/tree/dev/samples/Hello_Netherite_with_Python), or the 
-[TypeScript sample](https://github.com/microsoft/durabletask-netherite/tree/dev/samples/Hello_Netherite_with_TypeScript).
+[.NET sample](https://github.com/microsoft/durabletask-netherite/tree/main/samples/Hello_Netherite_with_DotNetCore), the 
+[Python sample](https://github.com/microsoft/durabletask-netherite/tree/main/samples/Hello_Netherite_with_Python), or the 
+[TypeScript sample](https://github.com/microsoft/durabletask-netherite/tree/main/samples/Hello_Netherite_with_TypeScript).
 
 **Configure an existing Durable Task Application for Netherite.**
 
@@ -42,7 +42,7 @@ If you have an application that uses the Durable Task Framework already, and wan
 - Add the NuGet package `Microsoft.Azure.DurableTask.Netherite` to your project.
 - Update the server startup code to construct a `NetheriteOrchestrationService` object with the required settings, and then pass it as an argument to the constructors of `TaskHubClient` and `TaskHubWorker`.
 
-For more information, see the [DTFx sample](https://github.com/microsoft/durabletask-netherite/blob/dev/samples/HelloDTFx/HelloDTFx/Program.cs).
+For more information, see the [DTFx sample](https://github.com/microsoft/durabletask-netherite/blob/main/samples/HelloDTFx/HelloDTFx/Program.cs).
 
 ## Why a new engine?
 
@@ -63,7 +63,7 @@ For some other considerations about how to choose the engine, see [the documenta
 
 ## Status
 
-The current version of Netherite is *1.3.4*. Netherite supports almost all of the DT and DF APIs. 
+The current version of Netherite is *2.1.0*. Netherite supports almost all of the DT and DF APIs. 
 
 Some notable differences to the default Azure Table storage provider include:
 - Instance queries and purge requests are not issued directly against Azure Storage, but are processed by the function app. Thus, the performance (latency and throughput) of queries heavily depends on 

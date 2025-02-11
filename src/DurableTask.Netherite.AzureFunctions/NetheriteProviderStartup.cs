@@ -16,8 +16,10 @@ namespace DurableTask.Netherite.AzureFunctions
         public void Configure(IWebJobsBuilder builder)
         {
 #if !NETCOREAPP2_2
-            builder.Services.AddSingleton<IDurabilityProviderFactory, NetheriteProviderFactory>();
-            builder.Services.TryAddSingleton<ConnectionResolver, NameResolverBasedConnectionNameResolver>();
+            // We use the UnambiguousNetheriteProviderFactory class instead of the base NetheriteProviderFactory class
+            // to avoid ambiguous constructor errors during DI. More details for this workaround can be found in the UnambiguousNetheriteProviderFactory class.
+            builder.Services.AddSingleton<IDurabilityProviderFactory, UnambiguousNetheriteProviderFactory>();
+            builder.Services.TryAddSingleton<ConnectionResolver, ConfigurationSectionBasedConnectionNameResolver>();
 #else
             builder.Services.AddSingleton<IDurabilityProviderFactory, NetheriteProviderPseudoFactory>();
 #endif

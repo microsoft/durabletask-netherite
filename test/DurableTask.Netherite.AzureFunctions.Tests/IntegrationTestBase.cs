@@ -10,6 +10,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
     using System.Threading;
     using System.Threading.Tasks;
     using DurableTask.Netherite.AzureFunctions.Tests.Logging;
+    using DurableTask.Netherite.Tests;
     using Microsoft.Azure.WebJobs;
     using Microsoft.Azure.WebJobs.Extensions.DurableTask;
     using Microsoft.Extensions.DependencyInjection;
@@ -74,21 +75,23 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             this.AddFunctions(typeof(ClientFunctions));
         }
 
-        async Task IAsyncLifetime.InitializeAsync()
+        Task IAsyncLifetime.InitializeAsync()
         {
-           await this.functionsHost.StartAsync();
+             return Common.WithTimeoutAsync(TimeSpan.FromMinutes(1), () => this.functionsHost.StartAsync());
         }
 
-        async Task IAsyncLifetime.DisposeAsync() 
+        Task IAsyncLifetime.DisposeAsync() 
         {
-            try
+            return Common.WithTimeoutAsync(TimeSpan.FromMinutes(1), async () =>
             {
-                await this.functionsHost.StopAsync();
-            }
-            catch(OperationCanceledException)
-            {
-
-            }
+                try
+                {
+                    await this.functionsHost.StopAsync();
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            });
         }
 
         protected void AddFunctions(Type functionType) => this.typeLocator.AddFunctionType(functionType);
@@ -140,7 +143,7 @@ namespace DurableTask.Netherite.AzureFunctions.Tests
             return await client.PurgeInstanceHistoryAsync(default, default, null);
         }
 
-        async Task<IDurableClient> GetDurableClientAsync()
+        protected async Task<IDurableClient> GetDurableClientAsync()
         {
             var clientRef = new IDurableClient[1];
             await this.CallFunctionAsync(nameof(ClientFunctions.GetDurableClient), "clientRef", clientRef);

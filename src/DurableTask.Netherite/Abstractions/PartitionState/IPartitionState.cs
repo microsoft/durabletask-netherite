@@ -21,7 +21,7 @@ namespace DurableTask.Netherite
         /// <param name="inputQueueFingerprint">A fingerprint for the input queue.</param>
         /// <returns>the input queue position from which to resume input processing</returns>
         /// <exception cref="OperationCanceledException">Indicates that termination was signaled before the operation completed.</exception>
-        Task<long> CreateOrRestoreAsync(Partition localPartition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint);
+        Task<(long,int)> CreateOrRestoreAsync(Partition localPartition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint);
 
         /// <summary>
         /// Starts processing, after creating or restoring the partition state.

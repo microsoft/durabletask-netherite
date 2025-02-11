@@ -41,9 +41,11 @@ namespace DurableTask.Netherite.Faster
 
         public void UpdateTargetSizes()
         {
-            if (this.stores.Count > 0)
+            // store count to avoid race condition where count goes to zero and causes divide-by-zero error
+            int numberOfStores = this.stores.Count;
+            if (numberOfStores > 0)
             {
-                long targetSize = this.maxCacheSize / this.stores.Count;
+                long targetSize = this.maxCacheSize / numberOfStores;
                 foreach (var s in this.stores.Keys)
                 {
                     s.SetTargetSize(targetSize);

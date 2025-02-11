@@ -17,6 +17,7 @@ namespace PerformanceTests.HelloCities
     using System.Linq;
     using System.Collections.Concurrent;
     using System.Threading;
+    using System.Text;
 
     /// <summary>
     /// A simple microbenchmark orchestration that executes several simple "hello" activities in a sequence.
@@ -49,6 +50,22 @@ namespace PerformanceTests.HelloCities
             };
 
             return outputs;
+        }
+
+        [FunctionName(nameof(HelloSequenceN))]
+        public static async Task HelloSequenceN([OrchestrationTrigger] IDurableOrchestrationContext context)
+        {
+            int numberSteps = context.GetInput<int>();
+            for (int i = 0; i < numberSteps; i++)
+            {
+                await context.CallActivityAsync<string>(nameof(Activities.SayHello), $"City{i}");
+            }
+        }
+
+        [FunctionName(nameof(HelloSequence3Nested))]
+        public static async Task<List<string>> HelloSequence3Nested([OrchestrationTrigger] IDurableOrchestrationContext context)
+        {
+            return await context.CallSubOrchestratorAsync<List<string>>(nameof(HelloSequence3), null);
         }
     }
 }

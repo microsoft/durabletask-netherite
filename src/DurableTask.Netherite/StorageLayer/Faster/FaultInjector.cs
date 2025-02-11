@@ -11,7 +11,6 @@ namespace DurableTask.Netherite.Faster
     using System.Threading.Tasks;
     using Azure.Storage.Blobs.Specialized;
     using FASTER.core;
-    using Microsoft.Azure.Storage;
 
     /// <summary>
     /// Injects faults into storage accesses.
@@ -22,6 +21,7 @@ namespace DurableTask.Netherite.Faster
         {
             None,
             IncrementSuccessRuns,
+            FailClientStartup,
         }
 
         InjectionMode mode;
@@ -54,6 +54,10 @@ namespace DurableTask.Netherite.Faster
                     this.countdown = 0;
                     this.nextrun = 1;
                     break;
+                case InjectionMode.FailClientStartup:
+                    this.countdown = -1;
+                    this.nextrun = -1;
+                    break;
 
                 default:
                     break;
@@ -78,6 +82,14 @@ namespace DurableTask.Netherite.Faster
         readonly Dictionary<int, TaskCompletionSource<object>> startupWaiters = new Dictionary<int, TaskCompletionSource<object>>();
         readonly HashSet<BlobManager> startedPartitions = new HashSet<BlobManager>();
 
+        public void ClientStartup()
+        {
+            if (this.mode == InjectionMode.FailClientStartup)
+            {
+                throw new Exception("Injected failure when staring client!");
+            }
+        }
+
 
         public async Task WaitForStartup(int numPartitions, TimeSpan timeout)
         {
@@ -96,11 +108,6 @@ namespace DurableTask.Netherite.Faster
                 throw new TimeoutException($"FaultInjector.WaitForStartup timed out after {timeout}");
             }
             await allDone;
-        }
-
-        public async Task BreakLease(Microsoft.Azure.Storage.Blob.CloudBlockBlob blob)
-        {
-            await blob.BreakLeaseAsync(TimeSpan.Zero);
         }
 
         internal async Task BreakLease(BlobUtilsV12.BlockBlobClients blob)
@@ -145,6 +152,10 @@ namespace DurableTask.Netherite.Faster
                             pass = false;
                             this.countdown = this.nextrun++;
                         }
+                    }
+                    else if (this.mode == InjectionMode.FailClientStartup)
+                    {
+                        pass = false;
                     }
                 }
             }

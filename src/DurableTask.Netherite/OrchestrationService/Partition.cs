@@ -46,6 +46,7 @@ namespace DurableTask.Netherite
         public TransportAbstraction.ISender BatchSender { get; private set; }
         public WorkItemQueue<ActivityWorkItem> ActivityWorkItemQueue { get; private set; }
         public WorkItemQueue<OrchestrationWorkItem> OrchestrationWorkItemQueue { get; private set; }
+        public WorkItemQueue<OrchestrationWorkItem> EntityWorkItemQueue { get; private set; }
         public LoadPublishWorker LoadPublisher { get; private set; }
 
         public BatchTimer<PartitionEvent> PendingTimers { get; private set; }
@@ -55,7 +56,10 @@ namespace DurableTask.Netherite
         // A little helper property that allows us to conventiently check the condition for low-level event tracing
         public EventTraceHelper EventDetailTracer => this.EventTraceHelper.IsTracingAtMostDetailedLevel ? this.EventTraceHelper : null;
 
-        static readonly SemaphoreSlim MaxConcurrentStarts = new SemaphoreSlim(5);
+        // We use this semaphore to limit how many partitions can be starting up at the same time on the same host
+        // because starting up a partition may temporarily consume a lot of CPU, I/O, and memory
+        const int ConcurrentStartsLimit = 5;
+        static readonly SemaphoreSlim MaxConcurrentStarts = new SemaphoreSlim(ConcurrentStartsLimit);
 
         public Partition(
             NetheriteOrchestrationService host,
@@ -67,6 +71,7 @@ namespace DurableTask.Netherite
             string storageAccountName,
             WorkItemQueue<ActivityWorkItem> activityWorkItemQueue,
             WorkItemQueue<OrchestrationWorkItem> orchestrationWorkItemQueue,
+            WorkItemQueue<OrchestrationWorkItem> entityWorkItemQueue,
             LoadPublishWorker loadPublisher,
 
             WorkItemTraceHelper workItemTraceHelper)
@@ -80,6 +85,7 @@ namespace DurableTask.Netherite
             this.StorageAccountName = storageAccountName;
             this.ActivityWorkItemQueue = activityWorkItemQueue;
             this.OrchestrationWorkItemQueue = orchestrationWorkItemQueue;
+            this.EntityWorkItemQueue = entityWorkItemQueue;
             this.LoadPublisher = loadPublisher;
             this.TraceHelper = new PartitionTraceHelper(host.TraceHelper.Logger, settings.LogLevelLimit, this.StorageAccountName, this.Settings.HubName, this.PartitionId);
             this.EventTraceHelper = new EventTraceHelper(host.LoggerFactory, settings.EventLogLevelLimit, this);
@@ -88,14 +94,11 @@ namespace DurableTask.Netherite
             this.LastTransition = this.CurrentTimeMs;
         }
 
-        public async Task<long> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, TaskhubParameters parameters, string inputQueueFingerprint)
+        public async Task<(long, int)> CreateOrRestoreAsync(IPartitionErrorHandler errorHandler, TaskhubParameters parameters, string inputQueueFingerprint)
         {
             EventTraceContext.Clear();
 
             this.ErrorHandler = errorHandler;
-
-            this.TraceHelper.TracePartitionProgress("Starting", ref this.LastTransition, this.CurrentTimeMs, "");
-
             errorHandler.Token.Register(() =>
             {
                 this.TraceHelper.TracePartitionProgress("Terminated", ref this.LastTransition, this.CurrentTimeMs, "");
@@ -108,28 +111,38 @@ namespace DurableTask.Netherite
                 }
 
             }, useSynchronizationContext: false);
-          
+
+            // before we start the partition, we have to acquire the MaxConcurrentStarts semaphore
+            // (to prevent a host from being overwhelmed by the simultaneous start of too many partitions)
+            this.TraceHelper.TracePartitionProgress("Waiting", ref this.LastTransition, this.CurrentTimeMs, $"max={ConcurrentStartsLimit} available={MaxConcurrentStarts.CurrentCount}");
             await MaxConcurrentStarts.WaitAsync();
 
-            // create or restore partition state from last snapshot
             try
             {
-                // create the state
-                this.State = ((TransportAbstraction.IHost) this.host).StorageLayer.CreatePartitionState(parameters);
+                this.TraceHelper.TracePartitionProgress("Starting", ref this.LastTransition, this.CurrentTimeMs, "");
 
-                // initialize timer for this partition
-                this.PendingTimers = new BatchTimer<PartitionEvent>(this.ErrorHandler.Token, this.TimersFired);
+                (long, int) inputQueuePosition;
 
-                // goes to storage to create or restore the partition state
-                var inputQueuePosition = await this.State.CreateOrRestoreAsync(this, this.ErrorHandler, inputQueueFingerprint).ConfigureAwait(false);
+                await using (new PartitionTimeout(errorHandler, "partition startup", TimeSpan.FromMinutes(this.Settings.PartitionStartupTimeoutMinutes)))
+                {
+                    // create or restore partition state from last snapshot
+                    // create the state
+                    this.State = ((TransportAbstraction.IHost)this.host).StorageLayer.CreatePartitionState(parameters);
 
-                // start processing the timers
-                this.PendingTimers.Start($"Timer{this.PartitionId:D2}");
+                    // initialize timer for this partition
+                    this.PendingTimers = new BatchTimer<PartitionEvent>(this.ErrorHandler.Token, this.TimersFired);
 
-                // start processing the worker queues
-                this.State.StartProcessing();
+                    // goes to storage to create or restore the partition state
+                    inputQueuePosition = await this.State.CreateOrRestoreAsync(this, this.ErrorHandler, inputQueueFingerprint).ConfigureAwait(false);
 
-                this.TraceHelper.TracePartitionProgress("Started", ref this.LastTransition, this.CurrentTimeMs, $"nextInputQueuePosition={inputQueuePosition}");
+                    // start processing the timers
+                    this.PendingTimers.Start($"Timer{this.PartitionId:D2}");
+
+                    // start processing the worker queues
+                    this.State.StartProcessing();
+                }
+
+                this.TraceHelper.TracePartitionProgress("Started", ref this.LastTransition, this.CurrentTimeMs, $"nextInputQueuePosition={inputQueuePosition.Item1}.{inputQueuePosition.Item2}");
                 return inputQueuePosition;
             }
             catch (OperationCanceledException) when (errorHandler.IsTerminated)
@@ -137,7 +150,7 @@ namespace DurableTask.Netherite
                 // this happens when startup is canceled
                 throw;
             }
-            catch (Exception e) when (!Utils.IsFatal(e))
+            catch (Exception e)
             {
                 this.ErrorHandler.HandleError(nameof(CreateOrRestoreAsync), "Could not start partition", e, true, false);
                 throw;
@@ -316,14 +329,21 @@ namespace DurableTask.Netherite
         {
             this.WorkItemTraceHelper.TraceWorkItemQueued(
                 this.PartitionId,
-                WorkItemTraceHelper.WorkItemType.Orchestration,
+                item.WorkItemType,
                 item.MessageBatch.WorkItemId,
                 item.InstanceId,
                 item.Type.ToString(),
                 item.EventCount,
                 WorkItemTraceHelper.FormatMessageIdList(item.MessageBatch.TracedMessages));
 
-            this.OrchestrationWorkItemQueue.Add(item);
+            if (this.Settings.UseSeparateQueueForEntityWorkItems && item.WorkItemType == WorkItemTraceHelper.WorkItemType.Entity)
+            {
+                this.EntityWorkItemQueue.Add(item);
+            }
+            else
+            {
+                this.OrchestrationWorkItemQueue.Add(item);
+            }
         }
     }
 }

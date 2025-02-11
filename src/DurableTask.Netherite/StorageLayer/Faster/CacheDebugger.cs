@@ -49,6 +49,7 @@ namespace DurableTask.Netherite.Faster
             PostCopyUpdate,
             SingleWriterUpsert,
             SingleWriterCopyToTail,
+            SingleWriterCopyToTailFromOutput,
             SingleWriterCopyToReadCache,
             SingleWriterCompaction,
             PostSingleWriterUpsert,
@@ -424,7 +425,7 @@ namespace DurableTask.Netherite.Faster
             if (val.Version != versionOfObject)
             {
                 var info = this.GetObjectInfo(key);
-                this.Fail($"incorrect version: model=v{val.Version} actual=v{versionOfObject} obj={val.Val} cacheEvents={info.PrintCacheEvents()}");
+                this.Fail($"incorrect version: field=v{val.Version} object=v{versionOfObject} obj={val.Val} cacheEvents={info.PrintCacheEvents()}");
             }
         }
 

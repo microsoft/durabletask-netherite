@@ -9,7 +9,6 @@ namespace DurableTask.Netherite.Faster
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
-    using Microsoft.Azure.Storage;
     using Microsoft.Extensions.Logging;
 
     class PartitionStorage : IPartitionState
@@ -20,9 +19,6 @@ namespace DurableTask.Netherite.Faster
         readonly ILogger logger;
         readonly ILogger performanceLogger;
         readonly MemoryTracker memoryTracker;
-        //readonly CloudStorageAccount storageAccount;
-        //readonly string localFileDirectory;
-        //readonly CloudStorageAccount pageBlobStorageAccount;
 
         Partition partition;
         BlobManager blobManager;
@@ -72,7 +68,7 @@ namespace DurableTask.Netherite.Faster
             await what;
         }
 
-        public async Task<long> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint)
+        public async Task<(long,int)> CreateOrRestoreAsync(Partition partition, IPartitionErrorHandler errorHandler, string inputQueueFingerprint)
         {
             this.partition = partition;
             this.terminationToken = errorHandler.Token;
@@ -102,27 +98,20 @@ namespace DurableTask.Netherite.Faster
             this.TraceHelper.FasterProgress("Creating FasterLog");
             this.log = new FasterLog(this.blobManager, partition.Settings);
 
-            if (partition.Settings.UseAlternateObjectStore)
-            {
-                this.TraceHelper.FasterProgress("Creating FasterAlt");
-                this.store = new FasterAlt(this.partition, this.blobManager);
-            }
-            else
-            {
-                this.TraceHelper.FasterProgress("Creating FasterKV");
-                this.store = new FasterKV(this.partition, this.blobManager, this.memoryTracker);
-            }
+
+            this.TraceHelper.FasterProgress("Creating FasterKV");
+            this.store = new FasterKV(this.partition, this.blobManager, this.memoryTracker);
 
             this.TraceHelper.FasterProgress("Creating StoreWorker");
             this.storeWorker = new StoreWorker(this.store, this.partition, this.TraceHelper, this.blobManager, this.terminationToken);
 
             this.TraceHelper.FasterProgress("Creating LogWorker");
             this.logWorker = this.storeWorker.LogWorker = new LogWorker(this.blobManager, this.log, this.partition, this.storeWorker, this.TraceHelper, this.terminationToken);
-             
-            if (this.partition.Settings.TestHooks?.ReplayChecker == null) 
+
+            if (this.partition.Settings.TestHooks?.ReplayChecker == null)
             {
                 this.hangCheckTimer = new Timer(this.CheckForStuckWorkers, null, 0, 20000);
-                errorHandler.OnShutdown += () => this.hangCheckTimer.Dispose();
+                errorHandler.AddDisposeTask("DisposeHangTimer", TimeSpan.FromSeconds(120), () => this.hangCheckTimer.Dispose());
             }
 
             bool hasCheckpoint = false;
@@ -200,7 +189,14 @@ namespace DurableTask.Netherite.Faster
                     if (this.log.TailAddress > (long)this.storeWorker.CommitLogPosition)
                     {
                         // replay log as the store checkpoint lags behind the log
-                        await this.TerminationWrapper(this.storeWorker.ReplayCommitLog(this.logWorker));
+
+                        // after six unsuccessful attempts, we start disabling prefetch on every other attempt, to see if this can remedy the problem
+                        int startDisablingPrefetchAfter = 6;
+
+                        bool disablePrefetch = this.settings.DisablePrefetchDuringReplay
+                            || (this.blobManager.CheckpointInfo.RecoveryAttempts > startDisablingPrefetchAfter && (this.blobManager.CheckpointInfo.RecoveryAttempts - startDisablingPrefetchAfter) % 2 == 1);
+
+                        await this.TerminationWrapper(this.storeWorker.ReplayCommitLog(this.logWorker, prefetch: !disablePrefetch));
                     }
                 }
                 catch (OperationCanceledException) when (this.partition.ErrorHandler.IsTerminated)
@@ -213,10 +209,17 @@ namespace DurableTask.Netherite.Faster
                     throw;
                 }
 
+                this.TraceHelper.FasterProgress("Replay complete");
+
                 // restart pending actitivities, timers, work items etc.
-                this.storeWorker.RestartThingsAtEndOfRecovery(inputQueueFingerprint, this.blobManager.IncarnationTimestamp);
+                if (!this.blobManager.ReadonlyMode)
+                { 
+                    this.storeWorker.RestartThingsAtEndOfRecovery(inputQueueFingerprint, this.blobManager.IncarnationTimestamp);
+                }
 
                 this.TraceHelper.FasterProgress("Recovery complete");
+
+                await this.blobManager.ClearRecoveryAttempts();
             }
             this.blobManager.FaultInjector?.Started(this.blobManager);
             return this.storeWorker.InputQueuePosition;
@@ -224,13 +227,28 @@ namespace DurableTask.Netherite.Faster
 
         public void StartProcessing()
         {
-            this.storeWorker.StartProcessing();
-            this.logWorker.StartProcessing();
+            if (!this.blobManager.ReadonlyMode)
+            {
+                this.storeWorker.StartProcessing();
+                this.logWorker.StartProcessing();
+            }
         }
 
         internal void CheckForStuckWorkers(object _)
         {
             TimeSpan limit = Debugger.IsAttached ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(3);
+
+            if (this.blobManager.PartitionErrorHandler.IsTerminated)
+            {
+                this.hangCheckTimer.Dispose();
+                return; // partition is already terminated, no point in checking for hangs
+            }
+
+            // check if a store worker is stuck in a specific place. 
+            if (this.storeWorker.WatchdogSeesExpiredDeadline())
+            {
+                this.blobManager.PartitionErrorHandler.HandleError("CheckForStuckWorkers", $"store worker deemed stuck by watchdog", null, true, false);
+            }
 
             // check if any of the workers got stuck in a processing loop
             Check("StoreWorker", this.storeWorker.ProcessingBatchSince);
@@ -248,21 +266,24 @@ namespace DurableTask.Netherite.Faster
 
         public async Task CleanShutdown(bool takeFinalCheckpoint)
         {
-            this.TraceHelper.FasterProgress("Stopping workers");
-            
-            // in parallel, finish processing log requests and stop processing store requests
-            Task t1 = this.logWorker.PersistAndShutdownAsync();
-            Task t2 = this.storeWorker.CancelAndShutdown();
-
-            // observe exceptions if the clean shutdown is not working correctly
-            await this.TerminationWrapper(t1);
-            await this.TerminationWrapper(t2);
-
-            // if the the settings indicate we want to take a final checkpoint, do so now.
-            if (takeFinalCheckpoint)
+            if (!this.blobManager.ReadonlyMode)
             {
-                this.TraceHelper.FasterProgress("Writing final checkpoint");
-                await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("final checkpoint").AsTask());
+                this.TraceHelper.FasterProgress("Stopping workers");
+
+                // in parallel, finish processing log requests and stop processing store requests
+                Task t1 = this.logWorker.PersistAndShutdownAsync();
+                Task t2 = this.storeWorker.CancelAndShutdown();
+
+                // observe exceptions if the clean shutdown is not working correctly
+                await this.TerminationWrapper(t1);
+                await this.TerminationWrapper(t2);
+
+                // if the the settings indicate we want to take a final checkpoint, do so now.
+                if (takeFinalCheckpoint)
+                {
+                    this.TraceHelper.FasterProgress("Writing final checkpoint");
+                    await this.TerminationWrapper(this.storeWorker.TakeFullCheckpointAsync("final checkpoint").AsTask());
+                }
             }
 
             this.TraceHelper.FasterProgress("Stopping BlobManager");
