@@ -15,6 +15,9 @@ namespace DurableTask.Netherite.Scaling
         readonly ILoadPublisherService loadPublisher;
         readonly ConnectionInfo eventHubsConnection;
 
+        DateTime lastMetricsQueryTime = DateTime.MinValue;
+        Metrics metrics = default;
+
         public NetheriteMetricsProvider(
             ILoadPublisherService loadPublisher,
             ConnectionInfo eventHubsConnection)
@@ -26,15 +29,24 @@ namespace DurableTask.Netherite.Scaling
         public virtual async Task<Metrics> GetMetricsAsync()
         {
             DateTime now = DateTime.UtcNow;
-            var loadInformation = await this.loadPublisher.QueryAsync(CancellationToken.None).ConfigureAwait(false);
-            var busy = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
 
-            return new Metrics()
+            // Collect the metrics every 5 seconds to avoid excessive poling.
+            // If calling this method more frequently, return the cached metrics.
+            if ( now >= this.lastMetricsQueryTime.AddSeconds(5))
             {
-                LoadInformation = loadInformation,
-                Busy = busy,
-                Timestamp = now,
-            };
+                var loadInformation = await this.loadPublisher.QueryAsync(CancellationToken.None).ConfigureAwait(false);
+                var busy = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
+
+                this.lastMetricsQueryTime = now;
+                this.metrics = new Metrics()
+                {
+                    LoadInformation = loadInformation,
+                    Busy = busy,
+                    Timestamp = now,
+                };
+            }
+            
+            return this.metrics;
         }
 
         /// <summary>

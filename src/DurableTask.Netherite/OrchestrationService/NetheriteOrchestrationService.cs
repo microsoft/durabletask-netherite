@@ -255,7 +255,7 @@ namespace DurableTask.Netherite
         internal ILoadPublisherService GetLoadPublisher()
         {
             return string.IsNullOrEmpty(this.Settings.LoadInformationAzureTableName) ?
-                new AzureBlobLoadPublisher(this.Settings.BlobStorageConnection, this.Settings.HubName)
+                new AzureBlobLoadPublisher(this.Settings.BlobStorageConnection, this.Settings.HubName, this.Settings.TaskhubParametersFilePath)
                 : new AzureTableLoadPublisher(this.Settings.TableStorageConnection, this.Settings.LoadInformationAzureTableName, this.Settings.HubName);
         }
 
