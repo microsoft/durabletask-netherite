@@ -43,7 +43,8 @@ namespace DurableTask.Netherite.AzureFunctions
 
             if (metrics.TaskHubIsIdle)
             {
-                target = 0; // we need no workers
+                this.scaleResult.TargetWorkerCount = 0; // we need no workers
+                return this.scaleResult;
             }
 
             target = 1; // always need at least one worker when we are not idle
@@ -52,7 +53,7 @@ namespace DurableTask.Netherite.AzureFunctions
             int activities = metrics.LoadInformation.Where(info => info.Value.IsLoaded()).Sum(info => info.Value.Activities);
             if (activities > 0)
             {
-                int requestedWorkers = (activities / maxConcurrentActivities) + 1;
+                int requestedWorkers = (activities + (maxConcurrentActivities - 1)) / maxConcurrentActivities; // rounded-up integer division
                 requestedWorkers = Math.Min(requestedWorkers, metrics.LoadInformation.Count); // cannot use more workers than partitions
                 target = Math.Max(target, requestedWorkers);
             }
