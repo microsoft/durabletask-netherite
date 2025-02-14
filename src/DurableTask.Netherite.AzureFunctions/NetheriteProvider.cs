@@ -51,6 +51,7 @@ namespace DurableTask.Netherite.AzureFunctions
         public override string EventSourceName => "DurableTask-Netherite";
 
         NetheriteMetricsProvider metricsProvider;
+        ILoadPublisherService loadPublisher;
 
         /// <inheritdoc/>
         public async override Task<string> RetrieveSerializedEntityState(EntityId entityId, JsonSerializerSettings serializerSettings)
@@ -138,13 +139,12 @@ namespace DurableTask.Netherite.AzureFunctions
             string hubName,
             string connectionName,
             out ITargetScaler targetScaler)
-        {
-            ILoadPublisherService loadPublisher = this.Service.GetLoadPublisher();
-            
+        {           
             // Target Scaler is created per function id. And they share the same NetheriteMetricsProvider.
             if ( this.metricsProvider == null)
             {
-                this.metricsProvider = this.Service.GetNetheriteMetricsProvider(loadPublisher, this.Settings.EventHubsConnection);
+                this.loadPublisher ??= this.Service.GetLoadPublisher();
+                this.metricsProvider = this.Service.GetNetheriteMetricsProvider(this.loadPublisher, this.Settings.EventHubsConnection);
             }
             
             targetScaler = new NetheriteTargetScaler(functionId, this.metricsProvider, this);
