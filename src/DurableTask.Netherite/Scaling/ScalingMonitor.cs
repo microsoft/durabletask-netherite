@@ -22,6 +22,7 @@ namespace DurableTask.Netherite.Scaling
         readonly string partitionLoadTableName;
         readonly string taskHubName;
         readonly ILoadPublisherService loadPublisher;
+        readonly NetheriteMetricsProvider netheriteMetricsProvider;
 
         // public logging actions to enable collection of scale-monitor-related logging within the Netherite infrastructure
         public Action<string, int, string> RecommendationTracer { get; }
@@ -47,7 +48,8 @@ namespace DurableTask.Netherite.Scaling
             string taskHubName,
             Action<string, int, string> recommendationTracer,
             Action<string> informationTracer,
-            Action<string, Exception> errorTracer)
+            Action<string, Exception> errorTracer,
+            NetheriteMetricsProvider netheriteMetricsProvider)
         {
             this.RecommendationTracer = recommendationTracer;
             this.InformationTracer = informationTracer;
@@ -57,6 +59,8 @@ namespace DurableTask.Netherite.Scaling
             this.eventHubsConnection = eventHubsConnection;
             this.partitionLoadTableName = partitionLoadTableName;
             this.taskHubName = taskHubName;
+
+            this.netheriteMetricsProvider = netheriteMetricsProvider;
         }
 
         /// <summary>
@@ -96,16 +100,7 @@ namespace DurableTask.Netherite.Scaling
         /// <returns>The collected metrics.</returns>
         public async Task<Metrics> CollectMetrics()
         {
-            DateTime now = DateTime.UtcNow;
-            var loadInformation = await this.loadPublisher.QueryAsync(CancellationToken.None).ConfigureAwait(false);
-            var busy = await this.TaskHubIsIdleAsync(loadInformation).ConfigureAwait(false);
-
-            return new Metrics()
-            {
-                LoadInformation = loadInformation,
-                Busy = busy,
-                Timestamp = now,
-            };
+            return await this.netheriteMetricsProvider.GetMetricsAsync();
         }
 
         /// <summary>
@@ -195,60 +190,5 @@ namespace DurableTask.Netherite.Scaling
                 return new ScaleRecommendation(ScaleAction.None, keepWorkersAlive: true, reason: $"Partition latencies are healthy");
             }
         }
-
-        /// <summary>
-        /// Determines if a taskhub is busy, based on load information for the partitions and on the eventhubs queue positions
-        /// </summary>
-        /// <param name="loadInformation"></param>
-        /// <returns>null if the hub is idle, or a string describing the current non-idle state</returns>
-        public async Task<string> TaskHubIsIdleAsync(Dictionary<uint, PartitionLoadInfo> loadInformation)
-        {
-            // first, check if any of the partitions have queued work or are scheduled to wake up
-            foreach (var kvp in loadInformation)
-            {
-                string busy = kvp.Value.IsBusy();
-                if (!string.IsNullOrEmpty(busy))
-                {
-                    return $"P{kvp.Key:D2} {busy}";
-                }
-            }
-
-            // next, check if any of the entries are not current, in the sense that their input queue position
-            // does not match the latest queue position
-
-           
-            List<long> positions = await Netherite.EventHubsTransport.EventHubsConnections.GetQueuePositionsAsync(this.eventHubsConnection, EventHubsTransport.PartitionHub).ConfigureAwait(false);
-
-            if (positions == null)
-            {
-                return "eventhubs is missing";
-            }
-
-            for (int i = 0; i < positions.Count; i++)
-            {
-                if (!loadInformation.TryGetValue((uint) i, out var loadInfo))
-                {
-                    return $"P{i:D2} has no load information published yet";
-                }
-                if (positions[i] > loadInfo.InputQueuePosition)
-                {
-                    return $"P{i:D2} has input queue position {loadInfo.InputQueuePosition} which is {positions[(int)i] - loadInfo.InputQueuePosition} behind latest position {positions[i]}";
-                }
-            }
-
-            // finally, check if we have waited long enough
-            foreach (var kvp in loadInformation)
-            {
-                string latencyTrend = kvp.Value.LatencyTrend;
-
-                if (!PartitionLoadInfo.IsLongIdle(latencyTrend))
-                {
-                    return $"P{kvp.Key:D2} had some activity recently, latency trend is {latencyTrend}";
-                }
-            }
-
-            // we have concluded that there are no pending work items, timers, or unprocessed input queue entries
-            return null;
-        }  
     }
 }
