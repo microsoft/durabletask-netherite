@@ -7,9 +7,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Script.ExtensionsMetadataGenerator" />
+    <PackageReference Include="Microsoft.Azure.DurableTask.Netherite.AzureFunctions"/>
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\DurableTask.Netherite.AzureFunctions\DurableTask.Netherite.AzureFunctions.csproj" />
-  </ItemGroup>
 </Project>

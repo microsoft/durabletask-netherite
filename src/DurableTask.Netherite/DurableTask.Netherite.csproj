@@ -57,6 +57,7 @@
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" />
     <PackageReference Include="Microsoft.FASTER.Core" />
     <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
   </ItemGroup>
 
