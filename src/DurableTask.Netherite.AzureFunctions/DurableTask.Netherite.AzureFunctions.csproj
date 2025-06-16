@@ -47,6 +47,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Azure.DurableTask.Core" />
     <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.DurableTask" />
+    <PackageReference Include="System.Text.Json" />
   </ItemGroup>
 
   <ItemGroup>
