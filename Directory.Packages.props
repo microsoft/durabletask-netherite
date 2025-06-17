@@ -20,6 +20,7 @@
     <PackageVersion Include="Microsoft.FASTER.Core" Version="2.6.5" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.1" />
+    <PackageVersion Include="System.Text.Json" Version="6.0.10" />
   </ItemGroup>
 
   <!-- Tests dependencies -->
