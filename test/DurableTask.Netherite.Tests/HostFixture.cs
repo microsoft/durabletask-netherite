@@ -17,14 +17,14 @@ namespace DurableTask.Netherite.Tests
     /// </summary>
     public class HostFixture : IDisposable
     {
-        TestTraceListener? traceListener;
+        TestTraceListener traceListener;
         XunitLoggerProvider loggerProvider;
-        CacheDebugger? cacheDebugger;
+        CacheDebugger cacheDebugger;
 
         internal TestOrchestrationHost Host { get; private set; }
         internal ILoggerFactory LoggerFactory { get; private set; }
 
-        internal string? TestHooksError { get; private set; }
+        internal string TestHooksError { get; private set; }
 
         public HostFixture()
             : this(TestConstants.GetNetheriteOrchestrationServiceSettings(), true, false, null, null)
@@ -33,10 +33,10 @@ namespace DurableTask.Netherite.Tests
             this.Host.StartAsync().Wait();
         }
 
-        internal HostFixture(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, Action<string>? output)
+        internal HostFixture(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, Action<string> output)
         {
-            //Common.WithTimeout(TimeSpan.FromMinutes(1), () =>
-            //{
+            Common.WithTimeout(TimeSpan.FromMinutes(1), () =>
+            {
                 this.LoggerFactory = new LoggerFactory();
                 this.loggerProvider = new XunitLoggerProvider();
                 this.LoggerFactory.AddProvider(this.loggerProvider);
@@ -61,11 +61,7 @@ namespace DurableTask.Netherite.Tests
                 };
                 // start the host
                 this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
-            //});
-            //if (this.Host == null || this.loggerProvider is null || this.LoggerFactory is null)
-            //{
-            //    throw new InvalidOperationException("Constructor did not successfully initalize");
-            //}
+            });
         }
 
         public static async Task<HostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, TimeSpan timeout, Action<string> output)
@@ -85,7 +81,7 @@ namespace DurableTask.Netherite.Tests
 
         public void DumpCacheDebugger()
         {
-            foreach (var line in this.cacheDebugger?.Dump() ?? new List<string>())
+            foreach (var line in this.cacheDebugger.Dump())
             {
                 Trace.WriteLine(line);
             }
@@ -101,7 +97,7 @@ namespace DurableTask.Netherite.Tests
             });
         }
 
-        public bool HasError(out string? error)
+        public bool HasError(out string error)
         {
             error = this.TestHooksError;
             return error != null;
@@ -110,18 +106,15 @@ namespace DurableTask.Netherite.Tests
         // called before a new test, to route output to the test output
         public void SetOutput(Action<string> output)
         {
-            if (this.traceListener != null)
-            {
-                this.traceListener.Output = output;
-            }
+            this.traceListener.Output = output;
             this.TestHooksError = null;
         }
 
         internal class TestTraceListener : TraceListener
         {
-            public Action<string>? Output { get; set; }
-            public override void Write(string? message) {  }
-            public override void WriteLine(string? message) {
+            public Action<string> Output { get; set; }
+            public override void Write(string message) {  }
+            public override void WriteLine(string message) {
                 try
                 {
                     this.Output?.Invoke($"{DateTime.Now:o} {message}");

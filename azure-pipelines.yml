@@ -27,17 +27,19 @@ steps:
     platform: '$(buildPlatform)'
     configuration: '$(buildConfiguration)'
 
-- task: DotNetCoreCLI@2
-  displayName: EventHubs Parametric Tests
-  env:
-    AzureWebJobsStorage: $(StorageConnectionString)
-    EventHubsConnection: $(TransportConnectionString)
-  timeoutInMinutes: 15
-  inputs:
-    command: 'test' 
-    projects: '**/DurableTask.Netherite.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --filter "AnyTransport=true" --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
-    testRunTitle: 'Netherite Transport-Parametric Tests on EventHubs'
+# EventHubs has (evidently) disabled the ability to allow SAS key auth in MS owned subs. Disabling the tests that run on live EventHubs
+# resources until we can figure out a workaround.
+# - task: DotNetCoreCLI@2
+#   displayName: EventHubs Parametric Tests
+#   env:
+#     AzureWebJobsStorage: $(StorageConnectionString)
+#     EventHubsConnection: $(TransportConnectionString)
+#   timeoutInMinutes: 15
+#   inputs:
+#     command: 'test' 
+#     projects: '**/DurableTask.Netherite.Tests.csproj'
+#     arguments: '--configuration $(buildConfiguration) --filter "AnyTransport=true" --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
+#     testRunTitle: 'Netherite Transport-Parametric Tests on EventHubs'
 
 - task: DotNetCoreCLI@2
   displayName: SingleHost AzureFunctions Tests
@@ -51,17 +53,19 @@ steps:
     arguments: '--configuration $(buildConfiguration) --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Tests for Azure Functions on SingleHost'
 
-- task: DotNetCoreCLI@2
-  displayName: EventHubs AzureFunctions Tests
-  env:
-    AzureWebJobsStorage: $(StorageConnectionString)
-    EventHubsConnection: $(TransportConnectionString)
-  timeoutInMinutes: 15
-  inputs:
-    command: 'test' 
-    projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
-    testRunTitle: 'Netherite Tests for Azure Functions on EventHubs'
+# EventHubs has (evidently) disabled the ability to allow SAS key auth in MS owned subs. Disabling the tests that run on live EventHubs
+# resources until we can figure out a workaround.
+# - task: DotNetCoreCLI@2
+#   displayName: EventHubs AzureFunctions Tests
+#   env:
+#     AzureWebJobsStorage: $(StorageConnectionString)
+#     EventHubsConnection: $(TransportConnectionString)
+#   timeoutInMinutes: 15
+#   inputs:
+#     command: 'test' 
+#     projects: '**/DurableTask.Netherite.AzureFunctions.Tests.csproj'
+#     arguments: '--configuration $(buildConfiguration) --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
+#     testRunTitle: 'Netherite Tests for Azure Functions on EventHubs'
 
 - task: DotNetCoreCLI@2
   displayName: Memory Parametric Tests
@@ -98,14 +102,16 @@ steps:
     arguments: '--configuration $(buildConfiguration) --filter "AnyTransport=true" --verbosity normal --no-build --blame-hang --blame-hang-timeout 5m' 
     testRunTitle: 'Netherite Transport-Parametric Tests on SingleHost'
 
-- task: DotNetCoreCLI@2
-  displayName: EventHubs Specific Tests
-  env:
-    AzureWebJobsStorage: $(StorageConnectionString)
-    EventHubsConnection: $(TransportConnectionString)
-  timeoutInMinutes: 45
-  inputs:
-    command: 'test' 
-    projects: '**/DurableTask.Netherite.Tests.csproj'
-    arguments: '--configuration $(buildConfiguration) --filter "AnyTransport=false" --verbosity normal --no-build --blame-hang --blame-hang-timeout 10m' 
-    testRunTitle: 'Netherite Transport-Specific Tests'
+# EventHubs has (evidently) disabled the ability to allow SAS key auth in MS owned subs. Disabling the tests that run on live EventHubs
+# resources until we can figure out a workaround.
+# - task: DotNetCoreCLI@2
+#   displayName: EventHubs Specific Tests
+#   env:
+#     AzureWebJobsStorage: $(StorageConnectionString)
+#     EventHubsConnection: $(TransportConnectionString)
+#   timeoutInMinutes: 45
+#   inputs:
+#     command: 'test' 
+#     projects: '**/DurableTask.Netherite.Tests.csproj'
+#     arguments: '--configuration $(buildConfiguration) --filter "AnyTransport=false" --verbosity normal --no-build --blame-hang --blame-hang-timeout 10m' 
+#     testRunTitle: 'Netherite Transport-Specific Tests'
