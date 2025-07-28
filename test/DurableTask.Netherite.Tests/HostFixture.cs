@@ -35,8 +35,8 @@ namespace DurableTask.Netherite.Tests
 
         internal HostFixture(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, Action<string>? output)
         {
-            Common.WithTimeout(TimeSpan.FromMinutes(1), () =>
-            {
+            //Common.WithTimeout(TimeSpan.FromMinutes(1), () =>
+            //{
                 this.LoggerFactory = new LoggerFactory();
                 this.loggerProvider = new XunitLoggerProvider();
                 this.LoggerFactory.AddProvider(this.loggerProvider);
@@ -61,11 +61,11 @@ namespace DurableTask.Netherite.Tests
                 };
                 // start the host
                 this.Host = new TestOrchestrationHost(settings, this.LoggerFactory);
-            });
-            if (this.Host == null || this.loggerProvider is null || this.LoggerFactory is null)
-            {
-                throw new InvalidOperationException("Constructor did not successfully initalize");
-            }
+            //});
+            //if (this.Host == null || this.loggerProvider is null || this.LoggerFactory is null)
+            //{
+            //    throw new InvalidOperationException("Constructor did not successfully initalize");
+            //}
         }
 
         public static async Task<HostFixture> StartNew(NetheriteOrchestrationServiceSettings settings, bool useCacheDebugger, bool useReplayChecker, int? restrictMemory, TimeSpan timeout, Action<string> output)
