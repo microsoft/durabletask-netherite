@@ -21,6 +21,13 @@ steps:
   inputs:
     restoreSolution: '$(solution)'
 
+- task: UseDotNet@2
+  displayName: 'Install .NET Core 6.0 SDK'
+  inputs:
+      packageType: 'sdk'
+      version: '6.0.x'
+- task: UseDotNet@2
+
 - task: VSBuild@1
   inputs:
     solution: '$(solution)'
