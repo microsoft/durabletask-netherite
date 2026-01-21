@@ -82,7 +82,7 @@ namespace DurableTask.Netherite
         Client client;
         Client checkedClient;
 
-        internal NetheriteOrchestrationServiceSettings Settings { get; private set; }
+        public NetheriteOrchestrationServiceSettings Settings { get; private set; }
         internal uint NumberPartitions { get; private set; }
         internal string PathPrefix { get; private set; }
         internal string ContainerName { get; private set; }
@@ -252,14 +252,14 @@ namespace DurableTask.Netherite
             return false;
         }
 
-        internal ILoadPublisherService GetLoadPublisher()
+        public ILoadPublisherService GetLoadPublisher()
         {
             return string.IsNullOrEmpty(this.Settings.LoadInformationAzureTableName) ?
                 new AzureBlobLoadPublisher(this.Settings.BlobStorageConnection, this.Settings.HubName, this.Settings.TaskhubParametersFilePath)
                 : new AzureTableLoadPublisher(this.Settings.TableStorageConnection, this.Settings.LoadInformationAzureTableName, this.Settings.HubName);
         }
 
-        internal NetheriteMetricsProvider GetNetheriteMetricsProvider(ILoadPublisherService loadPublisher, ConnectionInfo eventHubsConnection)
+        public NetheriteMetricsProvider GetNetheriteMetricsProvider(ILoadPublisherService loadPublisher, ConnectionInfo eventHubsConnection)
         {
             return new NetheriteMetricsProvider(loadPublisher, eventHubsConnection);
         }
