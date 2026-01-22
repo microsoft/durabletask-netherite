@@ -14,7 +14,7 @@ namespace DurableTask.Netherite.Scaling
     using System.Threading;
     using System.Threading.Tasks;
 
-    class AzureTableLoadPublisher : ILoadPublisherService
+    public class AzureTableLoadPublisher : ILoadPublisherService
     {
         readonly TableClient table;
         readonly string taskHubName;

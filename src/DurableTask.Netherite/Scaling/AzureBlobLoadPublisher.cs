@@ -18,7 +18,7 @@ namespace DurableTask.Netherite.Scaling
     using System.Threading;
     using System.Threading.Tasks;
 
-    class AzureBlobLoadPublisher : ILoadPublisherService
+    public class AzureBlobLoadPublisher : ILoadPublisherService
     {
         readonly string taskHubName;
         readonly BlobContainerClient blobContainerClient;
