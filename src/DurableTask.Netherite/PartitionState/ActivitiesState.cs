@@ -13,12 +13,21 @@ namespace DurableTask.Netherite
     [DataContract]
     class ActivitiesState : TrackedObject
     {
+        /// <summary>
+        /// Activities currently executing on the current partition.
+        /// </summary>
         [DataMember]
         public Dictionary<long, ActivityInfo> Pending { get; private set; }
 
+        /// <summary>
+        /// Activities that aren't yet executing. These activities are candidates for offloading to other partitions.
+        /// </summary>
         [DataMember]
         public Queue<ActivityInfo> LocalBacklog { get; private set; }
 
+        /// <summary>
+        /// Activities that were enqueued onto this partition from another partition.
+        /// </summary> 
         [DataMember]
         public Queue<ActivityInfo> QueuedRemotes { get; private set; }
 
