@@ -70,30 +70,72 @@ extends:
               instructions: Confirm you want to push to NuGet
               onTimeout: 'reject'
 
-      # NuGet release
-      - job: nugetRelease
-        displayName: NuGet Release
-        dependsOn:
-        - nugetApproval
-        - adoRelease
-        condition: succeeded('nugetApproval', 'adoRelease')
+      # NuGet release (Microsoft.Azure.DurableTask.Netherite)
+      - job: nugetRelease_Microsoft_Azure_DurableTask_Netherite
+        displayName: NuGet Release (Microsoft.Azure.DurableTask.Netherite)
+        dependsOn: nugetApproval
+        condition: succeeded('nugetApproval') # nuget packages need to be on ADO first
         templateContext:
+          type: releaseJob
+          isProduction: true
           inputs:
           - input: pipelineArtifact
             pipeline: officialPipeline  # Pipeline reference as defined in the resources section
             artifactName: drop
             targetPath: $(System.DefaultWorkingDirectory)/drop
-        # Ideally, we would push to NuGet using the 1ES "template output" syntax, like we do for ADO.
-        # Unfortunately, that syntax does not allow for skipping duplicates when pushing to NuGet feeds
-        # (i.e; not failing the job when trying to push a package version that already exists on NuGet).
-        # This is a problem for us because our pipelines often produce multiple packages, and we want to be able to
-        # perform a 'nuget push *.nupkg' that skips packages already on NuGet while pushing the rest.
-        # Therefore, we use a regular .NET Core ADO Task to publish the packages until that usability gap is addressed.
         steps:
-        - task: DotNetCoreCLI@2
-          displayName: 'Push to nuget.org'
+        - task: 1ES.PublishNuget@1
+          displayName: 'NuGet push (Microsoft.Azure.DurableTask.Netherite)'
           inputs:
-            command: custom
-            custom: nuget
-            arguments: 'push "*.nupkg" --api-key $(nuget_api_key) --skip-duplicate --source https://api.nuget.org/v3/index.json'
-            workingDirectory: '$(System.DefaultWorkingDirectory)/drop'
+            command: push
+            nuGetFeedType: external
+            publishFeedCredentials: 'DurableTask org NuGet API Key'
+            packagesToPush: '$(System.DefaultWorkingDirectory)/drop/Microsoft.Azure.DurableTask.Netherite.*.nupkg;!$(System.DefaultWorkingDirectory)/drop/Microsoft.Azure.DurableTask.Netherite.AzureFunctions.*.nupkg;!$(System.DefaultWorkingDirectory)/**/*.symbols.nupkg' # Excludes Microsoft.Azure.DurableTask.Netherite.AzureFunctions.nupkg
+            packageParentPath: $(System.DefaultWorkingDirectory) # This needs to be set to some prefix of the `packagesToPush` parameter. Apparently it helps with SDL tooling
+
+      # NuGet release (Microsoft.Azure.DurableTask.Netherite.AzureFunctions)
+      - job: nugetRelease_Microsoft_Azure_DurableTask_Netherite_AzureFunctions
+        displayName: NuGet Release (Microsoft.Azure.DurableTask.Netherite.AzureFunctions)
+        dependsOn: nugetApproval
+        condition: succeeded('nugetApproval') # nuget packages need to be on ADO first
+        templateContext:
+          type: releaseJob
+          isProduction: true
+          inputs:
+          - input: pipelineArtifact
+            pipeline: officialPipeline  # Pipeline reference as defined in the resources section
+            artifactName: drop
+            targetPath: $(System.DefaultWorkingDirectory)/drop
+        steps:
+        - task: 1ES.PublishNuget@1
+          displayName: 'NuGet push (Microsoft.Azure.DurableTask.Netherite.AzureFunctions)'
+          inputs:
+            command: push
+            nuGetFeedType: external
+            publishFeedCredentials: 'DurableTask org NuGet API Key'
+            packagesToPush: '$(System.DefaultWorkingDirectory)/drop/Microsoft.Azure.DurableTask.Netherite.AzureFunctions.*.nupkg;!$(System.DefaultWorkingDirectory)/**/*.symbols.nupkg' # Despite this being a custom command, we need to keep this for 1ES validation
+            packageParentPath: $(System.DefaultWorkingDirectory) # This needs to be set to some prefix of the `packagesToPush` parameter. Apparently it helps with SDL tooling
+
+
+      # NuGet release (Microsoft.Azure.Functions.Worker.Extensions.DurableTask.Netherite)
+      - job: nugetRelease_Microsoft_Azure_Functions_Worker_Extensions_DurableTask_Netherite
+        displayName: NuGet Release (Microsoft.Azure.Functions.Worker.Extensions.DurableTask.Netherite)
+        dependsOn: nugetApproval
+        condition: succeeded('nugetApproval') # nuget packages need to be on ADO first
+        templateContext:
+          type: releaseJob
+          isProduction: true
+          inputs:
+          - input: pipelineArtifact
+            pipeline: officialPipeline  # Pipeline reference as defined in the resources section
+            artifactName: drop
+            targetPath: $(System.DefaultWorkingDirectory)/drop
+        steps:
+        - task: 1ES.PublishNuget@1
+          displayName: 'NuGet push (Microsoft.Azure.Functions.Worker.Extensions.DurableTask.Netherite)'
+          inputs:
+            command: push
+            nuGetFeedType: external
+            publishFeedCredentials: 'DurableTask org NuGet API Key'
+            packagesToPush: '$(System.DefaultWorkingDirectory)/drop/Microsoft.Azure.Functions.Worker.Extensions.DurableTask.Netherite.*.nupkg;!$(System.DefaultWorkingDirectory)/**/*.symbols.nupkg' # Despite this being a custom command, we need to keep this for 1ES validation
+            packageParentPath: $(System.DefaultWorkingDirectory) # This needs to be set to some prefix of the `packagesToPush` parameter. Apparently it helps with SDL tooling
