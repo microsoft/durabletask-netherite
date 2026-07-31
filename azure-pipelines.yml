@@ -17,8 +17,13 @@ variables:
 steps:
 - task: NuGetToolInstaller@1
 
+- task: NuGetAuthenticate@1
+  displayName: 'Authenticate to CFS'
+
 - task: NuGetCommand@2
   inputs:
+    feedsToUse: config
+    nugetConfigPath: 'NuGet.config'
     restoreSolution: '$(solution)'
 
 - task: UseDotNet@2
