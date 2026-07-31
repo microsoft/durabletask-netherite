@@ -68,6 +68,11 @@ jobs:
       with:
         dotnet-version: '3.1.x'
 
+    - name: Set up .NET 6
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '6.0.x'
+
     - name: Restore dependencies
       shell: pwsh
       run: dotnet restore "$env:GITHUB_WORKSPACE\$env:solution" --configfile "$env:GITHUB_WORKSPACE\NuGet.config"
