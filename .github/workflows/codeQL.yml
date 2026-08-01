@@ -68,11 +68,18 @@ jobs:
       with:
         dotnet-version: '3.1.x'
 
+    - name: Set up .NET 6
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '6.0.x'
+
     - name: Restore dependencies
-      run: dotnet restore $solution
+      shell: pwsh
+      run: dotnet restore "$env:GITHUB_WORKSPACE\$env:solution" --configfile "$env:GITHUB_WORKSPACE\NuGet.config"
 
     - name: Build
-      run: dotnet build $solution #--configuration $config #--no-restore -p:FileVersionRevision=$GITHUB_RUN_NUMBER -p:ContinuousIntegrationBuild=true
+      shell: pwsh
+      run: dotnet build "$env:GITHUB_WORKSPACE\$env:solution" --configuration "$env:config" --no-restore -p:FileVersionRevision="$env:GITHUB_RUN_NUMBER" -p:ContinuousIntegrationBuild=true
 
     # Run CodeQL analysis
     - name: Perform CodeQL Analysis

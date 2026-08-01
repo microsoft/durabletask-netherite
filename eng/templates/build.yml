@@ -44,10 +44,15 @@ jobs:
             version: '7.0.x'
 
       # Start by restoring all the dependencies.
+      - task: NuGetAuthenticate@1
+        displayName: 'Authenticate to CFS'
+
       - task: DotNetCoreCLI@2
         displayName: 'Restore nuget dependencies'
         inputs:
             command: restore
+            feedsToUse: config
+            nugetConfigPath: 'NuGet.config'
             verbosityRestore: Minimal
             projects: 'src/dirs.proj'
 
