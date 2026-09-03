@@ -212,6 +212,21 @@ namespace DurableTask.Netherite
         public bool DisablePrefetchDuringReplay { get; set; } = false;
 
         /// <summary>
+        /// Time limit for orchestration client operations.
+        /// </summary>
+        public TimeSpan ClientTimeout { get; set; } = TimeSpan.FromMinutes(5);
+
+        /// <summary>
+        /// Time limit for CreateTaskOrchestration client operation.
+        /// </summary>
+        public TimeSpan? CreateOrchestrationTimeout { get; set; }
+
+        /// <summary>
+        /// Time limit for SendTaskOrchestrationMessage client operation.
+        /// </summary>
+        public TimeSpan? SendOrchestrationMessageTimeout { get; set; }
+
+        /// <summary>
         /// Allows attaching additional checkers and debuggers during testing.
         /// </summary>
         [JsonIgnore]
