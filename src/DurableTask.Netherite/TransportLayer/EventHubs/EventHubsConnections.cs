@@ -239,8 +239,8 @@ namespace DurableTask.Netherite.EventHubsTransport
         {
             try
             {
-                var connection = connectionInfo.CreateEventHubConnection(partitionHub);
-                var client = new EventHubProducerClient(connection);
+                await using var connection = connectionInfo.CreateEventHubConnection(partitionHub);
+                await using var client = new EventHubProducerClient(connection);
                 var partitions = await client.GetPartitionIdsAsync();
                 var infoTasks = partitions.Select(id => client.GetPartitionPropertiesAsync(id)).ToList();
                 await Task.WhenAll(infoTasks);
