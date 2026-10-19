@@ -47,14 +47,16 @@ jobs:
       - task: NuGetAuthenticate@1
         displayName: 'Authenticate to CFS'
 
+      # Restore directly to preserve CFS source mapping for the traversal SDK.
       - task: DotNetCoreCLI@2
         displayName: 'Restore nuget dependencies'
         inputs:
-            command: restore
-            feedsToUse: config
-            nugetConfigPath: 'NuGet.config'
-            verbosityRestore: Minimal
-            projects: 'src/dirs.proj'
+            command: custom
+            custom: restore
+            arguments: >
+                "$(Build.SourcesDirectory)\src\dirs.proj"
+                --configfile "$(Build.SourcesDirectory)\NuGet.config"
+                --verbosity minimal
 
       # Build the filtered solution in release mode, specifying the continuous integration flag.
       - task: DotNetCoreCLI@2
